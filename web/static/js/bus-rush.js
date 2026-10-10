@@ -1331,7 +1331,7 @@ function init(canvas, el) {
       spawnPolice(r, lane, HEIGHT + 20);
     }
 
-    const approach = (policeSpeed(wanted) - r.speed) * PX_PER_METER;
+    const approach = (policeSpeed(wanted, r.level) - r.speed) * PX_PER_METER;
     const laneStep = (LANE_WIDTH / POLICE_LANE_SECONDS) * dt;
     for (const p of r.police) {
       p.y -= approach * dt;

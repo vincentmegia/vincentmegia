@@ -194,9 +194,13 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * **Wanted** = `min(5, district + 1 + floor(fares / 10))`.
 * **Tokens per run** = `fares × fareValue(fareBoxLevel) + floor(distance / 100) + wrecks × WRECK_TOKENS`.
 * **Police** (`wantedLevel`, `policeSpeed`, `maxPolice`,
-  `policeReactionSeconds`, `roadblockChance` in `rules.js`): one star is
-  outrun by an unupgraded bus at full throttle; five stars only with
-  Engine upgrades. Pursuers never overtake the bus (alongside at most), and
+  `policeReactionSeconds`, `roadblockChance` in `rules.js`): pursuit speed
+  is pegged to an unupgraded bus's top speed *in the current district*
+  (`POLICE_PACE`, 80% at one star up to 96% at five), so a stock bus at
+  full throttle always pulls away — slowly at high stars — and police
+  catch you only when you brake or a hit drops you to the floor. (An
+  earlier flat per-star speed outpaced the per-level speed-up, so by
+  Heartland a stock bus could no longer outrun them.) Pursuers never overtake the bus (alongside at most), and
   are "lost" once far enough behind. Roadblocks move at traffic speed and
   use `pickBlockedLanes`, so they keep the every-row-is-passable guarantee.
 * **Upgrades**: cost grows per level (`upgradeCost`); every upgrade has a

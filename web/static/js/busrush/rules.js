@@ -174,12 +174,18 @@ function stars(wanted) {
   return Number.isFinite(wanted) ? Math.min(Math.max(Math.floor(wanted), 1), WANTED_MAX) : 1;
 }
 
+/** Police pace as a fraction of the district's stock top speed, by star. */
+export const POLICE_PACE = [0.8, 0.84, 0.88, 0.92, 0.96];
+
 /**
- * Pursuit speed (m/s). Low stars are outrun by an unupgraded bus at full
- * throttle (BASE_MAX_SPEED); top stars need Engine upgrades to escape.
+ * Pursuit speed (m/s) in a district (0-based level index). Pegged to an
+ * unupgraded bus's top speed *in that district*, so levelling up never
+ * makes police uncatchable: a stock bus at full throttle always pulls
+ * away, just more slowly at higher stars. They catch you when you brake
+ * or get knocked down to the speed floor.
  */
-export function policeSpeed(wanted) {
-  return 13 + stars(wanted) * 1.5;
+export function policeSpeed(wanted, levelIndex = 0) {
+  return maxSpeed(0, levelIndex) * POLICE_PACE[stars(wanted) - 1];
 }
 
 /** Most cruisers chasing at once. */

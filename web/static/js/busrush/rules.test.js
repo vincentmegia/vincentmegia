@@ -143,10 +143,13 @@ describe('police pursuit', () => {
     assert.ok(policeReactionSeconds(WANTED_MAX) > 0);
   });
 
-  test('one star is outrun at base top speed; max stars only with Engine upgrades', () => {
-    assert.ok(policeSpeed(1) < BASE_MAX_SPEED);
-    assert.ok(policeSpeed(WANTED_MAX) > BASE_MAX_SPEED);
-    assert.ok(policeSpeed(WANTED_MAX) < maxSpeed(UPGRADES.engine.maxLevel));
+  test('a stock bus at full throttle outruns police at any star, in any level', () => {
+    for (let lvl = 0; lvl < LEVELS.length; lvl++) {
+      for (let w = 1; w <= WANTED_MAX; w++) {
+        assert.ok(policeSpeed(w, lvl) < maxSpeed(0, lvl), `stock bus outruns ${w}★ in level ${lvl + 1}`);
+        assert.ok(policeSpeed(w, lvl) > minSpeed(lvl), `${w}★ catches a bus at the floor in level ${lvl + 1}`);
+      }
+    }
   });
 
   test('roadblocks need distance and heat', () => {
