@@ -45,7 +45,7 @@ const BUS_Y = HEIGHT - BUS_LENGTH - 36;
 const FARE_RADIUS = 13;
 const FARE_CHANCE = 0.7;
 
-const VEHICLE_COLORS = ['#2f6db5', '#e0e0e0', '#2b2b2b', '#c9a227', '#3f8f5a', '#8e44ad', '#d35400'];
+const VEHICLE_COLORS = ['#3f6e9e', '#e8e1d3', '#33312e', '#d9a93f', '#5f8a5b', '#8c5a7a', '#7d8a94'];
 
 function laneCenter(lane) {
   return SHOULDER + LANE_WIDTH * lane + LANE_WIDTH / 2;
@@ -109,6 +109,32 @@ function saveProgress(progress) {
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
+//
+// Flat top-down vector style in the site's warm "Organic" palette, lit from
+// the top-left (shadows fall down-right). The static roadside — verge,
+// pavement, trees, lamps, asphalt grain, lane paint — is painted once into
+// an offscreen tile that scrolls seamlessly; vehicles, the bus, fares and
+// effects are drawn live every frame.
+
+const DASH = 36;
+const DASH_GAP = 28;
+const SCENERY_PERIOD = (DASH + DASH_GAP) * 20; // whole dash cycles, so it tiles
+
+const PAINT = '#f1e9d6';
+const BAY_YELLOW = '#e0b54a';
+const ASPHALT = '#4a4643';
+const GLASS = '#2e4552';
+const GLASS_SHINE = 'rgba(255,255,255,0.22)';
+const HEADLIGHT = '#fff3c4';
+const TAILLIGHT = '#c9402c';
+const TYRE = '#1f1d1b';
+const SHADOW = 'rgba(28,22,16,0.3)';
+const BUS_COLOR = '#c4532d';
+const BUS_ROOF = '#efe4d0';
+const CARGO = '#e9e3d6';
+
+const TAXI_COLORS = ['#2f78c4', '#e3bf3f'];
+const TAXI_CHANCE = 0.15;
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -116,139 +142,643 @@ function roundRect(ctx, x, y, w, h, r) {
   else ctx.rect(x, y, w, h);
 }
 
-function drawRoad(ctx, scroll) {
-  ctx.fillStyle = '#6b8f4e';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+function fillRoundRect(ctx, color, x, y, w, h, r) {
+  ctx.fillStyle = color;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+}
 
-  // Kerbs and roadside trees scroll with the road.
-  ctx.fillStyle = '#b9b2a3';
-  ctx.fillRect(SHOULDER - 8, 0, 8, HEIGHT);
-  ctx.fillRect(WIDTH - SHOULDER, 0, 8, HEIGHT);
-  const treeGap = 140;
-  const treeOffset = scroll % treeGap;
-  ctx.fillStyle = '#3e6b35';
-  for (let y = -treeGap + treeOffset; y < HEIGHT + treeGap; y += treeGap) {
-    ctx.beginPath();
-    ctx.arc(14, y, 11, 0, Math.PI * 2);
-    ctx.arc(WIDTH - 14, y + treeGap / 2, 11, 0, Math.PI * 2);
-    ctx.fill();
+/** Mixes a #rrggbb colour toward black (amount < 0) or white (amount > 0). */
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const target = amount < 0 ? 0 : 255;
+  const a = Math.abs(amount);
+  const ch = (v) => Math.round(v + (target - v) * a);
+  return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
+}
+
+/** Deterministic PRNG so the scenery tile looks the same on every visit. */
+function seededRandom(seed) {
+  let s = seed;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Left-to-right gradient that makes a flat body read as rounded. */
+function bodyGradient(ctx, color, x, w) {
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, shade(color, -0.3));
+  g.addColorStop(0.22, color);
+  g.addColorStop(0.5, shade(color, 0.12));
+  g.addColorStop(0.78, color);
+  g.addColorStop(1, shade(color, -0.3));
+  return g;
+}
+
+/** Quadrilateral from a top edge (x1..x2 at y1) to a bottom edge (x3..x4 at y2). */
+function quad(ctx, x1, x2, y1, x3, x4, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y1);
+  ctx.lineTo(x4, y2);
+  ctx.lineTo(x3, y2);
+  ctx.closePath();
+}
+
+// --- scenery tile ------------------------------------------------------------
+
+function drawTree(g, x, y, r, rand) {
+  g.fillStyle = 'rgba(30,40,18,0.32)';
+  g.beginPath();
+  g.ellipse(x + 5, y + 7, r * 1.05, r, 0, 0, Math.PI * 2);
+  g.fill();
+  const blobs = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + rand();
+    blobs.push([x + Math.cos(a) * r * 0.45, y + Math.sin(a) * r * 0.45, r * (0.5 + rand() * 0.2)]);
   }
-
-  ctx.fillStyle = '#3b3b3b';
-  ctx.fillRect(SHOULDER, 0, WIDTH - SHOULDER * 2, HEIGHT);
-
-  // Dashed lane dividers.
-  const dash = 36;
-  const gap = 28;
-  const offset = scroll % (dash + gap);
-  ctx.fillStyle = '#f2efe6';
-  for (let lane = 1; lane < LANES; lane++) {
-    const x = SHOULDER + LANE_WIDTH * lane - 2;
-    for (let y = -dash - gap + offset; y < HEIGHT; y += dash + gap) {
-      ctx.fillRect(x, y, 4, dash);
+  const layer = (color, dx, dy, k) => {
+    g.fillStyle = color;
+    g.beginPath();
+    blobs.forEach(([bx, by, br]) => {
+      g.moveTo(bx + dx + br * k, by + dy);
+      g.arc(bx + dx, by + dy, br * k, 0, Math.PI * 2);
+    });
+    g.fill();
+  };
+  layer('#3d6638', 0, 0, 1);
+  layer('#527f47', -2, -2, 0.78);
+  layer('#6f9a5a', -4, -4, 0.45);
+  // Some are flame-of-the-forest trees in bloom.
+  if (rand() < 0.3) {
+    g.fillStyle = '#d9663f';
+    for (let i = 0; i < 9; i++) {
+      g.beginPath();
+      g.arc(x + (rand() - 0.5) * r * 1.4, y + (rand() - 0.5) * r * 1.4, 1.8, 0, Math.PI * 2);
+      g.fill();
     }
   }
-  // Solid edge lines.
-  ctx.fillRect(SHOULDER + 4, 0, 3, HEIGHT);
-  ctx.fillRect(WIDTH - SHOULDER - 7, 0, 3, HEIGHT);
+}
+
+function drawShrub(g, x, y, rand) {
+  g.fillStyle = 'rgba(30,40,18,0.28)';
+  g.beginPath();
+  g.ellipse(x + 3, y + 4, 7, 6, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#4c7a42';
+  g.beginPath();
+  g.arc(x - 3, y, 5, 0, Math.PI * 2);
+  g.arc(x + 3, y + 1, 5.5, 0, Math.PI * 2);
+  g.arc(x, y - 3, 5, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#6f9a5a';
+  g.beginPath();
+  g.arc(x - 1, y - 3, 2.5, 0, Math.PI * 2);
+  g.fill();
+  if (rand() < 0.5) {
+    g.fillStyle = rand() < 0.5 ? '#f2e3a0' : '#e79a8a';
+    g.beginPath();
+    g.arc(x + 3, y - 1, 1.4, 0, Math.PI * 2);
+    g.arc(x - 3, y + 2, 1.4, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
+/** Street lamp on the pavement, arm reaching over the road. `side` is -1 (left) or 1 (right). */
+function drawLamp(g, x, y, side) {
+  const head = x - side * 22;
+  g.strokeStyle = 'rgba(28,22,16,0.25)';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(x + 4, y + 6);
+  g.lineTo(head + 4, y + 6);
+  g.stroke();
+  g.strokeStyle = '#6b6660';
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.moveTo(x, y);
+  g.lineTo(head, y);
+  g.stroke();
+  fillRoundRect(g, '#5a5550', x - 3, y - 3, 6, 6, 2);
+  fillRoundRect(g, '#d9d2c2', head - 6, y - 3, 12, 6, 3);
+  g.fillStyle = '#fff3c4';
+  g.fillRect(head - 4, y - 1, 8, 2);
+}
+
+/** Bus shelter on the left verge, with a yellow-zigzag bay in the near lane. */
+function drawShelter(g, y) {
+  const len = 78;
+  g.fillStyle = 'rgba(28,22,16,0.3)';
+  g.fillRect(6, y + 6, 26, len);
+  fillRoundRect(g, '#7b8f86', 2, y, 26, len, 3);
+  g.fillStyle = '#8fa39a';
+  for (let ry = y + 6; ry < y + len - 4; ry += 9) g.fillRect(4, ry, 22, 4);
+  // Stop pole sign at the kerb.
+  g.fillStyle = '#5a5550';
+  g.fillRect(30, y + len + 4, 3, 3);
+  fillRoundRect(g, '#e7b93f', 27, y + len - 4, 9, 8, 2);
+  // Zigzag bay markings along the kerb, longer than the shelter.
+  g.strokeStyle = BAY_YELLOW;
+  g.lineWidth = 2;
+  g.beginPath();
+  const left = SHOULDER + 8;
+  const right = SHOULDER + 22;
+  for (let zy = y - 40, i = 0; zy <= y + len + 40; zy += 10, i++) {
+    const zx = i % 2 ? right : left;
+    if (i === 0) g.moveTo(zx, zy);
+    else g.lineTo(zx, zy);
+  }
+  g.stroke();
+  g.font = 'bold 13px sans-serif';
+  g.fillStyle = BAY_YELLOW;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.save();
+  g.translate(SHOULDER + LANE_WIDTH / 2 + 10, y + len / 2);
+  g.fillText('BUS', 0, 0);
+  g.restore();
+}
+
+/**
+ * Paints one seamless SCENERY_PERIOD-tall strip of road and roadside at the
+ * canvas's pixel ratio. Anything that could straddle the tile's top/bottom
+ * edge is drawn at y, y - period and y + period so the seam never shows.
+ */
+function buildScenery(dpr) {
+  const tile = document.createElement('canvas');
+  tile.width = WIDTH * dpr;
+  tile.height = SCENERY_PERIOD * dpr;
+  const g = tile.getContext('2d');
+  g.scale(dpr, dpr);
+  const P = SCENERY_PERIOD;
+  const rand = seededRandom(88);
+  const wrapped = (y, fn) => [y - P, y, y + P].forEach(fn);
+
+  // Grass verge with tufts.
+  g.fillStyle = '#7b9a58';
+  g.fillRect(0, 0, WIDTH, P);
+  for (let i = 0; i < 260; i++) {
+    const side = rand() < 0.5;
+    const x = side ? rand() * 24 : WIDTH - rand() * 24;
+    g.fillStyle = rand() < 0.5 ? '#6c8b4c' : '#8eab69';
+    g.fillRect(x, rand() * P, 2, 3);
+  }
+
+  // Paved footpath with tile seams.
+  g.fillStyle = '#d8ccb4';
+  g.fillRect(22, 0, 12, P);
+  g.fillRect(WIDTH - 34, 0, 12, P);
+  g.fillStyle = '#c4b79d';
+  for (let y = 0; y < P; y += 12) {
+    g.fillRect(22, y, 12, 1);
+    g.fillRect(WIDTH - 34, y, 12, 1);
+  }
+
+  // Kerbs in alternating blocks — they also sell the sense of speed.
+  for (let y = 0; y < P; y += 16) {
+    g.fillStyle = (y / 16) % 2 ? '#8a8276' : '#e6dfcf';
+    g.fillRect(SHOULDER - 6, y, 6, 16);
+    g.fillRect(WIDTH - SHOULDER, y, 6, 16);
+  }
+
+  // Asphalt: base, grain, darker wheel tracks, patches, a few cracks.
+  g.fillStyle = ASPHALT;
+  g.fillRect(SHOULDER, 0, WIDTH - SHOULDER * 2, P);
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = rand() < 0.5 ? 'rgba(255,240,220,0.06)' : 'rgba(0,0,0,0.12)';
+    g.fillRect(SHOULDER + rand() * (WIDTH - SHOULDER * 2), rand() * P, 1.5, 1.5);
+  }
+  g.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let lane = 0; lane < LANES; lane++) {
+    const cx = laneCenter(lane);
+    g.fillRect(cx - 19, 0, 9, P);
+    g.fillRect(cx + 10, 0, 9, P);
+  }
+  for (let i = 0; i < 4; i++) {
+    const w = 30 + rand() * 50;
+    const h = 30 + rand() * 70;
+    const x = SHOULDER + 8 + rand() * (WIDTH - SHOULDER * 2 - w - 16);
+    const y = rand() * (P - h);
+    g.fillStyle = rand() < 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,240,220,0.035)';
+    g.fillRect(x, y, w, h);
+  }
+  g.strokeStyle = 'rgba(0,0,0,0.25)';
+  g.lineWidth = 1;
+  for (let i = 0; i < 10; i++) {
+    let x = SHOULDER + 10 + rand() * (WIDTH - SHOULDER * 2 - 20);
+    let y = rand() * (P - 40);
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let s = 0; s < 4; s++) {
+      x += (rand() - 0.5) * 12;
+      y += 4 + rand() * 8;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  // Manhole covers.
+  for (let i = 0; i < 3; i++) {
+    const x = laneCenter(Math.floor(rand() * LANES)) + (rand() - 0.5) * 20;
+    const y = 40 + rand() * (P - 80);
+    g.fillStyle = '#3a3734';
+    g.beginPath();
+    g.arc(x, y, 9, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = '#5c5753';
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.beginPath();
+    g.moveTo(x - 6, y);
+    g.lineTo(x + 6, y);
+    g.moveTo(x, y - 6);
+    g.lineTo(x, y + 6);
+    g.stroke();
+  }
+
+  // Lane paint, slightly worn.
+  for (let lane = 1; lane < LANES; lane++) {
+    const x = SHOULDER + LANE_WIDTH * lane - 2;
+    for (let y = 0; y < P; y += DASH + DASH_GAP) {
+      g.globalAlpha = 0.82 + rand() * 0.18;
+      g.fillStyle = PAINT;
+      g.fillRect(x, y, 4, DASH);
+    }
+  }
+  g.globalAlpha = 1;
+  g.fillStyle = PAINT;
+  g.fillRect(SHOULDER + 4, 0, 3, P);
+  g.fillRect(WIDTH - SHOULDER - 7, 0, 3, P);
+
+  // Shelters first so trees and lamps never land on top of them.
+  const shelterYs = [P * 0.3, P * 0.8];
+  shelterYs.forEach((y) => drawShelter(g, y));
+  const nearShelter = (y) => shelterYs.some((sy) => y > sy - 30 && y < sy + 110);
+
+  for (const [x, side] of [[11, -1], [WIDTH - 11, 1]]) {
+    for (let y = 20; y < P; y += 70 + rand() * 70) {
+      if (side === -1 && nearShelter(y)) continue;
+      // Every copy of a wrapped item must come out identical, so each one
+      // gets its own seed rather than drawing from the shared stream.
+      const r = 13 + rand() * 6;
+      const jitter = (rand() - 0.5) * 4;
+      const seed = Math.floor(y * 7 + x);
+      const isTree = rand() < 0.75;
+      wrapped(y, (wy) => {
+        if (isTree) drawTree(g, x + jitter, wy, r, seededRandom(seed));
+        else drawShrub(g, x, wy, seededRandom(seed));
+      });
+    }
+  }
+  for (let y = 0; y < P; y += 320) {
+    const ly = y + 160;
+    if (!nearShelter(ly)) wrapped(ly, (wy) => drawLamp(g, 28, wy, -1));
+    wrapped(y, (wy) => drawLamp(g, WIDTH - 28, wy, 1));
+  }
+  return tile;
+}
+
+function drawScenery(ctx, tile, scroll, dpr) {
+  const offset = Math.round(((scroll % SCENERY_PERIOD) - SCENERY_PERIOD) * dpr) / dpr;
+  ctx.drawImage(tile, 0, offset, WIDTH, SCENERY_PERIOD);
+  ctx.drawImage(tile, 0, offset + SCENERY_PERIOD, WIDTH, SCENERY_PERIOD);
+}
+
+// --- vehicles ----------------------------------------------------------------
+
+function drawShadow(ctx, x, y, w, l, r) {
+  ctx.fillStyle = SHADOW;
+  roundRect(ctx, x + 4, y + 6, w, l, r);
+  ctx.fill();
+}
+
+/** Tyres peeking out from under the body at the given fractions of length. */
+function drawWheels(ctx, x, y, w, l, at) {
+  const wl = Math.max(10, l * 0.15);
+  at.forEach((f) => {
+    const wy = y + l * f - wl / 2;
+    fillRoundRect(ctx, TYRE, x - 2, wy, 6, wl, 2);
+    fillRoundRect(ctx, TYRE, x + w - 4, wy, 6, wl, 2);
+  });
+}
+
+function drawMirrors(ctx, x, y, w, color) {
+  fillRoundRect(ctx, shade(color, -0.2), x - 4, y, 5, 4, 1.5);
+  fillRoundRect(ctx, shade(color, -0.2), x + w - 1, y, 5, 4, 1.5);
+}
+
+function drawGlass(ctx) {
+  ctx.fillStyle = GLASS;
+  ctx.fill();
+}
+
+function drawBody(ctx, color, x, y, w, l, r) {
+  ctx.fillStyle = bodyGradient(ctx, color, x, w);
+  roundRect(ctx, x, y, w, l, r);
+  ctx.fill();
+  ctx.strokeStyle = shade(color, -0.45);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+/** Oncoming lights: headlights on the nose (bottom), tail lights at the rear (top). */
+function drawLights(ctx, x, y, w, l) {
+  ctx.fillStyle = HEADLIGHT;
+  ctx.fillRect(x + 4, y + l - 4, 9, 3);
+  ctx.fillRect(x + w - 13, y + l - 4, 9, 3);
+  ctx.fillStyle = TAILLIGHT;
+  ctx.fillRect(x + 4, y + 1, 8, 3);
+  ctx.fillRect(x + w - 12, y + 1, 8, 3);
+}
+
+function drawCar(ctx, v, x, y, w, l) {
+  drawWheels(ctx, x, y, w, l, [0.2, 0.78]);
+  drawBody(ctx, v.color, x, y, w, l, 12);
+  drawMirrors(ctx, x, y + l * 0.6, w, v.color);
+  // Rear window (narrower toward the back), roof, windscreen (wider toward the nose).
+  quad(ctx, x + 10, x + w - 10, y + l * 0.18, x + 7, x + w - 7, y + l * 0.32);
+  drawGlass(ctx);
+  fillRoundRect(ctx, shade(v.color, 0.08), x + 7, y + l * 0.33, w - 14, l * 0.27, 4);
+  quad(ctx, x + 7, x + w - 7, y + l * 0.61, x + 5, x + w - 5, y + l * 0.78);
+  drawGlass(ctx);
+  ctx.fillStyle = GLASS_SHINE;
+  quad(ctx, x + 12, x + 18, y + l * 0.62, x + 8, x + 13, y + l * 0.77);
+  ctx.fill();
+  // Bonnet crease.
+  ctx.strokeStyle = shade(v.color, -0.15);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2, y + l * 0.8);
+  ctx.lineTo(x + w / 2, y + l - 6);
+  ctx.stroke();
+  if (v.taxi) {
+    fillRoundRect(ctx, '#f6edd2', x + w / 2 - 9, y + l * 0.42, 18, 8, 2);
+    ctx.fillStyle = '#c9402c';
+    ctx.fillRect(x + w / 2 - 6, y + l * 0.42 + 3, 12, 2);
+  }
+  drawLights(ctx, x, y, w, l);
+}
+
+function drawVan(ctx, v, x, y, w, l) {
+  drawWheels(ctx, x, y, w, l, [0.18, 0.8]);
+  drawBody(ctx, v.color, x, y, w, l, 8);
+  drawMirrors(ctx, x, y + l * 0.74, w, v.color);
+  // Long flat roof with stiffening ribs, split rear doors.
+  fillRoundRect(ctx, shade(v.color, 0.1), x + 5, y + 4, w - 10, l * 0.68, 4);
+  ctx.fillStyle = shade(v.color, -0.12);
+  for (let ry = y + 14; ry < y + l * 0.68; ry += 12) ctx.fillRect(x + 8, ry, w - 16, 2);
+  ctx.fillRect(x + w / 2 - 0.5, y, 1, 6);
+  quad(ctx, x + 6, x + w - 6, y + l * 0.74, x + 5, x + w - 5, y + l * 0.86);
+  drawGlass(ctx);
+  ctx.fillStyle = GLASS_SHINE;
+  quad(ctx, x + 11, x + 17, y + l * 0.75, x + 8, x + 13, y + l * 0.85);
+  ctx.fill();
+  drawLights(ctx, x, y, w, l);
+}
+
+/** Red/white chevron band — the rear-end warning on lethal vehicles. */
+function drawChevrons(ctx, x, y, w) {
+  ctx.save();
+  roundRect(ctx, x + 2, y + 2, w - 4, 8, 2);
+  ctx.clip();
+  ctx.fillStyle = '#f4efe4';
+  ctx.fillRect(x, y, w, 12);
+  ctx.fillStyle = '#c9402c';
+  for (let sx = x - 8; sx < x + w + 8; sx += 10) {
+    ctx.beginPath();
+    ctx.moveTo(sx, y + 12);
+    ctx.lineTo(sx + 5, y + 12);
+    ctx.lineTo(sx + 11, y);
+    ctx.lineTo(sx + 6, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCab(ctx, color, x, y, w, len) {
+  drawBody(ctx, color, x, y, w, len, 7);
+  fillRoundRect(ctx, shade(color, 0.12), x + 6, y + 3, w - 12, len * 0.42, 4); // air deflector
+  quad(ctx, x + 5, x + w - 5, y + len * 0.58, x + 4, x + w - 4, y + len - 7);
+  drawGlass(ctx);
+  ctx.fillStyle = GLASS_SHINE;
+  quad(ctx, x + 10, x + 16, y + len * 0.6, x + 8, x + 13, y + len - 8);
+  ctx.fill();
+  drawMirrors(ctx, x - 2, y + len * 0.6, w + 4, color);
+  ctx.fillStyle = HEADLIGHT;
+  ctx.fillRect(x + 4, y + len - 4, 10, 3);
+  ctx.fillRect(x + w - 14, y + len - 4, 10, 3);
+}
+
+function drawCargoBox(ctx, x, y, w, len) {
+  drawBody(ctx, CARGO, x, y, w, len, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let ry = y + 10; ry < y + len - 4; ry += 10) ctx.fillRect(x + 3, ry, w - 6, 2);
+  // Reflective tape down both sides.
+  ctx.fillStyle = '#c9402c';
+  for (let ry = y + 4; ry < y + len - 6; ry += 14) {
+    ctx.fillRect(x + 1, ry, 2, 7);
+    ctx.fillRect(x + w - 3, ry, 2, 7);
+  }
+  drawChevrons(ctx, x, y, w);
+}
+
+function drawTruck(ctx, v, x, y, w, l) {
+  const cab = 34;
+  drawWheels(ctx, x, y, w, l, [0.12, 0.28, 0.86]);
+  drawCargoBox(ctx, x, y, w, l - cab - 3);
+  drawCab(ctx, v.color, x + 2, y + l - cab, w - 4, cab);
+}
+
+function drawSemi(ctx, v, x, y, w, l) {
+  const cab = 36;
+  const trailer = l - cab - 6;
+  drawWheels(ctx, x, y, w, l, [0.07, 0.16, 0.25, 0.78, 0.92]);
+  drawCargoBox(ctx, x, y, w, trailer);
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 5, y + trailer, 10, 7); // hitch
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+  // Exhaust stacks behind the cab.
+  ctx.fillStyle = '#9a948b';
+  ctx.beginPath();
+  ctx.arc(x + 7, y + l - cab + 3, 3, 0, Math.PI * 2);
+  ctx.arc(x + w - 7, y + l - cab + 3, 3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Oncoming vehicle, nose pointing down the screen.
 function drawVehicle(ctx, v) {
   const x = v.x - v.width / 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  roundRect(ctx, x + 3, v.y + 4, v.width, v.length, 8);
-  ctx.fill();
-
-  if (v.kind === 'semi') {
-    // Tractor at the front (bottom), long hazard-striped trailer behind.
-    const cab = 36;
-    const trailer = v.length - cab - 6;
-    ctx.fillStyle = '#e8e4da';
-    roundRect(ctx, x, v.y, v.width, trailer, 3);
-    ctx.fill();
-    ctx.fillStyle = '#c0392b';
-    for (let y = v.y + 8; y < v.y + trailer - 4; y += 22) {
-      ctx.fillRect(x + 4, y, v.width - 8, 6);
-    }
-    ctx.fillStyle = '#555';
-    ctx.fillRect(x + v.width / 2 - 4, v.y + trailer, 8, 6); // hitch
-    ctx.fillStyle = v.color;
-    roundRect(ctx, x + 3, v.y + v.length - cab, v.width - 6, cab, 8);
-    ctx.fill();
-    ctx.fillStyle = '#9fd3f0';
-    ctx.fillRect(x + 8, v.y + v.length - 15, v.width - 16, 9);
-    ctx.fillStyle = '#fff6c2';
-    ctx.fillRect(x + 6, v.y + v.length - 4, 9, 3);
-    ctx.fillRect(x + v.width - 15, v.y + v.length - 4, 9, 3);
-    return;
-  }
-
-  if (v.kind === 'truck') {
-    const cab = 34;
-    ctx.fillStyle = '#d8d4cc';
-    roundRect(ctx, x, v.y, v.width, v.length - cab - 4, 4);
-    ctx.fill();
-    ctx.fillStyle = v.color;
-    roundRect(ctx, x + 2, v.y + v.length - cab, v.width - 4, cab, 7);
-    ctx.fill();
-    ctx.fillStyle = '#9fd3f0';
-    ctx.fillRect(x + 7, v.y + v.length - 14, v.width - 14, 8);
-    return;
-  }
-
-  ctx.fillStyle = v.color;
-  roundRect(ctx, x, v.y, v.width, v.length, v.kind === 'van' ? 7 : 12);
-  ctx.fill();
-  ctx.fillStyle = '#9fd3f0';
-  const glass = v.kind === 'van' ? 14 : 12;
-  ctx.fillRect(x + 6, v.y + v.length - glass - 14, v.width - 12, glass); // windscreen
-  ctx.fillRect(x + 8, v.y + 10, v.width - 16, 8); // rear window
-  ctx.fillStyle = '#fff6c2';
-  ctx.fillRect(x + 4, v.y + v.length - 5, 9, 4); // headlights
-  ctx.fillRect(x + v.width - 13, v.y + v.length - 5, 9, 4);
+  drawShadow(ctx, x, v.y, v.width, v.length, 8);
+  if (v.kind === 'semi') drawSemi(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'truck') drawTruck(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'van') drawVan(ctx, v, x, v.y, v.width, v.length);
+  else drawCar(ctx, v, x, v.y, v.width, v.length);
 }
 
-function drawFare(ctx, f) {
-  ctx.fillStyle = '#f2c94c';
+// --- fares, bus, effects -----------------------------------------------------
+
+/** A spinning gold fare coin; `t` is seconds, `f.phase` staggers the spin. */
+function drawFare(ctx, f, t) {
+  const glow = ctx.createRadialGradient(f.x, f.y, 4, f.x, f.y, FARE_RADIUS * 2);
+  glow.addColorStop(0, 'rgba(255,214,102,0.45)');
+  glow.addColorStop(1, 'rgba(255,214,102,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(f.x - FARE_RADIUS * 2, f.y - FARE_RADIUS * 2, FARE_RADIUS * 4, FARE_RADIUS * 4);
+
+  const spin = Math.max(0.18, Math.abs(Math.cos(t * 3 + (f.phase || 0))));
+  const rx = FARE_RADIUS * spin;
+  ctx.fillStyle = SHADOW;
   ctx.beginPath();
-  ctx.arc(f.x, f.y, FARE_RADIUS, 0, Math.PI * 2);
+  ctx.ellipse(f.x + 3, f.y + 5, rx, FARE_RADIUS, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#b8860b';
-  ctx.lineWidth = 3;
+
+  ctx.fillStyle = '#a8741a'; // coin edge
+  ctx.beginPath();
+  ctx.ellipse(f.x, f.y + 1.5, rx, FARE_RADIUS, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const face = ctx.createRadialGradient(f.x - rx * 0.4, f.y - 5, 1, f.x, f.y, FARE_RADIUS);
+  face.addColorStop(0, '#fff0b3');
+  face.addColorStop(0.5, '#f2c94c');
+  face.addColorStop(1, '#d9a22a');
+  ctx.fillStyle = face;
+  ctx.beginPath();
+  ctx.ellipse(f.x, f.y, rx, FARE_RADIUS, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(140,96,20,0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(f.x, f.y, rx * 0.72, FARE_RADIUS * 0.72, 0, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.fillStyle = '#7a5a00';
-  ctx.font = 'bold 15px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('$', f.x, f.y + 1);
+  if (spin > 0.55) {
+    ctx.save();
+    ctx.translate(f.x, f.y + 1);
+    ctx.scale(spin, 1);
+    ctx.fillStyle = '#8a5e10';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, 0);
+    ctx.restore();
+  }
 }
 
-function drawBus(ctx, x, flashing) {
+/** The player's bus, nose up. `braking` lights the brake lamps. */
+function drawBus(ctx, x, flashing, braking) {
   if (flashing) ctx.globalAlpha = 0.4;
   const left = x - BUS_WIDTH / 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  roundRect(ctx, left + 3, BUS_Y + 5, BUS_WIDTH, BUS_LENGTH, 10);
+  const top = BUS_Y;
+  const w = BUS_WIDTH;
+  const l = BUS_LENGTH;
+  drawShadow(ctx, left, top, w, l, 10);
+  drawWheels(ctx, left, top, w, l, [0.2, 0.76]);
+  drawBody(ctx, BUS_COLOR, left, top, w, l, 10);
+  drawMirrors(ctx, left - 1, top + 6, w + 2, BUS_COLOR);
+
+  // Windscreen across the nose.
+  quad(ctx, left + 5, left + w - 5, top + 4, left + 6, left + w - 6, top + 15);
+  drawGlass(ctx);
+  ctx.fillStyle = GLASS_SHINE;
+  quad(ctx, left + 10, left + 17, top + 5, left + 12, left + 18, top + 14);
   ctx.fill();
 
-  ctx.fillStyle = '#c4532d';
-  roundRect(ctx, left, BUS_Y, BUS_WIDTH, BUS_LENGTH, 10);
-  ctx.fill();
-  ctx.fillStyle = '#9fd3f0';
-  ctx.fillRect(left + 6, BUS_Y + 6, BUS_WIDTH - 12, 12); // windscreen
-  ctx.fillStyle = '#7fb6d4';
-  for (let y = BUS_Y + 24; y < BUS_Y + BUS_LENGTH - 10; y += 14) {
-    ctx.fillRect(left + 3, y, 5, 10);
-    ctx.fillRect(left + BUS_WIDTH - 8, y, 5, 10);
+  // Side window strips with pillars.
+  ctx.fillStyle = GLASS;
+  for (let y = top + 20; y < top + l - 14; y += 13) {
+    ctx.fillRect(left + 2, y, 4, 10);
+    ctx.fillRect(left + w - 6, y, 4, 10);
   }
-  ctx.fillStyle = '#f2efe6';
-  ctx.fillRect(left + 14, BUS_Y + 34, BUS_WIDTH - 28, 22); // roof hatch
-  ctx.fillStyle = '#c4532d';
-  ctx.font = 'bold 13px sans-serif';
+
+  // Cream roof with destination sign, aircon pod and a rear hatch.
+  fillRoundRect(ctx, BUS_ROOF, left + 7, top + 17, w - 14, l - 28, 5);
+  fillRoundRect(ctx, '#2b2724', left + 12, top + 19, w - 24, 10, 2);
+  ctx.fillStyle = '#ffb547';
+  ctx.font = 'bold 9px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('88', x, BUS_Y + 46);
+  ctx.fillText('88', x, top + 24.5);
+  fillRoundRect(ctx, '#d7ccb8', left + 11, top + 34, w - 22, 26, 4);
+  ctx.strokeStyle = '#bfb39d';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let gy = top + 38; gy < top + 58; gy += 4) {
+    ctx.moveTo(left + 14, gy);
+    ctx.lineTo(left + w - 14, gy);
+  }
+  ctx.stroke();
+  [x - 8, x + 8].forEach((fx) => {
+    ctx.fillStyle = '#a99d88';
+    ctx.beginPath();
+    ctx.arc(fx, top + 47, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  fillRoundRect(ctx, '#d7ccb8', left + 17, top + 65, w - 34, 10, 2);
+
+  // Engine grille and lamps at the rear.
+  ctx.fillStyle = shade(BUS_COLOR, -0.3);
+  for (let gx = left + 14; gx < left + w - 14; gx += 4) ctx.fillRect(gx, top + l - 8, 2, 5);
+  ctx.fillStyle = HEADLIGHT;
+  ctx.fillRect(left + 4, top + 1, 9, 3);
+  ctx.fillRect(left + w - 13, top + 1, 9, 3);
+  if (braking) {
+    const glow = ctx.createRadialGradient(x, top + l, 2, x, top + l, 34);
+    glow.addColorStop(0, 'rgba(255,70,40,0.45)');
+    glow.addColorStop(1, 'rgba(255,70,40,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(left - 10, top + l - 20, w + 20, 50);
+  }
+  ctx.fillStyle = braking ? '#ff5a3c' : '#8e2f1f';
+  ctx.fillRect(left + 4, top + l - 4, 9, 3);
+  ctx.fillRect(left + w - 13, top + l - 4, 9, 3);
   ctx.globalAlpha = 1;
+}
+
+/** Sparks and debris: { x, y, vx, vy, life, max, size, color } in canvas px/s. */
+function stepEffects(effects, dt) {
+  for (const p of effects) {
+    p.life -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 1 - 2.5 * dt;
+    p.vy *= 1 - 2.5 * dt;
+  }
+  return effects.filter((p) => p.life > 0);
+}
+
+function drawEffects(ctx, effects) {
+  for (const p of effects) {
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    if (p.text) {
+      ctx.fillStyle = p.color;
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(40,28,10,0.6)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillText(p.text, p.x, p.y);
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function burst(effects, x, y, colors, count, speed, size) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.4 + Math.random() * 0.6);
+    const max = 0.4 + Math.random() * 0.35;
+    effects.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: max, max,
+      size: size * (0.6 + Math.random() * 0.6),
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +796,15 @@ function init(canvas, el) {
   if (teardownCurrent) teardownCurrent();
 
   const ctx = canvas.getContext('2d');
+  // Back the canvas at the screen's pixel ratio so the art stays crisp; all
+  // drawing still happens in WIDTH x HEIGHT logical units.
+  const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  canvas.width = WIDTH * dpr;
+  canvas.height = HEIGHT * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const scenery = buildScenery(dpr);
+  let effects = [];
+  let shake = 0;
   const hasStorage = storageAvailable();
   let progress = loadProgress();
   let run = null;
@@ -342,6 +881,8 @@ function init(canvas, el) {
     };
     input.accelerate = false;
     input.brake = false;
+    effects = [];
+    shake = 0;
     show(null);
     renderHud();
     canvas.focus({ preventScroll: true });
@@ -382,6 +923,9 @@ function init(canvas, el) {
     if (lives === r.lives) return; // grace absorbed it
     r.lives = lives;
     r.speed = MIN_SPEED;
+    shake = vehicle && vehicle.lethal ? 0.6 : 0.35;
+    const impactX = (r.busX + (vehicle ? vehicle.x : r.busX)) / 2;
+    burst(effects, impactX, BUS_Y + 4, [vehicle ? vehicle.color : '#888', '#2e4552', '#f1e9d6', BUS_COLOR], 18, 260, 5);
     r.grace = HIT_GRACE_SECONDS;
     if (r.lives <= 0) {
       r.killedBy = vehicle && vehicle.lethal ? vehicle.kind : null;
@@ -395,6 +939,8 @@ function init(canvas, el) {
     r.prevOpen = open;
     blocked.forEach((lane) => {
       const kind = pickVehicle(Math.random, r.distance);
+      const taxi = kind.kind === 'car' && Math.random() < TAXI_CHANCE;
+      const palette = taxi ? TAXI_COLORS : VEHICLE_COLORS;
       r.vehicles.push({
         kind: kind.kind,
         lethal: Boolean(kind.lethal),
@@ -402,14 +948,15 @@ function init(canvas, el) {
         y: -kind.length + overshoot,
         width: kind.width,
         length: kind.length,
-        color: VEHICLE_COLORS[Math.floor(Math.random() * VEHICLE_COLORS.length)],
+        color: palette[Math.floor(Math.random() * palette.length)],
+        taxi,
       });
     });
     // A fare sits mid-gap behind this row, in any lane — sometimes one
     // that takes a risky lane change to reach.
     if (Math.random() < FARE_CHANCE) {
       const lane = Math.floor(Math.random() * LANES);
-      r.fareItems.push({ x: laneCenter(lane), y: overshoot - rowSpacingPx(r.distance) / 2 });
+      r.fareItems.push({ x: laneCenter(lane), y: overshoot - rowSpacingPx(r.distance) / 2, phase: Math.random() * Math.PI * 2 });
     }
   }
 
@@ -450,21 +997,36 @@ function init(canvas, el) {
     }
     r.fareItems = r.fareItems.filter((f) => {
       const caught = rectsOverlap(bus, { x: f.x - FARE_RADIUS, y: f.y - FARE_RADIUS, w: FARE_RADIUS * 2, h: FARE_RADIUS * 2 });
-      if (caught) r.fares += 1;
+      if (caught) {
+        r.fares += 1;
+        burst(effects, f.x, f.y, ['#ffe08a', '#f2c94c', '#fff6d8'], 10, 180, 4);
+        effects.push({ x: f.x, y: f.y - 14, vx: 0, vy: -70, life: 0.7, max: 0.7, text: '+$', color: '#ffe08a' });
+      }
       return !caught;
     });
   }
 
-  function draw() {
+  function draw(t) {
     const r = run;
-    drawRoad(ctx, r ? r.scroll : idleScroll);
+    ctx.save();
+    if (shake > 0) {
+      const k = shake * 14;
+      ctx.translate((Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
+    }
+    drawScenery(ctx, scenery, r ? r.scroll : idleScroll, dpr);
     if (r) {
-      r.fareItems.forEach((f) => drawFare(ctx, f));
+      r.fareItems.forEach((f) => drawFare(ctx, f, t));
       r.vehicles.forEach((v) => drawVehicle(ctx, v));
       const flashing = r.grace > 0 && Math.floor(r.grace * 10) % 2 === 0;
-      drawBus(ctx, r.busX, flashing);
+      drawBus(ctx, r.busX, flashing, r.status === 'playing' && input.brake);
     } else {
-      drawBus(ctx, laneCenter(1), false);
+      drawBus(ctx, laneCenter(1), false, false);
+    }
+    drawEffects(ctx, effects);
+    ctx.restore();
+    if (shake > 0) {
+      ctx.fillStyle = `rgba(201,64,44,${Math.min(shake, 0.5) * 0.35})`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
   }
 
@@ -478,7 +1040,9 @@ function init(canvas, el) {
     } else if (!run) {
       idleScroll += dt * 40;
     }
-    draw();
+    effects = stepEffects(effects, dt);
+    shake = Math.max(0, shake - dt);
+    draw(now / 1000);
     rafHandle = window.requestAnimationFrame(loop);
   }
 

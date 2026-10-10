@@ -82,6 +82,19 @@ web/static/js/
 └── busrush/rules.js (+ rules.test.js) (pure game rules, `node --test`)
 ```
 
+**Art style**: flat top-down vector art in the site's warm Organic
+palette, lit from the top-left. The static roadside (grass verge, paved
+footpath, striped kerbs, trees, street lamps, bus shelters with yellow
+zigzag bays, asphalt grain/cracks/manholes, lane paint) is painted once
+into a seeded offscreen tile (`buildScenery`) that scrolls seamlessly, so
+per-frame cost stays small. Vehicles are drawn live with body shading,
+glass, wheels, mirrors and lights; about 15% of cars are taxis. Trucks and
+semis carry red/white rear chevrons and side tape to show they're lethal.
+Coins spin, the bus's brake lights come on when braking, fare pickups
+throw sparks and a "+$", and hits shake the screen and scatter debris. The
+canvas is backed at `devicePixelRatio` (capped at 2) so it stays sharp on
+high-DPI screens.
+
 | State             | Behavior |
 | ----------------- | -------- |
 | Default           | Start screen over an idle road. |
