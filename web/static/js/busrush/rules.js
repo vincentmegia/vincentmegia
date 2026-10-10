@@ -245,6 +245,23 @@ export function rowSpacingPx(distanceMeters) {
   return Math.max(ROW_SPACING_MIN, ROW_SPACING_MAX - d / 10);
 }
 
+/** Clear space kept between a fare's edge and any vehicle, px. */
+export const FARE_CLEARANCE = 10;
+
+/**
+ * Where a fare sits behind a traffic row: a y offset in px (negative = up
+ * the screen) from the row's front bumpers. It's centred in the clear gap
+ * between the tail of whatever blocks its lane in this row (`blockerLength`,
+ * 0 for an open lane) and the front of the next row, one spacing further
+ * up. Traffic and fares scroll at the same speed, so clear at spawn means
+ * clear all the way down the screen.
+ */
+export function fareOffset(spacingPx, blockerLength, radius) {
+  const nearest = -(blockerLength + radius + FARE_CLEARANCE);
+  const farthest = -(spacingPx - radius - FARE_CLEARANCE);
+  return (nearest + farthest) / 2;
+}
+
 /**
  * Chooses which lanes the next traffic row blocks. Guarantees:
  *   - at least one lane stays open, and

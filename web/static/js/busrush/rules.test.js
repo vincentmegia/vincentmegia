@@ -45,6 +45,8 @@ import {
   levelAt,
   checkpointPoints,
   minSpeed,
+  FARE_CLEARANCE,
+  fareOffset,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -220,6 +222,20 @@ describe('traffic', () => {
     const topRelativePxPerSec = (maxSpeed(UPGRADES.engine.maxLevel, LEVELS.length - 1) + TRAFFIC_SPEED) * PX_PER_METER;
     const windowSeconds = (ROW_SPACING_MIN - longest - BUS_LENGTH) / topRelativePxPerSec;
     assert.ok(windowSeconds >= laneChangeSeconds(0), `window ${windowSeconds}s`);
+  });
+
+  test('fares never overlap the vehicle in their lane or the next row', () => {
+    const radius = 13;
+    // The next row's spacing can be a little tighter (spacing shrinks with
+    // distance): allow for the distance covered between two rows.
+    const shrink = 6;
+    for (let spacing = ROW_SPACING_MIN; spacing <= ROW_SPACING_MAX; spacing += 5) {
+      for (const len of [0, ...VEHICLES.map((v) => v.length)]) {
+        const y = fareOffset(spacing, len, radius);
+        assert.ok(y + radius <= -len - FARE_CLEARANCE, `clear of a ${len}px tail at spacing ${spacing}`);
+        assert.ok(y - radius >= -(spacing - shrink) + FARE_CLEARANCE / 2, `clear of the next row at spacing ${spacing}`);
+      }
+    }
   });
 
   test('bigger vehicles unlock with distance', () => {

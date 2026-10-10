@@ -185,6 +185,12 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `VEHICLES` (truck, semi) or `POLICE_CAR` takes every life, even during
   post-hit grace; anything else takes one life, or none while grace is
   active. Bumpers therefore never save you from a truck or the police.
+* **Fare placement** (`fareOffset`): a fare sits centred in the clear gap
+  behind its row — between the tail of the vehicle in its lane (if any)
+  and the next row's front — with `FARE_CLEARANCE` to spare. (It used to
+  sit at a fixed half-spacing, which overlapped semis at tight spacing.)
+  Fares and traffic scroll together, so clear at spawn stays clear; a unit
+  test checks every vehicle length at every spacing.
 * **Row spacing floor** must fit the longest vehicle (the semi), the bus,
   and one unupgraded lane change at top speed — a unit test enforces this,
   so adding a longer vehicle means raising `ROW_SPACING_MIN`.

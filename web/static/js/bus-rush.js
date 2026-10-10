@@ -33,6 +33,7 @@ import {
   pickVehicle,
   rectsOverlap,
   livesAfterHit,
+  fareOffset,
   WANTED_MAX,
   POLICE_FIRST_SECONDS,
   POLICE_SPAWN_SECONDS,
@@ -1195,10 +1196,12 @@ function init(canvas, el) {
     // A roadblock is a row of oncoming cruisers — same lanes, same speed as
     // traffic, so it keeps the "every row is passable" guarantee.
     const roadblock = Math.random() < roadblockChance(r.distance, wantedLevel(r.distance, r.fares));
+    const laneLength = {};
     blocked.forEach((lane) => {
       const kind = roadblock ? POLICE_CAR : pickVehicle(Math.random, r.distance);
       const taxi = kind.kind === 'car' && Math.random() < TAXI_CHANCE;
       const palette = roadblock ? [POLICE_WHITE] : taxi ? TAXI_COLORS : VEHICLE_COLORS;
+      laneLength[lane] = kind.length;
       r.vehicles.push({
         kind: kind.kind,
         lethal: Boolean(kind.lethal),
@@ -1212,11 +1215,12 @@ function init(canvas, el) {
       });
     });
     if (roadblock) return;
-    // A fare sits mid-gap behind this row, in any lane — sometimes one
-    // that takes a risky lane change to reach.
+    // A fare sits in the clear gap behind this row, in any lane — sometimes
+    // one that takes a risky lane change to reach.
     if (Math.random() < FARE_CHANCE) {
       const lane = Math.floor(Math.random() * LANES);
-      r.fareItems.push({ x: laneCenter(lane), y: overshoot - rowSpacingPx(r.distance) / 2, phase: Math.random() * Math.PI * 2 });
+      const y = overshoot + fareOffset(rowSpacingPx(r.distance), laneLength[lane] || 0, FARE_RADIUS);
+      r.fareItems.push({ x: laneCenter(lane), y, phase: Math.random() * Math.PI * 2 });
     }
   }
 
