@@ -1266,7 +1266,7 @@ function init(canvas, el) {
     });
   }
 
-  /** Crossing into a new district: checkpoint bonus, banner, scenery crossfade. */
+  /** Crossing into a new district: lives refilled, checkpoint bonus, banner, scenery crossfade. */
   function updateLevel(r, dt) {
     r.fade = Math.max(0, r.fade - dt / FADE_SECONDS);
     if (r.banner) {
@@ -1277,10 +1277,13 @@ function init(canvas, el) {
     if (lvl !== r.level) {
       const points = checkpointPoints(lvl);
       r.bonus += points;
+      const refilled = r.lives < maxLives(progress.upgrades.bumpers);
+      r.lives = maxLives(progress.upgrades.bumpers);
       r.fadeFrom = r.level;
       r.fade = 1;
       r.level = lvl;
-      r.banner = { title: `LEVEL ${lvl + 1}`, sub: `${LEVELS[lvl]}  ·  +${points}`, t: BANNER_SECONDS };
+      const sub = `${LEVELS[lvl]}  ·  +${points}${refilled ? '  ·  lives refilled' : ''}`;
+      r.banner = { title: `LEVEL ${lvl + 1}`, sub, t: BANNER_SECONDS };
     } else if (lvl + 1 < LEVELS.length && r.distance % LEVEL_DISTANCE > LEVEL_DISTANCE - 150) {
       sceneryFor(lvl + 1);
     }

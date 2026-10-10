@@ -147,3 +147,15 @@ test('crossing 800 m enters level 2 and raises the wanted level', async ({ page 
 	await page.evaluate(() => window.__busRushTestHooks.crash());
 	await expect(page.locator('#bus-rush-run-over-level')).toHaveText('2 · Heartland');
 });
+
+test('entering a new level refills lives', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	const lives = page.locator('#bus-rush-hud-lives');
+	const full = parseInt(await lives.textContent(), 10);
+	await page.evaluate(() => window.__busRushTestHooks.spawn('car'));
+	await expect(lives).toHaveText(String(full - 1), { timeout: 5000 });
+	await page.evaluate(() => window.__busRushTestHooks.warp(800));
+	await expect(page.locator('#bus-rush-hud-level')).toHaveText('2');
+	await expect(lives).toHaveText(String(full));
+});

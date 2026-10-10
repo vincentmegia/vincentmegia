@@ -55,7 +55,8 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   hazard kerbs and street trees, a pink-blooming tree avenue). Trees
   are sized to overhang the footpath and kerb so they read at the canvas edge, crossfaded on entry with a
   "LEVEL n / district" banner and a checkpoint bonus (250 × district
-  index). Each district starts the wanted level one star higher; every
+  index). Entering a district refills lives to full (`maxLives`, so
+  Bumpers count). Each district starts the wanted level one star higher; every
   10 fares adds another.
 * Depot shop between runs (tokens → leveled upgrades): Engine (top speed),
   Steering (faster lane changes), Bumpers (+1 life), Fare Box (more tokens
