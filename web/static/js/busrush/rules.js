@@ -57,22 +57,35 @@ function level(n, max) {
   return Math.min(Math.floor(n), max);
 }
 
-/** Top speed for an Engine level. */
-export function maxSpeed(engineLevel) {
-  return BASE_MAX_SPEED + level(engineLevel, UPGRADES.engine.maxLevel) * ENGINE_SPEED_STEP;
+/** Each district (level) raises both the speed floor and top speed by this much. */
+export const LEVEL_SPEED_STEP = 1.5;
+
+function levelSpeedBonus(levelIndex) {
+  return level(levelIndex, LEVELS.length - 1) * LEVEL_SPEED_STEP;
+}
+
+/** Speed floor in a district (0-based level index) — what a hit drops you to. */
+export function minSpeed(levelIndex = 0) {
+  return MIN_SPEED + levelSpeedBonus(levelIndex);
+}
+
+/** Top speed for an Engine level in a district (0-based level index). */
+export function maxSpeed(engineLevel, levelIndex = 0) {
+  return BASE_MAX_SPEED + level(engineLevel, UPGRADES.engine.maxLevel) * ENGINE_SPEED_STEP + levelSpeedBonus(levelIndex);
 }
 
 /**
  * Advances speed by one frame: holding accelerate speeds up, brake slows
  * down (brake wins if both are held), neither holds speed. Always clamped
- * to [MIN_SPEED, maxSpeed(engineLevel)].
+ * to [minSpeed(levelIndex), maxSpeed(engineLevel, levelIndex)].
  */
-export function stepSpeed(speed, input, dt, engineLevel) {
-  let next = Number.isFinite(speed) ? speed : MIN_SPEED;
+export function stepSpeed(speed, input, dt, engineLevel, levelIndex = 0) {
+  const floor = minSpeed(levelIndex);
+  let next = Number.isFinite(speed) ? speed : floor;
   const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
   if (input && input.brake) next -= BRAKING * step;
   else if (input && input.accelerate) next += ACCELERATION * step;
-  return Math.min(Math.max(next, MIN_SPEED), maxSpeed(engineLevel));
+  return Math.min(Math.max(next, floor), maxSpeed(engineLevel, levelIndex));
 }
 
 /** m/s → whole km/h for the HUD. */

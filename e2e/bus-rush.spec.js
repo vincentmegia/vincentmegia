@@ -137,12 +137,15 @@ test('police are lethal: one ram is Busted, whatever lives are left', async ({ p
 	await expect(page.locator('#bus-rush-hud-lives')).toHaveText('0');
 });
 
-test('crossing 800 m enters level 2 and raises the wanted level', async ({ page }) => {
+test('crossing 800 m enters level 2: faster, and a higher wanted level', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
 	await expect(page.locator('#bus-rush-hud-level')).toHaveText('1');
+	const speed = page.locator('#bus-rush-hud-speed');
+	const before = parseInt(await speed.textContent(), 10);
 	await page.evaluate(() => window.__busRushTestHooks.warp(800));
 	await expect(page.locator('#bus-rush-hud-level')).toHaveText('2');
+	await expect.poll(async () => parseInt(await speed.textContent(), 10)).toBeGreaterThan(before);
 	await expect(page.locator('#bus-rush-hud-wanted')).toHaveText('★★☆☆☆');
 	await page.evaluate(() => window.__busRushTestHooks.crash());
 	await expect(page.locator('#bus-rush-run-over-level')).toHaveText('2 · Heartland');

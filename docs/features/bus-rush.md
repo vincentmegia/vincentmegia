@@ -56,7 +56,10 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   are sized to overhang the footpath and kerb so they read at the canvas edge, crossfaded on entry with a
   "LEVEL n / district" banner and a checkpoint bonus (250 × district
   index). Entering a district refills lives to full (`maxLives`, so
-  Bumpers count). Each district starts the wanted level one star higher; every
+  Bumpers count) and makes the bus faster: each district raises both the
+  speed floor and top speed by `LEVEL_SPEED_STEP` (1.5 m/s, ~5 km/h), with
+  an extra kick of speed on entry. A hit drops you to the district's
+  floor, not the first district's. Each district starts the wanted level one star higher; every
   10 fares adds another.
 * Depot shop between runs (tokens → leveled upgrades): Engine (top speed),
   Steering (faster lane changes), Bumpers (+1 life), Fare Box (more tokens

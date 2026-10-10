@@ -19,6 +19,7 @@ import {
   UPGRADES,
   VEHICLES,
   stepSpeed,
+  minSpeed,
   toKmh,
   laneChangeSeconds,
   maxLives,
@@ -44,6 +45,8 @@ import {
   policeWreckPoints,
   LEVELS,
   LEVEL_DISTANCE,
+  LEVEL_SPEED_STEP,
+  maxSpeed,
   levelAt,
   checkpointPoints,
 } from './busrush/rules.js';
@@ -1172,7 +1175,7 @@ function init(canvas, el) {
     const lives = livesAfterHit(r.lives, vehicle, r.grace);
     if (lives === r.lives) return; // grace absorbed it
     r.lives = lives;
-    r.speed = MIN_SPEED;
+    r.speed = minSpeed(r.level);
     shake = vehicle && vehicle.lethal ? 0.6 : 0.35;
     const impactX = (r.busX + (vehicle ? vehicle.x : r.busX)) / 2;
     burst(effects, impactX, BUS_Y + 4, [vehicle ? vehicle.color : '#888', '#2e4552', '#f1e9d6', BUS_COLOR], 18, 260, 5);
@@ -1218,7 +1221,7 @@ function init(canvas, el) {
 
   function update(dt) {
     const r = run;
-    r.speed = stepSpeed(r.speed, input, dt, progress.upgrades.engine);
+    r.speed = stepSpeed(r.speed, input, dt, progress.upgrades.engine, r.level);
     r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
     r.grace = Math.max(0, r.grace - dt);
     r.scroll += r.speed * dt * PX_PER_METER;
@@ -1279,6 +1282,8 @@ function init(canvas, el) {
       r.bonus += points;
       const refilled = r.lives < maxLives(progress.upgrades.bumpers);
       r.lives = maxLives(progress.upgrades.bumpers);
+      // A kick of speed on entry; the higher floor/ceiling keep it after.
+      r.speed = Math.min(r.speed + LEVEL_SPEED_STEP * 2, maxSpeed(progress.upgrades.engine, lvl));
       r.fadeFrom = r.level;
       r.fade = 1;
       r.level = lvl;

@@ -44,6 +44,7 @@ import {
   LEVEL_DISTANCE,
   levelAt,
   checkpointPoints,
+  minSpeed,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -213,7 +214,7 @@ describe('traffic', () => {
 
   test('the minimum row spacing leaves room for one lane change at top speed', () => {
     const longest = Math.max(...VEHICLES.map((v) => v.length));
-    const topRelativePxPerSec = (maxSpeed(UPGRADES.engine.maxLevel) + TRAFFIC_SPEED) * PX_PER_METER;
+    const topRelativePxPerSec = (maxSpeed(UPGRADES.engine.maxLevel, LEVELS.length - 1) + TRAFFIC_SPEED) * PX_PER_METER;
     const windowSeconds = (ROW_SPACING_MIN - longest - BUS_LENGTH) / topRelativePxPerSec;
     assert.ok(windowSeconds >= laneChangeSeconds(0), `window ${windowSeconds}s`);
   });
@@ -265,6 +266,17 @@ describe('levels', () => {
     for (let i = 1; i < LEVELS.length; i++) {
       assert.equal(wantedLevel(i * LEVEL_DISTANCE, 0), Math.min(WANTED_MAX, i + 1));
     }
+  });
+
+  test('each district is faster: higher speed floor and top speed', () => {
+    for (let i = 1; i < LEVELS.length; i++) {
+      assert.ok(minSpeed(i) > minSpeed(i - 1));
+      assert.ok(maxSpeed(0, i) > maxSpeed(0, i - 1));
+      assert.equal(stepSpeed(0, {}, 0.1, 0, i), minSpeed(i));
+    }
+    assert.equal(minSpeed(99), minSpeed(LEVELS.length - 1));
+    assert.equal(maxSpeed(0, 99), maxSpeed(0, LEVELS.length - 1));
+    assert.ok(minSpeed(LEVELS.length - 1) < BASE_MAX_SPEED);
   });
 
   test('checkpoints pay more the deeper the district', () => {
