@@ -50,9 +50,10 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 * **Levels** (districts in one continuous run): every 800 m
   (`LEVEL_DISTANCE`) the bus escapes into the next of five districts —
   CBD → Heartland → Expressway → Industrial → Changi (the last is
-  endless). Each has its own scenery (office rooftops, rain trees and bus
+  endless). Each has its own scenery (office rooftops with street trees, rain trees and bus
   shelters, guardrails and yellow edge lines, shipping containers and
-  hazard kerbs, a pink-blooming tree avenue), crossfaded on entry with a
+  hazard kerbs and street trees, a pink-blooming tree avenue). Trees
+  are sized to overhang the footpath and kerb so they read at the canvas edge, crossfaded on entry with a
   "LEVEL n / district" banner and a checkpoint bonus (250 × district
   index). Each district starts the wanted level one star higher; every
   10 fares adds another.

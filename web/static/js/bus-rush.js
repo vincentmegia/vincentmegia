@@ -330,22 +330,22 @@ const DISTRICTS = [
   { // CBD: plaza paving and office-tower rooftops.
     seed: 11, verge: '#a39d93', tufts: ['#948e84', '#b0aaa0'], path: '#cfc6b6', seam: '#bdb3a2',
     kerb: ['#e6dfcf', '#8a8276'], asphalt: '#47433f', edge: PAINT,
-    roadside: 'towers', shelters: true, lampGap: 320,
+    roadside: 'towers', shelters: true, lampGap: 320, streetTrees: true,
   },
   { // Heartland: grass, rain trees, bus shelters.
     seed: 88, verge: '#7b9a58', tufts: ['#6c8b4c', '#8eab69'], path: '#d8ccb4', seam: '#c4b79d',
     kerb: ['#e6dfcf', '#8a8276'], asphalt: ASPHALT, edge: PAINT,
-    roadside: 'trees', treeChance: 0.75, treeGap: [70, 140], bloom: '#d9663f', shelters: true, lampGap: 320,
+    roadside: 'trees', treeChance: 0.85, treeGap: [55, 100], bloom: '#d9663f', shelters: true, lampGap: 320,
   },
   { // Expressway: guardrails, sparse trees, yellow edge lines, frequent lamps.
     seed: 21, verge: '#6d8a4c', tufts: ['#5f7c40', '#7f9c5c'], path: false,
     kerb: ['#d9d2c4', '#bfb7a8'], asphalt: '#3f3c39', edge: BAY_YELLOW,
-    roadside: 'trees', treeChance: 0.5, treeGap: [110, 200], bloom: null, shelters: false, lampGap: 160,
+    roadside: 'trees', treeChance: 0.85, treeGap: [60, 120], bloom: null, shelters: false, lampGap: 160,
   },
   { // Industrial: dusty verge, shipping containers, hazard-striped kerbs.
     seed: 37, verge: '#a8957a', tufts: ['#988569', '#b6a48a'], path: '#c9bea9', seam: '#b5a990',
     kerb: ['#e0c35a', '#33312e'], asphalt: '#55504b', edge: PAINT,
-    roadside: 'containers', shelters: false, lampGap: 320,
+    roadside: 'containers', shelters: false, lampGap: 320, streetTrees: true,
   },
   { // Changi: a dense avenue of trees in bougainvillea pink.
     seed: 64, verge: '#6f9650', tufts: ['#5f8642', '#86ab66'], path: '#d8ccb4', seam: '#c4b79d',
@@ -519,8 +519,10 @@ function buildScenery(dpr, d) {
     if (d.roadside === 'trees') {
       for (let y = 20; y < P; y += d.treeGap[0] + rand() * (d.treeGap[1] - d.treeGap[0])) {
         if (side === -1 && nearShelter(y)) continue;
-        const r = 13 + rand() * 6;
-        const jitter = (rand() - 0.5) * 4;
+        // Big enough to overhang the footpath and kerb, not just peek in
+        // from the canvas edge.
+        const r = 18 + rand() * 7;
+        const jitter = side * -(4 + rand() * 4);
         const seed = Math.floor(y * 7 + x);
         const isTree = rand() < d.treeChance;
         wrapped(y, (wy) => {
@@ -544,6 +546,25 @@ function buildScenery(dpr, d) {
       }
     }
   }
+  // Street trees in round planters along the footpath, between the lamps,
+  // for districts whose verge is taken by buildings or containers.
+  if (d.streetTrees) {
+    for (const [x, side] of [[30, -1], [WIDTH - 30, 1]]) {
+      for (let y = d.lampGap / 4; y < P; y += d.lampGap / 2) {
+        if (side === -1 && nearShelter(y)) continue;
+        const r = 14 + rand() * 4;
+        const seed = Math.floor(y * 11 + x);
+        wrapped(y, (wy) => {
+          g.fillStyle = '#8a8276';
+          g.beginPath();
+          g.arc(x, wy, 7, 0, Math.PI * 2);
+          g.fill();
+          drawTree(g, x, wy, r, seededRandom(seed), d.bloom);
+        });
+      }
+    }
+  }
+
   for (let y = 0; y < P; y += d.lampGap) {
     const ly = y + d.lampGap / 2;
     if (!nearShelter(ly)) wrapped(ly, (wy) => drawLamp(g, 28, wy, -1));
