@@ -40,6 +40,10 @@ import {
   policeReactionSeconds,
   roadblockChance,
   policeWreckPoints,
+  LEVELS,
+  LEVEL_DISTANCE,
+  levelAt,
+  checkpointPoints,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -123,7 +127,7 @@ describe('police pursuit', () => {
   test('wanted level starts at one star, rises with distance and fares, caps', () => {
     assert.equal(wantedLevel(0, 0), 1);
     assert.ok(wantedLevel(1200, 0) > wantedLevel(0, 0));
-    assert.ok(wantedLevel(0, 16) > wantedLevel(0, 0));
+    assert.ok(wantedLevel(0, 10) > wantedLevel(0, 0));
     assert.equal(wantedLevel(1e7, 1e7), WANTED_MAX);
     assert.equal(wantedLevel(NaN, -3), 1);
   });
@@ -150,8 +154,9 @@ describe('police pursuit', () => {
     assert.ok(roadblockChance(5000, WANTED_MAX) > 0 && roadblockChance(5000, WANTED_MAX) < 0.5);
   });
 
-  test('police cars ram for one life, never lethal, and fit the row spacing', () => {
-    assert.equal(livesAfterHit(3, POLICE_CAR, 0), 2);
+  test('police cars are lethal and fit the row spacing', () => {
+    assert.equal(livesAfterHit(3, POLICE_CAR, 0), 0);
+    assert.equal(livesAfterHit(3, POLICE_CAR, 1), 0);
     assert.ok(POLICE_CAR.length <= Math.max(...VEHICLES.map((v) => v.length)));
   });
 });
@@ -244,5 +249,26 @@ describe('traffic', () => {
     const a = { x: 0, y: 0, w: 10, h: 10 };
     assert.equal(rectsOverlap(a, { x: 5, y: 5, w: 10, h: 10 }), true);
     assert.equal(rectsOverlap(a, { x: 10, y: 0, w: 10, h: 10 }), false);
+  });
+});
+
+describe('levels', () => {
+  test('a run moves through every district in order, the last one endless', () => {
+    assert.equal(levelAt(0), 0);
+    assert.equal(levelAt(LEVEL_DISTANCE - 1), 0);
+    assert.equal(levelAt(LEVEL_DISTANCE), 1);
+    assert.equal(levelAt(LEVEL_DISTANCE * 99), LEVELS.length - 1);
+    assert.equal(levelAt(NaN), 0);
+  });
+
+  test('each district starts one wanted star hotter', () => {
+    for (let i = 1; i < LEVELS.length; i++) {
+      assert.equal(wantedLevel(i * LEVEL_DISTANCE, 0), Math.min(WANTED_MAX, i + 1));
+    }
+  });
+
+  test('checkpoints pay more the deeper the district', () => {
+    assert.equal(checkpointPoints(0), 0);
+    assert.ok(checkpointPoints(2) > checkpointPoints(1));
   });
 });

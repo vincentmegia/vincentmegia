@@ -38,15 +38,24 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 * Trucks (from 800 m) and semi trucks (from 1500 m) are lethal: touching
   one ends the run instantly, regardless of lives left or grace.
 * **Police pursuit** (the bus is stolen): cruisers close in from behind
-  whenever they're faster than the bus, re-aim at its lane after a short
-  reaction delay, and ram it for one life (non-lethal, like a car). A
-  rammed cruiser drops back for a moment. A cruiser that touches oncoming
+  whenever they're faster than the bus and re-aim at its lane after a short
+  reaction delay. Police are **lethal**: any contact with a cruiser,
+  pursuer or roadblock, ends the run as "Busted!", lives and grace
+  notwithstanding. A cruiser that touches oncoming
   traffic wrecks, which earns bonus score and tokens, so baiting them into
   traffic is a strategy. Further in, some traffic rows are **roadblocks**
   (rows of oncoming cruisers, still passable). A 1–5 star **wanted level**
-  (distance + fares) scales pursuit speed, cruiser count, reaction time,
-  roadblock chance and wreck bonus. Losing the last life to police reads
-  "Busted!".
+  scales pursuit speed, cruiser count, reaction time, roadblock chance and
+  wreck bonus.
+* **Levels** (districts in one continuous run): every 800 m
+  (`LEVEL_DISTANCE`) the bus escapes into the next of five districts —
+  CBD → Heartland → Expressway → Industrial → Changi (the last is
+  endless). Each has its own scenery (office rooftops, rain trees and bus
+  shelters, guardrails and yellow edge lines, shipping containers and
+  hazard kerbs, a pink-blooming tree avenue), crossfaded on entry with a
+  "LEVEL n / district" banner and a checkpoint bonus (250 × district
+  index). Each district starts the wanted level one star higher; every
+  10 fares adds another.
 * Depot shop between runs (tokens → leveled upgrades): Engine (top speed),
   Steering (faster lane changes), Bumpers (+1 life), Fare Box (more tokens
   per fare).
@@ -168,14 +177,16 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   (`pickBlockedLanes`), so every row is passable. The spawn gap shrinks with
   distance down to a minimum (`spawnGapMeters`).
 * **Collisions** (`livesAfterHit`): a vehicle marked `lethal` in
-  `VEHICLES` (truck, semi) takes every life, even during post-hit grace;
-  anything else takes one life, or none while grace is active. Bumpers
-  therefore never save you from a truck.
+  `VEHICLES` (truck, semi) or `POLICE_CAR` takes every life, even during
+  post-hit grace; anything else takes one life, or none while grace is
+  active. Bumpers therefore never save you from a truck or the police.
 * **Row spacing floor** must fit the longest vehicle (the semi), the bus,
   and one unupgraded lane change at top speed — a unit test enforces this,
   so adding a longer vehicle means raising `ROW_SPACING_MIN`.
-* **Score** = `floor(distance) + fares × 25 + wreck bonus` — speed pays via
-  distance; each wrecked cruiser adds `policeWreckPoints(stars)` (50 × stars).
+* **Score** = `floor(distance) + fares × 25 + bonus` — speed pays via
+  distance; the bonus is each wrecked cruiser's `policeWreckPoints(stars)`
+  (50 × stars) plus each district's `checkpointPoints`.
+* **Wanted** = `min(5, district + 1 + floor(fares / 10))`.
 * **Tokens per run** = `fares × fareValue(fareBoxLevel) + floor(distance / 100) + wrecks × WRECK_TOKENS`.
 * **Police** (`wantedLevel`, `policeSpeed`, `maxPolice`,
   `policeReactionSeconds`, `roadblockChance` in `rules.js`): one star is
@@ -213,8 +224,8 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * [x] Playwright `e2e/bus-rush.spec.js`: start a run (HUD distance
       advances), shop purchase persists, run-over → leaderboard submit,
       HTMX revisit still wires the game; plus the `/projects` card; a
-      police ram costs one life, and the last one is "Busted!"
-      (`__busRushTestHooks.policeRam`).
+      police ram is instantly "Busted!" (`__busRushTestHooks.policeRam`);
+      crossing 800 m enters level 2 (`__busRushTestHooks.warp`).
 
 ---
 

@@ -35,7 +35,6 @@ import {
   WANTED_MAX,
   POLICE_FIRST_SECONDS,
   POLICE_SPAWN_SECONDS,
-  POLICE_STUN_SECONDS,
   POLICE_CAR,
   wantedLevel,
   policeSpeed,
@@ -43,6 +42,10 @@ import {
   policeReactionSeconds,
   roadblockChance,
   policeWreckPoints,
+  LEVELS,
+  LEVEL_DISTANCE,
+  levelAt,
+  checkpointPoints,
 } from './busrush/rules.js';
 
 const STORAGE_KEY = 'bus-rush:v1';
@@ -55,7 +58,8 @@ const BUS_WIDTH = 54;
 // Room below the bus for pursuing police to close in from.
 const BUS_Y = HEIGHT - BUS_LENGTH - 110;
 const POLICE_LANE_SECONDS = 0.35;
-const POLICE_FALLBACK_PX = 90; // px/s a rammed cruiser drops back
+const BANNER_SECONDS = 2.4;
+const FADE_SECONDS = 1.2;
 const FARE_RADIUS = 13;
 const FARE_CHANCE = 0.7;
 
@@ -205,7 +209,7 @@ function quad(ctx, x1, x2, y1, x3, x4, y2) {
 
 // --- scenery tile ------------------------------------------------------------
 
-function drawTree(g, x, y, r, rand) {
+function drawTree(g, x, y, r, rand, bloom) {
   g.fillStyle = 'rgba(30,40,18,0.32)';
   g.beginPath();
   g.ellipse(x + 5, y + 7, r * 1.05, r, 0, 0, Math.PI * 2);
@@ -227,9 +231,9 @@ function drawTree(g, x, y, r, rand) {
   layer('#3d6638', 0, 0, 1);
   layer('#527f47', -2, -2, 0.78);
   layer('#6f9a5a', -4, -4, 0.45);
-  // Some are flame-of-the-forest trees in bloom.
-  if (rand() < 0.3) {
-    g.fillStyle = '#d9663f';
+  // Some are in bloom (flame-of-the-forest, bougainvillea…).
+  if (bloom && rand() < 0.3) {
+    g.fillStyle = bloom;
     for (let i = 0; i < 9; i++) {
       g.beginPath();
       g.arc(x + (rand() - 0.5) * r * 1.4, y + (rand() - 0.5) * r * 1.4, 1.8, 0, Math.PI * 2);
@@ -318,49 +322,126 @@ function drawShelter(g, y) {
 }
 
 /**
- * Paints one seamless SCENERY_PERIOD-tall strip of road and roadside at the
- * canvas's pixel ratio. Anything that could straddle the tile's top/bottom
- * edge is drawn at y, y - period and y + period so the seam never shows.
+ * One district's look (index matches LEVELS in rules.js). `roadside` picks
+ * what lines the verge; `path` false swaps the footpath for an expressway
+ * guardrail.
  */
-function buildScenery(dpr) {
+const DISTRICTS = [
+  { // CBD: plaza paving and office-tower rooftops.
+    seed: 11, verge: '#a39d93', tufts: ['#948e84', '#b0aaa0'], path: '#cfc6b6', seam: '#bdb3a2',
+    kerb: ['#e6dfcf', '#8a8276'], asphalt: '#47433f', edge: PAINT,
+    roadside: 'towers', shelters: true, lampGap: 320,
+  },
+  { // Heartland: grass, rain trees, bus shelters.
+    seed: 88, verge: '#7b9a58', tufts: ['#6c8b4c', '#8eab69'], path: '#d8ccb4', seam: '#c4b79d',
+    kerb: ['#e6dfcf', '#8a8276'], asphalt: ASPHALT, edge: PAINT,
+    roadside: 'trees', treeChance: 0.75, treeGap: [70, 140], bloom: '#d9663f', shelters: true, lampGap: 320,
+  },
+  { // Expressway: guardrails, sparse trees, yellow edge lines, frequent lamps.
+    seed: 21, verge: '#6d8a4c', tufts: ['#5f7c40', '#7f9c5c'], path: false,
+    kerb: ['#d9d2c4', '#bfb7a8'], asphalt: '#3f3c39', edge: BAY_YELLOW,
+    roadside: 'trees', treeChance: 0.5, treeGap: [110, 200], bloom: null, shelters: false, lampGap: 160,
+  },
+  { // Industrial: dusty verge, shipping containers, hazard-striped kerbs.
+    seed: 37, verge: '#a8957a', tufts: ['#988569', '#b6a48a'], path: '#c9bea9', seam: '#b5a990',
+    kerb: ['#e0c35a', '#33312e'], asphalt: '#55504b', edge: PAINT,
+    roadside: 'containers', shelters: false, lampGap: 320,
+  },
+  { // Changi: a dense avenue of trees in bougainvillea pink.
+    seed: 64, verge: '#6f9650', tufts: ['#5f8642', '#86ab66'], path: '#d8ccb4', seam: '#c4b79d',
+    kerb: ['#e6dfcf', '#8a8276'], asphalt: ASPHALT, edge: PAINT,
+    roadside: 'trees', treeChance: 1, treeGap: [44, 60], bloom: '#c45a9a', shelters: false, lampGap: 320,
+  },
+];
+
+/** Office-tower rooftop overhanging the verge: parapet, aircon units, water tank. */
+function drawRooftop(g, x, y, w, h, color, rand) {
+  g.fillStyle = 'rgba(28,22,16,0.3)';
+  g.fillRect(x + 4, y + 6, w, h);
+  fillRoundRect(g, color, x, y, w, h, 2);
+  g.strokeStyle = shade(color, -0.25);
+  g.lineWidth = 1.5;
+  g.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+  for (let i = 0; i < 3; i++) {
+    fillRoundRect(g, '#d7d1c6', x + 3 + rand() * (w - 12), y + 6 + rand() * (h - 16), 7, 7, 1.5);
+  }
+  if (rand() < 0.5) {
+    g.fillStyle = '#9ba3a8';
+    g.beginPath();
+    g.arc(x + w / 2, y + h - 12, 4, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
+function drawContainer(g, x, y, w, h, color) {
+  g.fillStyle = 'rgba(28,22,16,0.3)';
+  g.fillRect(x + 3, y + 5, w, h);
+  g.fillStyle = color;
+  g.fillRect(x, y, w, h);
+  g.fillStyle = shade(color, -0.2);
+  for (let ry = y + 4; ry < y + h - 2; ry += 5) g.fillRect(x + 1, ry, w - 2, 1.5);
+  g.strokeStyle = shade(color, -0.35);
+  g.lineWidth = 1;
+  g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+
+/**
+ * Paints one seamless SCENERY_PERIOD-tall strip of road and roadside for a
+ * district, at the canvas's pixel ratio. Anything that could straddle the
+ * tile's top/bottom edge is drawn at y, y - period and y + period so the
+ * seam never shows.
+ */
+function buildScenery(dpr, d) {
   const tile = document.createElement('canvas');
   tile.width = WIDTH * dpr;
   tile.height = SCENERY_PERIOD * dpr;
   const g = tile.getContext('2d');
   g.scale(dpr, dpr);
   const P = SCENERY_PERIOD;
-  const rand = seededRandom(88);
+  const rand = seededRandom(d.seed);
   const wrapped = (y, fn) => [y - P, y, y + P].forEach(fn);
 
-  // Grass verge with tufts.
-  g.fillStyle = '#7b9a58';
+  // Verge with tufts.
+  g.fillStyle = d.verge;
   g.fillRect(0, 0, WIDTH, P);
   for (let i = 0; i < 260; i++) {
     const side = rand() < 0.5;
     const x = side ? rand() * 24 : WIDTH - rand() * 24;
-    g.fillStyle = rand() < 0.5 ? '#6c8b4c' : '#8eab69';
+    g.fillStyle = rand() < 0.5 ? d.tufts[0] : d.tufts[1];
     g.fillRect(x, rand() * P, 2, 3);
   }
 
-  // Paved footpath with tile seams.
-  g.fillStyle = '#d8ccb4';
-  g.fillRect(22, 0, 12, P);
-  g.fillRect(WIDTH - 34, 0, 12, P);
-  g.fillStyle = '#c4b79d';
-  for (let y = 0; y < P; y += 12) {
-    g.fillRect(22, y, 12, 1);
-    g.fillRect(WIDTH - 34, y, 12, 1);
+  if (d.path) {
+    // Paved footpath with tile seams.
+    g.fillStyle = d.path;
+    g.fillRect(22, 0, 12, P);
+    g.fillRect(WIDTH - 34, 0, 12, P);
+    g.fillStyle = d.seam;
+    for (let y = 0; y < P; y += 12) {
+      g.fillRect(22, y, 12, 1);
+      g.fillRect(WIDTH - 34, y, 12, 1);
+    }
+  } else {
+    // Guardrail on posts.
+    for (const x of [28, WIDTH - 31]) {
+      g.fillStyle = 'rgba(28,22,16,0.25)';
+      g.fillRect(x + 3, 0, 3, P);
+      g.fillStyle = '#6b6660';
+      for (let y = 0; y < P; y += 20) g.fillRect(x - 1, y, 5, 4);
+      g.fillStyle = '#c9c3b7';
+      g.fillRect(x, 0, 3, P);
+    }
   }
 
   // Kerbs in alternating blocks — they also sell the sense of speed.
   for (let y = 0; y < P; y += 16) {
-    g.fillStyle = (y / 16) % 2 ? '#8a8276' : '#e6dfcf';
+    g.fillStyle = (y / 16) % 2 ? d.kerb[1] : d.kerb[0];
     g.fillRect(SHOULDER - 6, y, 6, 16);
     g.fillRect(WIDTH - SHOULDER, y, 6, 16);
   }
 
   // Asphalt: base, grain, darker wheel tracks, patches, a few cracks.
-  g.fillStyle = ASPHALT;
+  g.fillStyle = d.asphalt;
   g.fillRect(SHOULDER, 0, WIDTH - SHOULDER * 2, P);
   for (let i = 0; i < 2600; i++) {
     g.fillStyle = rand() < 0.5 ? 'rgba(255,240,220,0.06)' : 'rgba(0,0,0,0.12)';
@@ -423,32 +504,48 @@ function buildScenery(dpr) {
     }
   }
   g.globalAlpha = 1;
-  g.fillStyle = PAINT;
+  g.fillStyle = d.edge;
   g.fillRect(SHOULDER + 4, 0, 3, P);
   g.fillRect(WIDTH - SHOULDER - 7, 0, 3, P);
 
-  // Shelters first so trees and lamps never land on top of them.
-  const shelterYs = [P * 0.3, P * 0.8];
+  // Shelters first so roadside items and lamps never land on top of them.
+  const shelterYs = d.shelters ? [P * 0.3, P * 0.8] : [];
   shelterYs.forEach((y) => drawShelter(g, y));
   const nearShelter = (y) => shelterYs.some((sy) => y > sy - 30 && y < sy + 110);
 
+  // Every copy of a wrapped item must come out identical, so each one gets
+  // its own seed rather than drawing from the shared stream.
   for (const [x, side] of [[11, -1], [WIDTH - 11, 1]]) {
-    for (let y = 20; y < P; y += 70 + rand() * 70) {
-      if (side === -1 && nearShelter(y)) continue;
-      // Every copy of a wrapped item must come out identical, so each one
-      // gets its own seed rather than drawing from the shared stream.
-      const r = 13 + rand() * 6;
-      const jitter = (rand() - 0.5) * 4;
-      const seed = Math.floor(y * 7 + x);
-      const isTree = rand() < 0.75;
-      wrapped(y, (wy) => {
-        if (isTree) drawTree(g, x + jitter, wy, r, seededRandom(seed));
-        else drawShrub(g, x, wy, seededRandom(seed));
-      });
+    if (d.roadside === 'trees') {
+      for (let y = 20; y < P; y += d.treeGap[0] + rand() * (d.treeGap[1] - d.treeGap[0])) {
+        if (side === -1 && nearShelter(y)) continue;
+        const r = 13 + rand() * 6;
+        const jitter = (rand() - 0.5) * 4;
+        const seed = Math.floor(y * 7 + x);
+        const isTree = rand() < d.treeChance;
+        wrapped(y, (wy) => {
+          if (isTree) drawTree(g, x + jitter, wy, r, seededRandom(seed), d.bloom);
+          else drawShrub(g, x, wy, seededRandom(seed));
+        });
+      }
+    } else {
+      const palette = d.roadside === 'towers'
+        ? ['#bdb5a8', '#a8a097', '#c98f6b', '#8e9a94']
+        : ['#c4532d', '#3f6e9e', '#5f8a5b', '#d9a93f', '#8a8276'];
+      for (let y = 10; y < P - 20;) {
+        const h = d.roadside === 'towers' ? 70 + rand() * 90 : 46 + rand() * 14;
+        if (side === -1 && (nearShelter(y) || nearShelter(y + h))) { y += 30; continue; }
+        const color = palette[Math.floor(rand() * palette.length)];
+        const seed = Math.floor(y * 13 + x);
+        const left = side === -1 ? -4 : WIDTH - 22;
+        if (d.roadside === 'towers') drawRooftop(g, left, y, 26, h, color, seededRandom(seed));
+        else drawContainer(g, side === -1 ? 1 : WIDTH - 20, y, 19, h, color);
+        y += h + (d.roadside === 'towers' ? 8 + rand() * 14 : 4 + rand() * 30);
+      }
     }
   }
-  for (let y = 0; y < P; y += 320) {
-    const ly = y + 160;
+  for (let y = 0; y < P; y += d.lampGap) {
+    const ly = y + d.lampGap / 2;
     if (!nearShelter(ly)) wrapped(ly, (wy) => drawLamp(g, 28, wy, -1));
     wrapped(y, (wy) => drawLamp(g, WIDTH - 28, wy, 1));
   }
@@ -717,6 +814,22 @@ function drawSirenCue(ctx, p, t) {
   ctx.fillRect(p.x - 60, HEIGHT - 60, 120, 60);
 }
 
+/** "LEVEL 2 / Heartland" card across the road; fades in and out over BANNER_SECONDS. */
+function drawBanner(ctx, b) {
+  ctx.globalAlpha = Math.max(0, Math.min(1, b.t / 0.4, (BANNER_SECONDS - b.t) / 0.25));
+  ctx.fillStyle = 'rgba(36,30,24,0.75)';
+  ctx.fillRect(0, 150, WIDTH, 92);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffb547';
+  ctx.font = 'bold 34px Caprasimo, Georgia, serif';
+  ctx.fillText(b.title, WIDTH / 2, 185);
+  ctx.fillStyle = '#f1e9d6';
+  ctx.font = '600 17px Figtree, sans-serif';
+  ctx.fillText(b.sub, WIDTH / 2, 221);
+  ctx.globalAlpha = 1;
+}
+
 // --- fares, bus, effects -----------------------------------------------------
 
 /** A spinning gold fare coin; `t` is seconds, `f.phase` staggers the spin. */
@@ -900,7 +1013,10 @@ function init(canvas, el) {
   canvas.width = WIDTH * dpr;
   canvas.height = HEIGHT * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const scenery = buildScenery(dpr);
+  // District tiles are built on first use (and pre-warmed just before each
+  // boundary), not all up front — each one is a full-resolution canvas.
+  const sceneryCache = [];
+  const sceneryFor = (i) => sceneryCache[i] || (sceneryCache[i] = buildScenery(dpr, DISTRICTS[i]));
   let effects = [];
   let shake = 0;
   const hasStorage = storageAvailable();
@@ -956,6 +1072,7 @@ function init(canvas, el) {
     el.hud.speed.textContent = `${toKmh(r ? r.speed : 0)} km/h`;
     el.hud.score.textContent = r ? runScore(r.distance, r.fares, r.bonus) : 0;
     const stars = r ? wantedLevel(r.distance, r.fares) : 0;
+    el.hud.level.textContent = r ? r.level + 1 : 1;
     el.hud.wanted.textContent = '★'.repeat(stars) + '☆'.repeat(WANTED_MAX - stars);
     el.hud.lives.textContent = r ? r.lives : maxLives(progress.upgrades.bumpers);
     el.hud.fares.textContent = r ? r.fares : 0;
@@ -983,6 +1100,10 @@ function init(canvas, el) {
       wrecked: 0,
       bonus: 0,
       policeTimer: POLICE_FIRST_SECONDS,
+      level: 0,
+      fadeFrom: 0,
+      fade: 0,
+      banner: { title: 'LEVEL 1', sub: LEVELS[0], t: BANNER_SECONDS },
     };
     input.accelerate = false;
     input.brake = false;
@@ -1014,6 +1135,7 @@ function init(canvas, el) {
     el.runOver.distance.textContent = `${distance} m`;
     el.runOver.fares.textContent = run.fares;
     el.runOver.wrecked.textContent = run.wrecked;
+    el.runOver.level.textContent = `${run.level + 1} · ${LEVELS[run.level]}`;
     el.runOver.score.textContent = score;
     el.runOver.tokens.textContent = `+${tokens}`;
     el.runOver.scoreInput.value = score;
@@ -1035,8 +1157,8 @@ function init(canvas, el) {
     burst(effects, impactX, BUS_Y + 4, [vehicle ? vehicle.color : '#888', '#2e4552', '#f1e9d6', BUS_COLOR], 18, 260, 5);
     r.grace = HIT_GRACE_SECONDS;
     if (r.lives <= 0) {
-      r.killedBy = vehicle && vehicle.lethal ? vehicle.kind : null;
       r.busted = Boolean(vehicle && vehicle.police);
+      r.killedBy = vehicle && vehicle.lethal && !r.busted ? vehicle.kind : null;
       endRun();
     }
   }
@@ -1079,6 +1201,7 @@ function init(canvas, el) {
     r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
     r.grace = Math.max(0, r.grace - dt);
     r.scroll += r.speed * dt * PX_PER_METER;
+    updateLevel(r, dt);
 
     // Lane change: slide toward the target lane at one lane per
     // laneChangeSeconds.
@@ -1122,6 +1245,26 @@ function init(canvas, el) {
     });
   }
 
+  /** Crossing into a new district: checkpoint bonus, banner, scenery crossfade. */
+  function updateLevel(r, dt) {
+    r.fade = Math.max(0, r.fade - dt / FADE_SECONDS);
+    if (r.banner) {
+      r.banner.t -= dt;
+      if (r.banner.t <= 0) r.banner = null;
+    }
+    const lvl = levelAt(r.distance);
+    if (lvl !== r.level) {
+      const points = checkpointPoints(lvl);
+      r.bonus += points;
+      r.fadeFrom = r.level;
+      r.fade = 1;
+      r.level = lvl;
+      r.banner = { title: `LEVEL ${lvl + 1}`, sub: `${LEVELS[lvl]}  ·  +${points}`, t: BANNER_SECONDS };
+    } else if (lvl + 1 < LEVELS.length && r.distance % LEVEL_DISTANCE > LEVEL_DISTANCE - 150) {
+      sceneryFor(lvl + 1);
+    }
+  }
+
   function spawnPolice(r, lane, y) {
     r.police.push({
       ...POLICE_CAR,
@@ -1130,7 +1273,6 @@ function init(canvas, el) {
       x: laneCenter(lane),
       y,
       retarget: 0,
-      stun: 0,
     });
   }
 
@@ -1147,8 +1289,9 @@ function init(canvas, el) {
 
   /**
    * Pursuers close in from behind whenever they're faster than the bus,
-   * re-aim at its lane every policeReactionSeconds (the juke window), ram
-   * it for a life, and wreck themselves on any oncoming vehicle.
+   * re-aim at its lane every policeReactionSeconds (the juke window), end
+   * the run on contact (Busted), and wreck themselves on any oncoming
+   * vehicle.
    */
   function updatePolice(r, dt, bus) {
     const wanted = wantedLevel(r.distance, r.fares);
@@ -1162,11 +1305,10 @@ function init(canvas, el) {
     const approach = (policeSpeed(wanted) - r.speed) * PX_PER_METER;
     const laneStep = (LANE_WIDTH / POLICE_LANE_SECONDS) * dt;
     for (const p of r.police) {
-      p.stun = Math.max(0, p.stun - dt);
-      p.y += (p.stun > 0 ? POLICE_FALLBACK_PX : -approach) * dt;
+      p.y -= approach * dt;
       p.y = Math.max(p.y, BUS_Y - p.length / 2); // alongside at most, never ahead
       p.retarget -= dt;
-      if (p.retarget <= 0 && p.stun === 0) {
+      if (p.retarget <= 0) {
         p.retarget = policeReactionSeconds(wanted);
         p.lane += Math.sign(r.lane - p.lane);
       }
@@ -1193,8 +1335,6 @@ function init(canvas, el) {
 
     for (const p of r.police) {
       if (rectsOverlap(bus, box(p))) {
-        p.stun = POLICE_STUN_SECONDS;
-        p.y = Math.max(p.y, BUS_Y + BUS_LENGTH + 8);
         hit(r, p);
         if (r.status !== 'playing') return;
       }
@@ -1211,7 +1351,13 @@ function init(canvas, el) {
       const k = shake * 14;
       ctx.translate((Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
     }
-    drawScenery(ctx, scenery, r ? r.scroll : idleScroll, dpr);
+    const scroll = r ? r.scroll : idleScroll;
+    drawScenery(ctx, sceneryFor(r ? r.level : 0), scroll, dpr);
+    if (r && r.fade > 0) {
+      ctx.globalAlpha = r.fade;
+      drawScenery(ctx, sceneryFor(r.fadeFrom), scroll, dpr);
+      ctx.globalAlpha = 1;
+    }
     if (r) {
       r.wrecks.forEach((wk) => drawWreck(ctx, wk, t));
       r.fareItems.forEach((f) => drawFare(ctx, f, t));
@@ -1223,6 +1369,7 @@ function init(canvas, el) {
       drawBus(ctx, laneCenter(1), false, false);
     }
     drawEffects(ctx, effects);
+    if (r && r.banner) drawBanner(ctx, r.banner);
     ctx.restore();
     if (shake > 0) {
       ctx.fillStyle = `rgba(201,64,44,${Math.min(shake, 0.5) * 0.35})`;
@@ -1355,6 +1502,10 @@ function init(canvas, el) {
   window.__busRushTestHooks = {
     // Puts a cruiser right behind the bus, overlapping it, so the next
     // update() rams through the real police path.
+    // Jumps the run to `meters` so district changes can be tested.
+    warp(meters) {
+      if (run && run.status === 'playing') run.distance = meters;
+    },
     policeRam() {
       if (!run || run.status !== 'playing') return;
       run.grace = 0;
@@ -1438,6 +1589,7 @@ function bootstrap() {
       lives: $('bus-rush-hud-lives'),
       fares: $('bus-rush-hud-fares'),
       wanted: $('bus-rush-hud-wanted'),
+      level: $('bus-rush-hud-level'),
     },
     start: {
       root: $('bus-rush-start-screen'),
@@ -1454,6 +1606,7 @@ function bootstrap() {
       distance: $('bus-rush-run-over-distance'),
       fares: $('bus-rush-run-over-fares'),
       wrecked: $('bus-rush-run-over-wrecked'),
+      level: $('bus-rush-run-over-level'),
       score: $('bus-rush-run-over-score'),
       tokens: $('bus-rush-run-over-tokens'),
       form: submit && submit.form,

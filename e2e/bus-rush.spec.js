@@ -126,24 +126,24 @@ test('revisiting via HTMX still wires the game', async ({ page }) => {
 	await expect.poll(async () => parseInt(await page.locator('#bus-rush-hud-distance').textContent(), 10), { timeout: 5000 }).toBeGreaterThan(0);
 });
 
-test('a police ram costs one life and shows a wanted level', async ({ page }) => {
+test('police are lethal: one ram is Busted, whatever lives are left', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
 	await expect(page.locator('#bus-rush-hud-wanted')).toHaveText('★☆☆☆☆');
-	const lives = parseInt(await page.locator('#bus-rush-hud-lives').textContent(), 10);
+	await expect(page.locator('#bus-rush-hud-lives')).not.toHaveText('0');
 	await page.evaluate(() => window.__busRushTestHooks.policeRam());
-	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(String(lives - 1), { timeout: 5000 });
-	await expect(page.locator('#bus-rush-run-over-screen')).toBeHidden();
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible({ timeout: 5000 });
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Busted!');
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText('0');
 });
 
-test('losing the last life to the police is Busted', async ({ page }) => {
+test('crossing 800 m enters level 2 and raises the wanted level', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
-	const livesEl = page.locator('#bus-rush-hud-lives');
-	for (let lives = parseInt(await livesEl.textContent(), 10); lives > 0; lives--) {
-		await page.evaluate(() => window.__busRushTestHooks.policeRam());
-		await expect(livesEl).toHaveText(String(lives - 1), { timeout: 5000 });
-	}
-	await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible();
-	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Busted!');
+	await expect(page.locator('#bus-rush-hud-level')).toHaveText('1');
+	await page.evaluate(() => window.__busRushTestHooks.warp(800));
+	await expect(page.locator('#bus-rush-hud-level')).toHaveText('2');
+	await expect(page.locator('#bus-rush-hud-wanted')).toHaveText('★★☆☆☆');
+	await page.evaluate(() => window.__busRushTestHooks.crash());
+	await expect(page.locator('#bus-rush-run-over-level')).toHaveText('2 · Heartland');
 });

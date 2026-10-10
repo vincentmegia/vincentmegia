@@ -125,19 +125,36 @@ export const WRECK_TOKENS = 2;
 export const POLICE_FIRST_SECONDS = 4;
 export const POLICE_SPAWN_SECONDS = 3.5;
 
-/** Seconds a cruiser backs off after ramming the bus. */
-export const POLICE_STUN_SECONDS = 1.4;
-
 /** Roadblocks (rows of oncoming cruisers) start at this distance. */
 export const ROADBLOCK_MIN_DISTANCE = 600;
 
-/** The cruiser used for both pursuit cars and roadblocks. Not lethal: a ram costs one life. */
-export const POLICE_CAR = { kind: 'police', length: 64, width: 50, police: true };
+/** The cruiser used for both pursuit cars and roadblocks. Lethal: any contact is Busted. */
+export const POLICE_CAR = { kind: 'police', length: 64, width: 50, police: true, lethal: true };
 
-/** Wanted stars (1..WANTED_MAX): heat rises with distance and fares. */
+// ---------------------------------------------------------------------------
+// Levels — districts one continuous run passes through, every LEVEL_DISTANCE.
+// ---------------------------------------------------------------------------
+
+export const LEVEL_DISTANCE = 800;
+export const LEVELS = ['CBD', 'Heartland', 'Expressway', 'Industrial', 'Changi'];
+export const CHECKPOINT_POINTS = 250;
+
+/** 0-based district index for a distance; the last district is endless. */
+export function levelAt(distanceMeters) {
+  return Math.min(LEVELS.length - 1, Math.floor(wholeOrZero(distanceMeters) / LEVEL_DISTANCE));
+}
+
+/** Score for reaching district `levelIndex` (0-based; the start earns nothing). */
+export function checkpointPoints(levelIndex) {
+  return CHECKPOINT_POINTS * wholeOrZero(levelIndex);
+}
+
+/**
+ * Wanted stars (1..WANTED_MAX): each district starts one star hotter, and
+ * every 10 fares on top adds another.
+ */
 export function wantedLevel(distanceMeters, fares) {
-  const heat = wholeOrZero(distanceMeters) / 500 + wholeOrZero(fares) / 8;
-  return Math.min(WANTED_MAX, 1 + Math.floor(heat));
+  return Math.min(WANTED_MAX, levelAt(distanceMeters) + 1 + Math.floor(wholeOrZero(fares) / 10));
 }
 
 function stars(wanted) {
