@@ -1188,6 +1188,7 @@ function init(canvas, el) {
   }
 
   function spawnRow(r, overshoot) {
+    if (r.noTraffic) return;
     const blocked = pickBlockedLanes(Math.random, r.distance, r.prevOpen);
     const open = openLanes(blocked);
     r.prevOpen = open;
@@ -1531,6 +1532,25 @@ function init(canvas, el) {
   window.__busRushTestHooks = {
     // Puts a cruiser right behind the bus, overlapping it, so the next
     // update() rams through the real police path.
+    // Stops traffic (and clears what's on screen) so a run can't take damage
+    // — isolates the police chase for tests.
+    noTraffic() {
+      if (!run) return;
+      run.noTraffic = true;
+      run.vehicles = [];
+    },
+    // Read-only view of the chase: gap is px from the bus's rear bumper to
+    // each cruiser's nose (negative = alongside/overlapping).
+    snapshot() {
+      if (!run) return null;
+      return {
+        status: run.status,
+        level: run.level + 1,
+        kmh: toKmh(run.speed),
+        wanted: wantedLevel(run.distance, run.fares),
+        police: run.police.map((p) => Math.round(p.y - (BUS_Y + BUS_LENGTH))),
+      };
+    },
     // Jumps the run to `meters` so district changes can be tested.
     warp(meters) {
       if (run && run.status === 'playing') run.distance = meters;

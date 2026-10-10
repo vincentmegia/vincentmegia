@@ -162,3 +162,21 @@ test('entering a new level refills lives', async ({ page }) => {
 	await expect(page.locator('#bus-rush-hud-level')).toHaveText('2');
 	await expect(lives).toHaveText(String(full));
 });
+
+test('at full throttle with no damage, level 2 police fall behind instead of catching up', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.warp(800);
+	});
+	await page.keyboard.down('ArrowUp');
+	const gap = async () => (await page.evaluate(() => window.__busRushTestHooks.snapshot())).police[0];
+	await expect.poll(gap, { timeout: 8000 }).not.toBeUndefined();
+	const first = await gap();
+	await page.waitForTimeout(3000);
+	const snap = await page.evaluate(() => window.__busRushTestHooks.snapshot());
+	expect(snap.status).toBe('playing');
+	expect(snap.level).toBe(2);
+	expect(snap.police[0]).toBeGreaterThan(first);
+});
