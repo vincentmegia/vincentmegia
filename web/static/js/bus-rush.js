@@ -32,6 +32,17 @@ import {
   pickVehicle,
   rectsOverlap,
   livesAfterHit,
+  WANTED_MAX,
+  POLICE_FIRST_SECONDS,
+  POLICE_SPAWN_SECONDS,
+  POLICE_STUN_SECONDS,
+  POLICE_CAR,
+  wantedLevel,
+  policeSpeed,
+  maxPolice,
+  policeReactionSeconds,
+  roadblockChance,
+  policeWreckPoints,
 } from './busrush/rules.js';
 
 const STORAGE_KEY = 'bus-rush:v1';
@@ -41,7 +52,10 @@ const HEIGHT = 640;
 const SHOULDER = 40;
 const LANE_WIDTH = (WIDTH - SHOULDER * 2) / LANES;
 const BUS_WIDTH = 54;
-const BUS_Y = HEIGHT - BUS_LENGTH - 36;
+// Room below the bus for pursuing police to close in from.
+const BUS_Y = HEIGHT - BUS_LENGTH - 110;
+const POLICE_LANE_SECONDS = 0.35;
+const POLICE_FALLBACK_PX = 90; // px/s a rammed cruiser drops back
 const FARE_RADIUS = 13;
 const FARE_CHANCE = 0.7;
 
@@ -610,13 +624,97 @@ function drawSemi(ctx, v, x, y, w, l) {
 }
 
 // Oncoming vehicle, nose pointing down the screen.
-function drawVehicle(ctx, v) {
+function drawVehicle(ctx, v, t) {
+  if (v.police) {
+    drawPolice(ctx, v, t, false);
+    return;
+  }
   const x = v.x - v.width / 2;
   drawShadow(ctx, x, v.y, v.width, v.length, 8);
   if (v.kind === 'semi') drawSemi(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'truck') drawTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'van') drawVan(ctx, v, x, v.y, v.width, v.length);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
+}
+
+const POLICE_WHITE = '#f1ede4';
+const POLICE_NAVY = '#24345a';
+
+/** Light bar colours swap a few times a second. */
+function sirenPhase(t) {
+  return Math.floor(t * 6) % 2;
+}
+
+/**
+ * A police cruiser: a car with a chequered navy livery and a flashing light
+ * bar. Pursuers face up the screen (chasing the bus); roadblock cars face
+ * down like the rest of the oncoming traffic.
+ */
+function drawPolice(ctx, p, t, facingUp) {
+  const x = p.x - p.width / 2;
+  const w = p.width;
+  const l = p.length;
+  drawShadow(ctx, x, p.y, w, l, 8);
+  ctx.save();
+  if (facingUp) {
+    ctx.translate(p.x, p.y + l / 2);
+    ctx.rotate(Math.PI);
+    ctx.translate(-p.x, -(p.y + l / 2));
+  }
+  drawCar(ctx, { color: POLICE_WHITE }, x, p.y, w, l);
+  ctx.fillStyle = POLICE_NAVY;
+  for (let i = 0, cy = p.y + l * 0.12; cy < p.y + l * 0.88; i++, cy += 6) {
+    if (i % 2) continue;
+    ctx.fillRect(x + 1, cy, 4, 6);
+    ctx.fillRect(x + w - 5, cy, 4, 6);
+  }
+  ctx.fillRect(x + 8, p.y + l * 0.82, w - 16, 3);
+  const phase = sirenPhase(t);
+  const by = p.y + l * 0.44;
+  const red = phase ? '#ff4b3a' : '#7a2a22';
+  const blue = phase ? '#2a3f7a' : '#4f8bff';
+  fillRoundRect(ctx, '#2b2724', x + 9, by - 1, w - 18, 7, 2);
+  ctx.fillStyle = red;
+  ctx.fillRect(x + 10, by, (w - 20) / 2, 5);
+  ctx.fillStyle = blue;
+  ctx.fillRect(x + w / 2, by, (w - 20) / 2, 5);
+  const glow = ctx.createRadialGradient(x + w / 2, by + 2, 2, x + w / 2, by + 2, 30);
+  glow.addColorStop(0, phase ? 'rgba(255,75,58,0.35)' : 'rgba(79,139,255,0.35)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 10, by - 28, w + 20, 60);
+  ctx.restore();
+}
+
+/** A wrecked cruiser: charred, skewed, smoking. Harmless scenery. */
+function drawWreck(ctx, wk, t) {
+  ctx.save();
+  ctx.translate(wk.x, wk.y + wk.length / 2);
+  ctx.rotate(wk.angle);
+  drawCar(ctx, { color: '#6a645c' }, -wk.width / 2, -wk.length / 2, wk.width, wk.length);
+  ctx.fillStyle = 'rgba(30,26,22,0.55)';
+  ctx.beginPath();
+  ctx.arc(-6, -4, 12, 0, Math.PI * 2);
+  ctx.arc(8, 8, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  for (let i = 0; i < 3; i++) {
+    const k = (t * 0.8 + i / 3 + wk.angle) % 1;
+    ctx.fillStyle = `rgba(90,86,80,${0.45 * (1 - k)})`;
+    ctx.beginPath();
+    ctx.arc(wk.x + Math.sin(k * 6 + i) * 6, wk.y + wk.length / 2 - k * 40, 7 + k * 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Red/blue glow on the bottom edge for a pursuer that's still off-screen. */
+function drawSirenCue(ctx, p, t) {
+  const color = sirenPhase(t) ? '255,75,58' : '79,139,255';
+  const g = ctx.createRadialGradient(p.x, HEIGHT, 2, p.x, HEIGHT, 60);
+  g.addColorStop(0, `rgba(${color},0.6)`);
+  g.addColorStop(1, `rgba(${color},0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(p.x - 60, HEIGHT - 60, 120, 60);
 }
 
 // --- fares, bus, effects -----------------------------------------------------
@@ -856,7 +954,9 @@ function init(canvas, el) {
     const r = run;
     el.hud.distance.textContent = `${r ? Math.floor(r.distance) : 0} m`;
     el.hud.speed.textContent = `${toKmh(r ? r.speed : 0)} km/h`;
-    el.hud.score.textContent = r ? runScore(r.distance, r.fares) : 0;
+    el.hud.score.textContent = r ? runScore(r.distance, r.fares, r.bonus) : 0;
+    const stars = r ? wantedLevel(r.distance, r.fares) : 0;
+    el.hud.wanted.textContent = '★'.repeat(stars) + '☆'.repeat(WANTED_MAX - stars);
     el.hud.lives.textContent = r ? r.lives : maxLives(progress.upgrades.bumpers);
     el.hud.fares.textContent = r ? r.fares : 0;
   }
@@ -878,6 +978,11 @@ function init(canvas, el) {
       sinceRow: 0,
       prevOpen: null,
       scroll: 0,
+      police: [],
+      wrecks: [],
+      wrecked: 0,
+      bonus: 0,
+      policeTimer: POLICE_FIRST_SECONDS,
     };
     input.accelerate = false;
     input.brake = false;
@@ -892,8 +997,8 @@ function init(canvas, el) {
     if (!run || run.status !== 'playing') return;
     run.status = 'over';
     const distance = Math.min(Math.floor(run.distance), DISTANCE_MAX);
-    const score = runScore(run.distance, run.fares);
-    const tokens = runTokens(run.distance, run.fares, progress.upgrades.fareBox);
+    const score = runScore(run.distance, run.fares, run.bonus);
+    const tokens = runTokens(run.distance, run.fares, progress.upgrades.fareBox, run.wrecked);
 
     progress.tokens += tokens;
     const newBest = score > progress.bestScore;
@@ -903,10 +1008,12 @@ function init(canvas, el) {
 
     const titles = [];
     if (run.killedBy) titles.push(`Flattened by a ${run.killedBy}!`);
+    else if (run.busted) titles.push('Busted!');
     if (newBest) titles.push('New best run!');
     el.runOver.title.textContent = titles.length ? titles.join(' ') : 'Run over';
     el.runOver.distance.textContent = `${distance} m`;
     el.runOver.fares.textContent = run.fares;
+    el.runOver.wrecked.textContent = run.wrecked;
     el.runOver.score.textContent = score;
     el.runOver.tokens.textContent = `+${tokens}`;
     el.runOver.scoreInput.value = score;
@@ -929,6 +1036,7 @@ function init(canvas, el) {
     r.grace = HIT_GRACE_SECONDS;
     if (r.lives <= 0) {
       r.killedBy = vehicle && vehicle.lethal ? vehicle.kind : null;
+      r.busted = Boolean(vehicle && vehicle.police);
       endRun();
     }
   }
@@ -937,10 +1045,13 @@ function init(canvas, el) {
     const blocked = pickBlockedLanes(Math.random, r.distance, r.prevOpen);
     const open = openLanes(blocked);
     r.prevOpen = open;
+    // A roadblock is a row of oncoming cruisers — same lanes, same speed as
+    // traffic, so it keeps the "every row is passable" guarantee.
+    const roadblock = Math.random() < roadblockChance(r.distance, wantedLevel(r.distance, r.fares));
     blocked.forEach((lane) => {
-      const kind = pickVehicle(Math.random, r.distance);
+      const kind = roadblock ? POLICE_CAR : pickVehicle(Math.random, r.distance);
       const taxi = kind.kind === 'car' && Math.random() < TAXI_CHANCE;
-      const palette = taxi ? TAXI_COLORS : VEHICLE_COLORS;
+      const palette = roadblock ? [POLICE_WHITE] : taxi ? TAXI_COLORS : VEHICLE_COLORS;
       r.vehicles.push({
         kind: kind.kind,
         lethal: Boolean(kind.lethal),
@@ -950,8 +1061,10 @@ function init(canvas, el) {
         length: kind.length,
         color: palette[Math.floor(Math.random() * palette.length)],
         taxi,
+        police: roadblock,
       });
     });
+    if (roadblock) return;
     // A fare sits mid-gap behind this row, in any lane — sometimes one
     // that takes a risky lane change to reach.
     if (Math.random() < FARE_CHANCE) {
@@ -995,6 +1108,9 @@ function init(canvas, el) {
         if (r.status !== 'playing') return;
       }
     }
+    updatePolice(r, dt, bus);
+    if (r.status !== 'playing') return;
+
     r.fareItems = r.fareItems.filter((f) => {
       const caught = rectsOverlap(bus, { x: f.x - FARE_RADIUS, y: f.y - FARE_RADIUS, w: FARE_RADIUS * 2, h: FARE_RADIUS * 2 });
       if (caught) {
@@ -1006,6 +1122,88 @@ function init(canvas, el) {
     });
   }
 
+  function spawnPolice(r, lane, y) {
+    r.police.push({
+      ...POLICE_CAR,
+      color: POLICE_WHITE,
+      lane,
+      x: laneCenter(lane),
+      y,
+      retarget: 0,
+      stun: 0,
+    });
+  }
+
+  function wreckPolice(r, p) {
+    const wanted = wantedLevel(r.distance, r.fares);
+    const points = policeWreckPoints(wanted);
+    r.wrecked += 1;
+    r.bonus += points;
+    r.wrecks.push({ x: p.x, y: p.y, width: p.width, length: p.length, angle: (Math.random() - 0.5) * 1.2 });
+    burst(effects, p.x, p.y + p.length / 2, ['#f1ede4', '#24345a', '#ff4b3a', '#ffb547'], 16, 220, 5);
+    effects.push({ x: p.x, y: p.y, vx: 0, vy: -60, life: 0.9, max: 0.9, text: `+${points}`, color: '#9fc4ff' });
+    shake = Math.max(shake, 0.15);
+  }
+
+  /**
+   * Pursuers close in from behind whenever they're faster than the bus,
+   * re-aim at its lane every policeReactionSeconds (the juke window), ram
+   * it for a life, and wreck themselves on any oncoming vehicle.
+   */
+  function updatePolice(r, dt, bus) {
+    const wanted = wantedLevel(r.distance, r.fares);
+    r.policeTimer -= dt;
+    if (r.policeTimer <= 0 && r.police.length < maxPolice(wanted)) {
+      r.policeTimer = POLICE_SPAWN_SECONDS;
+      const lane = Math.min(Math.max(r.lane + Math.floor(Math.random() * 3) - 1, 0), LANES - 1);
+      spawnPolice(r, lane, HEIGHT + 20);
+    }
+
+    const approach = (policeSpeed(wanted) - r.speed) * PX_PER_METER;
+    const laneStep = (LANE_WIDTH / POLICE_LANE_SECONDS) * dt;
+    for (const p of r.police) {
+      p.stun = Math.max(0, p.stun - dt);
+      p.y += (p.stun > 0 ? POLICE_FALLBACK_PX : -approach) * dt;
+      p.y = Math.max(p.y, BUS_Y - p.length / 2); // alongside at most, never ahead
+      p.retarget -= dt;
+      if (p.retarget <= 0 && p.stun === 0) {
+        p.retarget = policeReactionSeconds(wanted);
+        p.lane += Math.sign(r.lane - p.lane);
+      }
+      const tx = laneCenter(p.lane);
+      p.x = Math.abs(tx - p.x) <= laneStep ? tx : p.x + Math.sign(tx - p.x) * laneStep;
+    }
+
+    // Keep cruisers sharing a lane from stacking on top of each other.
+    r.police.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < r.police.length; i++) {
+      for (let j = 0; j < i; j++) {
+        const a = r.police[j];
+        const b = r.police[i];
+        if (Math.abs(a.x - b.x) < a.width && b.y < a.y + a.length + 6) b.y = a.y + a.length + 6;
+      }
+    }
+
+    const box = (v) => ({ x: v.x - v.width / 2 + 3, y: v.y + 3, w: v.width - 6, h: v.length - 6 });
+    r.police = r.police.filter((p) => {
+      const crashed = r.vehicles.some((v) => rectsOverlap(box(p), box(v)));
+      if (crashed) wreckPolice(r, p);
+      return !crashed && p.y < HEIGHT + 220; // far enough back = lost them
+    });
+
+    for (const p of r.police) {
+      if (rectsOverlap(bus, box(p))) {
+        p.stun = POLICE_STUN_SECONDS;
+        p.y = Math.max(p.y, BUS_Y + BUS_LENGTH + 8);
+        hit(r, p);
+        if (r.status !== 'playing') return;
+      }
+    }
+
+    r.wrecks.forEach((wk) => { wk.y += r.speed * PX_PER_METER * dt; });
+    r.wrecks = r.wrecks.filter((wk) => wk.y < HEIGHT + 40);
+  }
+
   function draw(t) {
     const r = run;
     ctx.save();
@@ -1015,8 +1213,10 @@ function init(canvas, el) {
     }
     drawScenery(ctx, scenery, r ? r.scroll : idleScroll, dpr);
     if (r) {
+      r.wrecks.forEach((wk) => drawWreck(ctx, wk, t));
       r.fareItems.forEach((f) => drawFare(ctx, f, t));
-      r.vehicles.forEach((v) => drawVehicle(ctx, v));
+      r.vehicles.forEach((v) => drawVehicle(ctx, v, t));
+      r.police.forEach((p) => (p.y >= HEIGHT ? drawSirenCue(ctx, p, t) : drawPolice(ctx, p, t, true)));
       const flashing = r.grace > 0 && Math.floor(r.grace * 10) % 2 === 0;
       drawBus(ctx, r.busX, flashing, r.status === 'playing' && input.brake);
     } else {
@@ -1153,6 +1353,13 @@ function init(canvas, el) {
   // same hit()/endRun() path real play uses. Harmless in production, same
   // reasoning as fishing-game.js's __fishingGameTestHooks.
   window.__busRushTestHooks = {
+    // Puts a cruiser right behind the bus, overlapping it, so the next
+    // update() rams through the real police path.
+    policeRam() {
+      if (!run || run.status !== 'playing') return;
+      run.grace = 0;
+      spawnPolice(run, run.lane, BUS_Y + BUS_LENGTH - 20);
+    },
     crash() {
       let guard = 0;
       while (run && run.status === 'playing' && guard < 50) {
@@ -1230,6 +1437,7 @@ function bootstrap() {
       score: $('bus-rush-hud-score'),
       lives: $('bus-rush-hud-lives'),
       fares: $('bus-rush-hud-fares'),
+      wanted: $('bus-rush-hud-wanted'),
     },
     start: {
       root: $('bus-rush-start-screen'),
@@ -1245,6 +1453,7 @@ function bootstrap() {
       title: $('bus-rush-run-over-title'),
       distance: $('bus-rush-run-over-distance'),
       fares: $('bus-rush-run-over-fares'),
+      wrecked: $('bus-rush-run-over-wrecked'),
       score: $('bus-rush-run-over-score'),
       tokens: $('bus-rush-run-over-tokens'),
       form: submit && submit.form,

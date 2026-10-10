@@ -9,9 +9,10 @@ screenshot yet (placeholder tile).
 
 ## Summary
 
-A top-down canvas driving game at `/bus-rush`: the player steers a bus
-across four lanes of oncoming traffic, collecting fares and dodging cars,
-vans and trucks. Fares earn tokens, which are spent between runs in a
+A top-down canvas driving game at `/bus-rush`: the player has stolen a bus
+and flees the police across four lanes of oncoming traffic, collecting
+fares and dodging cars, vans and trucks while police cruisers chase from
+behind. Fares earn tokens, which are spent between runs in a
 depot shop on upgrades — chiefly a faster engine. A public Postgres
 leaderboard shows the best runs.
 
@@ -36,6 +37,16 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   zero lives.
 * Trucks (from 800 m) and semi trucks (from 1500 m) are lethal: touching
   one ends the run instantly, regardless of lives left or grace.
+* **Police pursuit** (the bus is stolen): cruisers close in from behind
+  whenever they're faster than the bus, re-aim at its lane after a short
+  reaction delay, and ram it for one life (non-lethal, like a car). A
+  rammed cruiser drops back for a moment. A cruiser that touches oncoming
+  traffic wrecks, which earns bonus score and tokens, so baiting them into
+  traffic is a strategy. Further in, some traffic rows are **roadblocks**
+  (rows of oncoming cruisers, still passable). A 1–5 star **wanted level**
+  (distance + fares) scales pursuit speed, cruiser count, reaction time,
+  roadblock chance and wreck bonus. Losing the last life to police reads
+  "Busted!".
 * Depot shop between runs (tokens → leveled upgrades): Engine (top speed),
   Steering (faster lane changes), Bumpers (+1 life), Fare Box (more tokens
   per fare).
@@ -163,8 +174,15 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * **Row spacing floor** must fit the longest vehicle (the semi), the bus,
   and one unupgraded lane change at top speed — a unit test enforces this,
   so adding a longer vehicle means raising `ROW_SPACING_MIN`.
-* **Score** = `floor(distance) + fares × 25` — speed pays via distance.
-* **Tokens per run** = `fares × fareValue(fareBoxLevel) + floor(distance / 100)`.
+* **Score** = `floor(distance) + fares × 25 + wreck bonus` — speed pays via
+  distance; each wrecked cruiser adds `policeWreckPoints(stars)` (50 × stars).
+* **Tokens per run** = `fares × fareValue(fareBoxLevel) + floor(distance / 100) + wrecks × WRECK_TOKENS`.
+* **Police** (`wantedLevel`, `policeSpeed`, `maxPolice`,
+  `policeReactionSeconds`, `roadblockChance` in `rules.js`): one star is
+  outrun by an unupgraded bus at full throttle; five stars only with
+  Engine upgrades. Pursuers never overtake the bus (alongside at most), and
+  are "lost" once far enough behind. Roadblocks move at traffic speed and
+  use `pickBlockedLanes`, so they keep the every-row-is-passable guarantee.
 * **Upgrades**: cost grows per level (`upgradeCost`); every upgrade has a
   max level and the buy button disables at max or when tokens are short.
 * **Leaderboard bounds** (server, mirrored by CHECK constraints): name
@@ -194,7 +212,9 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * [x] `cmd/server/e2e_test.go`: real round-trip through `bus_rush_scores`.
 * [x] Playwright `e2e/bus-rush.spec.js`: start a run (HUD distance
       advances), shop purchase persists, run-over → leaderboard submit,
-      HTMX revisit still wires the game; plus the `/projects` card.
+      HTMX revisit still wires the game; plus the `/projects` card; a
+      police ram costs one life, and the last one is "Busted!"
+      (`__busRushTestHooks.policeRam`).
 
 ---
 

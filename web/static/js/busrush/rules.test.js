@@ -31,6 +31,15 @@ import {
   pickVehicle,
   rectsOverlap,
   livesAfterHit,
+  WANTED_MAX,
+  WRECK_TOKENS,
+  POLICE_CAR,
+  wantedLevel,
+  policeSpeed,
+  maxPolice,
+  policeReactionSeconds,
+  roadblockChance,
+  policeWreckPoints,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -101,6 +110,49 @@ describe('scoring', () => {
     assert.equal(runTokens(450, 3, 0), 3 + 4);
     assert.equal(runTokens(450, 3, 2), 9 + 4);
     assert.equal(runTokens(0, 0, 0), 0);
+  });
+
+  test('wrecked police add score and tokens', () => {
+    assert.equal(runScore(100, 0, 150), 250);
+    assert.equal(runTokens(0, 0, 0, 3), 3 * WRECK_TOKENS);
+    assert.equal(runScore(100, 0, -50), 100);
+  });
+});
+
+describe('police pursuit', () => {
+  test('wanted level starts at one star, rises with distance and fares, caps', () => {
+    assert.equal(wantedLevel(0, 0), 1);
+    assert.ok(wantedLevel(1200, 0) > wantedLevel(0, 0));
+    assert.ok(wantedLevel(0, 16) > wantedLevel(0, 0));
+    assert.equal(wantedLevel(1e7, 1e7), WANTED_MAX);
+    assert.equal(wantedLevel(NaN, -3), 1);
+  });
+
+  test('more stars mean faster, more numerous, quicker-reacting police', () => {
+    for (let w = 2; w <= WANTED_MAX; w++) {
+      assert.ok(policeSpeed(w) > policeSpeed(w - 1));
+      assert.ok(maxPolice(w) >= maxPolice(w - 1));
+      assert.ok(policeReactionSeconds(w) < policeReactionSeconds(w - 1));
+      assert.ok(policeWreckPoints(w) > policeWreckPoints(w - 1));
+    }
+    assert.ok(policeReactionSeconds(WANTED_MAX) > 0);
+  });
+
+  test('one star is outrun at base top speed; max stars only with Engine upgrades', () => {
+    assert.ok(policeSpeed(1) < BASE_MAX_SPEED);
+    assert.ok(policeSpeed(WANTED_MAX) > BASE_MAX_SPEED);
+    assert.ok(policeSpeed(WANTED_MAX) < maxSpeed(UPGRADES.engine.maxLevel));
+  });
+
+  test('roadblocks need distance and heat', () => {
+    assert.equal(roadblockChance(100, WANTED_MAX), 0);
+    assert.equal(roadblockChance(5000, 1), 0);
+    assert.ok(roadblockChance(5000, WANTED_MAX) > 0 && roadblockChance(5000, WANTED_MAX) < 0.5);
+  });
+
+  test('police cars ram for one life, never lethal, and fit the row spacing', () => {
+    assert.equal(livesAfterHit(3, POLICE_CAR, 0), 2);
+    assert.ok(POLICE_CAR.length <= Math.max(...VEHICLES.map((v) => v.length)));
   });
 });
 

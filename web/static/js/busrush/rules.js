@@ -95,18 +95,82 @@ export function fareValue(fareBoxLevel) {
   return 1 + level(fareBoxLevel, UPGRADES.fareBox.maxLevel);
 }
 
-/** Run score: distance pays (so speed pays), fares add a bonus. */
-export function runScore(distanceMeters, fares) {
-  const d = Number.isFinite(distanceMeters) && distanceMeters > 0 ? Math.floor(distanceMeters) : 0;
-  const f = Number.isFinite(fares) && fares > 0 ? Math.floor(fares) : 0;
-  return Math.min(d + f * FARE_POINTS, SCORE_MAX);
+function wholeOrZero(n) {
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * Run score: distance pays (so speed pays), fares add a bonus, and
+ * `bonusPoints` is what wrecked police earned (policeWreckPoints).
+ */
+export function runScore(distanceMeters, fares, bonusPoints = 0) {
+  return Math.min(wholeOrZero(distanceMeters) + wholeOrZero(fares) * FARE_POINTS + wholeOrZero(bonusPoints), SCORE_MAX);
 }
 
 /** Tokens earned by a finished run. */
-export function runTokens(distanceMeters, fares, fareBoxLevel) {
-  const d = Number.isFinite(distanceMeters) && distanceMeters > 0 ? distanceMeters : 0;
-  const f = Number.isFinite(fares) && fares > 0 ? Math.floor(fares) : 0;
-  return f * fareValue(fareBoxLevel) + Math.floor(d / 100);
+export function runTokens(distanceMeters, fares, fareBoxLevel, wrecks = 0) {
+  return wholeOrZero(fares) * fareValue(fareBoxLevel)
+    + Math.floor(wholeOrZero(distanceMeters) / 100)
+    + wholeOrZero(wrecks) * WRECK_TOKENS;
+}
+
+// ---------------------------------------------------------------------------
+// Police pursuit — the bus is stolen. Everything scales with the wanted level.
+// ---------------------------------------------------------------------------
+
+export const WANTED_MAX = 5;
+export const WRECK_TOKENS = 2;
+
+/** Seconds into a run before the first cruiser, and between later ones. */
+export const POLICE_FIRST_SECONDS = 4;
+export const POLICE_SPAWN_SECONDS = 3.5;
+
+/** Seconds a cruiser backs off after ramming the bus. */
+export const POLICE_STUN_SECONDS = 1.4;
+
+/** Roadblocks (rows of oncoming cruisers) start at this distance. */
+export const ROADBLOCK_MIN_DISTANCE = 600;
+
+/** The cruiser used for both pursuit cars and roadblocks. Not lethal: a ram costs one life. */
+export const POLICE_CAR = { kind: 'police', length: 64, width: 50, police: true };
+
+/** Wanted stars (1..WANTED_MAX): heat rises with distance and fares. */
+export function wantedLevel(distanceMeters, fares) {
+  const heat = wholeOrZero(distanceMeters) / 500 + wholeOrZero(fares) / 8;
+  return Math.min(WANTED_MAX, 1 + Math.floor(heat));
+}
+
+function stars(wanted) {
+  return Number.isFinite(wanted) ? Math.min(Math.max(Math.floor(wanted), 1), WANTED_MAX) : 1;
+}
+
+/**
+ * Pursuit speed (m/s). Low stars are outrun by an unupgraded bus at full
+ * throttle (BASE_MAX_SPEED); top stars need Engine upgrades to escape.
+ */
+export function policeSpeed(wanted) {
+  return 13 + stars(wanted) * 1.5;
+}
+
+/** Most cruisers chasing at once. */
+export function maxPolice(wanted) {
+  return [1, 1, 2, 2, 3][stars(wanted) - 1];
+}
+
+/** Seconds a cruiser waits before re-aiming at the bus's lane — the window to juke it. */
+export function policeReactionSeconds(wanted) {
+  return 1.0 - stars(wanted) * 0.12;
+}
+
+/** Chance a traffic row is a police roadblock instead. */
+export function roadblockChance(distanceMeters, wanted) {
+  if (wholeOrZero(distanceMeters) < ROADBLOCK_MIN_DISTANCE) return 0;
+  return 0.06 * (stars(wanted) - 1);
+}
+
+/** Score for wrecking a cruiser into traffic. */
+export function policeWreckPoints(wanted) {
+  return 50 * stars(wanted);
 }
 
 /** Cost of the next level of an upgrade, or null when it's maxed/unknown. */

@@ -59,7 +59,8 @@ touching that area rather than expecting this section to carry it:
   mix with real synced LTA data in the default schema (the sync's 50% guard
   would refuse that swap anyway). Production needs `LTA_ACCOUNT_KEY` and a
   referrer-restricted `GOOGLE_MAPS_API_KEY` provisioned.
-- **Bus Rush** (`/bus-rush`, top-down canvas driving game — dodge oncoming
+- **Bus Rush** (`/bus-rush`, top-down canvas driving game — flee the police
+  in a stolen bus (pursuit cars, roadblocks, wanted level), dodge oncoming
   traffic, collect fares, buy Engine/Steering/Bumpers/Fare Box upgrades;
   Postgres leaderboard, `localStorage` progress) — `docs/features/bus-rush.md`.
   Rules/tuning live in `web/static/js/busrush/rules.js`; no screenshot yet,
