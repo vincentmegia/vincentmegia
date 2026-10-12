@@ -39,14 +39,22 @@ export const UPGRADES = {
   steering: { label: 'Steering', baseCost: 10, growth: 1.7, maxLevel: 4 },
   bumpers: { label: 'Bumpers', baseCost: 25, growth: 1.9, maxLevel: 3 },
   fareBox: { label: 'Fare Box', baseCost: 20, growth: 1.8, maxLevel: 4 },
+  // Lets the bus ram police instead of being Busted — see ramOutcome.
+  ram: { label: 'Ram Plating', baseCost: 50, growth: 2, maxLevel: 3 },
 };
+
+/** Construction zones (and their dump trucks) start at this distance. */
+const CONSTRUCTION_MIN_DISTANCE_M = 300;
 
 /**
  * Oncoming vehicle kinds; length/width in pixels. A `lethal` vehicle ends
  * the run on contact regardless of lives left or post-hit grace. `weight`
  * (default 1) is the relative chance pickVehicle picks it once unlocked —
  * buses (`bus: true`, non-lethal) are lighter so they add variety without
- * crowding out the trucks.
+ * crowding out the trucks. A `fuel` tanker isn't lethal on contact: it
+ * stuns the bus and then explodes (FUEL_STUN_SECONDS, FUEL_FUSE_SECONDS). A
+ * `construction` vehicle (the dump truck) only turns up while a
+ * construction zone is on the road — see pickVehicle.
  */
 export const VEHICLES = [
   { kind: 'car', length: 64, width: 50, minDistance: 0 },
@@ -58,6 +66,8 @@ export const VEHICLES = [
   { kind: 'garbage', label: 'garbage truck', length: 110, width: 60, minDistance: 500, lethal: true, spills: 'garbage' },
   { kind: 'truck', length: 118, width: 62, minDistance: 800, lethal: true, spills: 'banana' },
   { kind: 'semi', length: 170, width: 64, minDistance: 1500, lethal: true, spills: 'banana' },
+  { kind: 'fuel', label: 'fuel tanker', length: 140, width: 60, minDistance: 700, fuel: true, weight: 0.4 },
+  { kind: 'dump', label: 'dump truck', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 1.5 },
 ];
 
 function level(n, max) {
@@ -347,29 +357,31 @@ export function fareOffset(spacingPx, blockerLength, radius) {
 }
 
 /**
- * Chooses which lanes the next traffic row blocks. Guarantees:
+ * Chooses which lanes the next traffic row blocks. `closed` lanes (a
+ * construction zone) get no vehicle and never count as open. Guarantees:
  *   - at least one lane stays open, and
  *   - when prevOpen is given, at least one new open lane is the same as or
  *     next to a previous open lane, so the bus is never asked to cross
  *     the whole road between two rows.
  * `rng` returns [0, 1), e.g. Math.random. Returns blocked lanes, sorted.
  */
-export function pickBlockedLanes(rng, distanceMeters, prevOpen) {
+export function pickBlockedLanes(rng, distanceMeters, prevOpen, closed = []) {
+  const usable = [...Array(LANES).keys()].filter((l) => !closed.includes(l));
   const cap = maxBlockedLanes(distanceMeters);
   const count = 1 + Math.floor(rng() * cap);
   const reachable = new Set();
-  (prevOpen && prevOpen.length ? prevOpen : [...Array(LANES).keys()]).forEach((lane) => {
-    [lane - 1, lane, lane + 1].forEach((l) => { if (l >= 0 && l < LANES) reachable.add(l); });
+  (prevOpen && prevOpen.length ? prevOpen : usable).forEach((lane) => {
+    [lane - 1, lane, lane + 1].forEach((l) => { if (usable.includes(l)) reachable.add(l); });
   });
-  const reachableList = [...reachable];
+  const reachableList = reachable.size ? [...reachable] : usable;
   const keepOpen = reachableList[Math.floor(rng() * reachableList.length)];
 
-  const candidates = [...Array(LANES).keys()].filter((l) => l !== keepOpen);
+  const candidates = usable.filter((l) => l !== keepOpen);
   for (let i = candidates.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
-  return candidates.slice(0, Math.min(count, LANES - 1)).sort((a, b) => a - b);
+  return candidates.slice(0, Math.min(count, usable.length - 1)).sort((a, b) => a - b);
 }
 
 /**
@@ -384,14 +396,18 @@ export function livesAfterHit(lives, vehicle, graceSeconds) {
   return Math.max(0, lives - 1);
 }
 
-/** Lanes not in `blocked`. */
-export function openLanes(blocked) {
-  return [...Array(LANES).keys()].filter((l) => !blocked.includes(l));
+/** Lanes neither `blocked` by traffic nor `closed` by a construction zone. */
+export function openLanes(blocked, closed = []) {
+  return [...Array(LANES).keys()].filter((l) => !blocked.includes(l) && !closed.includes(l));
 }
 
-/** Picks a vehicle kind by `weight`, unlocking bigger ones as distance grows. */
-export function pickVehicle(rng, distanceMeters) {
-  const pool = VEHICLES.filter((v) => distanceMeters >= v.minDistance);
+/**
+ * Picks a vehicle kind by `weight`, unlocking bigger ones as distance grows.
+ * Dump trucks (`construction`) are only in the pool while a construction
+ * zone is on the road.
+ */
+export function pickVehicle(rng, distanceMeters, { construction = false } = {}) {
+  const pool = VEHICLES.filter((v) => distanceMeters >= v.minDistance && (construction || !v.construction));
   const total = pool.reduce((sum, v) => sum + (v.weight ?? 1), 0);
   let roll = rng() * total;
   for (const v of pool) {
@@ -404,4 +420,234 @@ export function pickVehicle(rng, distanceMeters) {
 /** Axis-aligned rectangle overlap ({x, y, w, h}); touching edges don't count. */
 export function rectsOverlap(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+// ---------------------------------------------------------------------------
+// Fuel tankers — a crash stuns the bus, then the tanker blows.
+// ---------------------------------------------------------------------------
+
+/** Seconds the bus is stunned (frozen, no steering) after hitting a tanker. */
+export const FUEL_STUN_SECONDS = 10;
+/** Seconds after the stun to steer clear before the tanker explodes. */
+export const FUEL_FUSE_SECONDS = 2;
+/**
+ * Blast radius (px, centre to centre). Sized so that after a head-on crash
+ * one lane over is still caught but two lanes over is clear — and two lane
+ * changes always fit inside FUEL_FUSE_SECONDS (a unit test checks both).
+ */
+export const FUEL_BLAST_RADIUS = 180;
+/** Score for steering clear of a tanker blast. */
+export const TANKER_ESCAPE_POINTS = 300;
+
+/** Whether a bus centre offset (dx, dy) px from the tanker's centre is inside the blast. */
+export function inBlast(dx, dy) {
+  return Math.hypot(dx, dy) < FUEL_BLAST_RADIUS;
+}
+
+// ---------------------------------------------------------------------------
+// Ram Plating, SWAT vans and the police helicopter.
+// ---------------------------------------------------------------------------
+
+/** Armoured pursuer: shoves ordinary traffic aside instead of wrecking on it. */
+export const SWAT_VAN = { kind: 'swat', label: 'SWAT van', length: 84, width: 58, police: true, swat: true, lethal: true };
+export const SWAT_MIN_WANTED = 4;
+export const HELICOPTER_WANTED = 5;
+
+/** SWAT vans chasing at once: one from SWAT_MIN_WANTED stars. */
+export function maxSwat(wanted) {
+  return stars(wanted) >= SWAT_MIN_WANTED ? 1 : 0;
+}
+
+/** The helicopter (and its spike strips) only joins at five stars. */
+export function helicopterActive(wanted) {
+  return stars(wanted) >= HELICOPTER_WANTED;
+}
+
+/** Seconds between the helicopter's spike-strip drops. */
+export const SPIKE_DROP_SECONDS = 4.5;
+/**
+ * How far ahead of the bus's nose (px) a spike strip lands — far enough
+ * that at the fastest possible speed there's still time to change lane.
+ */
+export const SPIKE_LEAD_PX = 300;
+/** A spike strip is a non-lethal hazard: it costs one life (grace applies). */
+export const SPIKES = { kind: 'spikes', label: 'spike strip' };
+
+/**
+ * What ramming a police vehicle does at a Ram Plating level: null means the
+ * usual Busted; otherwise the target is wrecked and the bus loses
+ * `lifeCost` lives (still subject to post-hit grace).
+ *   Lv1 — cruisers wreck, costing a life.  Lv2 — cruisers wreck for free.
+ *   Lv3 — SWAT vans wreck too, costing a life.
+ */
+export function ramOutcome(ramLevel, target) {
+  const lvl = level(ramLevel, UPGRADES.ram.maxLevel);
+  if (!target || !target.police) return null;
+  if (target.swat) return lvl >= 3 ? { lifeCost: 1 } : null;
+  if (lvl >= 2) return { lifeCost: 0 };
+  if (lvl >= 1) return { lifeCost: 1 };
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Power-ups — occasionally a fare spot holds one instead.
+// ---------------------------------------------------------------------------
+
+/**
+ * nitro: instant top speed and pursuers shoved back NITRO_PUSH_PX.
+ * shield: absorbs the next collision (not a fuel tanker) within `seconds`.
+ * magnet: pulls fares within MAGNET_RADIUS for `seconds`.
+ * emp: wrecks every pursuer and grounds the helicopter for `seconds`.
+ */
+export const POWERUPS = {
+  nitro: { label: 'Nitro', seconds: 0 },
+  shield: { label: 'Shield', seconds: 10 },
+  magnet: { label: 'Magnet', seconds: 8 },
+  emp: { label: 'EMP', seconds: 6 },
+};
+export const POWERUP_CHANCE = 0.12;
+export const POWERUP_MIN_DISTANCE = 100;
+export const NITRO_PUSH_PX = 300;
+export const MAGNET_RADIUS = 170;
+
+/** The power-up (a POWERUPS key) a fare spot holds instead of a fare, or null. */
+export function powerupAt(rng, distanceMeters) {
+  if (wholeOrZero(distanceMeters) < POWERUP_MIN_DISTANCE || rng() >= POWERUP_CHANCE) return null;
+  const keys = Object.keys(POWERUPS);
+  return keys[Math.floor(rng() * keys.length)];
+}
+
+/** Whether an active shield absorbs a collision with `thing` — everything but a fuel tanker. */
+export function shieldAbsorbs(thing) {
+  return !(thing && thing.fuel);
+}
+
+// ---------------------------------------------------------------------------
+// Road hazards: potholes, jaywalkers, construction zones.
+// ---------------------------------------------------------------------------
+
+/** Potholes: chance per traffic row; one drops the bus to the district's speed floor. */
+export const POTHOLE_CHANCE = 0.15;
+export const POTHOLE_MIN_DISTANCE = 200;
+
+/** Jaywalkers: chance per traffic row, walking speed in px/s. A hit costs one life. */
+export const PEDESTRIAN_CHANCE = 0.18;
+export const PEDESTRIAN_MIN_DISTANCE = 100;
+export const PEDESTRIAN_SPEED = 38;
+export const PEDESTRIAN = { kind: 'pedestrian', label: 'pedestrian' };
+
+/** Nobody jaywalks across an expressway. */
+export function pedestriansAllowed(levelIndex) {
+  return LEVELS[level(levelIndex, LEVELS.length - 1)] !== 'Expressway';
+}
+
+/**
+ * Construction zones close one edge lane for CONSTRUCTION_LENGTH px of road
+ * (world-stationary, like a spill). While one is on the road its lane gets
+ * no traffic (pickBlockedLanes' `closed`) and dump trucks join the traffic.
+ * Touching the barriers costs one life and shoves the bus a lane inward.
+ */
+export const CONSTRUCTION_MIN_DISTANCE = CONSTRUCTION_MIN_DISTANCE_M;
+export const CONSTRUCTION_CHANCE = 0.05;
+export const CONSTRUCTION_LENGTH = 720;
+export const BARRIER = { kind: 'barrier', label: 'roadworks barrier' };
+
+/** Which lane a new zone closes: an edge lane, at random. */
+export function constructionLane(rng) {
+  return rng() < 0.5 ? 0 : LANES - 1;
+}
+
+/** The lane a bus bounced off a zone in `lane` lands in: one lane inward. */
+export function zonePushLane(lane) {
+  return lane <= 0 ? 1 : lane >= LANES - 1 ? LANES - 2 : lane;
+}
+
+// ---------------------------------------------------------------------------
+// Missions (three active at a time, paid when done) and achievements.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-run missions. `stat` names a field of the run's stats (see
+ * bus-rush.js's runStats); `level` and `wanted` are the highest reached.
+ * `needs` lists upgrades a mission needs before it can be offered.
+ */
+export const MISSIONS = {
+  fares30: { label: 'Collect 30 fares in one run', stat: 'fares', target: 30, reward: 15 },
+  wreck3: { label: 'Wreck 3 police cars in one run', stat: 'wrecked', target: 3, reward: 20 },
+  distance1500: { label: 'Drive 1,500 m in one run', stat: 'distance', target: 1500, reward: 15 },
+  expressway: { label: 'Reach the Expressway', stat: 'level', target: 3, reward: 20 },
+  powerups3: { label: 'Grab 3 power-ups in one run', stat: 'powerups', target: 3, reward: 10 },
+  tanker: { label: 'Escape a fuel tanker blast', stat: 'tankerEscapes', target: 1, reward: 25 },
+  ram2: { label: 'Ram 2 police cars in one run', stat: 'rammed', target: 2, reward: 20, needs: ['ram'] },
+  clean600: { label: 'Drive 600 m without a scratch', stat: 'cleanStretch', target: 600, reward: 15 },
+  wanted4: { label: 'Reach a 4-star wanted level', stat: 'wanted', target: 4, reward: 15 },
+};
+export const ACTIVE_MISSIONS = 3;
+
+/** Progress toward a mission, 0..target. */
+export function missionProgress(key, stats) {
+  const m = MISSIONS[key];
+  if (!m || !stats) return 0;
+  return Math.min(m.target, wholeOrZero(stats[m.stat]));
+}
+
+export function missionDone(key, stats) {
+  return Boolean(MISSIONS[key]) && missionProgress(key, stats) >= MISSIONS[key].target;
+}
+
+/**
+ * Tops `active` back up to ACTIVE_MISSIONS distinct missions, keeping the
+ * valid ones in order. New picks skip `exclude` (just completed) when the
+ * pool allows, and missions whose `needs` upgrades are still at level 0.
+ */
+export function refillMissions(rng, active, upgrades = {}, exclude = []) {
+  const kept = (Array.isArray(active) ? active : [])
+    .filter((k, i, arr) => MISSIONS[k] && arr.indexOf(k) === i)
+    .slice(0, ACTIVE_MISSIONS);
+  const eligible = Object.keys(MISSIONS).filter((k) => !kept.includes(k)
+    && (MISSIONS[k].needs || []).every((u) => (upgrades[u] || 0) > 0));
+  const fresh = eligible.filter((k) => !exclude.includes(k));
+  const pool = fresh.length >= ACTIVE_MISSIONS - kept.length ? fresh : eligible;
+  while (kept.length < ACTIVE_MISSIONS && pool.length) {
+    kept.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  }
+  return kept;
+}
+
+/**
+ * One-time achievements. `scope` 'run' checks one run's stats, 'lifetime'
+ * the running totals (addLifetime). Each pays `reward` tokens once.
+ */
+export const ACHIEVEMENTS = {
+  joyrider: { label: 'Joyrider', desc: 'Finish your first run', scope: 'lifetime', stat: 'runs', target: 1, reward: 5 },
+  copBait: { label: 'Cop Bait', desc: 'Wreck 25 police cars', scope: 'lifetime', stat: 'wrecked', target: 25, reward: 40 },
+  fareCollector: { label: 'Fare Collector', desc: 'Collect 500 fares', scope: 'lifetime', stat: 'fares', target: 500, reward: 50 },
+  marathon: { label: 'Marathon', desc: 'Drive 10,000 m in total', scope: 'lifetime', stat: 'distance', target: 10000, reward: 40 },
+  demolition: { label: 'Demolition Driver', desc: 'Ram 10 police cars', scope: 'lifetime', stat: 'rammed', target: 10, reward: 40 },
+  islandHopper: { label: 'Island Hopper', desc: 'Reach Changi in one run', scope: 'run', stat: 'level', target: 5, reward: 50 },
+  mostWanted: { label: 'Most Wanted', desc: 'Hit a 5-star wanted level', scope: 'run', stat: 'wanted', target: 5, reward: 30 },
+  tooClose: { label: 'Too Close for Comfort', desc: 'Escape a fuel tanker blast', scope: 'run', stat: 'tankerEscapes', target: 1, reward: 20 },
+  wasted: { label: 'Scenic Route', desc: 'Get flung to Alcatraz', scope: 'run', stat: 'wasted', target: 1, reward: 10 },
+};
+
+/** Lifetime totals after one more run. */
+export function addLifetime(lifetime, stats) {
+  const base = lifetime || {};
+  const s = stats || {};
+  return {
+    runs: wholeOrZero(base.runs) + 1,
+    wrecked: wholeOrZero(base.wrecked) + wholeOrZero(s.wrecked),
+    fares: wholeOrZero(base.fares) + wholeOrZero(s.fares),
+    distance: wholeOrZero(base.distance) + wholeOrZero(s.distance),
+    rammed: wholeOrZero(base.rammed) + wholeOrZero(s.rammed),
+  };
+}
+
+/** Achievement keys newly earned by a run (not already in `unlocked`). */
+export function newAchievements(unlocked, stats, lifetime) {
+  const have = new Set(Array.isArray(unlocked) ? unlocked : []);
+  return Object.entries(ACHIEVEMENTS)
+    .filter(([key, a]) => !have.has(key)
+      && wholeOrZero(((a.scope === 'run' ? stats : lifetime) || {})[a.stat]) >= a.target)
+    .map(([key]) => key);
 }

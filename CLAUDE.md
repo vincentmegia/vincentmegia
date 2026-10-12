@@ -63,8 +63,13 @@ touching that area rather than expecting this section to carry it:
   in a stolen bus (lethal pursuit cars, roadblocks, wanted level) through
   five districts/levels (CBD → Changi), four buyable buses, oncoming
   school/city/double-decker/bendy buses, bananas that
-  skid you and garbage that slows you, dodge oncoming
-  traffic, collect fares, buy Engine/Steering/Bumpers/Fare Box upgrades;
+  skid you and garbage that slows you, fuel tankers that stun you then
+  explode (a WASTED cutscene to Alcatraz if you don't get clear),
+  construction zones with dump trucks, potholes, jaywalkers (not on the
+  Expressway), a dark Changi, power-ups (Nitro/Shield/Magnet/EMP), a
+  SWAT van at 4★ and a spike-dropping helicopter at 5★, missions and
+  achievements, dodge oncoming traffic, collect fares, buy
+  Engine/Steering/Bumpers/Fare Box/Ram Plating upgrades;
   Postgres leaderboard, `localStorage` progress) — `docs/features/bus-rush.md`.
   Rules/tuning live in `web/static/js/busrush/rules.js`; no screenshot yet,
   so its `/projects` card shows the placeholder tile.

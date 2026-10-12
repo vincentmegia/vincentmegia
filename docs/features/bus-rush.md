@@ -92,7 +92,51 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   another.
 * Depot shop between runs (tokens → buses, and leveled upgrades): Engine
   (top speed), Steering (faster lane changes), Bumpers (+1 life), Fare Box
-  (more tokens per fare).
+  (more tokens per fare), Ram Plating (see below).
+* **Fuel tankers** (from 700 m, non-lethal on contact): hitting one freezes
+  the road and stuns the bus for `FUEL_STUN_SECONDS` (10 s, steering
+  locked, no life lost, the tanker jackknifed and leaking). Then the bus
+  has `FUEL_FUSE_SECONDS` (2 s) to steer out of `FUEL_BLAST_RADIUS`
+  (180 px, centre to centre — one lane over is still caught, two lanes is
+  clear) before it explodes. Escaping scores `TANKER_ESCAPE_POINTS` (300)
+  and the blast wrecks nearby traffic/police. Caught in it, the bus blows
+  up and a **WASTED cutscene** plays: the driver is flung out of the
+  fireball across the sea from Singapore to Alcatraz, lands in the prison
+  yard, the cell bars slam shut, and "WASTED" comes up (any key/tap skips
+  ahead), then Run Over titled "WASTED". A shield doesn't stop a tanker.
+* **Ram Plating** (upgrade, 3 levels, `ramOutcome`): Lv1 — ramming a
+  police cruiser (pursuer or roadblock) wrecks it for one life instead of
+  Busted; Lv2 — for free; Lv3 — SWAT vans too, for one life.
+* **Bosses**: from 4★ one armoured **SWAT van** (`SWAT_VAN`, `maxSwat`)
+  joins the pursuit — lethal, it shoves ordinary traffic aside instead of
+  wrecking on it, and only wrecks on lethal trucks, barriers, bananas into
+  traffic, an EMP or Ram Plating Lv3 (double wreck points). At 5★ a
+  **police helicopter** hovers ahead, spotlights the bus and drops a
+  **spike strip** `SPIKE_LEAD_PX` ahead of it in its lane every
+  `SPIKE_DROP_SECONDS`; a spike strip costs one life.
+* **Power-ups** (`POWERUPS`, from 100 m, 12% of fare spots): Nitro
+  (instant top speed, pursuers shoved back, clears garbage slowdown),
+  Shield (10 s, absorbs the next collision of any kind except a tanker),
+  Magnet (8 s, pulls nearby fares in), EMP (wrecks every pursuer, grounds
+  the helicopter for 6 s). Active ones show as chips top-left of the road.
+* **Hazards**: potholes (from 200 m; speed to the district floor, no life
+  lost); jaywalkers (from 100 m; one life; they dodge oncoming traffic;
+  **never on the Expressway**, `pedestriansAllowed`); **construction
+  zones** (from 300 m) close an edge lane for `CONSTRUCTION_LENGTH` px
+  with cones, barriers, a sand pile and a parked dump truck — touching
+  them costs a life and shoves the bus a lane inward, police that touch
+  them wreck, and while one is on the road its lane gets no traffic and
+  lethal **dump trucks** join the traffic (`construction` vehicles);
+  **night in Changi** — the last district is dark apart from headlights,
+  police lights and street-lamp pools.
+* **Missions & achievements** (aside panel above the leaderboard): three
+  active missions (`MISSIONS`, e.g. "Wreck 3 police cars in one run",
+  "Escape a fuel tanker blast") with live progress; completed ones pay
+  their reward at run end and are replaced (`refillMissions`; ones that
+  need Ram Plating are offered only once it's bought). Nine one-time
+  `ACHIEVEMENTS` (run or lifetime stats, `addLifetime`) pay tokens once.
+  Run Over shows the bonus and what was completed/unlocked. Missions,
+  achievements and lifetime totals live in the same `localStorage` blob.
 * Progress (tokens, upgrade levels, owned/selected buses, bests) in
   `localStorage`, same as the
   Fishing Game — there are no visitor accounts.
@@ -347,7 +391,12 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       the drop window), skids (always exactly one lane, never off the
       road), garbage slowdown (half, floored, bled off gradually), and
       buses (row spacing fits every bus; each bus's handling), oncoming
-      buses (non-lethal, unlock by distance, weighted below trucks).
+      buses (non-lethal, unlock by distance, weighted below trucks),
+      tanker blast geometry (one lane caught, two clear, two lane changes
+      fit the fuse), ram levels, SWAT/helicopter star thresholds, spike
+      lead time, power-up odds and shield rules, no Expressway jaywalkers,
+      closed lanes never break "every row is passable", missions and
+      achievements.
 * [x] Go: validation bounds, service rejects invalid input before the repo,
       handler empty/populated/escaped leaderboard, 400 on bad input, 429 on
       flood, error fragment on DB failure.
@@ -363,11 +412,19 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       lane over, ignores steering mid-skid, and costs no life; a police car
       that runs over a banana skids one lane over; buying a bus drives it,
       changes its lives and persists; garbage halves top speed then
-      recovers, costing no life; each oncoming bus kind costs one life.
+      recovers, costing no life; each oncoming bus kind costs one life;
+      a tanker stuns (steering locked, no life lost) then WASTED if you
+      stay, or escapes two lanes over; Ram Plating Lv1/Lv3 vs. cruisers
+      and SWAT; shield absorbs a truck; EMP wrecks pursuers; pothole,
+      jaywalker, spike strip and construction-zone effects; the 5★
+      helicopter and SWAT van; missions/achievements panel and payout.
       Plus
       `e2e/projects.spec.js`'s card tests.
 * Test hooks (`window.__busRushTestHooks`, used only by tests): `crash()`,
-  `spawn(kind)` (a vehicle in the bus's lane), `place(kind, lane, y)` (a
+  `spawn(kind)` (a vehicle in the bus's lane, incl. `fuel`),
+  `stunLeft(s)`, `upgrade(key, lvl)`, `powerup(kind, lane?, y?)`,
+  `pothole/spikes/pedestrian(lane?, y?)`, `zone(lane?, bottom?)`,
+  `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y)` (a
   vehicle anywhere, for screenshots), `banana()` (one just ahead
   of the bus), `garbage()` (a pile just ahead of the bus), `noPolice()`,
   `policeBanana()` (a non-re-aiming cruiser behind the bus

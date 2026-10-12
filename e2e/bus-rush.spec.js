@@ -272,3 +272,189 @@ test('running over garbage halves top speed for a while, then it recovers, costi
 	expect(after.lives).toBe(lives);
 	expect(after.garbage).toBe(0);
 });
+
+// --- Fuel tankers, Ram Plating, power-ups, hazards, bosses, missions --------
+
+const snapshot = (page) => page.evaluate(() => window.__busRushTestHooks.snapshot());
+
+async function startQuietRun(page) {
+	await page.goto('/bus-rush');
+	await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
+	await page.reload();
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.noPolice();
+	});
+}
+
+test('a fuel tanker stuns the bus (steering locked, no life lost), then staying close is WASTED', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
+	await page.reload();
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	const lives = await page.locator('#bus-rush-hud-lives').textContent();
+	await page.evaluate(() => window.__busRushTestHooks.spawn('fuel'));
+	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	await expect(page.locator('#bus-rush-hud-speed')).toHaveText('0 km/h');
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
+	const lane = (await snapshot(page)).lane;
+	await page.keyboard.press(lane > 0 ? 'ArrowLeft' : 'ArrowRight');
+	expect((await snapshot(page)).lane).toBe(lane); // stunned: steering ignored
+
+	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
+	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
+	// Stay put: the tanker blows with the bus inside the blast.
+	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 4000 }).toBe(true);
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeHidden();
+	await page.keyboard.press('Enter'); // skip to WASTED
+	await page.keyboard.press('Enter'); // on to Run Over
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible();
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('WASTED');
+	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Scenic Route');
+	await expect(page.locator('[data-achievement-key="wasted"] [data-achievement-mark]')).toHaveText('✓');
+});
+
+test('steering two lanes clear of a tanker during the fuse escapes the blast', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	await page.evaluate(() => window.__busRushTestHooks.spawn('fuel'));
+	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
+	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
+	const key = (await snapshot(page)).lane <= 1 ? 'ArrowRight' : 'ArrowLeft';
+	await page.keyboard.press(key);
+	await page.keyboard.press(key);
+	await expect.poll(async () => (await snapshot(page)).tankerEscapes, { timeout: 4000 }).toBe(1);
+	const s = await snapshot(page);
+	expect(s.status).toBe('playing');
+	expect(s.crash).toBeNull();
+});
+
+test('Ram Plating: level 1 wrecks a ramming cruiser for one life instead of Busted', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => window.__busRushTestHooks.upgrade('ram', 1));
+	const lives = (await snapshot(page)).lives;
+	await page.evaluate(() => window.__busRushTestHooks.policeRam());
+	await expect.poll(async () => (await snapshot(page)).rammed, { timeout: 3000 }).toBe(1);
+	const s = await snapshot(page);
+	expect(s.status).toBe('playing');
+	expect(s.wrecked).toBe(1);
+	expect(s.lives).toBe(lives - 1);
+});
+
+test('Ram Plating: a SWAT van still busts below level 3, and is wrecked at level 3', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => window.__busRushTestHooks.upgrade('ram', 3));
+	await page.evaluate(() => window.__busRushTestHooks.swatRam());
+	await expect.poll(async () => (await snapshot(page)).rammed, { timeout: 3000 }).toBe(1);
+	expect((await snapshot(page)).status).toBe('playing');
+
+	await page.evaluate(() => window.__busRushTestHooks.upgrade('ram', 2));
+	await page.evaluate(() => window.__busRushTestHooks.swatRam());
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Busted!', { timeout: 3000 });
+});
+
+test('Ram Plating is sold in the depot', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
+	await page.reload();
+	await page.evaluate(() => window.__busRushTestHooks.grantTokens(60));
+	await page.locator('#bus-rush-start-shop-button').click();
+	const ram = page.locator('[data-upgrade-key="ram"]');
+	await expect(ram.locator('[data-upgrade-cost]')).toHaveText('50');
+	await ram.locator('[data-upgrade-buy]').click();
+	await expect(ram.locator('[data-upgrade-level]')).toHaveText('1');
+});
+
+test('a shield power-up absorbs a lethal truck', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	await page.evaluate(() => window.__busRushTestHooks.powerup('shield'));
+	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 3000 }).toBe(true);
+	const lives = (await snapshot(page)).lives;
+	await page.evaluate(() => window.__busRushTestHooks.spawn('truck'));
+	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 5000 }).toBe(false);
+	const s = await snapshot(page);
+	expect(s.status).toBe('playing');
+	expect(s.lives).toBe(lives);
+	expect(s.powerups).toBe(1);
+});
+
+test('an EMP power-up wrecks the pursuing police', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => window.__busRushTestHooks.noTraffic());
+	await expect.poll(async () => (await snapshot(page)).police.length, { timeout: 8000 }).toBeGreaterThan(0);
+	await page.evaluate(() => window.__busRushTestHooks.powerup('emp'));
+	await expect.poll(async () => (await snapshot(page)).wrecked, { timeout: 3000 }).toBeGreaterThan(0);
+	expect((await snapshot(page)).police).toHaveLength(0);
+});
+
+test('a pothole knocks the bus to the speed floor without costing a life', async ({ page }) => {
+	await startQuietRun(page);
+	await page.keyboard.down('ArrowUp');
+	await expect.poll(async () => (await snapshot(page)).kmh).toBe(58);
+	const lives = (await snapshot(page)).lives;
+	await page.evaluate(() => window.__busRushTestHooks.pothole());
+	await expect.poll(async () => (await snapshot(page)).kmh, { timeout: 2000 }).toBeLessThan(40);
+	expect((await snapshot(page)).lives).toBe(lives);
+	await page.keyboard.up('ArrowUp');
+});
+
+test('a jaywalker or a spike strip costs one life', async ({ page }) => {
+	await startQuietRun(page);
+	const lives = (await snapshot(page)).lives;
+	await page.evaluate(() => window.__busRushTestHooks.pedestrian());
+	await expect.poll(async () => (await snapshot(page)).lives, { timeout: 3000 }).toBe(lives - 1);
+	await expect.poll(async () => (await snapshot(page)).status).toBe('playing');
+	await page.waitForTimeout(1700); // let post-hit grace run out
+	await page.evaluate(() => window.__busRushTestHooks.spikes());
+	await expect.poll(async () => (await snapshot(page)).lives, { timeout: 3000 }).toBe(lives - 2);
+});
+
+test('construction barriers cost a life and shove the bus a lane inward', async ({ page }) => {
+	await startQuietRun(page);
+	await page.keyboard.press('ArrowLeft'); // lane 0, an edge lane
+	await expect.poll(async () => (await snapshot(page)).lane).toBe(0);
+	const lives = (await snapshot(page)).lives;
+	await page.evaluate(() => window.__busRushTestHooks.zone());
+	await expect.poll(async () => (await snapshot(page)).lives, { timeout: 3000 }).toBe(lives - 1);
+	expect((await snapshot(page)).lane).toBe(1);
+	expect((await snapshot(page)).zoneLane).toBe(0);
+});
+
+test('at five stars a police helicopter joins and drops spike strips', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.warp(3300); // Changi: five stars
+	});
+	await page.keyboard.down('ArrowUp');
+	await expect.poll(async () => (await snapshot(page)).wanted).toBe(5);
+	await expect.poll(async () => (await snapshot(page)).heli, { timeout: 3000 }).toBe(true);
+	await expect.poll(async () => (await snapshot(page)).swat, { timeout: 10000 }).toBe(1);
+	await expect.poll(async () => {
+		const s = await snapshot(page);
+		return s.spikes > 0 || s.lives < 3 || s.status !== 'playing';
+	}, { timeout: 10000 }).toBe(true);
+	await page.keyboard.up('ArrowUp');
+});
+
+test('three missions are shown and a finished run keeps three active', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
+	await page.reload();
+	const labels = page.locator('[data-mission-slot] [data-mission-label]');
+	await expect(labels).toHaveCount(3);
+	await expect(labels.first()).not.toHaveText('—');
+	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => window.__busRushTestHooks.crash());
+	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Joyrider');
+	expect(new Set((await snapshot(page)).missions).size).toBe(3);
+	await expect(page.locator('#bus-rush-achievement-count')).toHaveText('1 / 9');
+});

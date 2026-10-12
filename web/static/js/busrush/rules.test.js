@@ -56,6 +56,28 @@ import {
   busDef,
   slowedTopSpeed,
   GARBAGE_SPEED_FACTOR,
+  FUEL_STUN_SECONDS,
+  FUEL_FUSE_SECONDS,
+  inBlast,
+  ramOutcome,
+  SWAT_VAN,
+  maxSwat,
+  helicopterActive,
+  SPIKE_LEAD_PX,
+  POWERUPS,
+  powerupAt,
+  shieldAbsorbs,
+  pedestriansAllowed,
+  constructionLane,
+  zonePushLane,
+  MISSIONS,
+  ACTIVE_MISSIONS,
+  missionProgress,
+  missionDone,
+  refillMissions,
+  ACHIEVEMENTS,
+  addLifetime,
+  newAchievements,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -254,8 +276,16 @@ describe('traffic', () => {
     const rng = seeded(7);
     const early = new Set(Array.from({ length: 200 }, () => pickVehicle(rng, 0).kind));
     assert.deepEqual([...early], ['car']);
-    const late = new Set(Array.from({ length: 200 }, () => pickVehicle(rng, 5000).kind));
-    assert.equal(late.size, VEHICLES.length);
+    const late = new Set(Array.from({ length: 400 }, () => pickVehicle(rng, 5000).kind));
+    assert.equal(late.size, VEHICLES.filter((v) => !v.construction).length);
+  });
+
+  test('dump trucks only turn up while a construction zone is on the road', () => {
+    const rng = seeded(5);
+    const plain = Array.from({ length: 2000 }, () => pickVehicle(rng, 5000).kind);
+    assert.ok(!plain.includes('dump'));
+    const zoned = Array.from({ length: 2000 }, () => pickVehicle(rng, 5000, { construction: true }).kind);
+    assert.ok(zoned.includes('dump'));
   });
 
   test('oncoming buses unlock with distance, cost one life, and never crowd out trucks', () => {
@@ -274,9 +304,11 @@ describe('traffic', () => {
     assert.equal(new Set(picks.filter((v) => v.bus).map((v) => v.kind)).size, 4);
   });
 
-  test('trucks, semis and garbage trucks are lethal; cars and vans are not', () => {
+  test('trucks, semis, garbage and dump trucks are lethal; cars, vans and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['garbage', 'semi', 'truck']);
+    assert.deepEqual(lethal, ['dump', 'garbage', 'semi', 'truck']);
+    const tanker = VEHICLES.find((v) => v.kind === 'fuel');
+    assert.ok(tanker.fuel && !tanker.lethal);
   });
 
   test('a lethal hit takes every life, even during grace', () => {
@@ -414,5 +446,145 @@ describe('buses', () => {
       assert.ok(maxLives(0, key) >= 1);
       assert.ok(BUSES[key].steer <= 1);
     }
+  });
+});
+
+describe('fuel tankers', () => {
+  // Centre-to-centre gap after a head-on crash: the tanker's nose just
+  // overlapping the bus's (hitboxes are inset 3 px / 6 px).
+  const tanker = VEHICLES.find((v) => v.kind === 'fuel');
+  const headOnDy = (tanker.length + BUS_LENGTH) / 2 - 9;
+  const laneWidth = (480 - 80) / LANES;
+
+  test('stun for 10 s, then 2 s to get clear', () => {
+    assert.equal(FUEL_STUN_SECONDS, 10);
+    assert.equal(FUEL_FUSE_SECONDS, 2);
+  });
+
+  test('one lane over is still caught in the blast; two lanes over is clear', () => {
+    assert.ok(inBlast(0, headOnDy));
+    assert.ok(inBlast(laneWidth, headOnDy));
+    assert.ok(!inBlast(2 * laneWidth, headOnDy));
+  });
+
+  test('two lane changes always fit in the fuse, for every bus, from any lane', () => {
+    for (const key of Object.keys(BUSES)) {
+      assert.ok(2 * laneChangeSeconds(0, key) < FUEL_FUSE_SECONDS, key);
+    }
+    for (let lane = 0; lane < LANES; lane++) {
+      assert.ok([lane - 2, lane + 2].some((l) => l >= 0 && l < LANES), `a lane two away from ${lane}`);
+    }
+  });
+
+  test('a tanker fits the row spacing guarantee', () => {
+    assert.ok(tanker.length <= Math.max(...VEHICLES.map((v) => v.length)));
+  });
+});
+
+describe('ram plating and bosses', () => {
+  test('ram levels: cruisers for a life, then free; SWAT vans only at max', () => {
+    const swat = SWAT_VAN;
+    assert.equal(ramOutcome(0, POLICE_CAR), null);
+    assert.deepEqual(ramOutcome(1, POLICE_CAR), { lifeCost: 1 });
+    assert.deepEqual(ramOutcome(2, POLICE_CAR), { lifeCost: 0 });
+    assert.equal(ramOutcome(2, swat), null);
+    assert.deepEqual(ramOutcome(3, swat), { lifeCost: 1 });
+    assert.equal(ramOutcome(3, VEHICLES[0]), null, 'only police can be rammed');
+    assert.equal(UPGRADES.ram.maxLevel, 3);
+  });
+
+  test('SWAT vans join at four stars, the helicopter at five', () => {
+    assert.deepEqual([1, 2, 3, 4, 5].map(maxSwat), [0, 0, 0, 1, 1]);
+    assert.deepEqual([1, 2, 3, 4, 5].map(helicopterActive), [false, false, false, false, true]);
+    assert.ok(SWAT_VAN.lethal && SWAT_VAN.police && SWAT_VAN.length <= ROW_SPACING_MIN);
+  });
+
+  test('a spike strip lands far enough ahead to change lane at the fastest speed', () => {
+    const fastest = maxSpeed(UPGRADES.engine.maxLevel, LEVELS.length - 1) * PX_PER_METER;
+    assert.ok(SPIKE_LEAD_PX / fastest >= 2 * laneChangeSeconds(0, 'single'));
+  });
+});
+
+describe('power-ups', () => {
+  test('none before 100 m; afterwards an occasional fare spot holds one', () => {
+    const rng = seeded(3);
+    assert.ok(Array.from({ length: 500 }, () => powerupAt(rng, 50)).every((p) => p === null));
+    const picks = Array.from({ length: 4000 }, () => powerupAt(rng, 1000));
+    const share = picks.filter(Boolean).length / picks.length;
+    assert.ok(share > 0.06 && share < 0.2, `share ${share}`);
+    assert.deepEqual(new Set(picks.filter(Boolean)), new Set(Object.keys(POWERUPS)));
+  });
+
+  test('a shield absorbs anything but a fuel tanker', () => {
+    assert.ok(shieldAbsorbs(POLICE_CAR));
+    assert.ok(shieldAbsorbs(VEHICLES.find((v) => v.kind === 'semi')));
+    assert.ok(!shieldAbsorbs(VEHICLES.find((v) => v.kind === 'fuel')));
+  });
+});
+
+describe('road hazards', () => {
+  test('nobody jaywalks on the Expressway', () => {
+    assert.deepEqual(LEVELS.map((_, i) => pedestriansAllowed(i)), LEVELS.map((name) => name !== 'Expressway'));
+    assert.equal(pedestriansAllowed(LEVELS.indexOf('Expressway')), false);
+  });
+
+  test('construction zones close an edge lane and push the bus inward', () => {
+    const rng = seeded(9);
+    const lanes = new Set(Array.from({ length: 200 }, () => constructionLane(rng)));
+    assert.deepEqual([...lanes].sort(), [0, LANES - 1]);
+    assert.equal(zonePushLane(0), 1);
+    assert.equal(zonePushLane(LANES - 1), LANES - 2);
+  });
+
+  test('with a lane closed, rows still leave a reachable open lane and never use the closed one', () => {
+    const rng = seeded(21);
+    for (const closed of [[0], [LANES - 1]]) {
+      let prevOpen = [closed[0]]; // the bus may arrive in the lane that's closing
+      for (let i = 0; i < 500; i++) {
+        const blocked = pickBlockedLanes(rng, 5000, prevOpen, closed);
+        assert.ok(!blocked.includes(closed[0]), 'no vehicle in a closed lane');
+        const open = openLanes(blocked, closed);
+        assert.ok(open.length >= 1);
+        assert.ok(open.some((l) => prevOpen.some((p) => Math.abs(l - p) <= 1)), `reachable from ${prevOpen}`);
+        prevOpen = open;
+      }
+    }
+  });
+});
+
+describe('missions and achievements', () => {
+  test('progress is capped at the target', () => {
+    assert.equal(missionProgress('fares30', { fares: 12 }), 12);
+    assert.equal(missionProgress('fares30', { fares: 99 }), 30);
+    assert.ok(missionDone('fares30', { fares: 30 }));
+    assert.ok(!missionDone('nope', { fares: 30 }));
+  });
+
+  test('refill keeps active missions, fills to three distinct, skips just-completed ones', () => {
+    const rng = seeded(4);
+    const fresh = refillMissions(rng, []);
+    assert.equal(fresh.length, ACTIVE_MISSIONS);
+    assert.equal(new Set(fresh).size, ACTIVE_MISSIONS);
+    const next = refillMissions(rng, [fresh[0], fresh[1]], {}, [fresh[2]]);
+    assert.deepEqual(next.slice(0, 2), [fresh[0], fresh[1]]);
+    assert.notEqual(next[2], fresh[2]);
+    assert.deepEqual(refillMissions(rng, ['bogus', fresh[0], fresh[0]]).slice(0, 1), [fresh[0]]);
+  });
+
+  test('missions that need an upgrade are offered only once it is bought', () => {
+    const rng = seeded(8);
+    for (let i = 0; i < 200; i++) assert.ok(!refillMissions(rng, []).includes('ram2'));
+    const offered = Array.from({ length: 300 }, () => refillMissions(rng, [], { ram: 1 })).flat();
+    assert.ok(offered.includes('ram2'));
+    assert.ok(Object.values(MISSIONS).every((m) => m.reward > 0 && m.target > 0));
+  });
+
+  test('achievements unlock once, from run stats or lifetime totals', () => {
+    const lifetime = addLifetime(addLifetime(undefined, { wrecked: 20, fares: 3 }), { wrecked: 6 });
+    assert.deepEqual(lifetime, { runs: 2, wrecked: 26, fares: 3, distance: 0, rammed: 0 });
+    const earned = newAchievements([], { level: 5, wasted: 1 }, lifetime);
+    assert.deepEqual(earned.sort(), ['copBait', 'islandHopper', 'joyrider', 'wasted']);
+    assert.deepEqual(newAchievements(earned, { level: 5, wasted: 1 }, lifetime), []);
+    assert.ok(Object.values(ACHIEVEMENTS).every((a) => a.reward > 0));
   });
 });

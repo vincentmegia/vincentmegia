@@ -12,8 +12,9 @@
 			<p class="text-muted">
 				You've stolen a bus and the police are on your tail. Weave through oncoming traffic, grab fares, and
 				juke the cruisers into other cars to wreck them — one touch from a cop and you're busted. Slow down and they
-				catch up. Escape through five districts, from the CBD to Changi, each one hotter than the last. Spend your
-				loot at the depot on a bigger engine.
+				catch up. Escape through five districts, from the CBD to a night-time Changi, each one hotter than the last:
+				SWAT vans join the chase at four stars and a helicopter drops spike strips at five. Spend your loot at the
+				depot on a bigger engine — or ram plating to fight back.
 			</p>
 		</section>
 
@@ -83,8 +84,8 @@
 							</dl>
 							<p class="text-xs text-muted">← → change lane · ↑ ↓ speed up / brake</p>
 							<p class="text-xs text-muted">Police are lethal — bait them into traffic to wreck them.</p>
-							<p class="text-xs text-muted">Bananas make you skid; garbage slows you down.</p>
-							<p class="text-xs font-medium text-danger">Trucks, semis and garbage trucks are instant game over.</p>
+							<p class="text-xs text-muted">Bananas skid you, garbage and potholes slow you, jaywalkers and roadworks cost a life. Grab power-ups!</p>
+							<p class="text-xs font-medium text-danger">Trucks, semis, garbage and dump trucks are instant game over. Hit a fuel tanker and you've got 2 seconds to get clear once you come to.</p>
 							<p id="bus-rush-storage-notice" class="hidden rounded-card border border-line bg-surface-2 px-3 py-2 text-xs text-muted">
 								Your progress won't be saved in this browser.
 							</p>
@@ -120,10 +121,15 @@
 									<dd id="bus-rush-run-over-score" class="font-mono tabular-nums text-ink">0</dd>
 								</div>
 								<div class="flex items-center justify-between">
+									<dt class="text-muted">Mission &amp; achievement bonus</dt>
+									<dd id="bus-rush-run-over-bonus" class="font-mono tabular-nums text-ink">+0</dd>
+								</div>
+								<div class="flex items-center justify-between">
 									<dt class="text-muted">Tokens earned</dt>
 									<dd id="bus-rush-run-over-tokens" class="font-mono tabular-nums text-ink">0</dd>
 								</div>
 							</dl>
+							<p id="bus-rush-run-over-unlocks" class="hidden rounded-card border border-line bg-surface-2 px-3 py-2 text-xs text-ink"></p>
 
 							<form
 								hx-post="/bus-rush/score"
@@ -177,7 +183,91 @@
 				</div>
 			</div>
 
-			<aside class="space-y-3">
+			<aside class="space-y-6">
+				{{/* Missions and achievements (docs/features/bus-rush.md). Each
+				     data-achievement-key must match a key in
+				     web/static/js/busrush/rules.js's ACHIEVEMENTS; bus-rush.js
+				     fills in the three active missions and ticks earned
+				     achievements. Progress is localStorage-only. */}}
+				<section class="space-y-3" aria-labelledby="bus-rush-missions-heading">
+					<h2 id="bus-rush-missions-heading" class="text-lg font-semibold text-ink">Missions</h2>
+					<ul class="space-y-2">
+						<li data-mission-slot class="rounded-card border border-line p-3">
+							<div class="flex items-start justify-between gap-3">
+								<p data-mission-label class="min-w-0 text-sm text-ink">—</p>
+								<p data-mission-reward class="shrink-0 font-mono text-xs tabular-nums text-muted">+0 tok</p>
+							</div>
+							<div class="mt-2 h-1.5 overflow-hidden rounded-card bg-surface-2">
+								<div data-mission-bar class="h-full w-0 bg-primary"></div>
+							</div>
+							<p data-mission-progress class="mt-1 text-right font-mono text-xs tabular-nums text-muted">0 / 0</p>
+						</li>
+						<li data-mission-slot class="rounded-card border border-line p-3">
+							<div class="flex items-start justify-between gap-3">
+								<p data-mission-label class="min-w-0 text-sm text-ink">—</p>
+								<p data-mission-reward class="shrink-0 font-mono text-xs tabular-nums text-muted">+0 tok</p>
+							</div>
+							<div class="mt-2 h-1.5 overflow-hidden rounded-card bg-surface-2">
+								<div data-mission-bar class="h-full w-0 bg-primary"></div>
+							</div>
+							<p data-mission-progress class="mt-1 text-right font-mono text-xs tabular-nums text-muted">0 / 0</p>
+						</li>
+						<li data-mission-slot class="rounded-card border border-line p-3">
+							<div class="flex items-start justify-between gap-3">
+								<p data-mission-label class="min-w-0 text-sm text-ink">—</p>
+								<p data-mission-reward class="shrink-0 font-mono text-xs tabular-nums text-muted">+0 tok</p>
+							</div>
+							<div class="mt-2 h-1.5 overflow-hidden rounded-card bg-surface-2">
+								<div data-mission-bar class="h-full w-0 bg-primary"></div>
+							</div>
+							<p data-mission-progress class="mt-1 text-right font-mono text-xs tabular-nums text-muted">0 / 0</p>
+						</li>
+					</ul>
+					<div class="flex items-center justify-between gap-2 pt-2">
+						<h3 class="text-sm font-semibold text-ink">Achievements</h3>
+						<span id="bus-rush-achievement-count" class="font-mono text-xs tabular-nums text-muted">0 / 9</span>
+					</div>
+					<ul class="space-y-1 text-xs">
+						<li data-achievement-key="joyrider" class="flex items-start gap-2 text-muted" title="Finish your first run">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Joyrider</span> — Finish your first run</span>
+						</li>
+						<li data-achievement-key="copBait" class="flex items-start gap-2 text-muted" title="Wreck 25 police cars">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Cop Bait</span> — Wreck 25 police cars</span>
+						</li>
+						<li data-achievement-key="fareCollector" class="flex items-start gap-2 text-muted" title="Collect 500 fares">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Fare Collector</span> — Collect 500 fares</span>
+						</li>
+						<li data-achievement-key="marathon" class="flex items-start gap-2 text-muted" title="Drive 10,000 m in total">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Marathon</span> — Drive 10,000 m in total</span>
+						</li>
+						<li data-achievement-key="demolition" class="flex items-start gap-2 text-muted" title="Ram 10 police cars">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Demolition Driver</span> — Ram 10 police cars</span>
+						</li>
+						<li data-achievement-key="islandHopper" class="flex items-start gap-2 text-muted" title="Reach Changi in one run">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Island Hopper</span> — Reach Changi in one run</span>
+						</li>
+						<li data-achievement-key="mostWanted" class="flex items-start gap-2 text-muted" title="Hit a 5-star wanted level">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Most Wanted</span> — Hit a 5-star wanted level</span>
+						</li>
+						<li data-achievement-key="tooClose" class="flex items-start gap-2 text-muted" title="Escape a fuel tanker blast">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Too Close for Comfort</span> — Escape a fuel tanker blast</span>
+						</li>
+						<li data-achievement-key="wasted" class="flex items-start gap-2 text-muted" title="Get flung to Alcatraz">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Scenic Route</span> — Get flung to Alcatraz</span>
+						</li>
+					</ul>
+				</section>
+
+				<div class="space-y-3">
 				<div class="flex items-center justify-between gap-2">
 					<h2 class="text-lg font-semibold text-ink">Leaderboard</h2>
 					<span id="bus-rush-leaderboard-loading" class="htmx-indicator text-xs text-muted">Loading…</span>
@@ -191,6 +281,7 @@
 					hx-indicator="#bus-rush-leaderboard-loading"
 				>
 					<p class="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">Loading leaderboard…</p>
+				</div>
 				</div>
 			</aside>
 		</div>
