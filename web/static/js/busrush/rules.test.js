@@ -104,6 +104,14 @@ import {
   dailyDate,
   dailySeed,
   DAILY_BUS,
+  HEAVY_LIVES_LEFT,
+  FLATBED_LOADS,
+  flatbedLoad,
+  isRunaway,
+  runawayLane,
+  RUNAWAY_MIN_DISTANCE,
+  RUNAWAY_VEER_Y,
+  RUNAWAY_VEER_SECONDS,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -332,7 +340,7 @@ describe('traffic', () => {
 
   test('trucks, semis, garbage, dump and tow trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['dump', 'garbage', 'mixer', 'semi', 'tow', 'truck']);
+    assert.deepEqual(lethal, ['container', 'dump', 'flatbed', 'garbage', 'mixer', 'reefer', 'semi', 'tow', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -755,5 +763,65 @@ describe('new missions and achievements', () => {
     for (const key of ['beachBum', 'skyRail', 'pourDecision', 'pancake', 'stormChaser', 'islandHopper']) {
       assert.ok(earned.includes(key), key);
     }
+  });
+});
+
+describe('container, flatbed and refrigerated trucks, and lorries', () => {
+  test('the new trucks kill on contact and fit the row spacing', () => {
+    for (const kind of ['container', 'flatbed', 'reefer']) {
+      const v = VEHICLES.find((x) => x.kind === kind);
+      assert.equal(livesAfterHit(5, v, 0), 0, kind);
+      assert.equal(livesAfterHit(5, v, 1), 0, `${kind} ignores grace`);
+      assert.ok(v.length <= ROW_SPACING_MIN, kind);
+    }
+  });
+
+  test('a lorry takes most of your lives, and your last one', () => {
+    const lorry = VEHICLES.find((v) => v.kind === 'lorry');
+    assert.ok(!lorry.lethal && lorry.heavy);
+    assert.equal(HEAVY_LIVES_LEFT, 1);
+    assert.equal(livesAfterHit(6, lorry, 0), 1);
+    assert.equal(livesAfterHit(3, lorry, 0), 1);
+    assert.equal(livesAfterHit(2, lorry, 0), 1);
+    assert.equal(livesAfterHit(1, lorry, 0), 0);
+    assert.equal(livesAfterHit(3, lorry, 1), 3, 'grace still covers it');
+  });
+
+  test('flatbed loads follow their odds, steel coils included', () => {
+    assert.ok(Math.abs(Object.values(FLATBED_LOADS).reduce((a, b) => a + b, 0) - 1) < 1e-9);
+    const rng = seeded(21);
+    const counts = {};
+    for (let i = 0; i < 5000; i++) { const l = flatbedLoad(rng); counts[l] = (counts[l] || 0) + 1; }
+    for (const [load, odds] of Object.entries(FLATBED_LOADS)) {
+      assert.ok(Math.abs(counts[load] / 5000 - odds) < 0.03, load);
+    }
+  });
+
+  test('only steel-coil flatbeds past the minimum distance run away', () => {
+    const always = () => 0;
+    assert.equal(isRunaway(always, 'coils', RUNAWAY_MIN_DISTANCE), true);
+    assert.equal(isRunaway(always, 'coils', RUNAWAY_MIN_DISTANCE - 1), false);
+    assert.equal(isRunaway(always, 'lumber', 5000), false);
+  });
+
+  test('a runaway swerves one lane toward the bus, never off the road or into a closed lane', () => {
+    const rng = seeded(5);
+    assert.equal(runawayLane(2, 0, rng), 1);
+    assert.equal(runawayLane(1, 3, rng), 2);
+    assert.equal(runawayLane(2, 0, rng, [1]), 3, 'blocked toward the bus: it lurches the other way');
+    for (let i = 0; i < 50; i++) {
+      const l = runawayLane(0, 0, rng);
+      assert.equal(l, 1);
+      assert.ok([2, 0].includes(runawayLane(1, 1, rng)));
+    }
+  });
+
+  test('a runaway swerves high enough up the screen to dodge at the fastest closing speed', () => {
+    const fastest = (maxSpeed(UPGRADES.engine.maxLevel, LEVELS.length - 1) + TRAFFIC_SPEED) * PX_PER_METER;
+    const busY = 640 - BUS_LENGTH - 110;
+    // Time from the swerve finishing (and its new lane being plain) until its nose reaches the bus.
+    const travelled = RUNAWAY_VEER_SECONDS * fastest;
+    const window = (busY - (RUNAWAY_VEER_Y + 150 + travelled)) / fastest;
+    for (const key of Object.keys(BUSES)) assert.ok(window > laneChangeSeconds(0, key), `${key}: still ${window}s to react after the swerve`);
   });
 });

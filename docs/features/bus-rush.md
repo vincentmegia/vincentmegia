@@ -54,6 +54,26 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   grace.
 * **Tow trucks** carry a battered, scorched broken-down car on their
   flatbed and flash an amber beacon — and flatten the bus on contact.
+* **Container trucks** (from 900 m, a corrugated 40-footer in a
+  shipping-line colour), **refrigerated trucks** (from 600 m, a white
+  insulated box with a blue snowflake band and a turning fridge-unit fan)
+  and **flatbed trucks** (from 700 m) are lethal too. A flatbed carries a
+  random load (`FLATBED_LOADS`, `flatbedLoad`): steel coils (30%), lumber,
+  pipes, pallets of bricks or crates.
+* **Runaway steel-coil trucks**: from `RUNAWAY_MIN_DISTANCE` (900 m) a
+  coil flatbed is out of control with `RUNAWAY_CHANCE` (`isRunaway`). It
+  fishtails down the road with hazard flashers and a "!" ("OUT OF
+  CONTROL!"), and as its nose comes on screen (`RUNAWAY_VEER_Y`) swerves
+  one lane toward the bus over `RUNAWAY_VEER_SECONDS` (`runawayLane`;
+  only into a lane clear of traffic alongside it, never into a closed
+  lane). Steer clear and it's a dodge ("DODGED!", `RUNAWAY_DODGE_POINTS`,
+  the Coil Dodger achievement); get hit and you're crushed like by any
+  truck.
+* **Singapore lorries** (from 200 m): a short cab and an open cargo bay
+  with painted drop sides and workers in hard hats sitting along both
+  sides. Not instantly lethal but `heavy`: a hit leaves the bus on its
+  last life (`HEAVY_LIVES_LEFT`), and a hit on that last life kills it
+  ("Flattened by a lorry!"). Post-hit grace still covers it.
 * **Hazmat trucks**: some box trucks (25%) and semis (30%) carry gasoline
   (`hazmatChance`, `isHazmat`), marked with an orange GASOLINE panel and a
   flammable diamond. Touching one isn't instant death: like a fuel tanker it
@@ -202,7 +222,7 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   active missions (`MISSIONS`, e.g. "Wreck 3 police cars in one run",
   "Escape a fuel tanker blast") with live progress; completed ones pay
   their reward at run end and are replaced (`refillMissions`; ones that
-  need Ram Plating are offered only once it's bought). Fourteen one-time
+  need Ram Plating are offered only once it's bought). Fifteen one-time
   `ACHIEVEMENTS` (run or lifetime stats, `addLifetime`) pay tokens once.
   Run Over shows the bonus and what was completed/unlocked. Missions,
   achievements and lifetime totals live in the same `localStorage` blob.
@@ -524,7 +544,11 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       trucks and mixers are lethal; Sentosa is level 6 with sand
       only there; storms (minimum distance, no stacking, weaker grip within
       the speed bounds); drift radius and escape lanes, lane change fits
-      the mixer's braking; train closing speeds, the warning outlasting two lane
+      the mixer's braking; the new trucks are lethal and fit the row
+      spacing; a lorry leaves one life (and takes the last); flatbed load
+      odds; only coil flatbeds past the minimum distance run away; a
+      runaway swerves one lane toward the bus, never off the road or into a
+      closed lane, early enough to dodge at the fastest closing speed; train closing speeds, the warning outlasting two lane
       changes, both tracks used; daily seed determinism and the UTC date;
       the new missions and achievements.
 * [x] Go: validation bounds, service rejects invalid input before the repo,
@@ -561,7 +585,10 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       lane or outside the radius; a storm puddle splashes without
       costing a life; Sentosa is level 6 and its sand slows the bus; the
       Daily Challenge drives the stock bus, submits to the daily board, the
-      tabs switch boards, and Drive Again stays daily.
+      tabs switch boards, and Drive Again stays daily; container, flatbed
+      and refrigerated trucks are instant game over; a lorry drops the bus
+      to one life and the next kills it; a runaway coil truck can be
+      dodged by steering clear, and staying in its path is game over.
       Plus
       `e2e/projects.spec.js`'s card tests.
 * Test hooks (`window.__busRushTestHooks`, used only by tests): `crash()`,
@@ -570,7 +597,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `pothole/spikes/pedestrian(lane?, y?)`, `zone(lane?, bottom?)`,
   `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y, {hazmat})`
   (a vehicle anywhere, for screenshots), `spawn(kind, {hazmat})`,
-  `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
+  `place(kind, lane, y, {load, runaway})` for flatbeds, `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
   `quietTrack(s?)`, `mixer(lane?, y?)`, `drift()`, `sceneTime(t)`,
   `storm(on)`, `puddle(lane?, y?)`, `sand(lane?, y?)`, `banana()` (one just ahead
   of the bus), `garbage()` (a pile just ahead of the bus), `noPolice()`,

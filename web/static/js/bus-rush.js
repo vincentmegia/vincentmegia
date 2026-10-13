@@ -111,6 +111,12 @@ import {
   TIP_SLOWMO,
   MIXER_TOPPLE_POINTS,
   canDrift,
+  flatbedLoad,
+  isRunaway,
+  runawayLane,
+  RUNAWAY_VEER_Y,
+  RUNAWAY_VEER_SECONDS,
+  RUNAWAY_DODGE_POINTS,
   RAMP_MIN_DISTANCE,
   RAMP_CHANCE,
   RAMP_TRUCK,
@@ -1205,6 +1211,262 @@ function drawRampTruck(ctx, ramp, t) {
   }
 }
 
+const CONTAINER_COLORS = ['#b5463a', '#3f6e9e', '#5f8a5b', '#d9a93f', '#7a4f8c', '#e8833a', '#4f8a7a'];
+
+/**
+ * Container truck: a prime mover hauling a 40-footer — corrugated roof in a
+ * shipping-line colour, corner castings, a pale logo band, rear chevrons.
+ */
+function drawContainerTruck(ctx, v, x, y, w, l) {
+  const cab = 34;
+  const box = l - cab - 6;
+  drawWheels(ctx, x, y, w, l, [0.07, 0.15, 0.23, 0.8, 0.93]);
+  const color = v.containerColor || CONTAINER_COLORS[0];
+  drawBody(ctx, color, x, y, w, box, 2);
+  ctx.fillStyle = shade(color, -0.22);
+  for (let ry = y + 6; ry < y + box - 4; ry += 6) ctx.fillRect(x + 3, ry, w - 6, 2);
+  ctx.fillStyle = 'rgba(244,239,228,0.75)';
+  ctx.fillRect(x + w / 2 - 6, y + box * 0.3, 12, box * 0.4);
+  ctx.fillStyle = '#2b2724';
+  for (const [cx, cy] of [[x, y], [x + w - 5, y], [x, y + box - 5], [x + w - 5, y + box - 5]]) ctx.fillRect(cx, cy, 5, 5);
+  drawChevrons(ctx, x, y - 2, w);
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 5, y + box, 10, 6);
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+}
+
+/**
+ * Refrigerated truck: a white insulated box with a blue band and a
+ * snowflake, the fridge unit and its fan on the front of the box, a frosty
+ * sheen, rear chevrons.
+ */
+function drawReefer(ctx, v, x, y, w, l, t) {
+  const cab = 34;
+  const box = l - cab - 4;
+  drawWheels(ctx, x, y, w, l, [0.12, 0.28, 0.86]);
+  drawBody(ctx, '#f1f3f4', x, y, w, box, 4);
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let ry = y + 10; ry < y + box - 4; ry += 12) ctx.fillRect(x + 3, ry, w - 6, 1.5);
+  ctx.fillStyle = '#3f7fb8';
+  ctx.fillRect(x + 3, y + box * 0.45, w - 6, 14);
+  centreText(ctx, '❄', x + w / 2, y + box * 0.45 + 7, 'bold 12px sans-serif', '#f4f8fb', 'rgba(0,0,0,0)');
+  // Fridge unit on the front of the box, its fan turning.
+  fillRoundRect(ctx, '#9aa1a6', x + 8, y + box - 22, w - 16, 18, 3);
+  ctx.save();
+  ctx.translate(x + w / 2, y + box - 13);
+  ctx.rotate(t * 12);
+  ctx.fillStyle = '#5a6268';
+  for (let i = 0; i < 3; i++) {
+    ctx.rotate((Math.PI * 2) / 3);
+    ctx.fillRect(-1.5, -7, 3, 7);
+  }
+  ctx.restore();
+  // Frost shimmer drifting across the roof.
+  const k = (t * 0.4) % 1;
+  const g = ctx.createLinearGradient(0, y + box * k - 20, 0, y + box * k + 20);
+  g.addColorStop(0, 'rgba(200,230,255,0)');
+  g.addColorStop(0.5, 'rgba(200,230,255,0.35)');
+  g.addColorStop(1, 'rgba(200,230,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x + 2, y + 2, w - 4, box - 26);
+  drawChevrons(ctx, x, y - 2, w);
+  drawCab(ctx, v.color, x + 2, y + l - cab, w - 6, cab);
+}
+
+/** A steel coil seen from above, eye to the sky: rings of steel and a dark eye. */
+function drawCoil(ctx, cx, cy, r) {
+  ctx.fillStyle = SHADOW;
+  ctx.beginPath();
+  ctx.arc(cx + 3, cy + 4, r, 0, Math.PI * 2);
+  ctx.fill();
+  const g = ctx.createRadialGradient(cx - r * 0.4, cy - r * 0.4, 1, cx, cy, r);
+  g.addColorStop(0, '#eef1f2');
+  g.addColorStop(0.6, '#a9b0b5');
+  g.addColorStop(1, '#6e767c');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(60,66,70,0.45)';
+  ctx.lineWidth = 1;
+  for (let rr = r * 0.45; rr < r; rr += 3) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#2b2724';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.38, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** A flatbed's load, laid on a deck from `top` to `top + len`. */
+function drawFlatbedLoad(ctx, load, x, top, w, len, seed) {
+  const rand = seededRandom(seed || 3);
+  if (load === 'coils') {
+    const r = w * 0.36;
+    for (let cy = top + r + 4; cy + r <= top + len - 2; cy += r * 2 + 6) {
+      drawCoil(ctx, x + w / 2, cy, r);
+      ctx.fillStyle = '#e0b54a'; // ratchet strap over each coil
+      ctx.fillRect(x + 2, cy - 2, w - 4, 4);
+    }
+  } else if (load === 'lumber') {
+    for (let i = 0; i < 2; i++) {
+      const sy = top + 6 + i * (len / 2);
+      fillRoundRect(ctx, '#c9a26b', x + 6, sy, w - 12, len / 2 - 10, 2);
+      ctx.strokeStyle = '#a88350';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let lx = x + 12; lx < x + w - 8; lx += 7) {
+        ctx.moveTo(lx, sy + 2);
+        ctx.lineTo(lx, sy + len / 2 - 12);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#3a3734';
+      ctx.fillRect(x + 4, sy + (len / 2 - 10) / 2 - 1.5, w - 8, 3);
+    }
+  } else if (load === 'pipes') {
+    for (let px = x + 8; px < x + w - 10; px += 9) {
+      const g = ctx.createLinearGradient(px, 0, px + 8, 0);
+      g.addColorStop(0, '#5f666b');
+      g.addColorStop(0.45, '#c4cacd');
+      g.addColorStop(1, '#5f666b');
+      ctx.fillStyle = g;
+      ctx.fillRect(px, top + 4, 8, len - 8);
+    }
+    ctx.fillStyle = '#c9402c';
+    ctx.fillRect(x + 4, top + len * 0.3, w - 8, 3);
+    ctx.fillRect(x + 4, top + len * 0.7, w - 8, 3);
+  } else if (load === 'bricks') {
+    for (let i = 0; i < 3; i++) {
+      const py = top + 4 + i * (len / 3);
+      const ph = len / 3 - 8;
+      fillRoundRect(ctx, '#8a6a4a', x + 6, py, w - 12, ph, 2); // pallet
+      ctx.fillStyle = '#b5543a';
+      ctx.fillRect(x + 8, py + 2, w - 16, ph - 4);
+      ctx.strokeStyle = 'rgba(244,239,228,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let by = py + 2, row = 0; by < py + ph - 2; by += 5, row++) {
+        ctx.moveTo(x + 8, by);
+        ctx.lineTo(x + w - 8, by);
+        for (let bx = x + 8 + (row % 2) * 6; bx < x + w - 8; bx += 12) {
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx, by + 5);
+        }
+      }
+      ctx.stroke();
+    }
+  } else {
+    for (let cy = top + 4; cy + 26 <= top + len; cy += 30) {
+      const cw = w - 14 - rand() * 8;
+      const cx = x + (w - cw) / 2;
+      fillRoundRect(ctx, '#b88a55', cx, cy, cw, 26, 2);
+      ctx.strokeStyle = '#8a6438';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx + 1, cy + 1, cw - 2, 24);
+      ctx.beginPath();
+      ctx.moveTo(cx + 2, cy + 2);
+      ctx.lineTo(cx + cw - 2, cy + 24);
+      ctx.moveTo(cx + cw - 2, cy + 2);
+      ctx.lineTo(cx + 2, cy + 24);
+      ctx.stroke();
+    }
+  }
+}
+
+/** Flatbed truck: a plank deck with side stakes, its load, rear chevrons. */
+function drawFlatbed(ctx, v, x, y, w, l) {
+  const cab = 34;
+  const deck = l - cab - 4;
+  drawWheels(ctx, x, y, w, l, [0.08, 0.2, 0.86]);
+  drawBody(ctx, '#7a6a58', x, y, w, deck, 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let px = x + 6; px < x + w - 4; px += 8) ctx.fillRect(px, y + 2, 1.5, deck - 4);
+  ctx.fillStyle = '#3a3734';
+  for (let sy = y + 8; sy < y + deck - 6; sy += 22) {
+    ctx.fillRect(x - 1, sy, 4, 6);
+    ctx.fillRect(x + w - 3, sy, 4, 6);
+  }
+  drawFlatbedLoad(ctx, v.load, x, y + 4, w, deck - 10, v.seed);
+  drawChevrons(ctx, x, y - 2, w);
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+}
+
+const LORRY_COLORS = ['#6fa3c4', '#7fae7a', '#d9b45a', '#c4c8cb'];
+const LORRY_WORKERS = [
+  { shirt: '#e8833a', hat: '#ffd34d' },
+  { shirt: '#3f6e9e', hat: '#f4efe4' },
+  { shirt: '#5f8a5b', hat: '#e8833a' },
+  { shirt: '#c9402c', hat: '#2b2724' },
+  { shirt: '#d9a93f', hat: '#3f6e9e' },
+];
+
+/**
+ * A Singapore lorry: a short cab and an open cargo bay with painted drop
+ * sides, workers sitting along both sides in hard hats and caps, their
+ * tools and bags on the floor between them.
+ */
+function drawLorry(ctx, v, x, y, w, l) {
+  const cab = 30;
+  const bay = l - cab - 3;
+  const side = v.lorryColor || '#6fa3c4';
+  drawWheels(ctx, x, y, w, l, [0.16, 0.84]);
+  drawBody(ctx, side, x, y, w, bay, 3); // drop sides
+  fillRoundRect(ctx, '#9a7a56', x + 5, y + 4, w - 10, bay - 8, 2); // plank floor
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let ry = y + 10; ry < y + bay - 6; ry += 7) ctx.fillRect(x + 5, ry, w - 10, 1);
+  ctx.fillStyle = shade(side, -0.3); // hinges on the drop sides
+  for (let ry = y + 10; ry < y + bay - 6; ry += 18) {
+    ctx.fillRect(x, ry, 3, 4);
+    ctx.fillRect(x + w - 3, ry, 3, 4);
+  }
+  const rand = seededRandom(v.seed || 9);
+  // Tools and bags down the middle.
+  fillRoundRect(ctx, '#5a5550', x + w / 2 - 5, y + 10, 10, 16, 3);
+  fillRoundRect(ctx, '#c4532d', x + w / 2 - 4, y + bay - 26, 8, 12, 3);
+  // Workers sitting along each side, facing in: shoulders, arms, and a
+  // hard hat or cap seen from above.
+  const seats = 3;
+  const gap = (bay - 16) / seats;
+  for (let i = 0; i < seats; i++) {
+    for (const s of [-1, 1]) {
+      if (rand() < 0.2) continue;
+      const look = LORRY_WORKERS[Math.floor(rand() * LORRY_WORKERS.length)];
+      const wx = x + w / 2 + s * (w / 2 - 13);
+      const wy = y + 8 + gap * (i + 0.5);
+      ctx.fillStyle = SHADOW;
+      ctx.beginPath();
+      ctx.ellipse(wx + 2, wy + 3, 10, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = look.shirt; // shoulders and arms reaching to the knees
+      ctx.beginPath();
+      ctx.ellipse(wx, wy, 6, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(wx - s * 2, wy - 9, -s * 7, 4);
+      ctx.fillRect(wx - s * 2, wy + 5, -s * 7, 4);
+      ctx.fillStyle = '#c99a6a'; // hands
+      ctx.beginPath();
+      ctx.arc(wx - s * 10, wy - 7, 2, 0, Math.PI * 2);
+      ctx.arc(wx - s * 10, wy + 7, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = shade(look.hat, -0.25); // brim
+      ctx.beginPath();
+      ctx.arc(wx, wy, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = look.hat; // crown
+      ctx.beginPath();
+      ctx.arc(wx, wy, 4.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath();
+      ctx.arc(wx - 1.5, wy - 1.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  drawCab(ctx, v.color, x + 2, y + l - cab, w - 4, cab);
+}
+
 // Oncoming vehicle, nose pointing down the screen. A crashed tanker is
 // drawn jackknifed (`crashAngle`).
 function drawVehicle(ctx, v, t) {
@@ -1226,6 +1488,15 @@ function drawVehicle(ctx, v, t) {
     drawFallenMixer(ctx, v, t);
     return;
   }
+  if (v.runaway) {
+    // Out of control: fishtailing, leaning into its swerve.
+    const ra = v.runaway;
+    const lean = ra.target !== undefined && ra.target !== null && ra.k < 1
+      ? Math.sign(laneCenter(ra.target) - ra.fromX) * 0.28 * Math.sin(Math.PI * ra.k) : 0;
+    ctx.translate(v.x, v.y + v.length / 2);
+    ctx.rotate(Math.sin(t * 9) * 0.07 + lean);
+    ctx.translate(-v.x, -(v.y + v.length / 2));
+  }
   if (v.tipping) {
     // Drifted into: it leans toward the lane it's falling into, its flank
     // widening and darkening as it goes.
@@ -1244,9 +1515,23 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'garbage') drawGarbageTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'truck') drawTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'van') drawVan(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'container') drawContainerTruck(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'reefer') drawReefer(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'flatbed') drawFlatbed(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'lorry') drawLorry(ctx, v, x, v.y, v.width, v.length);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
   if (v.hazmat) drawHazmatMarks(ctx, x, v.y, v.width, v.length - 36);
   ctx.restore();
+  if (v.runaway) {
+    // Hazard flashers and a warning over the cab.
+    const on = Math.floor(t * 6) % 2;
+    const g = ctx.createRadialGradient(v.x, v.y + v.length, 2, v.x, v.y + v.length, 60);
+    g.addColorStop(0, on ? 'rgba(255,106,77,0.5)' : 'rgba(255,181,71,0.35)');
+    g.addColorStop(1, 'rgba(255,106,77,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(v.x - 60, v.y + v.length - 60, 120, 120);
+    centreText(ctx, '!', v.x, v.y + v.length + 16, 'bold 22px Caprasimo, Georgia, serif', on ? '#ff6a4d' : '#ffb547');
+  }
 }
 
 const POLICE_WHITE = '#f1ede4';
@@ -3223,6 +3508,7 @@ function init(canvas, el) {
       mixerTopples: r.mixerTopples,
       pancaked: r.pancaked ? 1 : 0,
       storms: r.storms,
+      runawaysDodged: r.runawaysDodged,
     };
   }
 
@@ -3332,6 +3618,7 @@ function init(canvas, el) {
       trackRides: 0,
       mixerTopples: 0,
       storms: 0,
+      runawaysDodged: 0,
       // Mission/achievement stats.
       powerupsTaken: 0,
       tankerEscapes: 0,
@@ -3426,13 +3713,14 @@ function init(canvas, el) {
     r.cleanBest = Math.max(r.cleanBest, r.distance - r.lastHitAt);
     r.lastHitAt = r.distance;
     r.speed = minSpeed(r.level);
-    shake = vehicle && vehicle.lethal ? 0.6 : 0.35;
+    shake = vehicle && (vehicle.lethal || vehicle.heavy) ? 0.6 : 0.35;
+    if (vehicle && vehicle.heavy && r.lives > 0) popText(r.busX, BUS_Y - 18, 'WHAM! Down to your last life', '#ff6a4d', 1.4);
     const impactX = (r.busX + (vehicle && vehicle.x ? vehicle.x : r.busX)) / 2;
     burst(effects, impactX, BUS_Y + 4, [(vehicle && vehicle.color) || '#888', '#2e4552', '#f1e9d6', BUS_COLOR], 18, 260, 5);
     r.grace = HIT_GRACE_SECONDS;
     if (r.lives <= 0) {
       r.busted = Boolean(vehicle && vehicle.police);
-      r.killedBy = vehicle && vehicle.lethal && !r.busted ? vehicle.label || vehicle.kind : null;
+      r.killedBy = vehicle && (vehicle.lethal || vehicle.heavy) && !r.busted ? vehicle.label || vehicle.kind : null;
       endRun();
     }
   }
@@ -3499,6 +3787,8 @@ function init(canvas, el) {
       const kind = roadblock ? POLICE_CAR : pickVehicle(r.rng, r.distance, { construction: Boolean(r.zone) });
       const taxi = kind.kind === 'car' && r.rng() < TAXI_CHANCE;
       const hazmat = !roadblock && isHazmat(r.rng, kind);
+      const load = kind.flatbed ? flatbedLoad(r.rng) : null;
+      const runaway = Boolean(load) && isRunaway(r.rng, load, r.distance);
       const palette = roadblock ? [POLICE_WHITE] : taxi ? TAXI_COLORS : VEHICLE_COLORS;
       laneLength[lane] = kind.length;
       r.vehicles.push({
@@ -3518,6 +3808,11 @@ function init(canvas, el) {
         seed: Math.floor(r.rng() * 1e6),
         taxi,
         hazmat,
+        heavy: Boolean(kind.heavy),
+        load,
+        runaway: runaway ? {} : null,
+        containerColor: CONTAINER_COLORS[Math.floor(r.rng() * CONTAINER_COLORS.length)],
+        lorryColor: LORRY_COLORS[Math.floor(r.rng() * LORRY_COLORS.length)],
         wreckColor: VEHICLE_COLORS[Math.floor(r.rng() * VEHICLE_COLORS.length)],
         police: roadblock,
       });
@@ -3647,6 +3942,7 @@ function init(canvas, el) {
     const closing = (r.speed + TRAFFIC_SPEED) * dt * PX_PER_METER;
     const still = r.speed * dt * PX_PER_METER;
     r.vehicles.forEach((v) => { if (!v.tipping) v.y += closing; });
+    updateRunaways(r, dt);
     updateSpills(r, dt);
     r.fareItems.forEach((f) => { f.y += closing; });
     r.powerups.forEach((p) => { p.y += closing; });
@@ -3831,6 +4127,45 @@ function init(canvas, el) {
       r.missionsDone.add(key);
       popText(WIDTH / 2, 140, `MISSION ✓ +${MISSIONS[key].reward}`, '#b9d48a', 1.6);
     });
+  }
+
+  // --- runaway steel-coil trucks -----------------------------------------
+
+  /**
+   * An out-of-control coil truck fishtails down the road; once its rear
+   * reaches RUNAWAY_VEER_Y it swerves one lane toward the bus (runawayLane)
+   * over RUNAWAY_VEER_SECONDS — only into a lane that's clear of traffic
+   * alongside it. Once it's past the bus untouched, that's a dodge.
+   */
+  function updateRunaways(r, dt) {
+    const busBottom = BUS_Y + busDef(r.bus).length;
+    for (const v of r.vehicles) {
+      const ra = v.runaway;
+      if (!ra) continue;
+      if (!ra.warned && v.y + v.length > 0) {
+        ra.warned = true;
+        popText(v.x, 60, 'OUT OF CONTROL!', '#ff6a4d', 1.4);
+      }
+      if (ra.target === undefined && v.y >= RUNAWAY_VEER_Y) {
+        const closed = [r.zone && r.zone.lane, r.ramp && r.ramp.lane].filter((l) => l !== null && l !== undefined);
+        let target = runawayLane(laneOf(v.x), laneOf(r.busX), Math.random, closed);
+        if (target !== null && r.vehicles.some((o) => o !== v && laneOf(o.x) === target
+          && o.y < v.y + v.length + 80 && o.y + o.length > v.y - 80)) target = null;
+        ra.target = target;
+        ra.fromX = v.x;
+        ra.k = 0;
+      }
+      if (ra.target !== undefined && ra.target !== null && ra.k < 1) {
+        ra.k = Math.min(1, ra.k + dt / RUNAWAY_VEER_SECONDS);
+        v.x = ra.fromX + (laneCenter(ra.target) - ra.fromX) * smoothstep(ra.k);
+      }
+      if (!ra.passed && v.y > busBottom) {
+        ra.passed = true;
+        r.runawaysDodged += 1;
+        r.bonus += RUNAWAY_DODGE_POINTS;
+        popText(r.busX, BUS_Y - 14, `DODGED! +${RUNAWAY_DODGE_POINTS}`, '#ffe08a', 1.2);
+      }
+    }
   }
 
   // --- the MRT track ------------------------------------------------------
@@ -4961,6 +5296,8 @@ function init(canvas, el) {
         splash: run.weather.splash > 0,
         storms: run.storms,
         hazmat: run.vehicles.filter((v) => v.hazmat).length,
+        runaways: run.vehicles.filter((v) => v.runaway).length,
+        runawaysDodged: run.runawaysDodged,
         stun: run.crash ? run.crash.stun : null,
         fuse: run.crash ? run.crash.fuse : null,
       };
@@ -5112,12 +5449,18 @@ function init(canvas, el) {
     },
     // Places a vehicle of `kind` in `lane` at screen `y` (for screenshots
     // and tests that need traffic somewhere other than the bus's lane).
-    place(kind, lane, y, { hazmat = false } = {}) {
+    place(kind, lane, y, { hazmat = false, load = 'crates', runaway = false } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || !def) return;
       run.vehicles.push({
         ...def,
         hazmat,
+        heavy: Boolean(def.heavy),
+        load: def.flatbed ? load : null,
+        runaway: runaway ? {} : null,
+        containerColor: CONTAINER_COLORS[lane % CONTAINER_COLORS.length],
+        lorryColor: LORRY_COLORS[lane % LORRY_COLORS.length],
+        seed: lane * 7 + 3,
         lethal: Boolean(def.lethal),
         bus: Boolean(def.bus),
         x: laneCenter(lane),
@@ -5130,7 +5473,7 @@ function init(canvas, el) {
     // Drops one vehicle of `kind` into the bus's lane just above the
     // screen, so it collides through the real update() path. `hazmat`
     // loads a truck or semi with gasoline.
-    spawn(kind, { hazmat = false } = {}) {
+    spawn(kind, { hazmat = false, load = 'crates' } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || run.status !== 'playing' || !def) return;
       run.vehicles.push({
@@ -5139,6 +5482,8 @@ function init(canvas, el) {
         lethal: Boolean(def.lethal),
         fuel: Boolean(def.fuel),
         hazmat,
+        heavy: Boolean(def.heavy),
+        load: def.flatbed ? load : null,
         bus: Boolean(def.bus),
         route: ROUTES[0],
         x: laneCenter(run.lane),

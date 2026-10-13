@@ -57,7 +57,11 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * construction zone is on the road — see pickVehicle. `hazmatChance` is the
  * chance a box truck or semi carries gasoline (isHazmat): contact then
  * stuns like a tanker, only longer (crashTimings). A `mixer` (cement mixer)
- * can be drifted into until it tips over (canDrift). Tow trucks are lethal.
+ * can be drifted into until it tips over (canDrift). Tow, container,
+ * flatbed and refrigerated trucks are lethal; a flatbed carries a random
+ * load (flatbedLoad) and a steel-coil one may be a runaway (isRunaway). A
+ * `heavy` vehicle (the Singapore lorry) takes most of the bus's lives
+ * (livesAfterHit).
  */
 export const VEHICLES = [
   { kind: 'car', length: 64, width: 50, minDistance: 0 },
@@ -73,6 +77,10 @@ export const VEHICLES = [
   { kind: 'dump', label: 'dump truck', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 1.5 },
   { kind: 'tow', label: 'tow truck', length: 124, width: 60, minDistance: 250, lethal: true, weight: 0.6 },
   { kind: 'mixer', label: 'cement mixer', length: 128, width: 62, minDistance: 600, lethal: true, mixer: true, weight: 0.6 },
+  { kind: 'lorry', label: 'lorry', length: 104, width: 58, minDistance: 200, heavy: true, weight: 0.8 },
+  { kind: 'reefer', label: 'refrigerated truck', length: 140, width: 62, minDistance: 600, lethal: true, weight: 0.7 },
+  { kind: 'flatbed', label: 'flatbed truck', length: 150, width: 62, minDistance: 700, lethal: true, flatbed: true, weight: 0.8 },
+  { kind: 'container', label: 'container truck', length: 168, width: 64, minDistance: 900, lethal: true, weight: 0.7 },
 ];
 
 function level(n, max) {
@@ -399,7 +407,59 @@ export function pickBlockedLanes(rng, distanceMeters, prevOpen, closed = []) {
 export function livesAfterHit(lives, vehicle, graceSeconds) {
   if (vehicle && vehicle.lethal) return 0;
   if (graceSeconds > 0) return lives;
+  if (vehicle && vehicle.heavy) return Math.max(0, Math.min(lives - 1, HEAVY_LIVES_LEFT));
   return Math.max(0, lives - 1);
+}
+
+/** A heavy hit (a lorry) leaves the bus at most this many lives — and kills it on its last. */
+export const HEAVY_LIVES_LEFT = 1;
+
+// ---------------------------------------------------------------------------
+// Flatbed loads, and runaway steel-coil trucks.
+// ---------------------------------------------------------------------------
+
+/** What a flatbed can carry, with relative odds. */
+export const FLATBED_LOADS = { coils: 0.3, lumber: 0.2, pipes: 0.2, bricks: 0.15, crates: 0.15 };
+
+/** A flatbed's load, picked by FLATBED_LOADS' odds. */
+export function flatbedLoad(rng) {
+  let roll = rng();
+  for (const [load, odds] of Object.entries(FLATBED_LOADS)) {
+    roll -= odds;
+    if (roll < 0) return load;
+  }
+  return 'crates';
+}
+
+/**
+ * Runaway coil trucks: from RUNAWAY_MIN_DISTANCE, a steel-coil flatbed is
+ * out of control with RUNAWAY_CHANCE. It fishtails down the road and, once
+ * its rear reaches RUNAWAY_VEER_Y (nose just on screen), swerves one lane toward the bus over
+ * RUNAWAY_VEER_SECONDS (only into a clear lane). Dodge it and it scores
+ * RUNAWAY_DODGE_POINTS; touch it and it's lethal like any truck.
+ */
+export const RUNAWAY_MIN_DISTANCE = 900;
+export const RUNAWAY_CHANCE = 0.4;
+export const RUNAWAY_VEER_Y = -80;
+export const RUNAWAY_VEER_SECONDS = 0.6;
+export const RUNAWAY_DODGE_POINTS = 150;
+
+/** Whether a flatbed with `load` spawned at this distance is a runaway. */
+export function isRunaway(rng, load, distanceMeters) {
+  return load === 'coils' && wholeOrZero(distanceMeters) >= RUNAWAY_MIN_DISTANCE && rng() < RUNAWAY_CHANCE;
+}
+
+/**
+ * The lane a runaway swerves into: one lane toward the bus (or, already in
+ * its lane, one lane over at random), never off the road or into a
+ * `closed` lane. null means it holds its lane.
+ */
+export function runawayLane(lane, busLane, rng, closed = []) {
+  const dir = Math.sign(busLane - lane) || (rng() < 0.5 ? -1 : 1);
+  for (const target of [lane + dir, lane - dir]) {
+    if (target >= 0 && target < LANES && !closed.includes(target)) return target;
+  }
+  return null;
 }
 
 /** Lanes neither `blocked` by traffic nor `closed` by a construction zone. */
@@ -817,6 +877,7 @@ export const ACHIEVEMENTS = {
   skyRail: { label: 'Sky Rail', desc: 'Ride the MRT track', scope: 'run', stat: 'trackRides', target: 1, reward: 20 },
   pourDecision: { label: 'Pour Decision', desc: 'Topple a cement mixer onto the police', scope: 'run', stat: 'mixerTopples', target: 1, reward: 25 },
   pancake: { label: 'Pancake Day', desc: 'Get flattened by a cement mixer', scope: 'run', stat: 'pancaked', target: 1, reward: 10 },
+  coilDodger: { label: 'Coil Dodger', desc: 'Dodge a runaway steel-coil truck', scope: 'run', stat: 'runawaysDodged', target: 1, reward: 20 },
   stormChaser: { label: 'Storm Chaser', desc: 'Drive through a storm', scope: 'run', stat: 'storms', target: 1, reward: 15 },
 };
 
