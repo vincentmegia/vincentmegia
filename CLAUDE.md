@@ -85,10 +85,10 @@ touching that area rather than expecting this section to carry it:
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
   down); Karen, Coffee Pour, hallucinations; Postgres leaderboard,
   `localStorage` progress) — `docs/features/hospital-shift.md`. Rules live
-  in `web/static/js/hospital/rules.js`. The player (Kimono Himura) and the
-  patients have their own anime-style renderers
-  (`hospital/kimono-himura.js`, `hospital/anime-patients.js`); Karen and
-  the staff still use the shared `people.js`.
+  in `web/static/js/hospital/rules.js`. Everyone in it is drawn by its own
+  anime-style renderers — the player (Kimono Himura) by
+  `hospital/kimono-himura.js`, patients, staff and Karen by
+  `hospital/anime-people.js` — not the shared `people.js`.
 - **Projects** (`/projects` card grid: Fishing Game, Kitchen Shift, Puzzle
   Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift) —
   `docs/features/projects.md`.

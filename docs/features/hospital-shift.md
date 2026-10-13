@@ -170,7 +170,7 @@ The user asked for a new project, "hospital shift." When asked, they chose:
 * **Anime patients** (the user: "many different patients designs and
   make them look like kimono", then — asked — her art style with mixed
   outfits): patients moved off `people.js` to
-  `web/static/js/hospital/anime-patients.js` (`drawAnimePatient`,
+  `web/static/js/hospital/anime-people.js` (`drawAnimePatient`,
   feet-anchored; `PATIENT_DESIGNS`), sixteen designs across ages (kids,
   teens, adults, grandparents — the body scales per age, the head is drawn
   around its own center), six skin tones, and a mix of kimono/yukata
@@ -180,8 +180,18 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   jacket, a kid's tee and dress). A shuffled bag gives every design once
   before any repeats. They appear in the triage line, beds, triage chart,
   Oxygen bed, OR table and hallucination ghosts; skin colors for the
-  IV/Bandage/gurney scenes come from the design. Karen and the staff still
-  use people.js.
+  IV/Bandage/gurney scenes come from the design. Then — "the staff and
+  karen to also match kimonos style" — `STAFF_DESIGNS` in the same module:
+  Dr. Okafor (white lab coat, tie, stethoscope, glasses), the Orderly
+  (blue scrubs), the Stock tech (scrubs, hi-vis vest, beanie) and Karen
+  (streaked blonde angled bob, sunglasses on her head, red blazer,
+  handbag, an angry `mood` with slammed-down brows and an open frown,
+  plus the red `angryTint`). Dr. Okafor and the Orderly have a `textured` hair style
+  — layered tufts with soft points and strand lines (the user wanted it
+  "NOT smooth" but not spiky); the Stock tech keeps soft rounded tufts
+  under his beanie, at the user's request. Necks were shortened for the whole cast
+  (head 12 units above the shoulders, was 15; Kimono Himura's `NECK_DROP`).
+  Hospital Shift no longer draws anyone with people.js.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard
   (`hospital_scores`), `/projects` card.
 

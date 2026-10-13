@@ -14,7 +14,7 @@
 //
 // Loaded as a module from web/templates/pages/hospital-shift.html.
 
-import { drawPerson, shadeColor, PEOPLE_TEMPLATES } from './shared/people.js';
+import { shadeColor } from './shared/people.js';
 import {
   SHIFTS_PER_MONTH,
   patientVolumeForShift,
@@ -73,7 +73,7 @@ import {
   STOCK_TECH_DOWNSTAIRS_SECONDS,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
-import { drawAnimePatient, findPatientDesign, PATIENT_DESIGN_KEYS, animeHeadCenterY } from './hospital/anime-patients.js';
+import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
   createInitialState,
   startShift as startShiftState,
@@ -237,36 +237,13 @@ function insideRect(r, x, y) {
 /** Library Shift's big-character scale. */
 export const PERSON_SCALE = 1.55;
 
-// The player, Kimono Himura, has her own renderer (hospital/kimono-himura.js)
-// rather than a template here.
-export const PERSON_TEMPLATES = {
-  ...PEOPLE_TEMPLATES,
-};
-
 // Helping staff: they wander between waypoints (set dressing first — the
 // user asked to make the ER "more busier") and then do their jobs (the
 // user picked all three: "help"): Dr. Okafor rescues a patient about to be
 // transferred, the Orderly wheels a surgery patient to the OR when you
 // click him, and the Stock tech brings bandage rolls downstairs now and
-// then — click him for one.
-PERSON_TEMPLATES.doctor = {
-  label: 'Dr. Okafor',
-  bodyColor: '#f6f5f0', pantsColor: '#4f5d70', headColor: '#6b4226', hairColor: '#1a120c', accentColor: '#34343e',
-  eyeColor: '#1a1a1a', eyeShape: 'narrow', browAngle: 0, mouthCurve: 0.5, blush: false,
-  hairStyle: 'sidePart', outfit: 'scrubs', glasses: true, shoeColor: '#2a2a30',
-};
-PERSON_TEMPLATES.orderly = {
-  label: 'Orderly',
-  bodyColor: '#8fa9d6', pantsColor: '#7a94c2', headColor: '#f1c27d', hairColor: '#5a3a22', accentColor: '#8fa9d6',
-  eyeColor: '#2a2a3a', eyeShape: 'roundSmall', browAngle: 0.2, mouthCurve: 0.6, blush: true,
-  hairStyle: 'spiky', outfit: 'scrubs', shoeColor: '#e8e8e8',
-};
-PERSON_TEMPLATES.stockTech = {
-  label: 'Stock tech',
-  bodyColor: '#c9a26a', pantsColor: '#4a4a5a', headColor: '#e0ac69', hairColor: '#2a1c14', accentColor: '#c9a26a',
-  eyeColor: '#2a2a2a', eyeShape: 'roundSmall', browAngle: 0.1, mouthCurve: 0.3, blush: false,
-  hairStyle: 'beanie', outfit: 'scrubs', hatColor: '#3f7a6a', shoeColor: '#4a3a32',
-};
+// then — click him for one. Everyone — player, patients, staff, Karen — is
+// drawn in the anime style (hospital/kimono-himura.js, hospital/anime-people.js).
 
 /** Who wanders where, and the clear spots they walk between. */
 const AMBIENT_STAFF = [
@@ -284,12 +261,8 @@ const STOCK_TECH_ER_WAYPOINTS = [[700, 505], [560, 470], [400, 525], [600, 520]]
 const STOCK_TECH_ER_ELEVATOR = [840, 530];
 const STOCK_TECH_SUPPLY_WAYPOINTS = AMBIENT_STAFF.find((d) => d.key === 'stockTech').waypoints;
 
-// Patients are drawn in Kimono Himura's anime style by hospital/anime-patients.js
-// (sixteen designs — the user asked for "many different patients designs"
-// that look like Kimono); Karen and the staff still use people.js.
-
 export const PLAYER_NAME = 'Kimono Himura';
-/** Kimono Himura's renderer is drawn in px at her feet; this sizes her beside the 1.55× cast. */
+/** Kimono Himura's renderer is drawn in px at her feet; this sizes her beside the rest of the cast. */
 const PLAYER_ART_SCALE = 1.12;
 
 const PATIENT_NAMES = ['Rahul P.', 'Ana L.', 'Ben O.', 'Mei T.', 'Omar S.', 'Grace K.', 'Leo M.', 'Priya N.', 'Sam W.', 'Ivy C.', 'Tomas R.', 'Zara H.', 'Kenji A.', 'Lola D.', 'Hugo B.', 'Nadia F.'];
@@ -298,11 +271,6 @@ function hashId(id) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return h;
-}
-
-function drawHospitalPerson(ctx, x, y, opts = {}) {
-  const base = PERSON_TEMPLATES[opts.personalityKey] || PERSON_TEMPLATES.shyStudent;
-  drawPerson(ctx, x, y, base, { ...opts, scale: (opts.scale ?? 1) * PERSON_SCALE });
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +526,7 @@ export function init(canvas, elements) {
     for (const a of ambient) {
       if (a.floor !== currentFloor) continue;
       if (a.key === 'orderly' && a.errand?.kind === 'deliver') drawGurney(a.x + 34, a.y - 6, a.errand.patientId);
-      drawHospitalPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: 0.8 });
+      drawAnimePerson(ctx, a.x, a.y, STAFF_DESIGNS[a.key], { scale: 0.8, t: performance.now() / 1000 });
       if (a.key === 'stockTech' && a.floor === FLOOR_1) drawBandageRoll(a.x + 16, a.y - 58, 1);
       const label = staffLabel(a);
       const actionable = label !== a.name;
@@ -2161,7 +2129,7 @@ export function init(canvas, elements) {
         continue;
       }
       if (slot.kind === 'karen') {
-        drawHospitalPerson(ctx, slot.x, slot.y, { personalityKey: 'karen', scale: 0.62, angryTint: true });
+        drawAnimePerson(ctx, slot.x, slot.y, STAFF_DESIGNS.karen, { scale: 0.62, angryTint: true, t: performance.now() / 1000 });
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
         continue;
       }
@@ -3074,7 +3042,7 @@ export function init(canvas, elements) {
 
   function drawKarenOverlay() {
     drawPanel('An angry relative', null);
-    drawHospitalPerson(ctx, CANVAS_WIDTH / 2, 410, { personalityKey: 'karen', scale: 1.4, angryTint: true });
+    drawAnimePerson(ctx, CANVAS_WIDTH / 2, 452, STAFF_DESIGNS.karen, { scale: 2.7, angryTint: true, t: performance.now() / 1000 });
     drawRoundRect(ctx, 180, 118, CANVAS_WIDTH - 360, 96, 12, CREAM);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 16px sans-serif';

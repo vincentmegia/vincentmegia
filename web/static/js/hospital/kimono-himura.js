@@ -44,6 +44,9 @@ export const HIMURA_PALETTE = {
 
 const P = HIMURA_PALETTE;
 
+/** How far the head is lowered toward the collar (shorter neck). */
+const NECK_DROP = 3;
+
 /** The fine dark line-art stroke that gives her a crisp anime finish. */
 const LINE = 'rgba(24,18,44,0.6)';
 
@@ -134,14 +137,22 @@ export function drawKimonoHimura(ctx, x, y, opts = {}) {
   ctx.fill();
 
   ctx.translate(0, -bob);
+  // Head and hair sit NECK_DROP lower than first drawn — the user found the
+  // necks "too long".
+  ctx.save();
+  ctx.translate(0, NECK_DROP);
   drawBackHair(ctx, walk);
+  ctx.restore();
   drawFeet(ctx, walk);
   drawRobe(ctx);
   drawSleeves(ctx, walk);
   drawObi(ctx);
   drawCollar(ctx);
   drawHands(ctx);
+  ctx.save();
+  ctx.translate(0, NECK_DROP);
   drawHead(ctx, stress, t);
+  ctx.restore();
   ctx.restore();
 }
 
@@ -361,7 +372,7 @@ function drawObi(ctx) {
 function drawCollar(ctx) {
   // Neck first, then the crossed collars: a white han-eri under the robe's
   // own collar, the wearer's left side (viewer's right) on top.
-  roundRect(ctx, -2.6, -44, 5.2, 6, 2, P.skin);
+  roundRect(ctx, -2.6, -42.5, 5.2, 4.5, 2, P.skin);
   ctx.fillStyle = P.skinShade;
   ctx.beginPath();
   ctx.moveTo(-2.6, -41);
