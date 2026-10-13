@@ -154,9 +154,13 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   kimono-himura.js` (`drawKimonoHimura`, anchored at her feet like
   `drawPerson`): slimmer proportions, a tapered face with big gradient-iris
   eyes and lashes, hatched blush, long black hair with a hime fringe,
-  angel-ring shine and a half-up bun with a swaying kanzashi, an indigo
-  furisode shading to teal at the hem with sakura, a crimson-and-gold obi
-  with a jade obidome, fine line-art outlines, a walking sway, and a
+  angel-ring shine and a half-up bun with a swaying kanzashi, a red
+  furisode deepening to wine at the hem (indigo-to-teal until the user
+  asked for red), with gold and white accents ("add some gold and white"):
+  gold suyari-gasumi mist bands, white-and-gold seigaiha waves at the hem
+  and cuffs, and white and gold sakura, a gold obi with red brocade and a jade obidome,
+  eyes squashed to half height (`EYE_HEIGHT_SCALE`, the user's pick)
+  in a dark violet with metallic-gold pupils and no highlight sparkles, fine line-art outlines, a walking sway, and a
   worried face plus sweat drop at low Sanity. Alongside, the canvas now
   renders at the device pixel ratio (`syncBackingStore`, up to 3×) so the
   whole game stays crisp in fullscreen/Retina. The earlier people.js

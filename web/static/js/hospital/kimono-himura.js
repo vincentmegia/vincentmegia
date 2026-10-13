@@ -4,8 +4,8 @@
 // characters … better than library game and kitchen game", and for a
 // kimono "something different from pink": so an anime-proportioned
 // figure — slimmer body, a face with a tapered chin, big layered eyes —
-// in an indigo furisode shading to teal at the hem, sakura on the hem and
-// sleeves, a crimson-and-gold obi, long black hair with a hime fringe, a
+// in a red furisode deepening to wine at the hem (it was indigo until the
+// user asked for red), sakura on the hem and sleeves, a gold obi, long black hair with a hime fringe, a
 // half-up bun with a kanzashi, and the white nurse cap.
 //
 // Pure canvas drawing (no DOM): `drawKimonoHimura(ctx, x, y, opts)` with
@@ -18,11 +18,16 @@ export const HIMURA_PALETTE = {
   hair: '#1b1828',
   hairShine: '#4a4a78',
   eyeDark: '#2a1a2e',
-  iris: '#7a3f5e',
-  irisLight: '#d98aa6',
-  robeTop: '#27336a',
-  robeHem: '#2f7f88',
-  robeShade: '#1c2550',
+  // Dark, reddish violet eyes with a gold pupil (the user's pick, after
+  // rose, amber and a bluer violet).
+  iris: '#3a1650',
+  irisLight: '#6a2e86',
+  pupil: '#f5c518',
+  pupilLight: '#fff1a8',
+  pupilDeep: '#b8800c',
+  robeTop: '#c4202f',
+  robeHem: '#6e1424',
+  robeShade: '#5a0d18',
   collar: '#ffffff',
   obi: '#c23a3a',
   obiGold: '#e8c25a',
@@ -61,6 +66,40 @@ function sakura(ctx, cx, cy, r, petal = P.sakura, core = P.sakuraCore) {
   ctx.beginPath();
   ctx.arc(cx, cy, r * 0.26, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * A suyari-gasumi mist band — a long rounded gold cloud with a white edge,
+ * the classic furisode motif (the user: "add some gold and white").
+ */
+function goldMist(ctx, x, y, w, h) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  const grad = ctx.createLinearGradient(0, y, 0, y + h);
+  grad.addColorStop(0, '#f6dc8a');
+  grad.addColorStop(1, '#d4a640');
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 0.45;
+  ctx.stroke();
+}
+
+/** A band of seigaiha waves: overlapping white-and-gold arcs along a hem. */
+function seigaiha(ctx, x0, x1, y, r) {
+  for (let row = 0; row < 2; row++) {
+    const off = row ? r : 0;
+    for (let cx = x0 - r + off; cx <= x1 + r; cx += r * 2) {
+      const cy = y + row * r * 0.9;
+      for (const [rr, color] of [[r, '#ffffff'], [r * 0.66, P.obiGold], [r * 0.33, '#ffffff']]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 0.4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r, color) {
@@ -167,33 +206,47 @@ function drawRobe(ctx) {
   robePath(ctx);
   ctx.clip();
   // Volume: a shaded right side and a soft highlight down the left.
-  ctx.fillStyle = 'rgba(10,14,40,0.22)';
+  ctx.fillStyle = 'rgba(60,4,14,0.22)';
   ctx.fillRect(5, -42, 9, 50);
   ctx.fillStyle = 'rgba(255,255,255,0.06)';
   ctx.fillRect(-9, -40, 4, 46);
   // The overlapping front panel (wearer's left over right) runs down to the hem.
-  ctx.strokeStyle = 'rgba(10,14,40,0.45)';
+  ctx.strokeStyle = 'rgba(60,4,14,0.45)';
   ctx.lineWidth = 0.8;
   ctx.beginPath();
   ctx.moveTo(2.4, -19);
   ctx.quadraticCurveTo(3.6, -6, 5.2, 5);
   ctx.stroke();
-  // Sakura and a few drifting petals, gathered toward the hem like a furisode.
-  for (const [px, py, r] of [[-7, -2, 2.6], [-2.5, 2, 2], [6.5, -1, 2.4], [8.8, -9, 1.8], [-8.8, -11, 1.7], [1.2, -8, 1.5], [-4.5, -16, 1.2]]) {
-    sakura(ctx, px, py, r);
-  }
-  ctx.fillStyle = 'rgba(255,241,244,0.75)';
+  // Gold mist bands drifting across the skirt.
+  goldMist(ctx, -13, -13.5, 11, 2.4);
+  goldMist(ctx, 1.5, -5.5, 12, 2.2);
+  goldMist(ctx, -10, -0.5, 8, 1.8);
+  // Seigaiha waves in white and gold along the hem.
+  seigaiha(ctx, -12, 12, 3.4, 1.6);
+  // Sakura — white with gold hearts, and gold with white hearts — gathered
+  // toward the hem like a furisode.
+  [[-7, -2, 2.6], [-2.5, 2, 2], [6.5, -1, 2.4], [8.8, -9, 1.8], [-8.8, -11, 1.7], [1.2, -8, 1.5], [-4.5, -16, 1.2]].forEach(([px, py, r], i) => {
+    if (i % 3 === 1) sakura(ctx, px, py, r, P.obiGold, '#ffffff');
+    else sakura(ctx, px, py, r, P.sakura, P.obiGold);
+  });
+  ctx.fillStyle = 'rgba(255,241,244,0.85)';
   for (const [px, py] of [[4, -13], [-6, -7], [9, 1.5], [-1, -3]]) {
     ctx.beginPath();
     ctx.ellipse(px, py, 0.9, 0.5, 0.6, 0, Math.PI * 2);
     ctx.fill();
   }
-  // Gold hem line.
+  // Gold hem line with a fine white edge.
   ctx.strokeStyle = P.obiGold;
-  ctx.lineWidth = 0.7;
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.moveTo(-12, 3.2);
-  ctx.quadraticCurveTo(0, 4.8, 12, 3.2);
+  ctx.moveTo(-12, 2.2);
+  ctx.quadraticCurveTo(0, 3.8, 12, 2.2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.moveTo(-12, 1.5);
+  ctx.quadraticCurveTo(0, 3.1, 12, 1.5);
   ctx.stroke();
   ctx.restore();
 }
@@ -229,28 +282,36 @@ function drawSleeves(ctx, walk) {
     sleevePath(ctx, dir, sway);
     ctx.clip();
     if (dir > 0) {
-      ctx.fillStyle = 'rgba(10,14,40,0.2)';
+      ctx.fillStyle = 'rgba(60,4,14,0.2)';
       ctx.fillRect(12, -40, 8, 40);
     }
-    sakura(ctx, dir * 12.5 + sway, -10, 2.1);
-    sakura(ctx, dir * 14.6 + sway, -17, 1.4);
-    sakura(ctx, dir * 10.5 + sway, -6.5, 1.2);
+    goldMist(ctx, (dir < 0 ? -17 : 10.5) + sway, -14.5, 6.5, 2);
+    sakura(ctx, dir * 12.5 + sway, -10, 2.1, P.sakura, P.obiGold);
+    sakura(ctx, dir * 14.6 + sway, -17, 1.4, P.obiGold, '#ffffff');
+    sakura(ctx, dir * 10.5 + sway, -6.5, 1.2, P.sakura, P.obiGold);
+    seigaiha(ctx, dir < 0 ? -17 : 7.5, dir < 0 ? -7.5 : 17, -4.6, 1.3);
     ctx.strokeStyle = P.obiGold;
-    ctx.lineWidth = 0.6;
+    ctx.lineWidth = 0.7;
     ctx.beginPath();
     ctx.moveTo(dir * 7.5, -6);
     ctx.lineTo(dir * 17 + sway, -6);
     ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(dir * 7.5, -6.7);
+    ctx.lineTo(dir * 17 + sway, -6.7);
+    ctx.stroke();
     ctx.restore();
     // Crimson lining glimpsed at the sleeve opening.
-    ctx.strokeStyle = 'rgba(194,58,58,0.6)';
+    ctx.strokeStyle = 'rgba(255,200,210,0.7)';
     ctx.lineWidth = 0.5;
     ctx.beginPath();
     ctx.moveTo(dir * 7.8, -12.5);
     ctx.lineTo(dir * 7.8, -9);
     ctx.stroke();
     // The fold line where the sleeve meets the arm.
-    ctx.strokeStyle = 'rgba(10,14,40,0.4)';
+    ctx.strokeStyle = 'rgba(60,4,14,0.4)';
     ctx.lineWidth = 0.6;
     ctx.beginPath();
     ctx.moveTo(dir * 8.2, -33);
@@ -263,14 +324,14 @@ function drawObi(ctx) {
   // Obiage peeking above the sash.
   roundRect(ctx, -11.8, -29.6, 23.6, 2.2, 1, P.obiage);
   const grad = ctx.createLinearGradient(0, -28, 0, -19);
-  grad.addColorStop(0, '#d44848');
-  grad.addColorStop(1, '#a42c34');
+  grad.addColorStop(0, '#f2d27a');
+  grad.addColorStop(1, '#c9982e');
   roundRect(ctx, -12, -28, 24, 9, 1, grad);
   ctx.beginPath();
   ctx.roundRect(-12, -28, 24, 9, 1);
   outline(ctx, 0.5);
-  // Gold brocade: edge lines and a row of small diamonds.
-  ctx.strokeStyle = P.obiGold;
+  // Brocade: edge lines and a row of small diamonds, in deep red on the gold.
+  ctx.strokeStyle = '#9a2a2a';
   ctx.lineWidth = 0.55;
   for (const ly of [-27, -20]) {
     ctx.beginPath();
@@ -278,7 +339,7 @@ function drawObi(ctx) {
     ctx.lineTo(11.8, ly);
     ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(232,194,90,0.55)';
+  ctx.fillStyle = 'rgba(154,42,42,0.55)';
   for (const dx of [-9, -5.5, 5.5, 9]) {
     ctx.beginPath();
     ctx.moveTo(dx, -25.6);
@@ -289,7 +350,7 @@ function drawObi(ctx) {
     ctx.fill();
   }
   // Obijime cord with a jade obidome.
-  roundRect(ctx, -12, -24.1, 24, 1.2, 0.6, '#f4e2a8');
+  roundRect(ctx, -12, -24.1, 24, 1.2, 0.6, '#d8455a');
   roundRect(ctx, -2.2, -25.2, 4.4, 3.4, 1.4, '#4fae94');
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   ctx.beginPath();
@@ -457,16 +518,20 @@ function drawHead(ctx, stress, t) {
   }
 }
 
-/** Each eye is drawn at this size around its own center (the user: "make the eyes a bit more smaller"). */
-const EYE_SCALE = 0.68;
+/**
+ * Eyes are squashed vertically by this much around their center — the same
+ * width, less tall (the user: "not smaller by the sides … smaller by top
+ * and down").
+ */
+const EYE_HEIGHT_SCALE = 0.5;
 
 function drawEyes(ctx, stress) {
-  const h = 4.6 - stress * 0.9; // half-height, before EYE_SCALE
+  const h = 4.6 - stress * 0.9; // half-height, before EYE_HEIGHT_SCALE
   for (const dir of [-1, 1]) {
-    const ex = dir * 4.4;
+    const ex = dir * 4.6;
     ctx.save();
     ctx.translate(ex, EYE_Y);
-    ctx.scale(EYE_SCALE, EYE_SCALE);
+    ctx.scale(1, EYE_HEIGHT_SCALE);
     ctx.translate(-ex, -EYE_Y);
     // White of the eye.
     ctx.fillStyle = '#ffffff';
@@ -482,18 +547,20 @@ function drawEyes(ctx, stress) {
     ctx.beginPath();
     ctx.ellipse(ex + dir * 0.2, EYE_Y + 0.4, 2.5, h - 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = P.eyeDark;
+    // A rich metallic gold: bright core, warm deep edge.
+    const px = ex + dir * 0.2;
+    const pupilGrad = ctx.createRadialGradient(px - 0.2, EYE_Y - 0.3, 0.1, px, EYE_Y + 0.2, 1.8);
+    pupilGrad.addColorStop(0, P.pupilLight);
+    pupilGrad.addColorStop(0.45, P.pupil);
+    pupilGrad.addColorStop(1, P.pupilDeep);
+    ctx.fillStyle = pupilGrad;
     ctx.beginPath();
-    ctx.ellipse(ex + dir * 0.2, EYE_Y + 0.2, 1.1, 1.8 - stress * 0.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, EYE_Y + 0.2, 1.1, 1.8 - stress * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Highlights: a big one up-left, a small one low-right.
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.ellipse(ex - 0.9, EYE_Y - 1.6, 1.1, 1.3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(ex + 1, EYE_Y + 2, 0.55, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = 'rgba(40,8,30,0.55)';
+    ctx.lineWidth = 0.3;
+    ctx.stroke();
+    // No highlight sparkles — the user asked to remove the shine.
     // Upper lash line: thick, sweeping out to a flick at the outer corner.
     ctx.fillStyle = P.eyeDark;
     ctx.beginPath();
