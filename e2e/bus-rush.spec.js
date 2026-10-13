@@ -455,7 +455,7 @@ test('three missions are shown and a finished run keeps three active', async ({ 
 	await page.evaluate(() => window.__busRushTestHooks.crash());
 	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Joyrider');
 	expect(new Set((await snapshot(page)).missions).size).toBe(3);
-	await expect(page.locator('#bus-rush-achievement-count')).toHaveText('1 / 15');
+	await expect(page.locator('#bus-rush-achievement-count')).toHaveText('1 / 16');
 });
 
 test('a semi carrying gasoline stuns for 20 s with a 4 s fuse, then staying close is WASTED', async ({ page }) => {
@@ -654,7 +654,7 @@ test('the Daily Challenge drives the stock bus and submits to its own leaderboar
 	}
 });
 
-for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'lorry', 'citybus', 'doubledecker', 'bendy']) {
+for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'lorry', 'citybus', 'doubledecker', 'bendy', 'coach', 'carcarrier', 'livestock', 'roller', 'excavator', 'loader', 'snowplow']) {
 	test(`hitting a ${kind} is instant game over, whatever lives are left`, async ({ page }) => {
 		await startQuietRun(page);
 		await page.evaluate((k) => window.__busRushTestHooks.spawn(k), kind);
@@ -678,4 +678,22 @@ test('staying in a runaway steel-coil truck’s path is instant game over', asyn
 	await startQuietRun(page);
 	await page.evaluate(() => window.__busRushTestHooks.place('flatbed', 2, -260, { load: 'coils', runaway: true }));
 	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Flattened by a flatbed truck!', { timeout: 6000 });
+});
+
+test('a semi hauling an excavator on a lowboy is instant game over', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => window.__busRushTestHooks.spawn('semi', { lowboy: 'excavator' }));
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Flattened by a semi!', { timeout: 10000 });
+});
+
+test('SNOWED: snow falls, the event counts, and Snowed In unlocks at run end', async ({ page }) => {
+	await startQuietRun(page);
+	expect((await snapshot(page)).snowing).toBe(false);
+	await page.evaluate(() => window.__busRushTestHooks.snow(true));
+	const snap = await snapshot(page);
+	expect(snap.snowing).toBe(true);
+	expect(snap.snows).toBe(1);
+	expect(snap.status).toBe('playing');
+	await page.evaluate(() => window.__busRushTestHooks.crash());
+	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Snowed In');
 });

@@ -100,10 +100,13 @@ import {
   SAND_SLOW_SECONDS,
   sandAllowed,
   STORM_SECONDS,
-  WET_GRIP,
   PUDDLE_CHANCE,
   SPLASH_SECONDS,
   stormStarts,
+  SNOW_SECONDS,
+  snowStarts,
+  weatherGrip,
+  lowboyLoad,
   TIP_SECONDS,
   DRIFT_RADIUS,
   DRIFT_DRAG_PX,
@@ -1618,18 +1621,7 @@ function drawHeavyHaul(ctx, v, x, y, w, l, t) {
   // The excavator: tracks, house, counterweight, the arm folded forward.
   const ey = y + 14;
   const el = deck - 30;
-  fillRoundRect(ctx, '#2b2724', x + 3, ey, 10, el, 3);
-  fillRoundRect(ctx, '#2b2724', x + w - 13, ey, 10, el, 3);
-  ctx.fillStyle = '#5f5a54';
-  for (let ry = ey + 2; ry < ey + el - 2; ry += 5) {
-    ctx.fillRect(x + 4, ry, 8, 2);
-    ctx.fillRect(x + w - 12, ry, 8, 2);
-  }
-  drawBody(ctx, '#e3a92f', x + 10, ey + 8, w - 20, el * 0.55, 5); // house
-  fillRoundRect(ctx, shade('#e3a92f', -0.35), x + 12, ey + 8, w - 24, 10, 3); // counterweight
-  fillRoundRect(ctx, GLASS, x + w - 26, ey + el * 0.32, 12, 14, 2); // operator's cab
-  drawBody(ctx, '#e3a92f', x + w / 2 - 7, ey + el * 0.45, 14, el * 0.5, 3); // boom and stick
-  fillRoundRect(ctx, '#5f5a54', x + w / 2 - 10, ey + el - 10, 20, 12, 3); // bucket
+  drawExcavatorTop(ctx, x, ey, w, el);
   // Chains to the deck corners.
   ctx.strokeStyle = '#c9ced2';
   ctx.lineWidth = 1.2;
@@ -1654,6 +1646,307 @@ function drawHeavyHaul(ctx, v, x, y, w, l, t) {
     ctx.fillStyle = on ? '#ffb547' : '#9a6a20';
     ctx.beginPath();
     ctx.arc(bx, y + l - cab + 5, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const MACHINE_YELLOW = '#e3a92f';
+
+/**
+ * An excavator from above, arm folded forward (toward the bottom): crawler
+ * tracks, the house with its counterweight at the back, the operator's
+ * cab, boom and stick, and the bucket. Shared by the excavator in traffic,
+ * the heavy haul truck's and a lowboy semi's load, and the roadworks.
+ */
+function drawExcavatorTop(ctx, x, y, w, l) {
+  fillRoundRect(ctx, '#2b2724', x + 3, y, 10, l, 3);
+  fillRoundRect(ctx, '#2b2724', x + w - 13, y, 10, l, 3);
+  ctx.fillStyle = '#5f5a54';
+  for (let ry = y + 2; ry < y + l - 2; ry += 5) {
+    ctx.fillRect(x + 4, ry, 8, 2);
+    ctx.fillRect(x + w - 12, ry, 8, 2);
+  }
+  drawBody(ctx, MACHINE_YELLOW, x + 10, y + 8, w - 20, l * 0.55, 5); // house
+  fillRoundRect(ctx, shade(MACHINE_YELLOW, -0.35), x + 12, y + 8, w - 24, 10, 3); // counterweight
+  fillRoundRect(ctx, GLASS, x + w - 26, y + l * 0.32, 12, 14, 2); // operator's cab
+  drawBody(ctx, MACHINE_YELLOW, x + w / 2 - 7, y + l * 0.45, 14, l * 0.5, 3); // boom and stick
+  fillRoundRect(ctx, '#5f5a54', x + w / 2 - 10, y + l - 10, 20, 12, 3); // bucket
+}
+
+/**
+ * A wheel loader from above: four big lugged tyres, the rear engine bay
+ * with its grille, the articulation joint, the cab, lift arms and the wide
+ * bucket out front (bottom).
+ */
+function drawLoaderTop(ctx, x, y, w, l) {
+  const bucket = Math.max(12, l * 0.15);
+  const body = l - bucket - 4;
+  for (const f of [0.2, 0.68]) {
+    const ty = y + body * f - 11;
+    for (const tx of [x, x + w - 12]) {
+      fillRoundRect(ctx, TYRE, tx, ty, 12, 22, 3);
+      ctx.fillStyle = '#4a4744';
+      for (let ly = ty + 3; ly < ty + 20; ly += 4) ctx.fillRect(tx + 2, ly, 8, 1.5);
+    }
+  }
+  drawBody(ctx, MACHINE_YELLOW, x + 10, y, w - 20, body * 0.48, 5); // rear: engine
+  ctx.fillStyle = shade(MACHINE_YELLOW, -0.35);
+  for (let gy = y + 4; gy < y + body * 0.3; gy += 4) ctx.fillRect(x + 16, gy, w - 32, 2);
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 5, y + body * 0.47, 10, 6); // articulation joint
+  drawBody(ctx, MACHINE_YELLOW, x + 10, y + body * 0.5, w - 20, body * 0.5, 5); // front frame
+  fillRoundRect(ctx, GLASS, x + 16, y + body * 0.36, w - 32, 12, 2); // cab glass
+  ctx.fillStyle = shade(MACHINE_YELLOW, -0.2);
+  ctx.fillRect(x + 13, y + body * 0.6, 5, body * 0.42); // lift arms
+  ctx.fillRect(x + w - 18, y + body * 0.6, 5, body * 0.42);
+  fillRoundRect(ctx, '#6e6862', x + 2, y + l - bucket, w - 4, bucket, 3); // bucket
+  ctx.fillStyle = '#9aa1a6';
+  for (let tx = x + 6; tx < x + w - 6; tx += 8) ctx.fillRect(tx, y + l - 3, 4, 3); // teeth
+}
+
+/** A road roller from above: big steel drums front and back, a canopied seat between. */
+function drawRoller(ctx, v, x, y, w, l, t) {
+  const drum = l * 0.26;
+  const roll = (t * 3) % 1;
+  for (const dy of [y, y + l - drum]) {
+    const g = ctx.createLinearGradient(0, dy, 0, dy + drum);
+    g.addColorStop(0, '#6e767c');
+    g.addColorStop(0.5, '#cfd5d8');
+    g.addColorStop(1, '#6e767c');
+    fillRoundRect(ctx, g, x, dy, w, drum, 6);
+    ctx.fillStyle = 'rgba(40,44,48,0.35)';
+    for (let k = 0; k < 3; k++) ctx.fillRect(x + 2, dy + ((k / 3 + roll) % 1) * drum, w - 4, 1.5);
+  }
+  drawBody(ctx, MACHINE_YELLOW, x + 6, y + drum - 4, w - 12, l - drum * 2 + 8, 6);
+  fillRoundRect(ctx, shade(MACHINE_YELLOW, -0.3), x + 10, y + drum + 2, w - 20, 14, 3); // engine hood
+  fillRoundRect(ctx, '#2b2724', x + 12, y + l * 0.46, w - 24, l * 0.18, 4); // canopy roof
+  fillRoundRect(ctx, '#3a3734', x + 16, y + l * 0.49, w - 32, l * 0.12, 3);
+  drawChevrons(ctx, x + 4, y - 4, w - 8);
+}
+
+function drawExcavator(ctx, v, x, y, w, l) {
+  drawExcavatorTop(ctx, x, y, w, l);
+  drawChevrons(ctx, x + 10, y - 2, w - 20);
+}
+
+function drawLoader(ctx, v, x, y, w, l) {
+  drawLoaderTop(ctx, x, y, w, l);
+  drawChevrons(ctx, x + 10, y - 2, w - 20);
+}
+
+/**
+ * A semi hauling a machine on a lowboy instead of its box: a low black
+ * deck, the excavator or loader chained down on it, an OVERSIZE banner.
+ */
+function drawLowboySemi(ctx, v, x, y, w, l) {
+  const cab = 36;
+  const deck = l - cab - 6;
+  drawWheels(ctx, x, y, w, l, [0.07, 0.16, 0.25, 0.78, 0.92]);
+  drawBody(ctx, '#2f2c2a', x, y, w, deck, 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let ry = y + 6; ry < y + deck - 4; ry += 9) ctx.fillRect(x + 3, ry, w - 6, 1.5);
+  const my = y + 14;
+  const ml = deck - 24;
+  if (v.lowboy === 'loader') drawLoaderTop(ctx, x + 2, my, w - 4, ml);
+  else drawExcavatorTop(ctx, x, my, w, ml);
+  ctx.strokeStyle = '#c9ced2';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  for (const [ax, ay, bx, by] of [
+    [x + 2, y + 6, x + 12, my + 6], [x + w - 2, y + 6, x + w - 12, my + 6],
+    [x + 2, y + deck - 4, x + 12, my + ml - 4], [x + w - 2, y + deck - 4, x + w - 12, my + ml - 4],
+  ]) {
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  fillRoundRect(ctx, '#f2c230', x + 2, y - 4, w - 4, 11, 2);
+  centreText(ctx, 'OVERSIZE', x + w / 2, y + 1.5, 'bold 8px sans-serif', '#2b2724', 'rgba(0,0,0,0)');
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 5, y + deck, 10, 7); // hitch
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+}
+
+const COACH_LIVERIES = [['#f4efe4', '#3f6e9e'], ['#f4efe4', '#c9402c'], ['#2b3a4a', '#e0b54a'], ['#f4efe4', '#5f8a5b']];
+
+/**
+ * Coach: a long, sleek tour coach — a smooth roof with a raised aircon pod
+ * and two hatches, a livery swoosh, tinted ribbon windows down both sides
+ * and a big raked windscreen at the nose.
+ */
+function drawCoach(ctx, v, x, y, w, l) {
+  const [body, stripe] = COACH_LIVERIES[(v.seed || 0) % COACH_LIVERIES.length];
+  drawWheels(ctx, x, y, w, l, [0.18, 0.3, 0.82]);
+  drawBody(ctx, body, x, y, w, l, 10);
+  ctx.fillStyle = 'rgba(30,40,52,0.85)'; // ribbon windows
+  ctx.fillRect(x + 1, y + 10, 4, l - 34);
+  ctx.fillRect(x + w - 5, y + 10, 4, l - 34);
+  ctx.fillStyle = stripe; // livery swoosh across the roof
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y + l * 0.55);
+  ctx.quadraticCurveTo(x + w / 2, y + l * 0.42, x + w - 2, y + l * 0.3);
+  ctx.lineTo(x + w - 2, y + l * 0.4);
+  ctx.quadraticCurveTo(x + w / 2, y + l * 0.52, x + 2, y + l * 0.65);
+  ctx.closePath();
+  ctx.fill();
+  fillRoundRect(ctx, shade(body, -0.12), x + 12, y + 14, w - 24, 22, 5); // aircon pod
+  ctx.fillStyle = shade(body, -0.3);
+  for (let gx = x + 16; gx < x + w - 16; gx += 5) ctx.fillRect(gx, y + 18, 2, 14);
+  fillRoundRect(ctx, shade(body, 0.08), x + w / 2 - 8, y + l * 0.68, 16, 10, 2); // hatch
+  quad(ctx, x + 6, x + w - 6, y + l - 22, x + 3, x + w - 3, y + l - 5); // windscreen
+  drawGlass(ctx);
+  ctx.fillStyle = GLASS_SHINE;
+  quad(ctx, x + 12, x + 18, y + l - 21, x + 9, x + 14, y + l - 6);
+  ctx.fill();
+  drawMirrors(ctx, x - 2, y + l - 20, w + 4, body);
+  drawLights(ctx, x, y, w, l);
+}
+
+/**
+ * Car carrier: a cab hauling a two-deck open frame; the top deck's cars sit
+ * on rails above the lower deck's, nose down, in assorted colours.
+ */
+function drawCarCarrier(ctx, v, x, y, w, l) {
+  const cab = 34;
+  const frame = l - cab - 6;
+  drawWheels(ctx, x, y, w, l, [0.07, 0.15, 0.23, 0.8, 0.93]);
+  fillRoundRect(ctx, '#3a3734', x + 2, y, w - 4, frame, 2);
+  const rand = seededRandom(v.seed || 11);
+  const n = 3;
+  const slot = frame / n;
+  for (let i = 0; i < n; i++) {
+    const car = { color: VEHICLE_COLORS[Math.floor(rand() * VEHICLE_COLORS.length)] };
+    drawCar(ctx, car, x + 9, y + i * slot + 4, w - 18, slot - 8);
+  }
+  // Upper-deck rails and posts over the cars.
+  ctx.fillStyle = '#9aa1a6';
+  ctx.fillRect(x + 1, y, 4, frame);
+  ctx.fillRect(x + w - 5, y, 4, frame);
+  for (let py = y + 2; py < y + frame; py += slot) {
+    ctx.fillRect(x + 1, py, w - 2, 3);
+  }
+  drawChevrons(ctx, x, y - 2, w);
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 5, y + frame, 10, 6);
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+}
+
+/** One animal's back, seen through a livestock trailer's roof slats. */
+function drawAnimalBack(ctx, kind, cx, cy, rand) {
+  if (kind === 'cow') {
+    ctx.fillStyle = '#f2ede4';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 9, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2b2724';
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(cx + (rand() - 0.5) * 10, cy + (rand() - 0.5) * 18, 3 + rand() * 2, 2 + rand() * 2, rand(), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (kind === 'sheep') {
+    ctx.fillStyle = '#efe9dc';
+    for (const [dx, dy] of [[-4, -6], [4, -6], [-4, 2], [4, 2], [0, 8], [0, -10]]) {
+      ctx.beginPath();
+      ctx.arc(cx + dx, cy + dy, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#3a3734';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 13, 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#efb2a8'; // pig
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 8, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e39a8f';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 12, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * Animal transporter: an aluminium livestock trailer with an open-slatted
+ * roof, cows, sheep and pigs packed in below the slats, ventilation holes
+ * along the sides and a straw-coloured floor.
+ */
+function drawLivestockTruck(ctx, v, x, y, w, l) {
+  const cab = 34;
+  const box = l - cab - 4;
+  drawWheels(ctx, x, y, w, l, [0.1, 0.24, 0.86]);
+  drawBody(ctx, '#c9ced2', x, y, w, box, 4);
+  fillRoundRect(ctx, '#c9a96e', x + 4, y + 4, w - 8, box - 8, 3); // straw floor
+  const rand = seededRandom(v.seed || 17);
+  const kinds = ['cow', 'sheep', 'pig'];
+  for (let ay = y + 18; ay < y + box - 14; ay += 30) {
+    for (const ax of [x + w * 0.3, x + w * 0.7]) {
+      drawAnimalBack(ctx, kinds[Math.floor(rand() * kinds.length)], ax + (rand() - 0.5) * 4, ay, rand);
+    }
+  }
+  // Roof slats over the animals.
+  ctx.fillStyle = '#aab1b6';
+  for (let ry = y + 8; ry < y + box - 6; ry += 12) ctx.fillRect(x + 3, ry, w - 6, 3);
+  ctx.fillStyle = '#7b8287';
+  for (let ry = y + 10; ry < y + box - 8; ry += 8) {
+    ctx.fillRect(x, ry, 3, 4);
+    ctx.fillRect(x + w - 3, ry, 3, 4);
+  }
+  drawChevrons(ctx, x, y - 2, w);
+  drawCab(ctx, v.color, x + 2, y + l - cab, w - 4, cab);
+}
+
+/**
+ * Snowplow: an orange municipal truck with a wide angled blade on the nose
+ * throwing snow, a salt spreader at the rear and an amber beacon bar.
+ */
+function drawSnowplow(ctx, v, x, y, w, l, t) {
+  const cab = 34;
+  const blade = 14;
+  const body = l - cab - blade - 2;
+  const orange = '#e8763a';
+  drawWheels(ctx, x, y, w, l - blade, [0.14, 0.3, 0.84]);
+  drawBody(ctx, '#7b8287', x + 2, y, w - 4, body, 4); // salt hopper
+  fillRoundRect(ctx, '#e9e5dc', x + 6, y + 6, w - 12, body - 14, 3); // salt load
+  ctx.fillStyle = 'rgba(160,150,140,0.45)';
+  for (let ry = y + 10; ry < y + body - 10; ry += 7) ctx.fillRect(x + 8, ry, w - 16, 1.5);
+  // Spreader spinner at the rear, flinging salt.
+  ctx.save();
+  ctx.translate(x + w / 2, y - 3);
+  ctx.rotate(t * 14);
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(-7, -1.5, 14, 3);
+  ctx.fillRect(-1.5, -7, 3, 14);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(240,240,236,0.8)';
+  for (let i = 0; i < 8; i++) {
+    const a = t * 6 + i * 0.8;
+    const r = 8 + ((t * 40 + i * 9) % 18);
+    ctx.fillRect(x + w / 2 + Math.cos(a) * r, y - 3 - Math.abs(Math.sin(a)) * r, 2, 2);
+  }
+  drawCab(ctx, orange, x + 3, y + body, w - 6, cab);
+  // Amber beacon bar on the cab roof.
+  const on = Math.floor(t * 4) % 2;
+  fillRoundRect(ctx, on ? '#ffb547' : '#9a6a20', x + 10, y + body + 4, w - 20, 5, 2);
+  // The blade: wide, angled, with snow piling off its low end.
+  const by = y + l - blade;
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 4, by - 3, 8, 5); // push frame
+  ctx.save();
+  ctx.translate(x + w / 2, by + blade / 2);
+  ctx.rotate(-0.12);
+  fillRoundRect(ctx, '#f2c230', -w / 2 - 6, -blade / 2, w + 12, blade, 3);
+  ctx.fillStyle = '#2b2724';
+  for (let sx = -w / 2 - 2; sx < w / 2 + 6; sx += 10) ctx.fillRect(sx, -blade / 2 + 2, 5, blade - 4);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(245,248,252,0.9)';
+  for (let i = 0; i < 6; i++) {
+    const k = (t * 1.6 + i / 6) % 1;
+    ctx.beginPath();
+    ctx.arc(x + w + 6 + k * 14, by + 4 + k * 10 - i, 3 + k * 3, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -1701,7 +1994,9 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'mixer') drawMixer(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'tow') drawTowTruck(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'dump') drawDumpTruck(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'coach') drawCoach(ctx, v, x, v.y, v.width, v.length);
   else if (v.bus) drawTrafficBus(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'semi' && v.lowboy) drawLowboySemi(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'semi') drawSemi(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'garbage') drawGarbageTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'truck') drawTruck(ctx, v, x, v.y, v.width, v.length);
@@ -1714,6 +2009,12 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'ladder') drawLadderTruck(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'crane') drawCraneTruck(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'heavyhaul') drawHeavyHaul(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'carcarrier') drawCarCarrier(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'livestock') drawLivestockTruck(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'roller') drawRoller(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'excavator') drawExcavator(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'loader') drawLoader(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'snowplow') drawSnowplow(ctx, v, x, v.y, v.width, v.length, t);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
   if (v.hazmat) drawHazmatMarks(ctx, x, v.y, v.width, v.length - 36);
   ctx.restore();
@@ -2470,6 +2771,16 @@ function drawZone(ctx, z, t) {
   const my = z.y + z.length * 0.47;
   drawShadow(ctx, tx, my, 62, 128, 6);
   drawMixer(ctx, {}, tx, my, 62, 128, t);
+  // Earthmoving at the head of the dig: an excavator or a wheel loader,
+  // and a road roller flattening fresh asphalt past the sand pile.
+  const head = z.y + 80;
+  drawShadow(ctx, tx, head, 62, 116, 6);
+  if (z.seed % 2) drawExcavatorTop(ctx, tx, head, 62, 116);
+  else drawLoaderTop(ctx, tx, head + 6, 62, 104);
+  const rx = left + (LANE_WIDTH - 60) / 2;
+  const ry = z.y + z.length * 0.76;
+  drawShadow(ctx, rx, ry, 60, 92, 6);
+  drawRoller(ctx, {}, rx, ry, 60, 92, t);
   // Blinking amber lamp on the first barrier.
   if (Math.floor(t * 3) % 2) {
     const g = ctx.createRadialGradient(inner + 4, bottom - 72, 1, inner + 4, bottom - 72, 18);
@@ -3009,6 +3320,48 @@ function drawRain(ctx, w, t) {
   if (w && w.flash > 0) {
     ctx.fillStyle = `rgba(240,244,255,${Math.min(0.75, w.flash * 3)})`;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
+}
+
+/** How heavy the snow looks: fades in over its first 3 s and out over its last 3 s. */
+function snowStrength(w) {
+  if (!w || w.snow <= 0) return 0;
+  return Math.min(1, w.snow / 3, (SNOW_SECONDS - w.snow) / 3);
+}
+
+/**
+ * SNOWED: a cold white wash, icy sheen on the road, snow banked along both
+ * kerbs and big flakes drifting down and sideways.
+ */
+function drawSnow(ctx, w, t) {
+  const k = snowStrength(w);
+  if (k <= 0) return;
+  ctx.fillStyle = `rgba(225,236,248,${0.3 * k})`;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  // Banks of plowed snow along both kerbs, lumpy and scrolling with time.
+  ctx.fillStyle = `rgba(250,252,255,${0.9 * k})`;
+  for (const side of [0, 1]) {
+    const edge = side ? WIDTH - SHOULDER : SHOULDER;
+    ctx.beginPath();
+    ctx.moveTo(edge, -20);
+    for (let y = -20; y <= HEIGHT + 20; y += 16) {
+      const bump = 7 + Math.sin(y * 0.09 + t * 0.6 + side * 2) * 4;
+      ctx.lineTo(side ? edge - bump : edge + bump, y);
+    }
+    ctx.lineTo(edge, HEIGHT + 20);
+    ctx.lineTo(side ? WIDTH : 0, HEIGHT + 20);
+    ctx.lineTo(side ? WIDTH : 0, -20);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = `rgba(255,255,255,${0.85 * k})`;
+  for (let i = 0; i < 110; i++) {
+    const size = 1.2 + (i % 4) * 0.7;
+    const y = (i * 97.3 + t * (60 + (i % 5) * 18)) % (HEIGHT + 20) - 10;
+    const x = (i * 53.9 + Math.sin(t * 1.3 + i) * 14 + t * 12) % (WIDTH + 20) - 10;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -3703,6 +4056,7 @@ function init(canvas, el) {
       mixerTopples: r.mixerTopples,
       pancaked: r.pancaked ? 1 : 0,
       storms: r.storms,
+      snows: r.snows,
       runawaysDodged: r.runawaysDodged,
     };
   }
@@ -3807,12 +4161,13 @@ function init(canvas, el) {
       track: null, // up on the MRT viaduct (startJump)
       tip: null, // the cement mixer being tipped over
       scene: null, // the mixer-on-the-police cutscene
-      weather: { rain: 0, splash: 0, flash: 0, nextFlash: 2 },
+      weather: { rain: 0, snow: 0, splash: 0, flash: 0, nextFlash: 2 },
       puddles: [],
       sand: [],
       trackRides: 0,
       mixerTopples: 0,
       storms: 0,
+      snows: 0,
       runawaysDodged: 0,
       // Mission/achievement stats.
       powerupsTaken: 0,
@@ -3964,10 +4319,15 @@ function init(canvas, el) {
       const side = lane === 0 ? -1 : 1;
       r.ramp = { lane, side, x: laneCenter(lane) + side * 14, y: overshoot - 180 - RAMP_TRUCK.length };
     }
-    if (stormStarts(r.rng, r.distance, r.weather.rain > 0)) {
+    const weatherOn = r.weather.rain > 0 || r.weather.snow > 0;
+    if (stormStarts(r.rng, r.distance, weatherOn)) {
       r.weather.rain = STORM_SECONDS;
       r.storms += 1;
       popText(WIDTH / 2, 150, 'STORM! Wet roads ahead', '#9fc4ff', 1.6);
+    } else if (snowStarts(r.rng, r.distance, weatherOn)) {
+      r.weather.snow = SNOW_SECONDS;
+      r.snows += 1;
+      popText(WIDTH / 2, 150, 'SNOWED! Icy roads, snowplows out', '#e6f2ff', 1.8);
     }
     const closed = [r.zone && r.zone.lane, r.ramp && r.ramp.lane].filter((l) => l !== null && l !== undefined);
     const blocked = pickBlockedLanes(r.rng, r.distance, r.prevOpen, closed);
@@ -3978,9 +4338,10 @@ function init(canvas, el) {
     const roadblock = r.rng() < roadblockChance(r.distance, wantedLevel(r.distance, r.fares));
     const laneLength = {};
     blocked.forEach((lane) => {
-      const kind = roadblock ? POLICE_CAR : pickVehicle(r.rng, r.distance, { construction: Boolean(r.zone) });
+      const kind = roadblock ? POLICE_CAR : pickVehicle(r.rng, r.distance, { construction: Boolean(r.zone), snow: r.weather.snow > 0 });
       const taxi = kind.kind === 'car' && r.rng() < TAXI_CHANCE;
       const hazmat = !roadblock && isHazmat(r.rng, kind);
+      const lowboy = roadblock || hazmat ? null : lowboyLoad(r.rng, kind);
       const load = kind.flatbed ? flatbedLoad(r.rng) : null;
       const runaway = Boolean(load) && isRunaway(r.rng, load, r.distance);
       const palette = roadblock ? [POLICE_WHITE] : taxi ? TAXI_COLORS : VEHICLE_COLORS;
@@ -4002,6 +4363,7 @@ function init(canvas, el) {
         seed: Math.floor(r.rng() * 1e6),
         taxi,
         hazmat,
+        lowboy,
         load,
         runaway: runaway ? {} : null,
         containerColor: CONTAINER_COLORS[Math.floor(r.rng() * CONTAINER_COLORS.length)],
@@ -4086,6 +4448,7 @@ function init(canvas, el) {
   function updateWeather(r, dt) {
     const w = r.weather;
     w.rain = Math.max(0, w.rain - dt);
+    w.snow = Math.max(0, w.snow - dt);
     w.splash = Math.max(0, w.splash - dt);
     w.flash = Math.max(0, w.flash - dt);
     if (w.rain <= 0) return;
@@ -4120,7 +4483,7 @@ function init(canvas, el) {
     r.speed = stepSpeed(r.speed, input, dt, r.upgrades.engine, r.level, {
       accel: busDef(r.bus).accel,
       slowed: r.slow > 0,
-      grip: r.weather.rain > 0 ? WET_GRIP : 1,
+      grip: weatherGrip(r.weather),
     });
     r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
     r.grace = Math.max(0, r.grace - dt);
@@ -4431,7 +4794,7 @@ function init(canvas, el) {
     const tr = r.track;
     r.speed = stepSpeed(r.speed, input, dt, r.upgrades.engine, r.level, {
       accel: busDef(r.bus).accel,
-      grip: r.weather.rain > 0 ? WET_GRIP : 1,
+      grip: weatherGrip(r.weather),
     });
     r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
     r.scroll += r.speed * dt * PX_PER_METER;
@@ -5170,6 +5533,7 @@ function init(canvas, el) {
       else if (r.fade > 0 && DISTRICTS[r.fadeFrom].night) drawNight(ctx, nightLayer, dpr, r, busKey, r.fade);
       ctx.translate(0, pan);
       drawRain(ctx, r.weather, t);
+      drawSnow(ctx, r.weather, t);
       if (r.status === 'playing' && !r.scene) {
         const target = driftTarget(r);
         nearbyMixers(r).forEach((v) => drawDriftRing(ctx, v, t, v === target, Math.sign(v.x - r.busX)));
@@ -5488,6 +5852,8 @@ function init(canvas, el) {
         raining: run.weather.rain > 0,
         splash: run.weather.splash > 0,
         storms: run.storms,
+        snowing: run.weather.snow > 0,
+        snows: run.snows,
         hazmat: run.vehicles.filter((v) => v.hazmat).length,
         runaways: run.vehicles.filter((v) => v.runaway).length,
         runawaysDodged: run.runawaysDodged,
@@ -5537,6 +5903,12 @@ function init(canvas, el) {
       if (!run) return;
       run.weather.rain = on ? STORM_SECONDS : 0;
       if (on) run.storms += 1;
+    },
+    // Starts (or stops) a SNOWED event.
+    snow(on = true) {
+      if (!run) return;
+      run.weather.snow = on ? SNOW_SECONDS : 0;
+      if (on) run.snows += 1;
     },
     // A rain puddle / sand drift just ahead of the bus in its lane.
     puddle(lane = run && run.lane, y = BUS_Y - 20) {
@@ -5642,12 +6014,13 @@ function init(canvas, el) {
     },
     // Places a vehicle of `kind` in `lane` at screen `y` (for screenshots
     // and tests that need traffic somewhere other than the bus's lane).
-    place(kind, lane, y, { hazmat = false, load = 'crates', runaway = false } = {}) {
+    place(kind, lane, y, { hazmat = false, load = 'crates', runaway = false, lowboy = null } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || !def) return;
       run.vehicles.push({
         ...def,
         hazmat,
+        lowboy,
         load: def.flatbed ? load : null,
         runaway: runaway ? {} : null,
         containerColor: CONTAINER_COLORS[lane % CONTAINER_COLORS.length],
@@ -5665,7 +6038,7 @@ function init(canvas, el) {
     // Drops one vehicle of `kind` into the bus's lane just above the
     // screen, so it collides through the real update() path. `hazmat`
     // loads a truck or semi with gasoline.
-    spawn(kind, { hazmat = false, load = 'crates' } = {}) {
+    spawn(kind, { hazmat = false, load = 'crates', lowboy = null } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || run.status !== 'playing' || !def) return;
       run.vehicles.push({
@@ -5674,6 +6047,7 @@ function init(canvas, el) {
         lethal: Boolean(def.lethal),
         fuel: Boolean(def.fuel),
         hazmat,
+        lowboy,
         load: def.flatbed ? load : null,
         bus: Boolean(def.bus),
         route: ROUTES[0],

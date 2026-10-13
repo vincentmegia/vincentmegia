@@ -15,7 +15,7 @@ and flees the police across four lanes of oncoming traffic and six
 Singapore districts (levels), collecting fares and dodging cars, vans and
 trucks while police cruisers chase from behind. Ramp trucks launch the bus
 onto an elevated MRT track, cement mixers can be drifted into and tipped onto the
-police, and storms roll in. Fares earn tokens, which are spent between runs
+police, storms roll in, and now and then it's SNOWED and the snowplows come out. Fares earn tokens, which are spent between runs
 in a depot shop on upgrades — chiefly a faster engine. A public Postgres
 leaderboard shows the best runs, all-time and on each day's seeded Daily
 Challenge road.
@@ -69,6 +69,16 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   and **heavy haul trucks** (from 1800 m, a multi-axle lowboy carrying a
   chained-down excavator under an OVERSIZE banner, amber beacons) are all
   lethal.
+* **Coaches** (from 500 m, a long tour coach in one of four liveries with
+  a roof aircon pod, tinted ribbon windows and a livery swoosh; `bus: true`
+  but lethal, like the public buses), **animal transporters** (from 700 m,
+  an aluminium livestock trailer whose slatted roof shows cows, sheep and
+  pigs packed in on straw) and **car carriers** (from 1200 m, a two-deck
+  frame carrying three cars) are lethal.
+* **Lowboy semis**: a semi that isn't carrying gasoline hauls an
+  excavator or a wheel loader on a lowboy trailer instead of its box with
+  `lowboyChance` (25%, `lowboyLoad`, `LOWBOY_LOADS`) — chained down, under
+  an OVERSIZE banner. Still a semi: lethal.
 * **Runaway steel-coil trucks**: from `RUNAWAY_MIN_DISTANCE` (900 m) a
   coil flatbed is out of control with `RUNAWAY_CHANCE` (`isRunaway`). It
   fishtails down the road with hazard flashers and a "!" ("OUT OF
@@ -201,11 +211,13 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   lost); jaywalkers (from 100 m; one life; they dodge oncoming traffic;
   **never on the Expressway**, `pedestriansAllowed`); **construction
   zones** (from 300 m) close an edge lane for `CONSTRUCTION_LENGTH` px
-  with cones, barriers, a sand pile, a parked dump truck and a parked
-  cement mixer — touching
+  with cones, barriers, a sand pile, a parked dump truck, a parked
+  cement mixer, an excavator or wheel loader at the head of the dig and a
+  road roller past the sand pile — touching
   them costs a life and shoves the bus a lane inward, police that touch
   them wreck, and while one is on the road its lane gets no traffic and
-  lethal **dump trucks** join the traffic (`construction` vehicles);
+  lethal **dump trucks, road rollers, excavators and wheel loaders** join
+  the traffic (`construction` vehicles);
   **night in Changi** — the last district is dark apart from headlights,
   police lights and street-lamp pools.
 * **Weather**: from `STORM_MIN_DISTANCE` (400 m) a storm can roll in on
@@ -215,6 +227,17 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   through one splashes muddy water over the windscreen for
   `SPLASH_SECONDS`, hiding the road (no life lost). Steering is deliberately
   untouched: a slower lane change would break "every row is passable".
+* **SNOWED** (an event, like a storm, never on top of other weather): from
+  `SNOW_MIN_DISTANCE` (600 m) it can start on any row with `SNOW_CHANCE`
+  (`snowStarts`) and lasts `SNOW_SECONDS` (25 s), announced with "SNOWED!
+  Icy roads, snowplows out". Snow falls, a cold white wash covers the
+  road and snow banks up along both kerbs; icy roads make accelerating
+  and braking work at `ICY_GRIP` (45%, worse than wet — `weatherGrip`);
+  and lethal **snowplows** (orange, a wide angled blade throwing snow, a
+  salt spreader at the rear, amber beacons) join the traffic — they're
+  `snow` vehicles, only in the pool while it's SNOWED, and weighted heavily
+  (`weight` 2.5) so the event is unmistakable. The Snowed In achievement
+  pays for driving through one.
 * **Daily Challenge** (start screen button): today's road (UTC date,
   `dailyDate`) — every traffic row, zone, ramp, storm and hazard comes from
   one stream seeded by the date (`seededRng(dailySeed(date))`), so everyone
@@ -230,7 +253,7 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   active missions (`MISSIONS`, e.g. "Wreck 3 police cars in one run",
   "Escape a fuel tanker blast") with live progress; completed ones pay
   their reward at run end and are replaced (`refillMissions`; ones that
-  need Ram Plating are offered only once it's bought). Fifteen one-time
+  need Ram Plating are offered only once it's bought). Sixteen one-time
   `ACHIEVEMENTS` (run or lifetime stats, `addLifetime`) pay tokens once.
   Run Over shows the bonus and what was completed/unlocked. Missions,
   achievements and lifetime totals live in the same `localStorage` blob.
@@ -334,6 +357,8 @@ flying, "HAHAHA!"; the pancake shows the mixer slamming down and rolling
 off a flattened, tread-marked bus in a splat, dazed stars over the
 flattened driver. Storms add rain streaks, a grey wash, lightning and
 puddles with ripples; a splash smears muddy droplets over the screen.
+SNOWED adds drifting flakes, a white wash and lumpy snow banks along both
+kerbs.
 
 Trees are sized to overhang the footpath and kerb so they read at the
 canvas edge. Each player bus has its own paint and roof (`BUS_LOOKS`):
@@ -510,9 +535,10 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `trainGapSeconds`): one train at a time; oncoming trains close at the
   bus's speed plus `TRAIN_SPEED`, up trains always overtake at
   `UP_TRAIN_OVERTAKE`; the warning outlasts two lane changes for every bus.
-* **Weather** (`stormStarts`, `WET_GRIP`): storms only past
-  `STORM_MIN_DISTANCE` and never stacked; grip scales accelerating and
-  braking but never the speed bounds.
+* **Weather** (`stormStarts`, `snowStarts`, `weatherGrip`, `WET_GRIP`,
+  `ICY_GRIP`): storms and SNOWED only past their minimum distances and
+  never stacked on any weather; grip scales accelerating and braking but
+  never the speed bounds; ice grips worse than rain.
 * **Daily seed** (`seededRng`, `dailySeed`, `dailyDate`): the same date
   gives the same stream (and the same rows); the date is the UTC day.
 
@@ -554,8 +580,12 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       the speed bounds); drift radius and escape lanes, lane change fits
       the mixer's braking; the new trucks (container, flatbed, reefer,
       fire, ladder, crane, heavy haul) are lethal and fit the row
-      spacing; lorries and public buses are lethal, the school bus costs
-      one life; flatbed load
+      spacing; lorries, coaches and public buses are lethal, the school
+      bus costs one life; coaches, car carriers, animal transporters,
+      rollers, excavators, loaders and snowplows are lethal and fit the
+      row spacing; construction machines only with a zone, snowplows only
+      while SNOWED; SNOWED's minimum distance, no stacking and icy grip;
+      lowboy odds and loads (semis only); flatbed load
       odds; only coil flatbeds past the minimum distance run away; a
       runaway swerves one lane toward the bus, never off the road or into a
       closed lane, early enough to dodge at the fastest closing speed; train closing speeds, the warning outlasting two lane
@@ -596,8 +626,11 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       costing a life; Sentosa is level 6 and its sand slows the bus; the
       Daily Challenge drives the stock bus, submits to the daily board, the
       tabs switch boards, and Drive Again stays daily; container, flatbed,
-      refrigerated, fire, ladder, crane and heavy haul trucks, lorries and
-      city, double-decker and bendy buses are instant game over; a runaway coil truck can be
+      refrigerated, fire, ladder, crane, heavy haul, car carrier and animal
+      transporter trucks, lorries, coaches, road rollers, excavators, wheel
+      loaders, snowplows and city, double-decker and bendy buses are
+      instant game over; a lowboy semi is too; SNOWED counts and unlocks
+      Snowed In; a runaway coil truck can be
       dodged by steering clear, and staying in its path is game over.
       Plus
       `e2e/projects.spec.js`'s card tests.
@@ -607,9 +640,10 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `pothole/spikes/pedestrian(lane?, y?)`, `zone(lane?, bottom?)`,
   `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y, {hazmat})`
   (a vehicle anywhere, for screenshots), `spawn(kind, {hazmat})`,
-  `place(kind, lane, y, {load, runaway})` for flatbeds, `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
+  `place(kind, lane, y, {load, runaway})` for flatbeds,
+  `place/spawn(kind, …, {lowboy: 'excavator'|'loader'})` for lowboy semis, `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
   `quietTrack(s?)`, `mixer(lane?, y?)`, `drift()`, `sceneTime(t)`,
-  `storm(on)`, `puddle(lane?, y?)`, `sand(lane?, y?)`, `banana()` (one just ahead
+  `storm(on)`, `snow(on)` (SNOWED), `puddle(lane?, y?)`, `sand(lane?, y?)`, `banana()` (one just ahead
   of the bus), `garbage()` (a pile just ahead of the bus), `noPolice()`,
   `policeBanana()` (a non-re-aiming cruiser behind the bus
   with a banana at its nose), `policeRam()`,
