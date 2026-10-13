@@ -693,6 +693,13 @@ export function shakyHandsSweepMultiplier(intensity) {
 export const MEDS_DROP_CHANCE_PER_SECOND = 0.06;
 export const HALLUCINATION_STARTLE_SANITY = 5;
 export const ZERO_SANITY_PAY_CUT_PER_10S = 0.02;
+/**
+ * Seconds at 0 Sanity before you collapse — game over for the shift (the
+ * user: "after 20 seconds you have 0% sanity you instantly die"). Running
+ * out of stars is an instant game over too; either way the shift pays
+ * nothing and is retried (the user picked "Retry the shift").
+ */
+export const ZERO_SANITY_COLLAPSE_SECONDS = 20;
 export const ZERO_SANITY_PAY_CUT_MAX = 0.3;
 
 export function hallucinationPayMultiplier(zeroSanitySeconds) {

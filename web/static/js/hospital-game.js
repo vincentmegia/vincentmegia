@@ -71,6 +71,7 @@ import {
   DISCHARGE_GARD,
   STOCK_TECH_UPSTAIRS_SECONDS,
   STOCK_TECH_DOWNSTAIRS_SECONDS,
+  ZERO_SANITY_COLLAPSE_SECONDS,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
@@ -98,6 +99,7 @@ import {
   resolveKarenEvent,
   tick,
   isOfficeReady,
+  collapseSecondsRemaining,
   enterOffice,
   brewCoffee,
   startleFromHallucination,
@@ -567,6 +569,7 @@ export function init(canvas, elements) {
     let status;
     if (shiftState.phase === 'closing-wait') status = isOfficeReady(shiftState) ? 'Handover — go in' : 'Handover…';
     else if (shiftState.phase === 'paycheck') status = 'Shift over';
+    else if (shiftState.phase === 'game-over') status = 'Game over';
     else if (shiftState.wardMood > 70) status = 'Calm';
     else if (shiftState.wardMood > 30) status = 'Busy';
     else status = 'Chaotic';
@@ -1544,6 +1547,7 @@ export function init(canvas, elements) {
     screen.outcome.textContent = parts.join(' · ');
     screen.shiftTotal.textContent = `${payout} Gard`;
     screen.monthTotal.textContent = `${save.monthToDateGard} Gard`;
+    screen.nextShiftButton.textContent = 'Start Next Shift';
     screen.nextShiftButton.classList.toggle('hidden', isFinalShift);
     screen.newMonthButton.classList.toggle('hidden', !isFinalShift);
     screen.finalBlock.classList.toggle('hidden', !isFinalShift);
@@ -1552,6 +1556,37 @@ export function init(canvas, elements) {
       if (screen.shiftsInput) screen.shiftsInput.value = String(SHIFTS_PER_MONTH);
       if (screen.submitButton) screen.submitButton.disabled = false;
     }
+    renderHud();
+    showScreen('paycheck');
+  }
+
+  /**
+   * Game over (20 s at 0 Sanity, or out of stars): the shift pays nothing
+   * and the save stays on this shift, so "Retry Shift N" replays it with
+   * the month's earnings kept. Reuses the paycheck panel.
+   */
+  function showGameOver() {
+    running = false;
+    if (rafHandle !== null) {
+      window.cancelAnimationFrame(rafHandle);
+      rafHandle = null;
+    }
+    overlay = null;
+    moveTarget = null;
+    render();
+    const screen = elements.paycheckScreen;
+    screen.root.dataset.outcome = 'game-over';
+    screen.root.dataset.final = 'false';
+    screen.title.textContent = 'Game Over';
+    screen.outcome.textContent = shiftState.gameOverReason === 'sanity'
+      ? `You collapsed after ${ZERO_SANITY_COLLAPSE_SECONDS} seconds at 0% Sanity. Grab coffee before it runs out!`
+      : 'Out of stars — too many patients walked out or were transferred.';
+    screen.shiftTotal.textContent = '0 Gard';
+    screen.monthTotal.textContent = `${save.monthToDateGard} Gard`;
+    screen.nextShiftButton.textContent = `Retry Shift ${currentShiftNumber}`;
+    screen.nextShiftButton.classList.remove('hidden');
+    screen.newMonthButton.classList.add('hidden');
+    screen.finalBlock.classList.add('hidden');
     renderHud();
     showScreen('paycheck');
   }
@@ -3252,6 +3287,14 @@ export function init(canvas, elements) {
     ctx.restore();
     drawStatBar(14, 'Sanity', shiftState ? shiftState.sanity : SANITY_MAX, SANITY_MAX, '#7fd68a', sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif');
     drawStatBar(36, 'Mood', shiftState ? shiftState.wardMood : WARD_MOOD_MAX, WARD_MOOD_MAX, '#7fb0d6', 'bold 10px sans-serif');
+    const collapseIn = shiftState ? collapseSecondsRemaining(shiftState) : null;
+    if (collapseIn != null && !overlay) {
+      const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 120);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      drawLabelChip(ctx, CANVAS_WIDTH / 2, 80, `0% Sanity — you'll collapse in ${Math.ceil(collapseIn)}s! Get coffee!`, 'bold 13px sans-serif', '#d9534f', CREAM);
+      ctx.restore();
+    }
     drawRatingStars();
     drawGardCounter();
     drawOverlay();
@@ -3269,6 +3312,10 @@ export function init(canvas, elements) {
 
     const before = shiftState;
     shiftState = tick(shiftState, dt);
+    if (shiftState.phase === 'game-over' && before.phase !== 'game-over') {
+      showGameOver();
+      return;
+    }
 
     // A task overlay whose task the engine dropped (patient transferred, or
     // the clock ran out) closes with an explanation.
@@ -3416,6 +3463,8 @@ export function init(canvas, elements) {
     setSkillGauge(pos) { if (overlay?.kind === 'skill') { overlay.gauge = pos; overlay.direction = 0; } },
     setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
     setSanity(value) { if (shiftState) shiftState = { ...shiftState, sanity: value }; },
+    setZeroSanitySeconds(value) { if (shiftState) shiftState = { ...shiftState, zeroSanitySeconds: value }; },
+    setRating(value) { if (shiftState) shiftState = { ...shiftState, rating: value }; },
     setWardMood(value) { if (shiftState) shiftState = { ...shiftState, wardMood: value }; },
     forceKarenShiftNow() {
       if (!shiftState) return;

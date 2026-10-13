@@ -7,7 +7,8 @@
 //
 // State shape (`ShiftState`):
 //   {
-//     phase: 'not-started' | 'playing' | 'closing-wait' | 'paycheck',
+//     phase: 'not-started' | 'playing' | 'closing-wait' | 'paycheck' | 'game-over',
+//     gameOverReason: null | 'sanity' | 'stars',  // why a 'game-over' shift ended
 //     shiftNumber, clockSeconds, totalClockSeconds, closingWaitSecondsRemaining,
 //
 //     triageQueue: Patient[],       // waiting at the Triage Desk (wait timer each)
@@ -64,6 +65,7 @@ import {
   DISCHARGE_GARD,
   RATING_MAX,
   RATING_PENALTY_PER_WALKOUT,
+  ZERO_SANITY_COLLAPSE_SECONDS,
   clampRating,
   paycheckMultiplierForRating,
   hallucinationPayMultiplier,
@@ -116,6 +118,7 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     mistakeCount: 0,
     bonusGard: 0,
     payout: null,
+    gameOverReason: null,
 
     ...overrides,
   };
@@ -584,11 +587,26 @@ export function tick(state, deltaSeconds) {
       : { ...next, karen: { ...next.karen, timerSecondsRemaining: remaining } };
   }
 
+  // Game over: collapsing after too long at 0 Sanity, or running out of stars.
+  if (next.zeroSanitySeconds >= ZERO_SANITY_COLLAPSE_SECONDS) return gameOver(next, 'sanity');
+  if (next.rating <= 0) return gameOver(next, 'stars');
+
   const clockSeconds = Math.max(0, next.clockSeconds - delta);
   if (clockSeconds <= 0) {
     return { ...next, clockSeconds: 0, phase: 'closing-wait', closingWaitSecondsRemaining: CLOSING_WAIT_SECONDS, activeTask: null };
   }
   return { ...next, clockSeconds };
+}
+
+/** Ends the shift as a game over: nothing in hand, nothing in progress, no pay. */
+function gameOver(state, reason) {
+  return { ...state, phase: 'game-over', gameOverReason: reason, activeTask: null, carried: null, payout: 0 };
+}
+
+/** Seconds left before a collapse while at 0 Sanity, or null when Sanity is above 0. */
+export function collapseSecondsRemaining(state) {
+  if (state.phase !== 'playing' || state.sanity > 0) return null;
+  return Math.max(0, ZERO_SANITY_COLLAPSE_SECONDS - state.zeroSanitySeconds);
 }
 
 export function isOfficeReady(state) {

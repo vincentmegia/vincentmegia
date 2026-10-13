@@ -35,6 +35,7 @@ import {
   enterOffice,
   brewCoffee,
   startleFromHallucination,
+  collapseSecondsRemaining,
 } from './engine-state.js';
 import {
   findCondition,
@@ -53,6 +54,7 @@ import {
   shiftPaycheck,
   DOCTOR_ASSIST_COOLDOWN_SECONDS,
   DOCTOR_ASSIST_PATIENCE_REFILL,
+  ZERO_SANITY_COLLAPSE_SECONDS,
 } from './rules.js';
 
 function playing(shift = 5, overrides = {}) {
@@ -417,9 +419,38 @@ describe('tick', () => {
     assert.ok(s.zeroSanitySeconds > 18 && s.zeroSanitySeconds < 20);
   });
 
-  test('the clock running out starts the handover, then the office opens', () => {
+  test(`${ZERO_SANITY_COLLAPSE_SECONDS} s at 0 Sanity is a game over that pays nothing`, () => {
+    let s = playing(1, { sanity: 0 });
+    assert.equal(collapseSecondsRemaining(s), ZERO_SANITY_COLLAPSE_SECONDS);
+    s = tick(s, ZERO_SANITY_COLLAPSE_SECONDS - 1);
+    assert.equal(s.phase, 'playing');
+    assert.ok(Math.abs(collapseSecondsRemaining(s) - 1) < 1e-9);
+    s = tick(s, 1);
+    assert.equal(s.phase, 'game-over');
+    assert.equal(s.gameOverReason, 'sanity');
+    assert.equal(s.payout, 0);
+    assert.equal(tick(s, 5), s); // nothing moves after it
+    assert.equal(collapseSecondsRemaining(playing(1)), null);
+  });
+
+  test('running out of stars is an instant game over', () => {
+    const walkouts = Math.ceil(5 / RATING_PENALTY_PER_WALKOUT);
     let s = playing(1);
-    s = tick(s, s.totalClockSeconds);
+    for (let i = 0; i < walkouts; i++) s = addPatientToTriage(s, { id: `w${i}`, conditionId: 'sprain', waitSeconds: 1 });
+    s = tick(s, 2);
+    assert.equal(s.phase, 'game-over');
+    assert.equal(s.gameOverReason, 'stars');
+    assert.equal(s.rating, 0);
+    // One star short of zero keeps you playing.
+    let t = playing(1);
+    for (let i = 0; i < walkouts - 1; i++) t = addPatientToTriage(t, { id: `w${i}`, conditionId: 'sprain', waitSeconds: 1 });
+    assert.equal(tick(t, 2).phase, 'playing');
+  });
+
+  test('the clock running out starts the handover, then the office opens', () => {
+    // Jump to the shift's last instant (a whole shift in one tick would
+    // drain Sanity to 0 for minutes — a collapse).
+    let s = tick({ ...playing(1), clockSeconds: 0.001 }, 0.01);
     assert.equal(s.phase, 'closing-wait');
     assert.equal(s.closingWaitSecondsRemaining, CLOSING_WAIT_SECONDS);
     assert.equal(isOfficeReady(s), false);

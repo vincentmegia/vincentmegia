@@ -131,6 +131,17 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   (walking up to one costs 5 Sanity), and a pay cut for time at 0 Sanity.
 * **Star rating**: 5★ each shift, −1.5★ per walk-out (a queued patient
   whose wait runs out, or a bed transfer); the rating scales the payout.
+* **Game over** (the user: "after 20 seconds you have 0% sanity you
+  instantly die also when the stars run out its instant game over"):
+  `ZERO_SANITY_COLLAPSE_SECONDS` (20) at 0 Sanity collapses you, and
+  reaching 0★ (a 4th walk-out/transfer) ends the shift at once. Either way
+  `tick` moves to phase `'game-over'` (`gameOverReason` `'sanity'` |
+  `'stars'`, payout 0). Asked what should follow, the user picked "Retry
+  the shift": the paycheck panel shows "Game Over", the reason, 0 Gard and
+  the untouched run total, and "Retry Shift N" replays the same shift (the
+  save never advanced). A pulsing red chip counts down the seconds left
+  while you're at 0 Sanity. Sanity drains 100 → 0 in 150 s, so going
+  without coffee for ~2½ min now ends the shift.
 * **Handover & paycheck**: at 7:00 PM a 20 s handover wait begins, then the
   Charge Nurse's office opens; walking in pays the shift: `shiftPaycheck
   (mistakes)` (4000 − 500 per mistake, floor 500) + bonuses, × rating ÷ 5,

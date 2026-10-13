@@ -487,6 +487,36 @@ test.describe('hallucinations', () => {
 	});
 });
 
+test.describe('game over', () => {
+	test('20 s at 0% Sanity is a game over; Retry replays the same shift with the month kept', async ({ page }) => {
+		await seedSave(page, 5, 1200);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setSanity', 0);
+		await hooks(page, 'setZeroSanitySeconds', 19.5);
+		await expect(page.locator('#hospital-paycheck-screen')).toBeVisible();
+		await expect(page.locator('#hospital-paycheck-title')).toHaveText('Game Over');
+		await expect(page.locator('#hospital-paycheck-outcome')).toContainText('collapsed');
+		await expect(page.locator('#hospital-paycheck-shift-total')).toHaveText('0 Gard');
+		await expect(page.locator('#hospital-paycheck-month-total')).toHaveText('1200 Gard');
+		const retry = page.locator('#hospital-paycheck-next-shift-button');
+		await expect(retry).toHaveText('Retry Shift 5');
+		await retry.click();
+		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getShiftState()?.phase === 'playing');
+		expect((await shiftState(page)).shiftNumber).toBe(5);
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('5/30');
+	});
+
+	test('running out of stars is an instant game over', async ({ page }) => {
+		await seedSave(page);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setRating', 0);
+		await expect(page.locator('#hospital-paycheck-title')).toHaveText('Game Over');
+		await expect(page.locator('#hospital-paycheck-outcome')).toContainText('Out of stars');
+	});
+});
+
 test.describe('handover and paycheck', () => {
 	test('the office is locked during play, then pays out after handover', async ({ page }) => {
 		await page.goto('/hospital-shift');
