@@ -8,8 +8,17 @@ import (
 	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/middleware"
+	"github.com/vincentmegia/vincentmegia/internal/model"
 	"github.com/vincentmegia/vincentmegia/internal/service"
 )
+
+// busRushLeaderboardView is the bus-rush-leaderboard fragment's data: one
+// board's top scores, and which board it is — Daily is the Daily
+// Challenge's YYYY-MM-DD date, "" for the all-time board.
+type busRushLeaderboardView struct {
+	Scores []model.BusRushScore
+	Daily  string
+}
 
 // busRushLeaderboardLimit is the top-N size shown on the leaderboard.
 const busRushLeaderboardLimit = 20
@@ -48,19 +57,37 @@ func (h *BusRushHandler) Index(w http.ResponseWriter, r *http.Request) {
 }
 
 // Leaderboard handles GET /bus-rush/leaderboard, returning the bare
-// bus-rush-leaderboard fragment.
+// bus-rush-leaderboard fragment: the all-time board, or with ?board=daily
+// today's Daily Challenge board.
 func (h *BusRushHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
-	scores, err := h.Service.Leaderboard(r.Context(), busRushLeaderboardLimit)
+	daily := ""
+	if r.URL.Query().Get("board") == "daily" {
+		daily = h.Service.Today()
+	}
+	h.renderBoard(w, r, daily)
+}
+
+// renderBoard renders one board's fragment (daily "" = all-time).
+func (h *BusRushHandler) renderBoard(w http.ResponseWriter, r *http.Request, daily string) {
+	var scores []model.BusRushScore
+	var err error
+	if daily == "" {
+		scores, err = h.Service.Leaderboard(r.Context(), busRushLeaderboardLimit)
+	} else {
+		scores, err = h.Service.DailyLeaderboard(r.Context(), daily, busRushLeaderboardLimit)
+	}
 	if err != nil {
-		slog.Error("get bus rush leaderboard", "error", err)
+		slog.Error("get bus rush leaderboard", "daily", daily, "error", err)
 		writeBusRushLeaderboardError(w)
 		return
 	}
-	h.Renderer.RenderFragment(w, "bus-rush-leaderboard", scores)
+	h.Renderer.RenderFragment(w, "bus-rush-leaderboard", busRushLeaderboardView{Scores: scores, Daily: daily})
 }
 
 // SubmitScore handles POST /bus-rush/score (form-encoded player_name,
-// score, distance_meters) and returns the refreshed leaderboard fragment.
+// score, distance_meters, and daily_date for a Daily Challenge run) and
+// returns the refreshed leaderboard fragment — the daily board for a daily
+// run.
 // Same CSRF gap as FishingGameHandler.SubmitScore — see its doc comment.
 func (h *BusRushHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
@@ -81,7 +108,8 @@ func (h *BusRushHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Service.SubmitScore(r.Context(), playerName, score, distance); err != nil {
+	daily := r.FormValue("daily_date")
+	if err := h.Service.SubmitScore(r.Context(), playerName, score, distance, daily); err != nil {
 		if isBusRushValidationError(err) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -91,13 +119,7 @@ func (h *BusRushHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scores, err := h.Service.Leaderboard(r.Context(), busRushLeaderboardLimit)
-	if err != nil {
-		slog.Error("get bus rush leaderboard after submit", "error", err)
-		writeBusRushLeaderboardError(w)
-		return
-	}
-	h.Renderer.RenderFragment(w, "bus-rush-leaderboard", scores)
+	h.renderBoard(w, r, daily)
 }
 
 // isBusRushValidationError reports whether err is a curated, user-facing
@@ -108,6 +130,8 @@ func isBusRushValidationError(err error) bool {
 		service.ErrBusRushPlayerNameTooLong,
 		service.ErrBusRushScoreOutOfRange,
 		service.ErrBusRushDistanceOutOfRange,
+		service.ErrBusRushDailyDateInvalid,
+		service.ErrBusRushDailyDateStale,
 	} {
 		if errors.Is(err, sentinel) {
 			return true

@@ -78,6 +78,31 @@ import {
   ACHIEVEMENTS,
   addLifetime,
   newAchievements,
+  HAZMAT_STUN_SECONDS,
+  HAZMAT_FUSE_SECONDS,
+  isHazmat,
+  explosive,
+  crashTimings,
+  sandAllowed,
+  WET_GRIP,
+  stormStarts,
+  STORM_MIN_DISTANCE,
+  TIP_SECONDS,
+  escapeLane,
+  canShove,
+  TRACK_SECONDS,
+  TRAIN,
+  TRAIN_WARNING_SECONDS,
+  TRAIN_SPEED,
+  TRAIN_LENGTH,
+  nextTrainTrack,
+  trainGapSeconds,
+  trainClosingSpeed,
+  RAMP_TRUCK,
+  seededRng,
+  dailyDate,
+  dailySeed,
+  DAILY_BUS,
 } from './rules.js';
 
 // Small deterministic PRNG so the property-style tests below are repeatable.
@@ -304,9 +329,9 @@ describe('traffic', () => {
     assert.equal(new Set(picks.filter((v) => v.bus).map((v) => v.kind)).size, 4);
   });
 
-  test('trucks, semis, garbage and dump trucks are lethal; cars, vans and tankers are not', () => {
+  test('trucks, semis, garbage trucks, dump trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['dump', 'garbage', 'semi', 'truck']);
+    assert.deepEqual(lethal, ['dump', 'garbage', 'mixer', 'semi', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -586,5 +611,144 @@ describe('missions and achievements', () => {
     assert.deepEqual(earned.sort(), ['copBait', 'islandHopper', 'joyrider', 'wasted']);
     assert.deepEqual(newAchievements(earned, { level: 5, wasted: 1 }, lifetime), []);
     assert.ok(Object.values(ACHIEVEMENTS).every((a) => a.reward > 0));
+  });
+});
+
+describe('hazmat trucks', () => {
+  test('only box trucks and semis can carry gasoline, at their own odds', () => {
+    const carriers = VEHICLES.filter((v) => v.hazmatChance).map((v) => v.kind).sort();
+    assert.deepEqual(carriers, ['semi', 'truck']);
+    const rng = seeded(3);
+    const semi = VEHICLES.find((v) => v.kind === 'semi');
+    const hits = Array.from({ length: 4000 }, () => isHazmat(rng, semi)).filter(Boolean).length / 4000;
+    assert.ok(Math.abs(hits - semi.hazmatChance) < 0.03, `semi hazmat rate ${hits}`);
+    assert.equal(isHazmat(rng, VEHICLES.find((v) => v.kind === 'car')), false);
+  });
+
+  test('a hazmat crash stuns for 20 s with a 4 s fuse; a tanker keeps its own', () => {
+    assert.deepEqual(crashTimings({ hazmat: true }), { stun: HAZMAT_STUN_SECONDS, fuse: HAZMAT_FUSE_SECONDS });
+    assert.equal(HAZMAT_STUN_SECONDS, 20);
+    assert.equal(HAZMAT_FUSE_SECONDS, 4);
+    assert.deepEqual(crashTimings({ fuel: true }), { stun: FUEL_STUN_SECONDS, fuse: FUEL_FUSE_SECONDS });
+  });
+
+  test('explosive vehicles and trains get through a shield', () => {
+    assert.ok(explosive({ hazmat: true }) && explosive({ fuel: true }) && !explosive({ kind: 'truck' }));
+    assert.equal(shieldAbsorbs({ hazmat: true, lethal: true }), false);
+    assert.equal(shieldAbsorbs(TRAIN), false);
+    assert.equal(shieldAbsorbs({ kind: 'truck', lethal: true }), true);
+  });
+});
+
+describe('new traffic', () => {
+  test('tow trucks cost a life; cement mixers are lethal', () => {
+    const tow = VEHICLES.find((v) => v.kind === 'tow');
+    const mixer = VEHICLES.find((v) => v.kind === 'mixer');
+    assert.equal(livesAfterHit(3, tow, 0), 2);
+    assert.equal(livesAfterHit(3, mixer, 0), 0);
+    assert.ok(tow.length <= ROW_SPACING_MIN && mixer.length <= ROW_SPACING_MIN);
+  });
+});
+
+describe('Sentosa', () => {
+  test('is the sixth, endless district, and the only one with sand drifts', () => {
+    assert.equal(LEVELS[5], 'Sentosa');
+    assert.equal(levelAt(LEVEL_DISTANCE * 5), 5);
+    assert.deepEqual(LEVELS.map((_, i) => sandAllowed(i)), LEVELS.map((name) => name === 'Sentosa'));
+  });
+});
+
+describe('weather', () => {
+  test('storms start only past the minimum distance, and never on top of one', () => {
+    const always = () => 0;
+    assert.equal(stormStarts(always, STORM_MIN_DISTANCE - 1, false), false);
+    assert.equal(stormStarts(always, STORM_MIN_DISTANCE, false), true);
+    assert.equal(stormStarts(always, STORM_MIN_DISTANCE, true), false);
+  });
+
+  test('wet roads weaken accelerating and braking, never the speed bounds', () => {
+    const dry = stepSpeed(12, { accelerate: true }, 0.1, 0);
+    const wet = stepSpeed(12, { accelerate: true }, 0.1, 0, 0, { grip: WET_GRIP });
+    assert.ok(wet > 12 && wet < dry);
+    const dryBrake = stepSpeed(14, { brake: true }, 0.1, 0);
+    const wetBrake = stepSpeed(14, { brake: true }, 0.1, 0, 0, { grip: WET_GRIP });
+    assert.ok(wetBrake < 14 && wetBrake > dryBrake);
+    assert.equal(stepSpeed(MIN_SPEED, { brake: true }, 10, 0, 0, { grip: WET_GRIP }), MIN_SPEED);
+  });
+});
+
+describe('cement mixer shove', () => {
+  test('needs the bus one lane over, alongside, with a way out', () => {
+    assert.ok(canShove(1, 400, 488, 2, 380, 508));
+    assert.ok(!canShove(1, 400, 488, 3, 380, 508), 'two lanes over');
+    assert.ok(!canShove(1, 400, 488, 2, 100, 228), 'not alongside');
+    assert.ok(!canShove(0, 400, 488, 1, 380, 508), 'no escape lane at the road edge');
+    assert.ok(!canShove(3, 400, 488, 2, 380, 508), 'no escape lane at the other edge');
+    assert.equal(escapeLane(1, 2), 0);
+    assert.equal(escapeLane(2, 1), 3);
+    assert.equal(escapeLane(0, 1), null);
+  });
+
+  test('every bus can change lane before the mixer lands', () => {
+    for (const key of Object.keys(BUSES)) assert.ok(laneChangeSeconds(0, key) < TIP_SECONDS, key);
+  });
+});
+
+describe('MRT track', () => {
+  test('lasts 50 seconds, and trains are lethal', () => {
+    assert.equal(TRACK_SECONDS, 50);
+    assert.equal(livesAfterHit(5, TRAIN, 3), 0);
+    assert.ok(RAMP_TRUCK.length <= ROW_SPACING_MIN);
+  });
+
+  test('oncoming trains close at bus speed plus their own; up trains always overtake', () => {
+    assert.equal(trainClosingSpeed(1, 20), 20 + TRAIN_SPEED);
+    for (const speed of [MIN_SPEED, 20, maxSpeed(UPGRADES.engine.maxLevel, LEVELS.length - 1)]) {
+      assert.ok(trainClosingSpeed(0, speed) < 0, 'moves up the screen');
+    }
+  });
+
+  test('the warning leaves time to switch tracks, and both tracks get trains', () => {
+    for (const key of Object.keys(BUSES)) assert.ok(TRAIN_WARNING_SECONDS > 2 * laneChangeSeconds(0, key), key);
+    const rng = seeded(11);
+    const tracks = new Set(Array.from({ length: 50 }, () => nextTrainTrack(rng)));
+    assert.deepEqual([...tracks].sort(), [0, 1]);
+    for (let i = 0; i < 100; i++) {
+      const gap = trainGapSeconds(rng);
+      assert.ok(gap >= 1.5 && gap <= 4);
+    }
+    assert.ok(TRAIN_LENGTH > 0);
+  });
+});
+
+describe('daily challenge', () => {
+  test('the same date always gives the same road; different dates differ', () => {
+    const a = seededRng(dailySeed('2026-10-13'));
+    const b = seededRng(dailySeed('2026-10-13'));
+    const c = seededRng(dailySeed('2026-10-14'));
+    const seqA = Array.from({ length: 20 }, a);
+    assert.deepEqual(Array.from({ length: 20 }, b), seqA);
+    assert.notDeepEqual(Array.from({ length: 20 }, c), seqA);
+    assert.ok(seqA.every((x) => x >= 0 && x < 1));
+    const blockedA = pickBlockedLanes(seededRng(dailySeed('2026-10-13')), 900, null);
+    assert.deepEqual(pickBlockedLanes(seededRng(dailySeed('2026-10-13')), 900, null), blockedA);
+  });
+
+  test('the date is the UTC day, and the daily bus is the stock single-decker', () => {
+    assert.equal(dailyDate(new Date('2026-10-13T23:30:00Z')), '2026-10-13');
+    assert.equal(dailyDate(new Date('2026-10-13T16:30:00-08:00')), '2026-10-14');
+    assert.equal(DAILY_BUS, 'single');
+    assert.equal(busDef(DAILY_BUS).cost, 0);
+  });
+});
+
+describe('new missions and achievements', () => {
+  test('track, mixer and Sentosa missions and achievements count the right stats', () => {
+    const stats = { trackRides: 1, mixerTopples: 1, level: 6, pancaked: 1, storms: 1 };
+    for (const key of ['track', 'mixer', 'sentosa']) assert.ok(missionDone(key, stats), key);
+    const earned = newAchievements([], stats, addLifetime(undefined, {}));
+    for (const key of ['beachBum', 'skyRail', 'pourDecision', 'pancake', 'stormChaser', 'islandHopper']) {
+      assert.ok(earned.includes(key), key);
+    }
   });
 });

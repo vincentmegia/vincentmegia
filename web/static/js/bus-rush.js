@@ -93,6 +93,36 @@ import {
   ACHIEVEMENTS,
   addLifetime,
   newAchievements,
+  explosive,
+  isHazmat,
+  crashTimings,
+  SAND_CHANCE,
+  SAND_SLOW_SECONDS,
+  sandAllowed,
+  STORM_SECONDS,
+  WET_GRIP,
+  PUDDLE_CHANCE,
+  SPLASH_SECONDS,
+  stormStarts,
+  TIP_SECONDS,
+  TIP_SLOWMO,
+  MIXER_TOPPLE_POINTS,
+  canShove,
+  RAMP_MIN_DISTANCE,
+  RAMP_CHANCE,
+  RAMP_TRUCK,
+  TRACK_SECONDS,
+  TRACKS,
+  TRAIN,
+  TRAIN_LENGTH,
+  TRAIN_WARNING_SECONDS,
+  nextTrainTrack,
+  trainGapSeconds,
+  trainClosingSpeed,
+  DAILY_BUS,
+  seededRng,
+  dailyDate,
+  dailySeed,
 } from './busrush/rules.js';
 import { drawPerson } from './shared/people.js';
 
@@ -131,6 +161,7 @@ function defaultProgress() {
     missions: refillMissions(Math.random, []), // active mission keys
     achievements: [], // unlocked achievement keys
     lifetime: { runs: 0, wrecked: 0, fares: 0, distance: 0, rammed: 0 }, // running totals (addLifetime)
+    daily: { date: '', best: 0 }, // best score on the most recent Daily Challenge played
   };
 }
 
@@ -174,6 +205,9 @@ function loadProgress() {
     }
     if (saved.lifetime && typeof saved.lifetime === 'object') {
       Object.keys(progress.lifetime).forEach((k) => { progress.lifetime[k] = wholeNumber(saved.lifetime[k]); });
+    }
+    if (saved.daily && typeof saved.daily.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(saved.daily.date)) {
+      progress.daily = { date: saved.daily.date, best: wholeNumber(saved.daily.best) };
     }
   } catch {
     // fall through with defaults
@@ -240,15 +274,7 @@ function shade(hex, amount) {
 }
 
 /** Deterministic PRNG so the scenery tile looks the same on every visit. */
-function seededRandom(seed) {
-  let s = seed;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const seededRandom = seededRng;
 
 /** Left-to-right gradient that makes a flat body read as rounded. */
 function bodyGradient(ctx, color, x, w) {
@@ -417,7 +443,43 @@ const DISTRICTS = [
     roadside: 'trees', treeChance: 1, treeGap: [44, 60], bloom: '#c45a9a', shelters: false, lampGap: 320,
     night: true, // drawNight: darkness, with headlights and lamp pools
   },
+  { // Sentosa: the sea on the left, a beach, palm trees on the right.
+    seed: 52, verge: '#e3cf9c', tufts: ['#d6c08a', '#efdcae'], path: '#eadfc6', seam: '#d9cba9',
+    kerb: ['#f1ebdd', '#c9bfa9'], asphalt: '#4d4844', edge: PAINT,
+    roadside: 'beach', shelters: false, lampGap: 320,
+  },
 ];
+
+/** A coconut palm seen from above: fronds radiating from the crown, a few coconuts. */
+function drawPalm(g, x, y, r, rand) {
+  g.fillStyle = 'rgba(30,40,18,0.28)';
+  g.beginPath();
+  g.ellipse(x + 6, y + 8, r * 0.9, r * 0.8, 0, 0, Math.PI * 2);
+  g.fill();
+  const fronds = 7 + Math.floor(rand() * 3);
+  for (let i = 0; i < fronds; i++) {
+    const a = (i / fronds) * Math.PI * 2 + rand() * 0.4;
+    const len = r * (0.85 + rand() * 0.3);
+    const tipX = x + Math.cos(a) * len;
+    const tipY = y + Math.sin(a) * len;
+    g.strokeStyle = i % 2 ? '#4f7f3c' : '#6a9a4a';
+    g.lineWidth = 5;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + Math.cos(a + 0.4) * len * 0.6, y + Math.sin(a + 0.4) * len * 0.6, tipX, tipY);
+    g.stroke();
+    g.strokeStyle = '#86b25e';
+    g.lineWidth = 1.2;
+    g.stroke();
+  }
+  g.fillStyle = '#7a5a32';
+  [[-3, -2], [3, -1], [0, 3]].forEach(([dx, dy]) => {
+    g.beginPath();
+    g.arc(x + dx, y + dy, 3, 0, Math.PI * 2);
+    g.fill();
+  });
+}
 
 /** Office-tower rooftop overhanging the verge: parapet, aircon units, water tank. */
 function drawRooftop(g, x, y, w, h, color, rand) {
@@ -580,8 +642,24 @@ function buildScenery(dpr, d) {
 
   // Every copy of a wrapped item must come out identical, so each one gets
   // its own seed rather than drawing from the shared stream.
+  if (d.roadside === 'beach') {
+    // The sea laps at the left edge, with foam along the sand.
+    g.fillStyle = '#4f93b8';
+    g.fillRect(0, 0, 15, P);
+    g.fillStyle = '#7fb8d4';
+    for (let y = 0; y < P; y += 6) g.fillRect(0, y, 4 + rand() * 6, 2);
+    g.fillStyle = 'rgba(255,255,255,0.75)';
+    for (let y = 0; y < P; y += 8) g.fillRect(13 + Math.sin(y / 15) * 2, y, 3, 5);
+  }
   for (const [x, side] of [[11, -1], [WIDTH - 11, 1]]) {
-    if (d.roadside === 'trees') {
+    if (d.roadside === 'beach') {
+      if (side === -1) continue; // the sea side has no trees
+      for (let y = 30; y < P; y += 70 + rand() * 40) {
+        const r = 22 + rand() * 6;
+        const seed = Math.floor(y * 5 + x);
+        wrapped(y, (wy) => drawPalm(g, x - 6, wy, r, seededRandom(seed)));
+      }
+    } else if (d.roadside === 'trees') {
       for (let y = 20; y < P; y += d.treeGap[0] + rand() * (d.treeGap[1] - d.treeGap[0])) {
         if (side === -1 && nearShelter(y)) continue;
         // Big enough to overhang the footpath and kerb, not just peek in
@@ -909,6 +987,221 @@ function drawDumpTruck(ctx, v, x, y, w, l) {
   drawCab(ctx, '#e3b23c', x + 3, y + l - cab, w - 6, cab);
 }
 
+/**
+ * Tow truck: a cab with a flashing amber beacon, a tilted flatbed carrying a
+ * dented, scorched broken-down car, and a boom and hook at the rear.
+ */
+function drawTowTruck(ctx, v, x, y, w, l, t) {
+  const cab = 34;
+  const bed = l - cab - 3;
+  drawWheels(ctx, x, y, w, l, [0.12, 0.3, 0.86]);
+  drawBody(ctx, '#5a5550', x + 2, y, w - 4, bed, 3); // flatbed
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  for (let ry = y + 6; ry < y + bed - 4; ry += 8) ctx.fillRect(x + 4, ry, w - 8, 1.5);
+  // The broken car riding on the bed, nose up, battered.
+  const car = { color: v.wreckColor || '#8a8276' };
+  ctx.save();
+  ctx.translate(x + w / 2, y + bed / 2);
+  ctx.rotate(Math.PI + 0.05);
+  drawCar(ctx, car, -24, -bed / 2 + 6, 48, bed - 12);
+  ctx.fillStyle = 'rgba(30,26,22,0.45)'; // scorch and dents
+  ctx.beginPath();
+  ctx.arc(-6, -10, 9, 0, Math.PI * 2);
+  ctx.arc(8, 14, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; // cracked windscreen
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-8, 12);
+  ctx.lineTo(0, 18);
+  ctx.lineTo(9, 13);
+  ctx.moveTo(0, 18);
+  ctx.lineTo(2, 24);
+  ctx.stroke();
+  ctx.restore();
+  // Boom and hook at the rear (top).
+  ctx.fillStyle = '#e0b54a';
+  ctx.fillRect(x + w / 2 - 3, y - 6, 6, 14);
+  ctx.fillStyle = '#3a3734';
+  ctx.beginPath();
+  ctx.arc(x + w / 2, y - 7, 3, 0, Math.PI * 2);
+  ctx.fill();
+  drawCab(ctx, '#e0b54a', x + 2, y + l - cab, w - 4, cab);
+  // Amber beacon on the cab roof.
+  const on = Math.floor(t * 4) % 2;
+  fillRoundRect(ctx, on ? '#ffb547' : '#9a6a20', x + w / 2 - 7, y + l - cab + 4, 14, 6, 2);
+  if (on) {
+    const g = ctx.createRadialGradient(x + w / 2, y + l - cab + 7, 1, x + w / 2, y + l - cab + 7, 26);
+    g.addColorStop(0, 'rgba(255,181,71,0.45)');
+    g.addColorStop(1, 'rgba(255,181,71,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 6, y + l - cab - 20, w + 12, 54);
+  }
+}
+
+/** A cement mixer's drum seen from above: a barrel with spiral stripes that turn. */
+function drawMixerDrum(ctx, cx, top, w, len, t, color = '#e8833a') {
+  ctx.save();
+  roundRect(ctx, cx - w / 2, top, w, len, w / 2.4);
+  ctx.clip();
+  const g = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
+  g.addColorStop(0, shade(color, -0.35));
+  g.addColorStop(0.4, shade(color, 0.15));
+  g.addColorStop(1, shade(color, -0.4));
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - w / 2, top, w, len);
+  ctx.strokeStyle = 'rgba(244,239,228,0.85)';
+  ctx.lineWidth = 5;
+  const turn = (t * 30) % 22;
+  for (let sy = top - 30 + turn; sy < top + len + 30; sy += 22) {
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2, sy);
+    ctx.lineTo(cx + w / 2, sy - 14);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = shade(color, -0.5);
+  ctx.lineWidth = 1.2;
+  roundRect(ctx, cx - w / 2, top, w, len, w / 2.4);
+  ctx.stroke();
+}
+
+/**
+ * Cement mixer, nose down: chassis, a turning striped drum on a cradle, the
+ * chute at the rear, rear chevrons (it's lethal) and the cab.
+ */
+function drawMixer(ctx, v, x, y, w, l, t) {
+  const cab = 32;
+  drawWheels(ctx, x, y, w, l, [0.1, 0.24, 0.84]);
+  drawBody(ctx, '#6b6660', x + 3, y, w - 6, l - cab - 2, 4); // chassis
+  drawMixerDrum(ctx, x + w / 2, y + 8, w - 10, l - cab - 18, t);
+  fillRoundRect(ctx, '#9a948b', x + w / 2 - 5, y - 6, 10, 14, 3); // chute
+  drawChevrons(ctx, x, y + l - cab - 12, w);
+  drawCab(ctx, '#e9e3d6', x + 2, y + l - cab, w - 4, cab);
+}
+
+/**
+ * A mixer lying on its side after being shoved over — seen from above you
+ * get its flank: wheels sticking out toward the lane it fell from, the drum
+ * and cab sideways across the lane it fell into, cement oozing out.
+ * `dir` is -1 (fell left) or 1 (fell right); `w` is how far it sprawls.
+ */
+function drawFallenMixer(ctx, v, t) {
+  const dir = v.fallDir;
+  const w = v.sprawl;
+  const l = v.length;
+  const left = dir > 0 ? v.x - v.width / 2 : v.x + v.width / 2 - w;
+  const y = v.y;
+  // Cement spilling out of the drum's mouth.
+  ctx.fillStyle = 'rgba(150,146,138,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(left + w / 2, y - 18, w * 0.42, 26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(175,171,163,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(left + w / 2 + 6, y - 14, w * 0.28, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  drawShadow(ctx, left, y, w, l, 10);
+  drawBody(ctx, '#6b6660', left, y, w, l, 8); // the underside/chassis
+  // Wheels along the edge it pivoted on.
+  const wheelX = dir > 0 ? left - 6 : left + w - 8;
+  for (const f of [0.1, 0.24, 0.84]) fillRoundRect(ctx, TYRE, wheelX, y + l * f - 9, 14, 18, 4);
+  drawMixerDrum(ctx, left + w / 2 + dir * 6, y + 6, w - 22, l - 42, t * 0.15);
+  fillRoundRect(ctx, '#e9e3d6', left + 6, y + l - 34, w - 12, 30, 6); // cab, on its side
+  ctx.fillStyle = GLASS;
+  ctx.fillRect(left + w / 2 - 14, y + l - 28, 28, 10);
+}
+
+/** Orange hazmat panel and a red flammable diamond on a gasoline-laden truck. */
+function drawHazmatMarks(ctx, x, y, w, len) {
+  ctx.fillStyle = '#e8833a';
+  ctx.fillRect(x + 4, y + len * 0.35, w - 8, 12);
+  ctx.fillStyle = '#1f1d1b';
+  ctx.font = 'bold 8px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GASOLINE', x + w / 2, y + len * 0.35 + 6.5);
+  const px = x + w / 2;
+  const py = y + len * 0.62;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(Math.PI / 4);
+  fillRoundRect(ctx, '#f4efe4', -9, -9, 18, 18, 2);
+  fillRoundRect(ctx, '#d8452f', -7, -7, 14, 14, 1.5);
+  ctx.restore();
+  ctx.fillStyle = '#ffe08a';
+  ctx.beginPath();
+  ctx.moveTo(px, py - 5);
+  ctx.quadraticCurveTo(px + 4, py, px + 2, py + 4);
+  ctx.lineTo(px - 2, py + 4);
+  ctx.quadraticCurveTo(px - 4, py, px, py - 5);
+  ctx.fill();
+}
+
+/**
+ * The ramp truck, parked facing the same way as the bus (nose up): a
+ * low-loader with its loading ramps folded down at the back, striped and
+ * arrowed, hazard lights blinking and an "MRT ↑" sign on the cab.
+ */
+function drawRampTruck(ctx, ramp, t) {
+  const w = RAMP_TRUCK.width;
+  const l = RAMP_TRUCK.length;
+  const x = ramp.x - w / 2;
+  const y = ramp.y;
+  drawShadow(ctx, x, y, w, l, 6);
+  drawWheels(ctx, x, y, w, l, [0.16, 0.5, 0.64]);
+  // Cab at the top (nose up), drawn as a downward cab rotated 180°.
+  ctx.save();
+  ctx.translate(x + w / 2, y + 17);
+  ctx.rotate(Math.PI);
+  drawCab(ctx, '#3f6e9e', -w / 2 + 2, -17, w - 4, 34);
+  ctx.restore();
+  // Deck and ramps.
+  drawBody(ctx, '#7d8a94', x + 2, y + 36, w - 4, l - 66, 3);
+  ctx.save();
+  roundRect(ctx, x + 4, y + l - 32, w - 8, 32, 2);
+  ctx.clip();
+  ctx.fillStyle = '#e0b54a';
+  ctx.fillRect(x, y + l - 32, w, 32);
+  ctx.fillStyle = '#1f1d1b';
+  for (let sx = x - 30; sx < x + w + 10; sx += 12) {
+    ctx.beginPath();
+    ctx.moveTo(sx, y + l);
+    ctx.lineTo(sx + 6, y + l);
+    ctx.lineTo(sx + 30, y + l - 32);
+    ctx.lineTo(sx + 24, y + l - 32);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.fillStyle = '#f4efe4';
+  for (const ay of [y + 52, y + 74]) {
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, ay - 9);
+    ctx.lineTo(x + w / 2 + 10, ay + 3);
+    ctx.lineTo(x + w / 2 - 10, ay + 3);
+    ctx.closePath();
+    ctx.fill();
+  }
+  fillRoundRect(ctx, '#2b2724', x + 8, y + 2, w - 16, 12, 2);
+  ctx.fillStyle = '#ffb547';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MRT ↑', x + w / 2, y + 8.5);
+  if (Math.floor(t * 3) % 2) {
+    for (const hx of [x + 3, x + w - 3]) {
+      for (const hy of [y + 3, y + l - 3]) {
+        const g = ctx.createRadialGradient(hx, hy, 1, hx, hy, 14);
+        g.addColorStop(0, 'rgba(255,181,71,0.9)');
+        g.addColorStop(1, 'rgba(255,181,71,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(hx - 14, hy - 14, 28, 28);
+      }
+    }
+  }
+}
+
 // Oncoming vehicle, nose pointing down the screen. A crashed tanker is
 // drawn jackknifed (`crashAngle`).
 function drawVehicle(ctx, v, t) {
@@ -925,7 +1218,23 @@ function drawVehicle(ctx, v, t) {
     ctx.translate(-v.x, -(v.y + v.length / 2));
   }
   drawShadow(ctx, x, v.y, v.width, v.length, 8);
+  if (v.fallen) {
+    ctx.restore();
+    drawFallenMixer(ctx, v, t);
+    return;
+  }
+  if (v.tipping) {
+    // Shoved over: it leans toward the lane it's falling into, its flank
+    // widening and darkening as it goes.
+    const k = smoothstep(v.tip);
+    ctx.translate(v.x + v.fallDir * k * LANE_WIDTH * 0.45, 0);
+    ctx.scale(1 + k * 0.7, 1);
+    ctx.translate(-v.x, 0);
+    ctx.rotate(v.fallDir * k * 0.06);
+  }
   if (v.kind === 'fuel') drawFuelTanker(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'mixer') drawMixer(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'tow') drawTowTruck(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'dump') drawDumpTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.bus) drawTrafficBus(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'semi') drawSemi(ctx, v, x, v.y, v.width, v.length);
@@ -933,6 +1242,7 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'truck') drawTruck(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'van') drawVan(ctx, v, x, v.y, v.width, v.length);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
+  if (v.hazmat) drawHazmatMarks(ctx, x, v.y, v.width, v.length - 36);
   ctx.restore();
 }
 
@@ -1673,6 +1983,10 @@ function drawZone(ctx, z, t) {
   const ty = z.y + z.length * 0.3;
   drawShadow(ctx, tx, ty, 62, 104, 6);
   drawDumpTruck(ctx, truck, tx, ty, 62, 104);
+  // A cement mixer parked between the dump truck and the sand pile, its drum turning.
+  const my = z.y + z.length * 0.47;
+  drawShadow(ctx, tx, my, 62, 128, 6);
+  drawMixer(ctx, {}, tx, my, 62, 128, t);
   // Blinking amber lamp on the first barrier.
   if (Math.floor(t * 3) % 2) {
     const g = ctx.createRadialGradient(inner + 4, bottom - 72, 1, inner + 4, bottom - 72, 18);
@@ -1938,7 +2252,7 @@ function drawCrashOverlay(ctx, c, t, busX) {
       ctx.fillText('★', busX + Math.cos(a) * 26, BUS_Y - 6 + Math.sin(a) * 8);
     }
     centreText(ctx, `STUNNED ${Math.ceil(c.stun)}`, WIDTH / 2, 70, 'bold 30px Caprasimo, Georgia, serif', '#ffb547');
-    centreText(ctx, 'The tanker is leaking…', WIDTH / 2, 102, '600 15px Figtree, sans-serif', '#f1e9d6');
+    centreText(ctx, c.v.hazmat ? 'The gasoline is leaking…' : 'The tanker is leaking…', WIDTH / 2, 102, '600 15px Figtree, sans-serif', '#f1e9d6');
     return;
   }
   const flash = Math.floor(t * 8) % 2;
@@ -2020,6 +2334,10 @@ function drawNight(ctx, layer, dpr, r, busKey, alpha) {
     hole(v.x, v.y + v.length / 2, 36, 0.45);
   });
   r.police.forEach((p) => hole(p.x, p.y + p.length * 0.5, 54, 0.75));
+  if (r.track && r.track.train) {
+    const tr = r.track.train;
+    hole(TRACK_X[tr.track], tr.track === 1 ? tr.y + TRAIN_LENGTH + 30 : tr.y - 30, 90, 0.85);
+  }
   // Street-lamp pools, matching the scenery tile's lamp spacing.
   const gap = DISTRICTS[r.level].lampGap;
   for (let k = -1; k * gap < HEIGHT + gap; k++) {
@@ -2031,6 +2349,486 @@ function drawNight(ctx, layer, dpr, r, busKey, alpha) {
   n.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = alpha;
   ctx.drawImage(layer, 0, 0, WIDTH, HEIGHT);
+  ctx.globalAlpha = 1;
+}
+
+// --- the elevated MRT track ---------------------------------------------------
+//
+// Up on the viaduct the road below is dimmed and the deck fills the middle
+// of the screen: two tracks, 0 (left) running up the screen, 1 (right) down.
+
+const DECK_LEFT = 104;
+const DECK_RIGHT = WIDTH - 104;
+const TRACK_X = [180, WIDTH - 180];
+const TRACK_GAP = TRACK_X[1] - TRACK_X[0];
+const TRAIN_WIDTH = 66;
+const SLEEPER_GAP = 22;
+
+/** Which track an x position is nearest to. */
+function trackAt(x) {
+  return Math.abs(x - TRACK_X[0]) <= Math.abs(x - TRACK_X[1]) ? 0 : 1;
+}
+
+/** The deck, ballast, sleepers and rails, scrolling with the bus; `alpha` fades it in/out. */
+function drawViaduct(ctx, scroll, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(20,16,12,0.5)';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; // the deck's shadow on the road below
+  ctx.fillRect(DECK_LEFT + 18, 0, DECK_RIGHT - DECK_LEFT, HEIGHT);
+  const g = ctx.createLinearGradient(DECK_LEFT, 0, DECK_RIGHT, 0);
+  g.addColorStop(0, '#9e978c');
+  g.addColorStop(0.5, '#c9c2b6');
+  g.addColorStop(1, '#a39c91');
+  ctx.fillStyle = g;
+  ctx.fillRect(DECK_LEFT, 0, DECK_RIGHT - DECK_LEFT, HEIGHT);
+  // Parapets with expansion joints.
+  for (const px of [DECK_LEFT, DECK_RIGHT - 10]) {
+    ctx.fillStyle = '#ddd6ca';
+    ctx.fillRect(px, 0, 10, HEIGHT);
+    ctx.fillStyle = '#857e74';
+    for (let y = (scroll % 160) - 160; y < HEIGHT; y += 160) ctx.fillRect(px, y, 10, 2);
+  }
+  // Centre walkway between the tracks.
+  ctx.fillStyle = '#b5aea2';
+  ctx.fillRect(WIDTH / 2 - 6, 0, 12, HEIGHT);
+  for (const tx of TRACK_X) {
+    ctx.fillStyle = '#6b625a'; // ballast
+    ctx.fillRect(tx - 44, 0, 88, HEIGHT);
+    ctx.fillStyle = '#4a433d';
+    for (let y = (scroll % SLEEPER_GAP) - SLEEPER_GAP; y < HEIGHT; y += SLEEPER_GAP) ctx.fillRect(tx - 36, y, 72, 8);
+    ctx.fillStyle = '#d3cdc2'; // rails
+    ctx.fillRect(tx - 26, 0, 4, HEIGHT);
+    ctx.fillRect(tx + 22, 0, 4, HEIGHT);
+  }
+  // Direction arrows painted between the rails every so often.
+  ctx.fillStyle = 'rgba(244,239,228,0.35)';
+  for (let y = (scroll % 320) - 320; y < HEIGHT; y += 320) {
+    [[TRACK_X[0], -1], [TRACK_X[1], 1]].forEach(([tx, dir]) => {
+      const ay = y + 160;
+      ctx.beginPath();
+      ctx.moveTo(tx, ay + dir * 14);
+      ctx.lineTo(tx + 10, ay - dir * 4);
+      ctx.lineTo(tx - 10, ay - dir * 4);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+  ctx.restore();
+}
+
+/**
+ * An MRT train of three cars: silver bodies with a red stripe, roof aircon
+ * units, dark gangways between cars, and a windscreen and headlights at the
+ * nose. `facingUp` puts the nose at the top.
+ */
+function drawTrain(ctx, x, y, length, facingUp) {
+  const w = TRAIN_WIDTH;
+  const left = x - w / 2;
+  const carLen = (length - 8) / 3;
+  ctx.fillStyle = SHADOW;
+  ctx.fillRect(left + 6, y + 8, w, length);
+  for (let i = 0; i < 3; i++) {
+    const cy = y + i * (carLen + 4);
+    ctx.fillStyle = bodyGradient(ctx, '#dcdedd', left, w);
+    roundRect(ctx, left, cy, w, carLen, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#8f9493';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.fillStyle = '#c9402c';
+    ctx.fillRect(left + 2, cy + 6, 4, carLen - 12);
+    ctx.fillRect(left + w - 6, cy + 6, 4, carLen - 12);
+    for (let a = cy + 18; a < cy + carLen - 24; a += 30) fillRoundRect(ctx, '#b5b9b8', left + 16, a, w - 32, 16, 3);
+    if (i < 2) {
+      ctx.fillStyle = '#2b2724';
+      ctx.fillRect(left + 14, cy + carLen, w - 28, 4);
+    }
+  }
+  const noseY = facingUp ? y : y + length;
+  const dir = facingUp ? 1 : -1;
+  ctx.fillStyle = GLASS;
+  ctx.fillRect(left + 8, noseY + dir * 4 - (facingUp ? 0 : 12), w - 16, 12);
+  ctx.fillStyle = HEADLIGHT;
+  ctx.fillRect(left + 6, noseY + (facingUp ? 1 : -4), 10, 3);
+  ctx.fillRect(left + w - 16, noseY + (facingUp ? 1 : -4), 10, 3);
+  const glow = ctx.createRadialGradient(x, noseY - dir * 30, 4, x, noseY - dir * 30, 70);
+  glow.addColorStop(0, 'rgba(255,243,196,0.4)');
+  glow.addColorStop(1, 'rgba(255,243,196,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(x - 70, noseY - dir * 30 - 70, 140, 140);
+}
+
+/** The flashing "TRAIN!" warning down one track, from the end it's coming from. */
+function drawTrainWarning(ctx, track, t) {
+  const tx = TRACK_X[track];
+  const flash = Math.floor(t * 8) % 2;
+  ctx.fillStyle = flash ? 'rgba(255,75,58,0.28)' : 'rgba(255,181,71,0.18)';
+  ctx.fillRect(tx - 44, 0, 88, HEIGHT);
+  const fromTop = track === 1;
+  const y = fromTop ? 34 : HEIGHT - 34;
+  centreText(ctx, fromTop ? '▼ TRAIN! ▼' : '▲ TRAIN BEHIND! ▲', tx, y, 'bold 16px Figtree, sans-serif', flash ? '#ff6a4d' : '#ffb547');
+}
+
+/** The ride's countdown chip, top centre. */
+function drawTrackTimer(ctx, left) {
+  const secs = Math.max(0, Math.ceil(left));
+  fillRoundRect(ctx, 'rgba(36,30,24,0.75)', WIDTH / 2 - 58, 10, 116, 28, 8);
+  centreText(ctx, `MRT  0:${String(secs).padStart(2, '0')}`, WIDTH / 2, 25, 'bold 15px Figtree, sans-serif', secs <= 5 ? '#ff6a4d' : '#f1e9d6');
+}
+
+/**
+ * The near edge of the viaduct along the side a ramp truck is parked on —
+ * concrete deck over the verge, with pillars — so the jump has somewhere to go.
+ */
+function drawViaductEdge(ctx, side, scroll) {
+  const x = side < 0 ? 0 : WIDTH - SHOULDER + 4;
+  const w = SHOULDER - 4;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(side < 0 ? w : x - 8, 0, 8, HEIGHT);
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, '#a39c91');
+  g.addColorStop(1, '#cfc8bc');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, 0, w, HEIGHT);
+  ctx.fillStyle = '#857e74';
+  for (let y = (scroll % 160) - 160; y < HEIGHT; y += 160) ctx.fillRect(x, y, w, 2);
+  ctx.fillStyle = '#6b625a';
+  ctx.fillRect(side < 0 ? x : x + w - 10, 0, 10, HEIGHT);
+}
+
+// --- weather -------------------------------------------------------------------
+
+/** How strong the storm looks: fades in over its first 2 s and out over its last 2 s. */
+function stormStrength(w) {
+  if (!w || w.rain <= 0) return 0;
+  return Math.min(1, w.rain / 2, (STORM_SECONDS - w.rain) / 2);
+}
+
+/** Grey wash, slanting rain streaks and a lightning flash over everything. */
+function drawRain(ctx, w, t) {
+  const k = stormStrength(w);
+  if (k > 0) {
+    ctx.fillStyle = `rgba(40,55,75,${0.28 * k})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.strokeStyle = `rgba(200,220,240,${0.55 * k})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < 140; i++) {
+      const x = (i * 73.3 + t * 70) % (WIDTH + 40) - 20;
+      const y = (i * 131.7 + t * 950) % (HEIGHT + 40) - 20;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 4, y + 16);
+    }
+    ctx.stroke();
+  }
+  if (w && w.flash > 0) {
+    ctx.fillStyle = `rgba(240,244,255,${Math.min(0.75, w.flash * 3)})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
+}
+
+/** Muddy water over the windscreen after a puddle splash, `k` 1 → 0. */
+function drawSplash(ctx, k) {
+  if (k <= 0) return;
+  ctx.fillStyle = `rgba(120,110,90,${0.45 * k})`;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT * 0.75);
+  const rand = seededRandom(5);
+  for (let i = 0; i < 26; i++) {
+    const x = rand() * WIDTH;
+    const y = rand() * HEIGHT * 0.8;
+    const r = 14 + rand() * 34;
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r);
+    g.addColorStop(0, `rgba(235,240,245,${0.5 * k})`);
+    g.addColorStop(0.6, `rgba(140,130,110,${0.55 * k})`);
+    g.addColorStop(1, 'rgba(140,130,110,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y + (1 - k) * 30, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const PUDDLE_RX = 28;
+const PUDDLE_RY = 15;
+function puddleBox(p) {
+  return { x: p.x - PUDDLE_RX + 6, y: p.y - PUDDLE_RY + 4, w: PUDDLE_RX * 2 - 12, h: PUDDLE_RY * 2 - 8 };
+}
+
+/** A rain puddle: dark water with a sky reflection and spreading ripples. */
+function drawPuddle(ctx, p, t) {
+  ctx.fillStyle = 'rgba(40,52,64,0.75)';
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y, PUDDLE_RX, PUDDLE_RY, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(160,190,215,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(p.x - 8, p.y - 4, PUDDLE_RX * 0.5, PUDDLE_RY * 0.35, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(210,225,240,0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 2; i++) {
+    const k = (t * 1.2 + i * 0.5 + p.phase) % 1;
+    ctx.beginPath();
+    ctx.ellipse(p.x + (i ? 9 : -6), p.y + (i ? 3 : -2), 3 + k * 10, 2 + k * 5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+const SAND_HALF = 22;
+function sandBox(d) {
+  return { x: d.x - SAND_HALF, y: d.y - 12, w: SAND_HALF * 2, h: 24 };
+}
+
+/** A sand drift blown across the road: a soft tan heap with wind ripples. */
+function drawSandDrift(ctx, d) {
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.rotate(d.angle);
+  ctx.fillStyle = 'rgba(214,190,140,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, SAND_HALF + 6, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(235,215,170,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(-4, -3, SAND_HALF - 4, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(170,145,100,0.7)';
+  ctx.lineWidth = 1;
+  for (const dy of [-6, 0, 6]) {
+    ctx.beginPath();
+    ctx.moveTo(-SAND_HALF + 2, dy);
+    ctx.quadraticCurveTo(0, dy - 4, SAND_HALF - 2, dy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// --- cement mixer: shove prompt, danger zone, the laugh -------------------------
+
+/** "SPACE: SHOVE!" bubble over a mixer the bus is alongside. */
+function drawShovePrompt(ctx, v, t) {
+  const y = v.y + v.length / 2;
+  const pulse = 1 + Math.sin(t * 8) * 0.06;
+  ctx.save();
+  ctx.translate(v.x, y);
+  ctx.scale(pulse, pulse);
+  fillRoundRect(ctx, 'rgba(36,30,24,0.85)', -52, -14, 104, 28, 8);
+  centreText(ctx, 'SPACE: SHOVE!', 0, 1, 'bold 13px Figtree, sans-serif', '#ffb547');
+  ctx.restore();
+}
+
+/** The lane a tipping mixer will land in, flashing red over its length. */
+function drawTipZone(ctx, v, t) {
+  const left = SHOULDER + LANE_WIDTH * v.fallLane;
+  const flash = Math.floor(t * 10) % 2;
+  ctx.fillStyle = flash ? 'rgba(255,75,58,0.35)' : 'rgba(255,75,58,0.18)';
+  ctx.fillRect(left + 2, v.y - 10, LANE_WIDTH - 4, v.length + 20);
+  ctx.strokeStyle = 'rgba(255,106,77,0.9)';
+  ctx.setLineDash([8, 6]);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(left + 2, v.y - 10, LANE_WIDTH - 4, v.length + 20);
+  ctx.setLineDash([]);
+}
+
+/** Black letterbox bars that mark a cutscene. */
+function drawLetterbox(ctx, k) {
+  ctx.fillStyle = '#0d0b09';
+  ctx.fillRect(0, 0, WIDTH, 46 * k);
+  ctx.fillRect(0, HEIGHT - 46 * k, WIDTH, 46 * k);
+}
+
+/**
+ * Inside the bus after the mixer squashes the police: the driver doubled
+ * over the wheel, howling with laughter, tears flying. `t` counts from the
+ * start of the shot.
+ */
+function drawLaughScene(ctx, t) {
+  // Dashboard view out of the windscreen: the road and the wreck behind in the mirror.
+  const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT * 0.55);
+  sky.addColorStop(0, '#9cc3dd');
+  sky.addColorStop(1, '#f1dfbf');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = '#4a4643';
+  ctx.beginPath();
+  ctx.moveTo(WIDTH / 2 - 20, HEIGHT * 0.32);
+  ctx.lineTo(WIDTH / 2 + 20, HEIGHT * 0.32);
+  ctx.lineTo(WIDTH + 80, HEIGHT * 0.62);
+  ctx.lineTo(-80, HEIGHT * 0.62);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = PAINT;
+  for (let i = 0; i < 6; i++) {
+    const k = ((t * 1.5 + i / 6) % 1);
+    const y = HEIGHT * 0.32 + k * HEIGHT * 0.3;
+    ctx.fillRect(WIDTH / 2 - 1 - k * 3, y, 2 + k * 6, 6 + k * 14);
+  }
+  // Windscreen frame and the dashboard.
+  ctx.fillStyle = '#2b2724';
+  ctx.fillRect(0, 0, WIDTH, 18);
+  ctx.fillRect(0, 0, 22, HEIGHT);
+  ctx.fillRect(WIDTH - 22, 0, 22, HEIGHT);
+  fillRoundRect(ctx, '#3a3734', -10, HEIGHT * 0.6, WIDTH + 20, HEIGHT * 0.45, 30);
+  // Rear-view mirror with the flattened police inside it.
+  fillRoundRect(ctx, '#2b2724', WIDTH / 2 - 62, 56, 124, 44, 8);
+  fillRoundRect(ctx, '#8fb0c4', WIDTH / 2 - 56, 61, 112, 34, 6);
+  fillRoundRect(ctx, '#e8833a', WIDTH / 2 - 40, 72, 60, 16, 6);
+  ctx.fillStyle = sirenPhase(t) ? '#ff4b3a' : '#4f8bff';
+  ctx.fillRect(WIDTH / 2 + 18, 78, 18, 6);
+  // The driver, shaking with laughter behind the wheel.
+  const shakeX = Math.sin(t * 38) * 4;
+  const bob = Math.abs(Math.sin(t * 14)) * 8;
+  ctx.save();
+  ctx.translate(WIDTH / 2 + shakeX, HEIGHT * 0.9 - bob);
+  ctx.rotate(Math.sin(t * 9) * 0.08);
+  drawPerson(ctx, 0, 0, LAUGHER, { scale: 3.1 });
+  // Mouth wide open, mid-guffaw (people.js only draws a closed smile).
+  const open = 0.7 + Math.abs(Math.sin(t * 14)) * 0.3;
+  ctx.fillStyle = '#5a1f1a';
+  ctx.beginPath();
+  ctx.ellipse(0, -88, 10, 8 * open, 0, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = '#e07a6a';
+  ctx.beginPath();
+  ctx.ellipse(0, -88 + 5 * open, 5, 2.5 * open, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Steering wheel in front.
+  ctx.strokeStyle = '#1f1d1b';
+  ctx.lineWidth = 14;
+  ctx.beginPath();
+  ctx.ellipse(WIDTH / 2, HEIGHT * 0.99, 130, 46, 0, Math.PI * 1.05, Math.PI * 1.95);
+  ctx.stroke();
+  // Tears flying off and the laughing.
+  ctx.fillStyle = '#9fd0f0';
+  for (let i = 0; i < 6; i++) {
+    const k = (t * 1.8 + i / 6) % 1;
+    const side = i % 2 ? 1 : -1;
+    ctx.beginPath();
+    ctx.arc(WIDTH / 2 + shakeX + side * (60 + k * 90), HEIGHT * 0.5 - bob - Math.sin(k * Math.PI) * 60 + k * 40, 5 - k * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const words = ['HA', 'HAHA', 'HA HA HA!', 'BWAHAHA', 'HAHAHA!'];
+  for (let i = 0; i < words.length; i++) {
+    const k = (t * 0.9 + i / words.length) % 1;
+    ctx.globalAlpha = Math.sin(k * Math.PI);
+    centreText(ctx, words[i], 70 + ((i * 97) % 340), HEIGHT * 0.45 - k * 120, `bold ${18 + i * 3}px Caprasimo, Georgia, serif`, '#ffb547');
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Skid marks behind a cruiser that slammed on its brakes. */
+function drawSkidMarks(ctx, marks) {
+  ctx.strokeStyle = 'rgba(20,16,12,0.5)';
+  ctx.lineWidth = 5;
+  marks.forEach((m) => {
+    ctx.beginPath();
+    ctx.moveTo(m.x - 14, m.y);
+    ctx.lineTo(m.x - 14, m.y + m.len);
+    ctx.moveTo(m.x + 14, m.y);
+    ctx.lineTo(m.x + 14, m.y + m.len);
+    ctx.stroke();
+  });
+}
+
+/**
+ * Flattened into a pancake: the mixer lands on the bus, rolls off, and
+ * leaves a squashed, wide-open-eyed pancake of a bus behind. `t` is the
+ * cutscene clock, `def` the bus's size.
+ */
+function drawPancake(ctx, cut, t, busKey) {
+  const def = busDef(busKey);
+  const cy = BUS_Y + def.length / 2;
+  const k = smoothstep((t - 0.5) / 0.5); // 0 = still under the mixer, 1 = revealed
+  if (t > 0.45) {
+    // A splat of crushed bodywork around the flattened bus.
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, k * 1.5);
+    ctx.fillStyle = 'rgba(40,34,30,0.55)';
+    ctx.beginPath();
+    for (let i = 0; i <= 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const rad = (i % 2 ? 0.86 : 1) * (Math.abs(Math.cos(a)) * 52 + Math.abs(Math.sin(a)) * 66);
+      const px = cut.x + Math.cos(a) * rad;
+      const py = cy + Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cut.x, cy);
+    ctx.scale(1.55, 1.12);
+    ctx.globalAlpha = Math.min(1, k * 1.5);
+    const look = BUS_LOOKS[busKey] || BUS_LOOKS.single;
+    drawBusShape(ctx, 0, -def.length / 2, def.width, def.length, { body: shade(look.body, -0.25), roof: '#bfb39d' }, busKey, { route: 'X_X', shadow: false });
+    // Tyre-tread stripes across the flattened roof.
+    ctx.fillStyle = 'rgba(20,16,12,0.35)';
+    for (let y = -def.length / 2 + 6; y < def.length / 2; y += 9) ctx.fillRect(-def.width / 2 + 6, y, def.width - 12, 3);
+    // Crumple lines.
+    ctx.strokeStyle = 'rgba(20,16,12,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-def.width / 2, -10);
+    ctx.lineTo(-6, -4);
+    ctx.lineTo(4, -14);
+    ctx.lineTo(def.width / 2, -6);
+    ctx.moveTo(-def.width / 2, 22);
+    ctx.lineTo(0, 16);
+    ctx.lineTo(def.width / 2, 26);
+    ctx.stroke();
+    ctx.restore();
+    // The flattened driver peeking out, pancake-flat.
+    ctx.save();
+    ctx.translate(cut.x + 46, cy + 10);
+    ctx.scale(1.6, 0.35);
+    drawPerson(ctx, 0, 24, DRIVER, { scale: 0.8 });
+    ctx.restore();
+    if (t > 1) {
+      for (let i = 0; i < 3; i++) {
+        const a = t * 4 + (i * Math.PI * 2) / 3;
+        centreText(ctx, '★', cut.x + 46 + Math.cos(a) * 24, cy - 2 + Math.sin(a) * 8, 'bold 13px sans-serif', '#ffe08a');
+      }
+    }
+  }
+  // The mixer slamming down on top, then rolling away.
+  if (t < 1.1) {
+    const v = cut.v;
+    const drop = Math.min(1, t / 0.35);
+    const off = smoothstep((t - 0.6) / 0.5) * 220 * (v.fallDir || 1);
+    ctx.save();
+    ctx.globalAlpha = 1 - smoothstep((t - 0.75) / 0.35);
+    ctx.translate(off, -(1 - drop) * 30);
+    drawFallenMixer(ctx, v, t);
+    ctx.restore();
+    if (t > 0.3 && t < 0.8) {
+      ctx.fillStyle = `rgba(200,190,170,${0.6 * (1 - (t - 0.3) / 0.5)})`;
+      for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        ctx.arc(cut.x + Math.cos(i) * 70 * (t - 0.2), cy + Math.sin(i) * 50 * (t - 0.2), 14 + 20 * (t - 0.3), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+/** The WASTED card over the frozen scene; `k` 0..1 fades and settles it in. */
+function drawWastedCard(ctx, k, sub) {
+  ctx.fillStyle = `rgba(30,28,26,${0.55 * k})`;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = `rgba(0,0,0,${0.6 * k})`;
+  ctx.fillRect(0, HEIGHT / 2 - 54, WIDTH, 108);
+  ctx.save();
+  ctx.translate(WIDTH / 2, HEIGHT / 2 - 6);
+  const s = 1.5 - 0.5 * smoothstep(k);
+  ctx.scale(s, s);
+  ctx.globalAlpha = k;
+  centreText(ctx, 'WASTED', 0, 0, 'bold 64px Caprasimo, Georgia, serif', '#d8452f', '#140c08');
+  ctx.restore();
+  ctx.globalAlpha = k;
+  centreText(ctx, sub, WIDTH / 2, HEIGHT / 2 + 36, '600 15px Figtree, sans-serif', '#f1e9d6');
   ctx.globalAlpha = 1;
 }
 
@@ -2046,11 +2844,19 @@ const CUT_CELL = 4.2; // cut to the cell; bars slam
 const CUT_WASTED = 4.7; // WASTED card
 const CUT_END = 7.2; // Run Over screen
 
+/** When each kind of WASTED cutscene shows its card, and when it ends. */
+const CUTS = {
+  alcatraz: { wasted: CUT_WASTED, end: CUT_END },
+  pancake: { wasted: 1.7, end: 4.4 },
+};
+
 const DRIVER = {
   bodyColor: '#3f6e9e', pantsColor: '#2c3e57', headColor: '#e0ac69', hairColor: '#2a1a10', accentColor: '#e0c25a',
   eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.9, mouthCurve: -1.6, blush: false,
   hairStyle: 'spiky', outfit: 'uniform', shoeColor: '#2b2724',
 };
+/** The driver again, in stitches (drawLaughScene). */
+const LAUGHER = { ...DRIVER, eyeShape: 'narrow', browAngle: -0.6, mouthCurve: 1.6, blush: true };
 const PRISONER = {
   ...DRIVER, bodyColor: '#e8833a', pantsColor: '#e8833a', accentColor: '#f4efe4', outfit: 'stripes',
   eyeShape: 'roundSmall', browAngle: 1, mouthCurve: -1.4,
@@ -2258,23 +3064,7 @@ function drawCutscene(ctx, cut, prompt) {
     return;
   }
   drawCell(ctx, (t - CUT_CELL) / (CUT_WASTED - CUT_CELL));
-  if (t >= CUT_WASTED) {
-    const k = Math.min(1, (t - CUT_WASTED) / 0.35);
-    ctx.fillStyle = `rgba(30,28,26,${0.55 * k})`;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = `rgba(0,0,0,${0.6 * k})`;
-    ctx.fillRect(0, HEIGHT / 2 - 54, WIDTH, 108);
-    ctx.save();
-    ctx.translate(WIDTH / 2, HEIGHT / 2 - 6);
-    const s = 1.5 - 0.5 * smoothstep(k);
-    ctx.scale(s, s);
-    ctx.globalAlpha = k;
-    centreText(ctx, 'WASTED', 0, 0, 'bold 64px Caprasimo, Georgia, serif', '#d8452f', '#140c08');
-    ctx.restore();
-    ctx.globalAlpha = k;
-    centreText(ctx, 'Flung all the way to Alcatraz', WIDTH / 2, HEIGHT / 2 + 36, '600 15px Figtree, sans-serif', '#f1e9d6');
-    ctx.globalAlpha = 1;
-  }
+  if (t >= CUT_WASTED) drawWastedCard(ctx, Math.min(1, (t - CUT_WASTED) / 0.35), 'Flung all the way to Alcatraz');
   if (prompt && Math.floor(t * 1.5) % 2 === 0) {
     centreText(ctx, 'Press any key to continue', WIDTH / 2, HEIGHT - 24, '600 13px Figtree, sans-serif', '#f1e9d6');
   }
@@ -2331,6 +3121,10 @@ function init(canvas, el) {
     if (el.start.bus) el.start.bus.textContent = busDef(progress.bus).label;
     el.start.bestScore.textContent = progress.bestScore;
     el.start.bestDistance.textContent = `${progress.bestDistance} m`;
+    if (el.start.dailyBest) {
+      const today = dailyDate();
+      el.start.dailyBest.textContent = progress.daily.date === today ? progress.daily.best : '—';
+    }
     if (el.start.storageNotice) el.start.storageNotice.classList.toggle('hidden', hasStorage);
   }
 
@@ -2397,6 +3191,10 @@ function init(canvas, el) {
       cleanStretch: Math.max(r.cleanBest, r.distance - r.lastHitAt),
       wanted: r.maxWanted,
       wasted: r.wasted ? 1 : 0,
+      trackRides: r.trackRides,
+      mixerTopples: r.mixerTopples,
+      pancaked: r.pancaked ? 1 : 0,
+      storms: r.storms,
     };
   }
 
@@ -2435,13 +3233,29 @@ function init(canvas, el) {
 
   // --- run lifecycle ------------------------------------------------------
 
-  function startRun() {
+  /** Mode of the last run started, so "Drive Again" repeats it. */
+  let lastDaily = false;
+
+  /**
+   * Starts a run. A Daily Challenge (`daily`) drives today's seeded road
+   * (every traffic row comes from one seeded stream) in the stock bus with
+   * no upgrades, so everyone's run on the day is comparable.
+   */
+  function startRun(daily = false) {
+    lastDaily = daily;
+    const date = daily ? dailyDate() : null;
+    const bus = daily ? DAILY_BUS : progress.bus;
+    const upgrades = daily ? Object.fromEntries(Object.keys(UPGRADES).map((k) => [k, 0])) : progress.upgrades;
     run = {
       status: 'playing',
+      daily: date,
+      rng: daily ? seededRng(dailySeed(date)) : Math.random,
+      bus,
+      upgrades,
       distance: 0,
       speed: MIN_SPEED,
       fares: 0,
-      lives: maxLives(progress.upgrades.bumpers, progress.bus),
+      lives: maxLives(upgrades.bumpers, bus),
       grace: 0,
       lane: 1,
       busX: laneCenter(1),
@@ -2462,7 +3276,9 @@ function init(canvas, el) {
       level: 0,
       fadeFrom: 0,
       fade: 0,
-      banner: { title: 'LEVEL 1', sub: LEVELS[0], t: BANNER_SECONDS },
+      banner: daily
+        ? { title: 'DAILY CHALLENGE', sub: `${date}  ·  stock bus, same road for everyone`, t: BANNER_SECONDS * 1.4 }
+        : { title: 'LEVEL 1', sub: LEVELS[0], t: BANNER_SECONDS },
       // Hazards and power-ups.
       zone: null, // construction zone { lane, y, length, seed }
       potholes: [],
@@ -2474,8 +3290,20 @@ function init(canvas, el) {
       nitro: 0,
       heli: null,
       crash: null, // fuel tanker crash { v, stun, fuse }
-      cut: null, // WASTED cutscene { t, x }
+      cut: null, // WASTED cutscene { t, x, kind: 'alcatraz' | 'pancake' }
       wasted: false,
+      pancaked: false,
+      deathTitle: null,
+      ramp: null, // parked ramp truck { lane, side, x, y }
+      track: null, // up on the MRT viaduct (startJump)
+      tip: null, // the cement mixer being shoved over
+      scene: null, // the mixer-on-the-police cutscene
+      weather: { rain: 0, splash: 0, flash: 0, nextFlash: 2 },
+      puddles: [],
+      sand: [],
+      trackRides: 0,
+      mixerTopples: 0,
+      storms: 0,
       // Mission/achievement stats.
       powerupsTaken: 0,
       tankerEscapes: 0,
@@ -2511,16 +3339,22 @@ function init(canvas, el) {
     const achievementTokens = unlocked.reduce((sum, k) => sum + ACHIEVEMENTS[k].reward, 0);
     progress.achievements.push(...unlocked);
     progress.missions = refillMissions(Math.random, progress.missions.filter((k) => !done.includes(k)), progress.upgrades, done);
-    const tokens = runTokens(run.distance, run.fares, progress.upgrades.fareBox, run.wrecked) + missionTokens + achievementTokens;
+    const tokens = runTokens(run.distance, run.fares, run.upgrades.fareBox, run.wrecked) + missionTokens + achievementTokens;
 
     progress.tokens += tokens;
     const newBest = score > progress.bestScore;
     progress.bestScore = Math.max(progress.bestScore, score);
     progress.bestDistance = Math.max(progress.bestDistance, distance);
+    if (run.daily) {
+      if (progress.daily.date !== run.daily) progress.daily = { date: run.daily, best: 0 };
+      progress.daily.best = Math.max(progress.daily.best, score);
+    }
     saveProgress(progress);
 
     const titles = [];
-    if (run.wasted) titles.push('WASTED');
+    if (run.daily) titles.push('Daily Challenge ·');
+    if (run.wasted || run.pancaked) titles.push('WASTED');
+    else if (run.deathTitle) titles.push(run.deathTitle);
     else if (run.killedBy) titles.push(`Flattened by a ${run.killedBy}!`);
     else if (run.busted) titles.push('Busted!');
     if (newBest) titles.push('New best run!');
@@ -2542,6 +3376,7 @@ function init(canvas, el) {
     }
     el.runOver.scoreInput.value = score;
     el.runOver.distanceInput.value = distance;
+    if (el.runOver.dailyInput) el.runOver.dailyInput.value = run.daily || '';
     el.runOver.submit.disabled = false;
     el.runOver.submit.textContent = 'Submit';
     show(el.runOver.root);
@@ -2591,7 +3426,7 @@ function init(canvas, el) {
 
   /** Rams a police vehicle per the Ram Plating level. Returns whether it was rammed. */
   function tryRam(r, p) {
-    const ram = ramOutcome(progress.upgrades.ram, p);
+    const ram = ramOutcome(r.upgrades.ram, p);
     if (!ram) return false;
     r.rammed += 1;
     wreckPolice(r, p);
@@ -2605,78 +3440,105 @@ function init(canvas, el) {
     // Now and then a construction zone closes an edge lane, starting just
     // above this row: everything spawned from here on keeps out of its lane
     // until it has scrolled past. (Older rows are below it and pull away.)
-    if (!r.zone && r.distance >= CONSTRUCTION_MIN_DISTANCE && Math.random() < CONSTRUCTION_CHANCE) {
+    if (!r.zone && !r.ramp && r.distance >= CONSTRUCTION_MIN_DISTANCE && r.rng() < CONSTRUCTION_CHANCE) {
       r.zone = {
-        lane: constructionLane(Math.random),
+        lane: constructionLane(r.rng),
         y: overshoot - 180 - CONSTRUCTION_LENGTH,
         length: CONSTRUCTION_LENGTH,
-        seed: Math.floor(Math.random() * 1e6),
+        seed: Math.floor(r.rng() * 1e6),
       };
+    } else if (!r.zone && !r.ramp && r.distance >= RAMP_MIN_DISTANCE && r.rng() < RAMP_CHANCE) {
+      // A ramp truck parks half on the shoulder of an edge lane, the same
+      // way, closing that lane to traffic the same way a zone does.
+      const lane = r.rng() < 0.5 ? 0 : LANES - 1;
+      const side = lane === 0 ? -1 : 1;
+      r.ramp = { lane, side, x: laneCenter(lane) + side * 14, y: overshoot - 180 - RAMP_TRUCK.length };
     }
-    const closed = r.zone ? [r.zone.lane] : [];
-    const blocked = pickBlockedLanes(Math.random, r.distance, r.prevOpen, closed);
+    if (stormStarts(r.rng, r.distance, r.weather.rain > 0)) {
+      r.weather.rain = STORM_SECONDS;
+      r.storms += 1;
+      popText(WIDTH / 2, 150, 'STORM! Wet roads ahead', '#9fc4ff', 1.6);
+    }
+    const closed = [r.zone && r.zone.lane, r.ramp && r.ramp.lane].filter((l) => l !== null && l !== undefined);
+    const blocked = pickBlockedLanes(r.rng, r.distance, r.prevOpen, closed);
     const open = openLanes(blocked, closed);
     r.prevOpen = open;
     // A roadblock is a row of oncoming cruisers — same lanes, same speed as
     // traffic, so it keeps the "every row is passable" guarantee.
-    const roadblock = Math.random() < roadblockChance(r.distance, wantedLevel(r.distance, r.fares));
+    const roadblock = r.rng() < roadblockChance(r.distance, wantedLevel(r.distance, r.fares));
     const laneLength = {};
     blocked.forEach((lane) => {
-      const kind = roadblock ? POLICE_CAR : pickVehicle(Math.random, r.distance, { construction: Boolean(r.zone) });
-      const taxi = kind.kind === 'car' && Math.random() < TAXI_CHANCE;
+      const kind = roadblock ? POLICE_CAR : pickVehicle(r.rng, r.distance, { construction: Boolean(r.zone) });
+      const taxi = kind.kind === 'car' && r.rng() < TAXI_CHANCE;
+      const hazmat = !roadblock && isHazmat(r.rng, kind);
       const palette = roadblock ? [POLICE_WHITE] : taxi ? TAXI_COLORS : VEHICLE_COLORS;
       laneLength[lane] = kind.length;
       r.vehicles.push({
         kind: kind.kind,
         lethal: Boolean(kind.lethal),
         fuel: Boolean(kind.fuel),
-        drops: spillDrops(Math.random, kind),
+        drops: spillDrops(r.rng, kind),
         spills: kind.spills,
         label: kind.label || kind.kind,
         bus: Boolean(kind.bus),
-        route: ROUTES[Math.floor(Math.random() * ROUTES.length)],
+        route: ROUTES[Math.floor(r.rng() * ROUTES.length)],
         x: laneCenter(lane),
         y: -kind.length + overshoot,
         width: kind.width,
         length: kind.length,
-        color: palette[Math.floor(Math.random() * palette.length)],
-        seed: Math.floor(Math.random() * 1e6),
+        color: palette[Math.floor(r.rng() * palette.length)],
+        seed: Math.floor(r.rng() * 1e6),
         taxi,
+        hazmat,
+        wreckColor: VEHICLE_COLORS[Math.floor(r.rng() * VEHICLE_COLORS.length)],
         police: roadblock,
       });
     });
     if (roadblock) return;
     const spacing = rowSpacingPx(r.distance);
     const lanes = [...Array(LANES).keys()].filter((l) => !closed.includes(l));
-    const pickLane = () => lanes[Math.floor(Math.random() * lanes.length)];
+    const pickLane = () => lanes[Math.floor(r.rng() * lanes.length)];
     // A fare (or now and then a power-up) sits in the clear gap behind this
     // row, in any open-road lane — sometimes one that takes a risky lane
     // change to reach.
     let fareLane = null;
-    if (Math.random() < FARE_CHANCE) {
+    if (r.rng() < FARE_CHANCE) {
       fareLane = pickLane();
       const y = overshoot + fareOffset(spacing, laneLength[fareLane] || 0, FARE_RADIUS);
-      const kind = powerupAt(Math.random, r.distance);
-      if (kind) r.powerups.push({ kind, x: laneCenter(fareLane), y, phase: Math.random() * Math.PI * 2 });
-      else r.fareItems.push({ x: laneCenter(fareLane), y, phase: Math.random() * Math.PI * 2 });
+      const kind = powerupAt(r.rng, r.distance);
+      if (kind) r.powerups.push({ kind, x: laneCenter(fareLane), y, phase: r.rng() * Math.PI * 2 });
+      else r.fareItems.push({ x: laneCenter(fareLane), y, phase: r.rng() * Math.PI * 2 });
     }
     // Potholes lie still in the road (like spills), in another lane's gap.
-    if (r.distance >= POTHOLE_MIN_DISTANCE && Math.random() < POTHOLE_CHANCE) {
+    if (r.distance >= POTHOLE_MIN_DISTANCE && r.rng() < POTHOLE_CHANCE) {
       const lane = pickLane();
       if (lane !== fareLane) {
         const y = overshoot + fareOffset(spacing, laneLength[lane] || 0, POTHOLE_RY);
-        r.potholes.push({ x: laneCenter(lane) + (Math.random() - 0.5) * 20, y, angle: (Math.random() - 0.5) * 0.6 });
+        r.potholes.push({ x: laneCenter(lane) + (r.rng() - 0.5) * 20, y, angle: (r.rng() - 0.5) * 0.6 });
+      }
+    }
+    // Sentosa's sand drifts and a storm's puddles lie still too, in other lanes.
+    if (sandAllowed(r.level) && r.rng() < SAND_CHANCE) {
+      const lane = pickLane();
+      if (lane !== fareLane) {
+        r.sand.push({ x: laneCenter(lane), y: overshoot + fareOffset(spacing, laneLength[lane] || 0, 14), angle: (r.rng() - 0.5) * 0.5 });
+      }
+    }
+    if (r.weather.rain > 0 && r.rng() < PUDDLE_CHANCE) {
+      const lane = pickLane();
+      if (lane !== fareLane) {
+        r.puddles.push({ x: laneCenter(lane), y: overshoot + fareOffset(spacing, laneLength[lane] || 0, PUDDLE_RY), phase: r.rng() });
       }
     }
     // Jaywalkers step off a kerb — never on the expressway.
-    if (pedestriansAllowed(r.level) && r.distance >= PEDESTRIAN_MIN_DISTANCE && Math.random() < PEDESTRIAN_CHANCE) {
-      const dir = Math.random() < 0.5 ? 1 : -1;
+    if (pedestriansAllowed(r.level) && r.distance >= PEDESTRIAN_MIN_DISTANCE && r.rng() < PEDESTRIAN_CHANCE) {
+      const dir = r.rng() < 0.5 ? 1 : -1;
       r.peds.push({
         x: dir > 0 ? SHOULDER - 4 : WIDTH - SHOULDER + 4,
         y: overshoot - 30,
         dir,
-        look: Math.floor(Math.random() * PEDESTRIAN_LOOKS.length),
-        phase: Math.random() * 6,
+        look: Math.floor(r.rng() * PEDESTRIAN_LOOKS.length),
+        phase: r.rng() * 6,
         fleeing: false,
         hit: false,
         hitT: 0,
@@ -2686,24 +3548,63 @@ function init(canvas, el) {
 
   /** Slides the bus toward its target lane at one lane per laneChangeSeconds. */
   function slideBus(r, dt) {
-    const targetX = laneCenter(r.lane);
-    const step = (LANE_WIDTH / laneChangeSeconds(progress.upgrades.steering, progress.bus)) * dt;
+    const onTrack = r.track && r.track.phase === 'ride';
+    const targetX = onTrack ? TRACK_X[r.track.lane] : laneCenter(r.lane);
+    const gap = onTrack ? TRACK_GAP : LANE_WIDTH;
+    const step = (gap / laneChangeSeconds(r.upgrades.steering, r.bus)) * dt;
     r.busX = Math.abs(targetX - r.busX) <= step ? targetX : r.busX + Math.sign(targetX - r.busX) * step;
   }
 
-  function update(dt) {
+  /** The lane the bus is mostly in right now (it may be mid lane change). */
+  function laneOf(x) {
+    return Math.min(Math.max(Math.round((x - SHOULDER - LANE_WIDTH / 2) / LANE_WIDTH), 0), LANES - 1);
+  }
+
+  /** The bus's (slightly forgiving) hitbox. */
+  function busBox(r) {
+    const dims = busDef(r.bus);
+    return { x: r.busX - dims.width / 2 + 5, y: BUS_Y + 6, w: dims.width - 10, h: dims.length - 10 };
+  }
+
+  /** Storm clock, splash and lightning. */
+  function updateWeather(r, dt) {
+    const w = r.weather;
+    w.rain = Math.max(0, w.rain - dt);
+    w.splash = Math.max(0, w.splash - dt);
+    w.flash = Math.max(0, w.flash - dt);
+    if (w.rain <= 0) return;
+    w.nextFlash -= dt;
+    if (w.nextFlash <= 0) {
+      w.flash = 0.25;
+      w.nextFlash = 3 + Math.random() * 6;
+    }
+  }
+
+  function update(realDt) {
     const r = run;
+    if (r.scene) {
+      updateScene(r, realDt);
+      return;
+    }
     if (r.crash) {
-      updateCrash(r, dt);
+      updateCrash(r, realDt);
+      return;
+    }
+    // A mixer being shoved over plays everything in slow motion.
+    const dt = r.tip ? realDt * TIP_SLOWMO : realDt;
+    updateWeather(r, dt);
+    if (r.track) {
+      updateTrack(r, dt);
       return;
     }
     r.slow = Math.max(0, r.slow - dt);
     r.shield = Math.max(0, r.shield - dt);
     r.magnet = Math.max(0, r.magnet - dt);
     r.nitro = Math.max(0, r.nitro - dt);
-    r.speed = stepSpeed(r.speed, input, dt, progress.upgrades.engine, r.level, {
-      accel: busDef(progress.bus).accel,
+    r.speed = stepSpeed(r.speed, input, dt, r.upgrades.engine, r.level, {
+      accel: busDef(r.bus).accel,
       slowed: r.slow > 0,
+      grip: r.weather.rain > 0 ? WET_GRIP : 1,
     });
     r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
     r.grace = Math.max(0, r.grace - dt);
@@ -2717,7 +3618,7 @@ function init(canvas, el) {
     // the road, so they scroll at the bus's speed.
     const closing = (r.speed + TRAFFIC_SPEED) * dt * PX_PER_METER;
     const still = r.speed * dt * PX_PER_METER;
-    r.vehicles.forEach((v) => { v.y += closing; });
+    r.vehicles.forEach((v) => { if (!v.tipping) v.y += closing; });
     updateSpills(r, dt);
     r.fareItems.forEach((f) => { f.y += closing; });
     r.powerups.forEach((p) => { p.y += closing; });
@@ -2727,6 +3628,14 @@ function init(canvas, el) {
       r.zone.y += still;
       if (r.zone.y > HEIGHT) r.zone = null;
     }
+    if (r.ramp) {
+      r.ramp.y += still;
+      if (r.ramp.y > HEIGHT) r.ramp = null;
+    }
+    r.puddles.forEach((p) => { p.y += still; });
+    r.sand.forEach((d) => { d.y += still; });
+    r.puddles = r.puddles.filter((p) => p.y - PUDDLE_RY < HEIGHT);
+    r.sand = r.sand.filter((d) => d.y - 14 < HEIGHT);
     r.vehicles = r.vehicles.filter((v) => v.y < HEIGHT);
     r.fareItems = r.fareItems.filter((f) => f.y - FARE_RADIUS < HEIGHT);
     r.powerups = r.powerups.filter((p) => p.y - POWERUP_RADIUS < HEIGHT);
@@ -2742,11 +3651,11 @@ function init(canvas, el) {
     }
 
     // Slightly forgiving hitboxes so a near-miss reads as a near-miss.
-    const dims = busDef(progress.bus);
-    const bus = { x: r.busX - dims.width / 2 + 5, y: BUS_Y + 6, w: dims.width - 10, h: dims.length - 10 };
+    const dims = busDef(r.bus);
+    const bus = busBox(r);
     for (const v of r.vehicles) {
       if (v.gone || !rectsOverlap(bus, { x: v.x - v.width / 2 + 3, y: v.y + 3, w: v.width - 6, h: v.length - 6 })) continue;
-      if (v.fuel) {
+      if (explosive(v)) {
         startCrash(r, v);
         return;
       }
@@ -2764,6 +3673,29 @@ function init(canvas, el) {
     updatePolice(r, dt, bus);
     if (r.status !== 'playing') return;
     updateHelicopter(r, dt);
+
+    // Drive up a ramp truck's ramps: airborne, onto the MRT track.
+    if (r.ramp && !r.tip && rectsOverlap(bus, rampBox(r.ramp))) {
+      startJump(r);
+      return;
+    }
+
+    // Puddles splash the windscreen; Sentosa's sand bogs the bus down.
+    const puddle = r.puddles.find((p) => !p.hit && rectsOverlap(bus, puddleBox(p)));
+    if (puddle) {
+      puddle.hit = true;
+      r.weather.splash = SPLASH_SECONDS;
+      burst(effects, puddle.x, puddle.y, ['#9fc4e0', '#d6e6f2', '#6d7f8c'], 16, 240, 4);
+      popText(r.busX, BUS_Y - 14, 'SPLASH!', '#9fc4ff');
+    }
+    const drift = r.sand.find((d) => !d.hit && rectsOverlap(bus, sandBox(d)));
+    if (drift) {
+      drift.hit = true;
+      r.slow = Math.max(r.slow, SAND_SLOW_SECONDS);
+      r.slowKind = 'sand';
+      burst(effects, drift.x, drift.y, ['#e3cf9c', '#c9b07a', '#f1e4c2'], 14, 200, 4);
+      popText(r.busX, BUS_Y - 14, 'SAND!', '#e3cf9c');
+    }
 
     // Construction zone barriers: a life, and shoved a lane inward.
     if (r.zone && r.skid <= 0 && rectsOverlap(bus, zoneBox(r.zone))) {
@@ -2808,6 +3740,7 @@ function init(canvas, el) {
     if (trash) {
       r.spills = r.spills.filter((b) => b !== trash);
       r.slow = GARBAGE_SLOW_SECONDS;
+      r.slowKind = 'garbage';
       burst(effects, trash.x, trash.y, ['#3b3f36', '#6b7a4f', '#c9b48a', '#8a8276'], 12, 200, 5);
       popText(r.busX, BUS_Y - 14, 'SLOWED!', '#b9d48a');
     }
@@ -2855,7 +3788,12 @@ function init(canvas, el) {
       return !caught;
     });
 
-    // Missions completed mid-run get a cheer (they pay out at the end).
+    if (r.tip) updateTip(r, dt);
+    cheerMissions(r);
+  }
+
+  /** Missions completed mid-run get a cheer (they pay out at the end). */
+  function cheerMissions(r) {
     progress.missions.forEach((key) => {
       if (r.missionsDone.has(key) || !missionDone(key, runStats(r))) return;
       r.missionsDone.add(key);
@@ -2863,12 +3801,342 @@ function init(canvas, el) {
     });
   }
 
+  // --- the MRT track ------------------------------------------------------
+
+  const JUMP_SECONDS = 1;
+  const DROP_SECONDS = 0.9;
+
+  /** The ramp truck's hitbox: its deck and ramps. */
+  function rampBox(ramp) {
+    return { x: ramp.x - RAMP_TRUCK.width / 2 + 6, y: ramp.y + 6, w: RAMP_TRUCK.width - 12, h: RAMP_TRUCK.length - 10 };
+  }
+
+  /** Up the ramp: the police can't follow, and the bus flies onto the nearer track. */
+  function startJump(r) {
+    const lost = r.police.length;
+    r.track = {
+      phase: 'jump',
+      t: 0,
+      fromX: r.busX,
+      lane: r.ramp.side < 0 ? 0 : 1,
+      left: TRACK_SECONDS,
+      train: null,
+      warn: 0,
+      pending: 0,
+      gap: trainGapSeconds(Math.random) + 1,
+      fares: [],
+      fareTimer: 1,
+    };
+    r.ramp = null;
+    r.trackRides += 1;
+    r.police = [];
+    r.tip = null;
+    shake = Math.max(shake, 0.3);
+    popText(r.busX, BUS_Y - 20, lost ? 'AIRBORNE! LOST THEM!' : 'AIRBORNE!', '#ffb547', 1.2);
+  }
+
+  /** Back down to the road once the time's up: a fresh, empty stretch. */
+  function landFromTrack(r) {
+    const lane = r.track.landLane;
+    r.track = null;
+    r.lane = lane;
+    r.busX = laneCenter(lane);
+    r.vehicles = [];
+    r.fareItems = [];
+    r.powerups = [];
+    r.spills = [];
+    r.potholes = [];
+    r.peds = [];
+    r.puddles = [];
+    r.sand = [];
+    r.zone = null;
+    r.ramp = null;
+    r.police = [];
+    r.sinceRow = 0;
+    r.prevOpen = null;
+    r.policeTimer = POLICE_FIRST_SECONDS;
+    r.grace = HIT_GRACE_SECONDS * 1.5;
+    shake = Math.max(shake, 0.4);
+    burst(effects, r.busX, BUS_Y + 40, ['#8a8276', '#c9c3b7', '#5a5550'], 18, 220, 5);
+    popText(r.busX, BUS_Y - 20, 'THUD! Back on the road', '#f1e9d6', 1.2);
+  }
+
+  /**
+   * Riding the viaduct: speed and distance carry on, one train at a time
+   * runs down one of the two tracks after a warning, fares lie between the
+   * rails, and after TRACK_SECONDS the bus drops back down to the road.
+   */
+  function updateTrack(r, dt) {
+    const tr = r.track;
+    r.speed = stepSpeed(r.speed, input, dt, r.upgrades.engine, r.level, {
+      accel: busDef(r.bus).accel,
+      grip: r.weather.rain > 0 ? WET_GRIP : 1,
+    });
+    r.distance = Math.min(r.distance + r.speed * dt, DISTANCE_MAX);
+    r.scroll += r.speed * dt * PX_PER_METER;
+    r.grace = Math.max(0, r.grace - dt);
+    r.maxWanted = Math.max(r.maxWanted, wantedLevel(r.distance, r.fares));
+    updateLevel(r, dt);
+    tr.t += dt;
+    if (tr.phase === 'jump') {
+      const k = Math.min(1, tr.t / JUMP_SECONDS);
+      r.busX = tr.fromX + (TRACK_X[tr.lane] - tr.fromX) * smoothstep(k);
+      if (k >= 1) {
+        tr.phase = 'ride';
+        tr.t = 0;
+        // The road below carries on without us.
+        r.vehicles = [];
+        r.fareItems = [];
+        r.powerups = [];
+        r.spills = [];
+        r.potholes = [];
+        r.peds = [];
+        r.puddles = [];
+        r.sand = [];
+        r.zone = null;
+        popText(WIDTH / 2, 150, `ON THE MRT TRACK! ${TRACK_SECONDS} s`, '#ffb547', 1.6);
+      }
+      return;
+    }
+    if (tr.phase === 'drop') {
+      const k = Math.min(1, tr.t / DROP_SECONDS);
+      r.busX = tr.fromX + (laneCenter(tr.landLane) - tr.fromX) * smoothstep(k);
+      if (k >= 1) landFromTrack(r);
+      return;
+    }
+
+    tr.left = Math.max(0, tr.left - dt);
+    slideBus(r, dt);
+    const still = r.speed * dt * PX_PER_METER;
+    const bus = busBox(r);
+
+    if (tr.train) {
+      const train = tr.train;
+      train.y += trainClosingSpeed(train.track, r.speed) * PX_PER_METER * dt;
+      const box = { x: TRACK_X[train.track] - TRAIN_WIDTH / 2 + 4, y: train.y + 4, w: TRAIN_WIDTH - 8, h: TRAIN_LENGTH - 8 };
+      if (rectsOverlap(bus, box)) {
+        r.lives = 0;
+        r.deathTitle = 'Hit by an MRT train!';
+        shake = 1;
+        burst(effects, r.busX, BUS_Y + 20, ['#dcdedd', '#c9402c', BUS_COLOR, '#2e4552'], 30, 360, 6);
+        renderHud();
+        endRun();
+        return;
+      }
+      if (train.y > HEIGHT + 20 || train.y + TRAIN_LENGTH < -20) {
+        tr.train = null;
+        tr.gap = trainGapSeconds(Math.random);
+      }
+    } else if (tr.warn > 0) {
+      tr.warn -= dt;
+      if (tr.warn <= 0) {
+        tr.train = { track: tr.pending, y: tr.pending === 1 ? -TRAIN_LENGTH : HEIGHT + 10 };
+      }
+    } else if (tr.left > 3) {
+      tr.gap -= dt;
+      if (tr.gap <= 0) {
+        tr.pending = nextTrainTrack(Math.random);
+        tr.warn = TRAIN_WARNING_SECONDS;
+      }
+    }
+
+    // Fares lie between the rails, now and then.
+    tr.fareTimer -= dt;
+    if (tr.fareTimer <= 0) {
+      tr.fareTimer = 0.8 + Math.random() * 0.9;
+      tr.fares.push({ x: TRACK_X[Math.random() < 0.5 ? 0 : 1], y: -20, phase: Math.random() * 6 });
+    }
+    tr.fares.forEach((f) => { f.y += still; });
+    tr.fares = tr.fares.filter((f) => {
+      const caught = rectsOverlap(bus, { x: f.x - FARE_RADIUS, y: f.y - FARE_RADIUS, w: FARE_RADIUS * 2, h: FARE_RADIUS * 2 });
+      if (caught) {
+        r.fares += 1;
+        burst(effects, f.x, f.y, ['#ffe08a', '#f2c94c', '#fff6d8'], 10, 180, 4);
+        popText(f.x, f.y - 14, '+$', '#ffe08a', 0.7);
+      }
+      return !caught && f.y - FARE_RADIUS < HEIGHT;
+    });
+
+    if (tr.left <= 0 && !tr.train && tr.warn <= 0) {
+      tr.phase = 'drop';
+      tr.t = 0;
+      tr.fromX = r.busX;
+      tr.landLane = tr.lane === 0 ? 1 : 2;
+      popText(WIDTH / 2, 150, 'END OF THE LINE — DROPPING DOWN!', '#ffb547', 1.4);
+    }
+    cheerMissions(r);
+  }
+
+  // --- the cement mixer ---------------------------------------------------
+
+  /** A mixer the bus is alongside and could shove over right now, if any. */
+  function shoveTarget(r) {
+    if (r.track || r.tip || r.scene || r.crash) return null;
+    const lane = laneOf(r.busX);
+    const len = busDef(r.bus).length;
+    return r.vehicles.find((v) => v.kind === 'mixer' && !v.tipping && !v.fallen && !v.gone
+      && canShove(lane, BUS_Y, BUS_Y + len, laneOf(v.x), v.y, v.y + v.length)) || null;
+  }
+
+  /** Shoulder-charge the mixer: it starts to tip, in slow motion, into the bus's lane. */
+  function shove() {
+    const r = run;
+    if (!r || r.status !== 'playing') return;
+    const v = shoveTarget(r);
+    if (!v) return;
+    const lane = laneOf(r.busX);
+    v.tipping = true;
+    v.tip = 0;
+    v.mixerLane = laneOf(v.x);
+    v.fallLane = lane;
+    v.fallDir = Math.sign(lane - v.mixerLane);
+    r.tip = v;
+    shake = Math.max(shake, 0.3);
+    burst(effects, (r.busX + v.x) / 2, BUS_Y + 30, ['#e8833a', '#f4efe4', BUS_COLOR], 14, 220, 5);
+    popText(v.x, v.y + v.length / 2, 'TIMBER!', '#ffb547', 1.6);
+  }
+
+  /** The mixer tips over TIP_SECONDS (game time) and lands in the lane it fell toward. */
+  function updateTip(r, dt) {
+    const v = r.tip;
+    if (v.gone) {
+      r.tip = null;
+      return;
+    }
+    v.tip = Math.min(1, v.tip + dt / TIP_SECONDS);
+    if (v.tip < 1) return;
+    r.tip = null;
+    v.tipping = false;
+    v.fallen = true;
+    v.sprawl = v.width + LANE_WIDTH * 0.85;
+    shake = 0.8;
+    const zone = { x: SHOULDER + LANE_WIDTH * v.fallLane + 6, y: v.y + 4, w: LANE_WIDTH - 12, h: v.length - 8 };
+    burst(effects, laneCenter(v.fallLane), v.y + v.length / 2, ['#9a948b', '#c9c3b7', '#e8833a'], 30, 300, 6);
+    if (rectsOverlap(busBox(r), zone)) {
+      startPancake(r, v);
+      return;
+    }
+    // Anything else under it is crushed.
+    r.vehicles = r.vehicles.filter((o) => {
+      if (o === v || !rectsOverlap(zone, { x: o.x - o.width / 2, y: o.y, w: o.width, h: o.length })) return true;
+      if (o.police) wreckPolice(r, o);
+      else burst(effects, o.x, o.y + o.length / 2, [o.color || '#888', '#5a5650'], 10, 200, 5);
+      return false;
+    });
+    startMixerScene(r, v);
+  }
+
+  const SCENE_BEAT = 0.45; // the mixer lies there a moment first
+  const SCENE_SLIDE = 2.6; // ...then slides back into the police
+  const SCENE_PAN = 190; // px the camera pans down the road to watch
+  const SCENE_END = 5.4; // after the laugh
+
+  /**
+   * The bus got clear: cutscene. The fallen mixer slides back down the
+   * road into the chasing police — crushing the ones in its path while the
+   * rest screech to a stop — then a shot of the driver in stitches.
+   */
+  function startMixerScene(r, v) {
+    // There's always someone to squash, and everyone chasing is pulled into
+    // shot just behind the bus.
+    // One in the mixer's path to squash, one beside it to screech to a stop.
+    const clear = [...Array(LANES).keys()].filter((l) => l !== v.mixerLane && l !== v.fallLane)
+      .sort((a, b) => Math.abs(a - v.mixerLane) - Math.abs(b - v.mixerLane));
+    const lanes = [v.mixerLane, clear[0]];
+    for (let i = r.police.length; i < 2; i++) spawnPolice(r, lanes[i % 2], 0);
+    const busBottom = BUS_Y + busDef(r.bus).length;
+    r.police.forEach((p, i) => {
+      p.retarget = 99;
+      p.y = Math.min(Math.max(p.y, busBottom + 14 + (i % 2) * 40), HEIGHT - p.length - 6);
+    });
+    r.scene = { t: 0, v, marks: [], screeched: false };
+    r.tip = null;
+  }
+
+  function updateScene(r, dt) {
+    const sc = r.scene;
+    sc.t += dt;
+    if (sc.t < SCENE_SLIDE) {
+      const v = sc.v;
+      if (sc.t > SCENE_BEAT) v.y += 260 * dt;
+      const left = v.fallDir > 0 ? v.x - v.width / 2 : v.x + v.width / 2 - v.sprawl;
+      const band = { x: left, y: v.y, w: v.sprawl, h: v.length };
+      r.police = r.police.filter((p) => {
+        const box = { x: p.x - p.width / 2, y: p.y, w: p.width, h: p.length };
+        if (rectsOverlap(band, box)) {
+          wreckPolice(r, p);
+          popText(p.x, p.y, 'CRUNCH!', '#ffb547', 1);
+          return false;
+        }
+        // The rest stand on the brakes, laying rubber.
+        if (sc.t > SCENE_BEAT) {
+          const brake = Math.max(0, 1 - (sc.t - SCENE_BEAT) / 1.2);
+          p.y += 50 * brake * dt;
+          if (brake > 0) sc.marks.push({ x: p.x, y: p.y + p.length - 4, len: 6 });
+        }
+        return true;
+      });
+      if (!sc.screeched && sc.t > SCENE_BEAT + 0.2) {
+        sc.screeched = true;
+        popText(WIDTH / 2, BUS_Y + 150, 'SCREEEECH!', '#f1e9d6', 1.6);
+      }
+      return;
+    }
+    if (sc.t >= SCENE_END) endScene(r);
+  }
+
+  function endScene(r) {
+    const sc = r.scene;
+    sc.v.gone = true;
+    r.vehicles = r.vehicles.filter((o) => !o.gone);
+    r.police = [];
+    r.policeTimer = POLICE_SPAWN_SECONDS * 2;
+    r.swatTimer = POLICE_SPAWN_SECONDS * 2;
+    r.mixerTopples += 1;
+    r.bonus += MIXER_TOPPLE_POINTS;
+    r.grace = HIT_GRACE_SECONDS;
+    r.scene = null;
+    popText(WIDTH / 2, 150, `POUR DECISION! +${MIXER_TOPPLE_POINTS}`, '#ffe08a', 1.6);
+  }
+
+  /** Any key or tap skips the slide to the laugh, then the laugh. */
+  function skipScene() {
+    const sc = run && run.scene;
+    if (!sc) return;
+    if (sc.t < SCENE_SLIDE) {
+      // Settle the slide at once: everyone in its path is crushed.
+      sc.v.y = HEIGHT;
+      wreckAllPolice(run);
+      sc.t = SCENE_SLIDE;
+    } else {
+      endScene(run);
+    }
+  }
+
+  function wreckAllPolice(r) {
+    r.police.forEach((p) => wreckPolice(r, p));
+    r.police = [];
+  }
+
+  /** Too slow: the mixer lands on the bus. */
+  function startPancake(r, v) {
+    r.vehicles = r.vehicles.filter((o) => o !== v);
+    r.status = 'cutscene';
+    r.pancaked = true;
+    r.lives = 0;
+    r.tip = null;
+    r.cut = { t: 0, x: r.busX, kind: 'pancake', v };
+    input.accelerate = false;
+    input.brake = false;
+    renderHud();
+  }
+
   function applyPowerup(r, p) {
     r.powerupsTaken += 1;
     burst(effects, p.x, p.y, [POWERUP_COLORS[p.kind], '#fbf6ec', '#ffe08a'], 14, 220, 5);
     popText(p.x, p.y - 18, `${POWERUPS[p.kind].label.toUpperCase()}!`, POWERUP_COLORS[p.kind]);
     if (p.kind === 'nitro') {
-      r.speed = maxSpeed(progress.upgrades.engine, r.level);
+      r.speed = maxSpeed(r.upgrades.engine, r.level);
       r.slow = 0;
       r.nitro = 1.4;
       r.police.forEach((c) => { c.y += NITRO_PUSH_PX; });
@@ -2909,8 +4177,10 @@ function init(canvas, el) {
   // --- fuel tanker crash --------------------------------------------------
 
   function startCrash(r, v) {
+    const { stun, fuse } = crashTimings(v);
     v.crashAngle = (v.x <= r.busX ? -1 : 1) * 0.35;
-    r.crash = { v, stun: FUEL_STUN_SECONDS, fuse: FUEL_FUSE_SECONDS };
+    r.crash = { v, stun, fuse, stunMax: stun };
+    r.tip = null;
     r.speed = 0;
     r.lane = Math.round((r.busX - SHOULDER - LANE_WIDTH / 2) / LANE_WIDTH);
     input.accelerate = false;
@@ -2921,8 +4191,8 @@ function init(canvas, el) {
   }
 
   /**
-   * A tanker crash freezes the road: FUEL_STUN_SECONDS stunned, then
-   * FUEL_FUSE_SECONDS to steer out of the blast radius before it blows.
+   * A tanker or hazmat-truck crash freezes the road: stunned, then a fuse
+   * to steer out of the blast radius before it blows (crashTimings).
    */
   function updateCrash(r, dt) {
     const c = r.crash;
@@ -2959,7 +4229,7 @@ function init(canvas, el) {
       wreckPolice(r, p);
       return false;
     });
-    if (inBlast(r.busX - cx, BUS_Y + busDef(progress.bus).length / 2 - cy)) {
+    if (inBlast(r.busX - cx, BUS_Y + busDef(r.bus).length / 2 - cy)) {
       startCutscene(r);
       return;
     }
@@ -2974,7 +4244,7 @@ function init(canvas, el) {
     r.status = 'cutscene';
     r.wasted = true;
     r.lives = 0;
-    r.cut = { t: 0, x: r.busX };
+    r.cut = { t: 0, x: r.busX, kind: 'alcatraz' };
     input.accelerate = false;
     input.brake = false;
     renderHud();
@@ -2983,7 +4253,8 @@ function init(canvas, el) {
   /** Any key or tap during the cutscene skips ahead to WASTED, then on to Run Over. */
   function skipCutscene() {
     if (!run || run.status !== 'cutscene') return;
-    if (run.cut.t < CUT_WASTED) run.cut.t = CUT_WASTED;
+    const times = CUTS[run.cut.kind];
+    if (run.cut.t < times.wasted) run.cut.t = times.wasted;
     else endRun();
   }
 
@@ -2998,10 +4269,10 @@ function init(canvas, el) {
     if (lvl !== r.level) {
       const points = checkpointPoints(lvl);
       r.bonus += points;
-      const refilled = r.lives < maxLives(progress.upgrades.bumpers, progress.bus);
-      r.lives = maxLives(progress.upgrades.bumpers, progress.bus);
+      const refilled = r.lives < maxLives(r.upgrades.bumpers, r.bus);
+      r.lives = maxLives(r.upgrades.bumpers, r.bus);
       // A kick of speed on entry; the higher floor/ceiling keep it after.
-      r.speed = Math.min(r.speed + LEVEL_SPEED_STEP * 2, maxSpeed(progress.upgrades.engine, lvl));
+      r.speed = Math.min(r.speed + LEVEL_SPEED_STEP * 2, maxSpeed(r.upgrades.engine, lvl));
       r.fadeFrom = r.level;
       r.fade = 1;
       r.level = lvl;
@@ -3133,8 +4404,9 @@ function init(canvas, el) {
     }
 
     const zone = r.zone && zoneBox(r.zone);
+    const ramp = r.ramp && rampBox(r.ramp);
     r.police = r.police.filter((p) => {
-      let crashed = Boolean(zone && rectsOverlap(box(p), zone));
+      let crashed = Boolean((zone && rectsOverlap(box(p), zone)) || (ramp && rectsOverlap(box(p), ramp)));
       for (const v of r.vehicles) {
         if (crashed || !rectsOverlap(box(p), box(v))) continue;
         if (p.swat && !v.lethal) {
@@ -3196,29 +4468,44 @@ function init(canvas, el) {
 
   function draw(t) {
     const r = run;
+    const busKey = r ? r.bus : progress.bus;
     ctx.save();
     if (shake > 0) {
       const k = shake * 14;
       ctx.translate((Math.random() - 0.5) * k, (Math.random() - 0.5) * k);
     }
-    if (r && r.cut && r.cut.t >= CUT_FLIGHT) {
+    if (r && r.cut && r.cut.kind === 'alcatraz' && r.cut.t >= CUT_FLIGHT) {
       drawCutscene(ctx, r.cut, r.status === 'cutscene');
       ctx.restore();
       return;
     }
-    const scroll = r ? r.scroll : idleScroll;
+    if (r && r.scene && r.scene.t >= SCENE_SLIDE) {
+      drawLaughScene(ctx, r.scene.t - SCENE_SLIDE);
+      drawLetterbox(ctx, 1);
+      ctx.restore();
+      return;
+    }
+    // The mixer cutscene pans the camera back down the road to watch.
+    const pan = r && r.scene ? SCENE_PAN * smoothstep(r.scene.t / 0.5) : 0;
+    const scroll = (r ? r.scroll : idleScroll) + pan;
     drawScenery(ctx, sceneryFor(r ? r.level : 0), scroll, dpr);
+    ctx.translate(0, -pan);
     if (r && r.fade > 0) {
       ctx.globalAlpha = r.fade;
       drawScenery(ctx, sceneryFor(r.fadeFrom), scroll, dpr);
       ctx.globalAlpha = 1;
     }
+    const tr = r && r.track;
     if (r) {
+      if (r.ramp) drawViaductEdge(ctx, r.ramp.side, scroll);
       r.scorches.forEach((s) => drawScorch(ctx, s));
       if (r.zone) drawZone(ctx, r.zone, t);
       r.potholes.forEach((h) => drawPothole(ctx, h));
-      if (r.crash) drawFuelPuddle(ctx, r.crash.v, 1 - r.crash.stun / FUEL_STUN_SECONDS, t);
+      r.puddles.forEach((p) => drawPuddle(ctx, p, t));
+      r.sand.forEach((d) => drawSandDrift(ctx, d));
+      if (r.crash) drawFuelPuddle(ctx, r.crash.v, 1 - r.crash.stun / r.crash.stunMax, t);
       r.wrecks.forEach((wk) => drawWreck(ctx, wk, t));
+      if (r.scene) drawSkidMarks(ctx, r.scene.marks);
       r.spills.forEach((b) => {
         if (b.kind === 'garbage') drawGarbage(ctx, b);
         else if (b.kind === 'spikes') drawSpikes(ctx, b);
@@ -3227,6 +4514,8 @@ function init(canvas, el) {
       r.peds.forEach((p) => drawPedestrian(ctx, p, t));
       r.fareItems.forEach((f) => drawFare(ctx, f, t));
       r.powerups.forEach((p) => drawPowerup(ctx, p, t));
+      if (r.ramp) drawRampTruck(ctx, r.ramp, t);
+      if (r.tip) drawTipZone(ctx, r.tip, t);
       r.vehicles.forEach((v) => drawVehicle(ctx, v, t));
       r.police.forEach((p) => {
         if (p.y >= HEIGHT) drawSirenCue(ctx, p, t);
@@ -3236,32 +4525,72 @@ function init(canvas, el) {
           else drawPolice(ctx, p, t, true, angle);
         }
       });
-      if (!r.cut) {
+      if (tr) {
+        // Up on the viaduct: the deck fades in on the jump and out on the drop.
+        const k = tr.phase === 'jump' ? smoothstep(tr.t / JUMP_SECONDS)
+          : tr.phase === 'drop' ? 1 - smoothstep(tr.t / DROP_SECONDS) : 1;
+        drawViaduct(ctx, scroll, k);
+        if (tr.phase === 'ride') {
+          tr.fares.forEach((f) => drawFare(ctx, f, t));
+          if (tr.warn > 0) drawTrainWarning(ctx, tr.pending, t);
+          if (tr.train) drawTrain(ctx, TRACK_X[tr.train.track], tr.train.y, TRAIN_LENGTH, tr.train.track === 0);
+        }
+      }
+      if (r.cut && r.cut.kind === 'pancake') {
+        drawPancake(ctx, r.cut, r.cut.t, busKey);
+      } else if (!r.cut) {
         const flashing = r.grace > 0 && Math.floor(r.grace * 10) % 2 === 0;
         const wobble = r.skid > 0 ? Math.sin(r.skid * 40) * 0.3 * (r.skid / SKID_SECONDS) : 0;
-        if (r.nitro > 0) drawNitroFlame(ctx, r.busX, t, progress.bus, Math.min(1, r.nitro / 0.4));
-        drawBus(ctx, r.busX, flashing, r.status === 'playing' && input.brake, wobble, progress.bus);
-        if (r.slow > 0) drawStink(ctx, r.busX, t, progress.bus);
-        if (r.shield > 0) drawShieldBubble(ctx, r.busX, t, progress.bus, r.shield);
+        // Airborne off the ramp (or dropping off the viaduct): the bus swells
+        // as it rises, its shadow falling away beneath it.
+        const air = tr && tr.phase === 'jump' ? Math.sin(Math.PI * Math.min(1, tr.t / JUMP_SECONDS))
+          : tr && tr.phase === 'drop' ? Math.sin(Math.PI * Math.min(1, tr.t / DROP_SECONDS)) * 0.6 : 0;
+        const cy = BUS_Y + busDef(busKey).length / 2;
+        if (air > 0) {
+          ctx.fillStyle = `rgba(28,22,16,${0.35 - air * 0.15})`;
+          ctx.beginPath();
+          ctx.ellipse(r.busX + 18 + air * 30, cy + 20 + air * 40, 30, busDef(busKey).length / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.save();
+        if (air > 0) {
+          ctx.translate(r.busX, cy);
+          ctx.scale(1 + air * 0.35, 1 + air * 0.35);
+          ctx.translate(-r.busX, -cy);
+        }
+        if (r.nitro > 0) drawNitroFlame(ctx, r.busX, t, busKey, Math.min(1, r.nitro / 0.4));
+        drawBus(ctx, r.busX, flashing, r.status === 'playing' && input.brake, wobble, busKey);
+        ctx.restore();
+        if (r.slow > 0 && r.slowKind !== 'sand') drawStink(ctx, r.busX, t, busKey);
+        if (r.shield > 0) drawShieldBubble(ctx, r.busX, t, busKey, r.shield);
         if (r.magnet > 0) {
           ctx.strokeStyle = `rgba(201,64,44,${0.25 + 0.15 * Math.sin(t * 8)})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(r.busX, BUS_Y + busDef(progress.bus).length / 2, MAGNET_RADIUS * (0.6 + 0.4 * ((t * 1.5) % 1)), 0, Math.PI * 2);
+          ctx.arc(r.busX, BUS_Y + busDef(busKey).length / 2, MAGNET_RADIUS * (0.6 + 0.4 * ((t * 1.5) % 1)), 0, Math.PI * 2);
           ctx.stroke();
         }
       } else {
         // Blown up with the tanker: a charred shell where the bus was.
-        const def = busDef(progress.bus);
-        drawBusShape(ctx, r.cut.x, BUS_Y, def.width, def.length, { body: '#4a4440', roof: '#5f5852' }, progress.bus, { route: '--' });
+        const def = busDef(busKey);
+        drawBusShape(ctx, r.cut.x, BUS_Y, def.width, def.length, { body: '#4a4440', roof: '#5f5852' }, busKey, { route: '--' });
       }
-      if (r.heli) drawHelicopter(ctx, r.heli, t, r.busX, progress.bus);
-      if (DISTRICTS[r.level].night) drawNight(ctx, nightLayer, dpr, r, progress.bus, 1 - r.fade);
-      else if (r.fade > 0 && DISTRICTS[r.fadeFrom].night) drawNight(ctx, nightLayer, dpr, r, progress.bus, r.fade);
+      if (r.heli && !tr) drawHelicopter(ctx, r.heli, t, r.busX, busKey);
+      if (DISTRICTS[r.level].night) drawNight(ctx, nightLayer, dpr, r, busKey, 1 - r.fade);
+      else if (r.fade > 0 && DISTRICTS[r.fadeFrom].night) drawNight(ctx, nightLayer, dpr, r, busKey, r.fade);
+      ctx.translate(0, pan);
+      drawRain(ctx, r.weather, t);
+      if (r.status === 'playing' && !r.scene) {
+        const target = shoveTarget(r);
+        if (target) drawShovePrompt(ctx, target, t);
+      }
     } else {
-      drawBus(ctx, laneCenter(1), false, false, 0, progress.bus);
+      drawBus(ctx, laneCenter(1), false, false, 0, busKey);
     }
+    // Effects live in road coordinates, so they pan with the cutscene camera.
+    ctx.translate(0, -pan);
     drawEffects(ctx, effects);
+    ctx.translate(0, pan);
     if (r && r.blast) {
       const k = r.blast.t / 0.9;
       drawFireball(ctx, r.blast.x, r.blast.y, 60 + FUEL_BLAST_RADIUS * smoothstep(k * 1.5), k);
@@ -3271,10 +4600,20 @@ function init(canvas, el) {
       ctx.arc(r.blast.x, r.blast.y, FUEL_BLAST_RADIUS * 1.4 * smoothstep(k), 0, Math.PI * 2);
       ctx.stroke();
     }
-    if (r && r.cut) drawCutsceneBoom(ctx, r.cut);
+    if (r && r.cut && r.cut.kind === 'alcatraz') drawCutsceneBoom(ctx, r.cut);
+    if (r && r.cut && r.cut.kind === 'pancake' && r.cut.t >= CUTS.pancake.wasted) {
+      drawWastedCard(ctx, Math.min(1, (r.cut.t - CUTS.pancake.wasted) / 0.35), 'Flattened into a pancake');
+    }
     if (r && r.crash) drawCrashOverlay(ctx, r.crash, t, r.busX);
-    if (r && !r.cut) drawPowerupChips(ctx, r);
+    if (r && !r.cut && !r.scene) drawPowerupChips(ctx, r);
+    if (r && tr && tr.phase === 'ride') drawTrackTimer(ctx, tr.left);
+    if (r && r.weather.splash > 0) drawSplash(ctx, r.weather.splash / SPLASH_SECONDS);
+    if (r && r.scene) drawLetterbox(ctx, Math.min(1, r.scene.t / 0.3));
+    if (r && r.tip) drawLetterbox(ctx, Math.min(1, r.tip.tip * 3) * 0.6);
     if (r && r.banner) drawBanner(ctx, r.banner);
+    if (r && r.cut && r.cut.kind === 'pancake' && Math.floor(r.cut.t * 1.5) % 2 === 0 && r.status === 'cutscene') {
+      centreText(ctx, 'Press any key to continue', WIDTH / 2, HEIGHT - 24, '600 13px Figtree, sans-serif', '#f1e9d6');
+    }
     ctx.restore();
     if (shake > 0) {
       ctx.fillStyle = `rgba(201,64,44,${Math.min(shake, 0.5) * 0.35})`;
@@ -3298,7 +4637,7 @@ function init(canvas, el) {
       renderMissions();
     } else if (run && run.status === 'cutscene') {
       run.cut.t += dt;
-      if (run.cut.t >= CUT_END) endRun();
+      if (run.cut.t >= CUTS[run.cut.kind].end) endRun();
     } else if (!run) {
       idleScroll += dt * 40;
     }
@@ -3316,7 +4655,13 @@ function init(canvas, el) {
   // --- input --------------------------------------------------------------
 
   function steer(dir) {
-    if (!run || run.status !== 'playing' || run.skid > 0 || (run.crash && run.crash.stun > 0)) return;
+    if (!run || run.status !== 'playing' || run.scene) return;
+    if (run.track) {
+      // Up on the viaduct, ← → hop between the two tracks.
+      if (run.track.phase === 'ride') run.track.lane = Math.min(Math.max(run.track.lane + dir, 0), TRACKS - 1);
+      return;
+    }
+    if (run.skid > 0 || (run.crash && run.crash.stun > 0)) return;
     run.lane = Math.min(Math.max(run.lane + dir, 0), LANES - 1);
   }
 
@@ -3332,8 +4677,14 @@ function init(canvas, el) {
       return;
     }
     if (run.status !== 'playing') return;
+    if (run.scene) {
+      if (!e.repeat) skipScene();
+      e.preventDefault();
+      return;
+    }
     const key = e.key.toLowerCase();
-    if (key === 'arrowleft' || key === 'a') { if (!e.repeat) steer(-1); }
+    if (key === ' ' || key === 'e') { if (!e.repeat) shove(); }
+    else if (key === 'arrowleft' || key === 'a') { if (!e.repeat) steer(-1); }
     else if (key === 'arrowright' || key === 'd') { if (!e.repeat) steer(1); }
     else if (key === 'arrowup' || key === 'w') input.accelerate = true;
     else if (key === 'arrowdown' || key === 's') input.brake = true;
@@ -3353,6 +4704,10 @@ function init(canvas, el) {
       return;
     }
     if (!run || run.status !== 'playing') return;
+    if (run.scene) {
+      skipScene();
+      return;
+    }
     const rect = canvas.getBoundingClientRect();
     steer(e.clientX - rect.left < rect.width / 2 ? -1 : 1);
   }
@@ -3360,15 +4715,19 @@ function init(canvas, el) {
   const controlCleanups = el.controls.map((button) => {
     const action = button.dataset.busRushControl;
     const held = action === 'faster' ? 'accelerate' : action === 'slower' ? 'brake' : null;
+    const press = () => {
+      if (action === 'shove') shove();
+      else steer(action === 'left' ? -1 : 1);
+    };
     const down = (e) => {
       e.preventDefault();
       if (held) input[held] = true;
-      else steer(action === 'left' ? -1 : 1);
+      else press();
     };
     const up = () => { if (held) input[held] = false; };
-    // Keyboard activation (Enter/Space) of ◀/▶ arrives as a click with
+    // Keyboard activation (Enter/Space) of ◀/▶/Shove arrives as a click with
     // detail 0; pointer presses are already handled on pointerdown.
-    const click = (e) => { if (!held && e.detail === 0) steer(action === 'left' ? -1 : 1); };
+    const click = (e) => { if (!held && e.detail === 0) press(); };
     button.addEventListener('pointerdown', down);
     button.addEventListener('pointerup', up);
     button.addEventListener('pointerleave', up);
@@ -3390,9 +4749,10 @@ function init(canvas, el) {
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
   canvas.tabIndex = 0;
 
-  el.start.startButton.addEventListener('click', startRun);
+  el.start.startButton.addEventListener('click', () => startRun(false));
+  if (el.start.dailyButton) el.start.dailyButton.addEventListener('click', () => startRun(true));
   el.start.shopButton.addEventListener('click', openShop);
-  el.runOver.again.addEventListener('click', startRun);
+  el.runOver.again.addEventListener('click', () => startRun(lastDaily));
   el.runOver.shopButton.addEventListener('click', openShop);
   el.shop.close.addEventListener('click', closeShop);
   el.shop.reset.addEventListener('click', () => {
@@ -3474,7 +4834,7 @@ function init(canvas, el) {
         bananas: run.spills.filter((b) => b.kind === 'banana').length,
         garbage: run.spills.filter((b) => b.kind === 'garbage').length,
         slowed: run.slow > 0,
-        bus: progress.bus,
+        bus: run.bus,
         lives: run.lives,
         policeLanes: run.police.map((p) => p.lane),
         policeSkidding: run.police.filter((p) => p.skid > 0).length,
@@ -3494,7 +4854,76 @@ function init(canvas, el) {
         heli: Boolean(run.heli),
         spikes: run.spills.filter((b) => b.kind === 'spikes').length,
         missions: [...progress.missions],
+        daily: run.daily,
+        upgradesUsed: { ...run.upgrades },
+        track: run.track ? run.track.phase : null,
+        trackLane: run.track ? run.track.lane : null,
+        trackLeft: run.track ? run.track.left : null,
+        train: run.track && run.track.train ? run.track.train.track : null,
+        trackRides: run.trackRides,
+        ramp: Boolean(run.ramp),
+        tipping: Boolean(run.tip),
+        scene: Boolean(run.scene),
+        pancaked: run.pancaked,
+        mixerTopples: run.mixerTopples,
+        canShove: Boolean(shoveTarget(run)),
+        raining: run.weather.rain > 0,
+        splash: run.weather.splash > 0,
+        storms: run.storms,
+        hazmat: run.vehicles.filter((v) => v.hazmat).length,
+        stun: run.crash ? run.crash.stun : null,
+        fuse: run.crash ? run.crash.fuse : null,
       };
+    },
+    // A ramp truck parked in edge `lane` (default: the bus's, if it's an
+    // edge lane, else lane 0), its rear `bottom` px down the screen —
+    // by default just ahead of the bus, so it drives straight up it.
+    ramp(lane = run && (run.lane === LANES - 1 ? LANES - 1 : 0), bottom = BUS_Y + 10) {
+      if (!run || run.status !== 'playing') return;
+      const side = lane === 0 ? -1 : 1;
+      run.ramp = { lane, side, x: laneCenter(lane) + side * 14, y: bottom - RAMP_TRUCK.length };
+    },
+    // A train on `track` (0 up, 1 down) with its top at screen `y`.
+    train(track, y) {
+      if (run && run.track && run.track.phase === 'ride') run.track.train = { track, y };
+    },
+    // Sets how long the bus has left on the track.
+    trackLeft(seconds) {
+      if (run && run.track) run.track.left = seconds;
+    },
+    // Holds back trains (and their warnings) for `seconds`.
+    quietTrack(seconds = 999) {
+      if (!run || !run.track) return;
+      run.track.train = null;
+      run.track.warn = 0;
+      run.track.gap = seconds;
+    },
+    // A cement mixer one lane over (toward the middle) alongside the bus.
+    mixer(lane = run && (run.lane <= 1 ? run.lane + 1 : run.lane - 1), y = BUS_Y - 20) {
+      const def = VEHICLES.find((v) => v.kind === 'mixer');
+      if (!run || run.status !== 'playing') return;
+      run.vehicles.push({ ...def, label: def.label, lethal: true, x: laneCenter(lane), y, color: VEHICLE_COLORS[0], drops: [] });
+    },
+    // Presses the shove button.
+    shove() {
+      shove();
+    },
+    // Fast-forwards a running cutscene/scene clock to `t` seconds.
+    sceneTime(t) {
+      if (run && run.scene) run.scene.t = t;
+    },
+    // Starts (or stops) a storm.
+    storm(on = true) {
+      if (!run) return;
+      run.weather.rain = on ? STORM_SECONDS : 0;
+      if (on) run.storms += 1;
+    },
+    // A rain puddle / sand drift just ahead of the bus in its lane.
+    puddle(lane = run && run.lane, y = BUS_Y - 20) {
+      if (run && run.status === 'playing') run.puddles.push({ x: laneCenter(lane), y, phase: 0 });
+    },
+    sand(lane = run && run.lane, y = BUS_Y - 20) {
+      if (run && run.status === 'playing') run.sand.push({ x: laneCenter(lane), y, angle: 0 });
     },
     // Shortens a tanker crash's stun to `seconds`, so tests needn't wait 10 s.
     stunLeft(seconds) {
@@ -3593,11 +5022,12 @@ function init(canvas, el) {
     },
     // Places a vehicle of `kind` in `lane` at screen `y` (for screenshots
     // and tests that need traffic somewhere other than the bus's lane).
-    place(kind, lane, y) {
+    place(kind, lane, y, { hazmat = false } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || !def) return;
       run.vehicles.push({
         ...def,
+        hazmat,
         lethal: Boolean(def.lethal),
         bus: Boolean(def.bus),
         x: laneCenter(lane),
@@ -3608,8 +5038,9 @@ function init(canvas, el) {
       });
     },
     // Drops one vehicle of `kind` into the bus's lane just above the
-    // screen, so it collides through the real update() path.
-    spawn(kind) {
+    // screen, so it collides through the real update() path. `hazmat`
+    // loads a truck or semi with gasoline.
+    spawn(kind, { hazmat = false } = {}) {
       const def = VEHICLES.find((v) => v.kind === kind);
       if (!run || run.status !== 'playing' || !def) return;
       run.vehicles.push({
@@ -3617,6 +5048,7 @@ function init(canvas, el) {
         label: def.label || def.kind,
         lethal: Boolean(def.lethal),
         fuel: Boolean(def.fuel),
+        hazmat,
         bus: Boolean(def.bus),
         route: ROUTES[0],
         x: laneCenter(run.lane),
@@ -3708,6 +5140,8 @@ function bootstrap() {
       tokens: $('bus-rush-start-tokens'),
       bestScore: $('bus-rush-start-best-score'),
       bestDistance: $('bus-rush-start-best-distance'),
+      dailyBest: $('bus-rush-start-daily-best'),
+      dailyButton: $('bus-rush-daily-button'),
       storageNotice: $('bus-rush-storage-notice'),
       startButton: $('bus-rush-start-button'),
       bus: $('bus-rush-start-bus'),
@@ -3728,6 +5162,7 @@ function bootstrap() {
       submit,
       scoreInput: $('bus-rush-score-input'),
       distanceInput: $('bus-rush-distance-input'),
+      dailyInput: $('bus-rush-daily-input'),
       again: $('bus-rush-again-button'),
       shopButton: $('bus-rush-run-over-shop-button'),
     },

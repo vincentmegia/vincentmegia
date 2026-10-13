@@ -18,15 +18,17 @@ import (
 // satisfies is unexported there, so it's duplicated here structurally).
 type fakeBusRushRepository struct {
 	scores    []model.BusRushScore
+	days      []*time.Time // daily_date per score, parallel to scores
 	insertErr error
 	topErr    error
 }
 
-func (f *fakeBusRushRepository) Insert(ctx context.Context, playerName string, score, distanceMeters int) error {
+func (f *fakeBusRushRepository) Insert(ctx context.Context, playerName string, score, distanceMeters int, dailyDate *time.Time) error {
 	if f.insertErr != nil {
 		return f.insertErr
 	}
 	f.scores = append(f.scores, model.BusRushScore{PlayerName: playerName, Score: score, DistanceMeters: distanceMeters})
+	f.days = append(f.days, dailyDate)
 	return nil
 }
 
@@ -40,6 +42,19 @@ func (f *fakeBusRushRepository) TopScores(ctx context.Context, limit int) ([]mod
 	return f.scores[:limit], nil
 }
 
+func (f *fakeBusRushRepository) TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.BusRushScore, error) {
+	if f.topErr != nil {
+		return nil, f.topErr
+	}
+	var out []model.BusRushScore
+	for i, s := range f.scores {
+		if d := f.days[i]; d != nil && d.Equal(day) && len(out) < limit {
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
 func newTestBusRushHandler(t *testing.T, repo *fakeBusRushRepository) *BusRushHandler {
 	t.Helper()
 	tmpl, err := LoadTemplates("../../web/templates")
@@ -48,11 +63,14 @@ func newTestBusRushHandler(t *testing.T, repo *fakeBusRushRepository) *BusRushHa
 	}
 	return &BusRushHandler{
 		Renderer: NewRenderer(tmpl),
-		Service:  &service.BusRushService{Repo: repo},
+		Service:  &service.BusRushService{Repo: repo, Now: func() time.Time { return busRushTestNow }},
 		Version:  "dev",
 		limiter:  newScoreSubmitLimiter(busRushScoreSubmitLimit, busRushScoreSubmitWindow),
 	}
 }
+
+// busRushTestNow pins the Daily Challenge's clock: today is 2026-10-13 (UTC).
+var busRushTestNow = time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)
 
 func postBusRushScore(h *BusRushHandler, form url.Values, remoteAddr string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/bus-rush/score", strings.NewReader(form.Encode()))
@@ -172,5 +190,58 @@ func TestBusRushHandler_SubmitScore_RateLimited(t *testing.T) {
 	}
 	if len(repo.scores) != busRushScoreSubmitLimit {
 		t.Errorf("stored %d, want %d", len(repo.scores), busRushScoreSubmitLimit)
+	}
+}
+
+func TestBusRushHandler_Leaderboard_Tabs(t *testing.T) {
+	h := newTestBusRushHandler(t, &fakeBusRushRepository{})
+
+	rec := httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/bus-rush/leaderboard", nil))
+	out := rec.Body.String()
+	for _, want := range []string{`hx-get="/bus-rush/leaderboard?board=daily"`, `data-board="all"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("all-time board missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+}
+
+func TestBusRushHandler_DailyChallenge(t *testing.T) {
+	repo := &fakeBusRushRepository{}
+	h := newTestBusRushHandler(t, repo)
+
+	ordinary := postBusRushScore(h, url.Values{"player_name": {"Anytime"}, "score": {"900"}, "distance_meters": {"800"}}, "203.0.113.40:1")
+	daily := postBusRushScore(h, url.Values{"player_name": {"Today"}, "score": {"700"}, "distance_meters": {"600"}, "daily_date": {"2026-10-13"}}, "203.0.113.40:1")
+	if ordinary.Code != http.StatusOK || daily.Code != http.StatusOK {
+		t.Fatalf("statuses %d/%d, want 200s; body: %s", ordinary.Code, daily.Code, daily.Body.String())
+	}
+	// A daily submission answers with the daily board: only daily runs.
+	if out := daily.Body.String(); !strings.Contains(out, "Today") || strings.Contains(out, "Anytime") || !strings.Contains(out, `data-board="daily"`) {
+		t.Errorf("daily submit should return today's daily board\n--- output ---\n%s", out)
+	}
+
+	rec := httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/bus-rush/leaderboard?board=daily", nil))
+	if out := rec.Body.String(); !strings.Contains(out, "Today") || strings.Contains(out, "Anytime") || !strings.Contains(out, "2026-10-13") {
+		t.Errorf("?board=daily wrong\n--- output ---\n%s", out)
+	}
+
+	rec = httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/bus-rush/leaderboard", nil))
+	if out := rec.Body.String(); !strings.Contains(out, "Today") || !strings.Contains(out, "Anytime") {
+		t.Errorf("all-time board should rank every run\n--- output ---\n%s", out)
+	}
+}
+
+func TestBusRushHandler_DailyChallenge_BadDate(t *testing.T) {
+	for name, day := range map[string]string{"garbage": "yesterday", "back-filled": "2026-10-01"} {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeBusRushRepository{}
+			h := newTestBusRushHandler(t, repo)
+			rec := postBusRushScore(h, url.Values{"player_name": {"a"}, "score": {"1"}, "distance_meters": {"1"}, "daily_date": {day}}, "203.0.113.41:1")
+			if rec.Code != http.StatusBadRequest || len(repo.scores) != 0 {
+				t.Errorf("status = %d, stored %d; want 400 and nothing stored", rec.Code, len(repo.scores))
+			}
+		})
 	}
 }

@@ -1,23 +1,49 @@
 {{/* Bus Rush leaderboard fragment (docs/features/bus-rush.md). Dot is
-     []model.BusRushScore. Carries #bus-rush-leaderboard so the submit
-     form's outerHTML swap target keeps resolving. */}}
+     handler.busRushLeaderboardView: .Scores, and .Daily — the Daily
+     Challenge's date, or "" for the all-time board. Carries
+     #bus-rush-leaderboard so the tabs' and the submit form's outerHTML swap
+     target keeps resolving; the tabs live inside it so the server marks the
+     active one. */}}
 {{define "bus-rush-leaderboard"}}
-<ol id="bus-rush-leaderboard" class="divide-y divide-line rounded-card border border-line bg-surface">
-	{{if .}}
-	{{range $i, $entry := .}}
-	<li class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
-		<span class="flex items-center gap-3">
-			<span class="w-6 shrink-0 text-right font-mono text-muted">{{add $i 1}}</span>
-			<span class="font-medium text-ink">{{$entry.PlayerName}}</span>
-		</span>
-		<span class="flex items-center gap-4 font-mono tabular-nums text-ink">
-			<span>{{$entry.Score}} pts</span>
-			<span class="text-muted">{{$entry.DistanceMeters}} m</span>
-		</span>
-	</li>
-	{{end}}
-	{{else}}
-	<li class="px-4 py-3 text-sm text-muted">No scores yet — be the first!</li>
-	{{end}}
-</ol>
+<div id="bus-rush-leaderboard" class="space-y-2" data-board="{{if .Daily}}daily{{else}}all{{end}}">
+	<div class="flex gap-1 rounded-card border border-line bg-surface-2 p-1.5 text-xs font-medium" role="group" aria-label="Leaderboard">
+		<button
+			type="button"
+			hx-get="/bus-rush/leaderboard"
+			hx-target="#bus-rush-leaderboard"
+			hx-swap="outerHTML"
+			hx-indicator="#bus-rush-leaderboard-loading"
+			aria-pressed="{{if .Daily}}false{{else}}true{{end}}"
+			class="flex-1 rounded-card px-3 py-1.5 transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary {{if .Daily}}text-muted hover:text-ink{{else}}bg-surface text-ink shadow-sm{{end}}"
+		>All-time</button>
+		<button
+			type="button"
+			hx-get="/bus-rush/leaderboard?board=daily"
+			hx-target="#bus-rush-leaderboard"
+			hx-swap="outerHTML"
+			hx-indicator="#bus-rush-leaderboard-loading"
+			aria-pressed="{{if .Daily}}true{{else}}false{{end}}"
+			class="flex-1 rounded-card px-3 py-1.5 transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary {{if .Daily}}bg-surface text-ink shadow-sm{{else}}text-muted hover:text-ink{{end}}"
+		>Daily Challenge</button>
+	</div>
+	{{if .Daily}}<p class="text-xs text-muted">Today's road · {{.Daily}} (UTC)</p>{{end}}
+	<ol class="divide-y divide-line rounded-card border border-line bg-surface">
+		{{if .Scores}}
+		{{range $i, $entry := .Scores}}
+		<li class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
+			<span class="flex items-center gap-3">
+				<span class="w-6 shrink-0 text-right font-mono text-muted">{{add $i 1}}</span>
+				<span class="font-medium text-ink">{{$entry.PlayerName}}</span>
+			</span>
+			<span class="flex items-center gap-4 font-mono tabular-nums text-ink">
+				<span>{{$entry.Score}} pts</span>
+				<span class="text-muted">{{$entry.DistanceMeters}} m</span>
+			</span>
+		</li>
+		{{end}}
+		{{else}}
+		<li class="px-4 py-3 text-sm text-muted">{{if .Daily}}No runs on today's road yet — be the first!{{else}}No scores yet — be the first!{{end}}</li>
+		{{end}}
+	</ol>
+</div>
 {{end}}

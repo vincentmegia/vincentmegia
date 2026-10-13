@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/model"
 )
@@ -24,12 +25,13 @@ func NewBusRushRepository(db, readDB *sql.DB) *BusRushRepository {
 
 // Insert stores one already-validated leaderboard submission. The table's
 // CHECK constraints are a backstop; service.ValidateBusRushScoreSubmission
-// is the primary validation layer.
-func (repo *BusRushRepository) Insert(ctx context.Context, playerName string, score, distanceMeters int) error {
+// is the primary validation layer. dailyDate is the Daily Challenge's day,
+// or nil for an ordinary run.
+func (repo *BusRushRepository) Insert(ctx context.Context, playerName string, score, distanceMeters int, dailyDate *time.Time) error {
 	const query = `
-		INSERT INTO bus_rush_scores (player_name, score, distance_meters)
-		VALUES ($1, $2, $3)`
-	if _, err := repo.DB.ExecContext(ctx, query, playerName, score, distanceMeters); err != nil {
+		INSERT INTO bus_rush_scores (player_name, score, distance_meters, daily_date)
+		VALUES ($1, $2, $3, $4)`
+	if _, err := repo.DB.ExecContext(ctx, query, playerName, score, distanceMeters, dailyDate); err != nil {
 		return fmt.Errorf("insert bus_rush_scores: %w", err)
 	}
 	return nil
@@ -48,6 +50,27 @@ func (repo *BusRushRepository) TopScores(ctx context.Context, limit int) ([]mode
 	if err != nil {
 		return nil, fmt.Errorf("query bus_rush_scores: %w", err)
 	}
+	return scanBusRushScores(rows)
+}
+
+// TopDailyScores fetches the top `limit` Daily Challenge rows for one day,
+// by score descending. Read-only — uses ReadDB.
+func (repo *BusRushRepository) TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.BusRushScore, error) {
+	const query = `
+		SELECT player_name, score, distance_meters, created_at
+		FROM bus_rush_scores
+		WHERE daily_date = $1
+		ORDER BY score DESC
+		LIMIT $2`
+
+	rows, err := repo.ReadDB.QueryContext(ctx, query, day, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query daily bus_rush_scores: %w", err)
+	}
+	return scanBusRushScores(rows)
+}
+
+func scanBusRushScores(rows *sql.Rows) ([]model.BusRushScore, error) {
 	defer rows.Close()
 
 	var scores []model.BusRushScore

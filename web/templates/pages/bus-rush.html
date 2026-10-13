@@ -12,9 +12,11 @@
 			<p class="text-muted">
 				You've stolen a bus and the police are on your tail. Weave through oncoming traffic, grab fares, and
 				juke the cruisers into other cars to wreck them — one touch from a cop and you're busted. Slow down and they
-				catch up. Escape through five districts, from the CBD to a night-time Changi, each one hotter than the last:
-				SWAT vans join the chase at four stars and a helicopter drops spike strips at five. Spend your loot at the
-				depot on a bigger engine — or ram plating to fight back.
+				catch up. Escape through six districts, from the CBD through a night-time Changi to sunny Sentosa, each one
+				hotter than the last: SWAT vans join the chase at four stars and a helicopter drops spike strips at five.
+				Jump a ramp truck onto the MRT viaduct to shake them off, shove a cement mixer over onto them, and ride out
+				the storms. Spend your loot at the depot on a bigger engine — or ram plating to fight back. A new Daily
+				Challenge road every day, with its own leaderboard.
 			</p>
 		</section>
 
@@ -81,16 +83,22 @@
 									<dt class="text-muted">Bus</dt>
 									<dd id="bus-rush-start-bus" class="text-ink">Single-decker</dd>
 								</div>
+								<div class="flex items-center justify-between">
+									<dt class="text-muted">Today's daily best</dt>
+									<dd id="bus-rush-start-daily-best" class="font-mono tabular-nums text-ink">—</dd>
+								</div>
 							</dl>
-							<p class="text-xs text-muted">← → change lane · ↑ ↓ speed up / brake</p>
+							<p class="text-xs text-muted">← → change lane · ↑ ↓ speed up / brake · Space shove</p>
 							<p class="text-xs text-muted">Police are lethal — bait them into traffic to wreck them.</p>
 							<p class="text-xs text-muted">Bananas skid you, garbage and potholes slow you, jaywalkers and roadworks cost a life. Grab power-ups!</p>
-							<p class="text-xs font-medium text-danger">Trucks, semis, garbage and dump trucks are instant game over. Hit a fuel tanker and you've got 2 seconds to get clear once you come to.</p>
+							<p class="text-xs text-muted">Drive up a ramp truck to ride the MRT track for 50 s — dodge the trains. Pull alongside a cement mixer and shove it over, then get out from under it.</p>
+							<p class="text-xs font-medium text-danger">Trucks, semis, garbage trucks, dump trucks and cement mixers are instant game over. Hit a fuel tanker (or a truck carrying gasoline) and you've got seconds to get clear once you come to.</p>
 							<p id="bus-rush-storage-notice" class="hidden rounded-card border border-line bg-surface-2 px-3 py-2 text-xs text-muted">
 								Your progress won't be saved in this browser.
 							</p>
 							<div class="flex flex-col gap-2 pt-1">
 								<button type="button" id="bus-rush-start-button" class="w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Start Run</button>
+								<button type="button" id="bus-rush-daily-button" class="w-full rounded-card border border-primary bg-surface px-4 py-2 text-sm font-medium text-primary transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Daily Challenge</button>
 								<button type="button" id="bus-rush-start-shop-button" class="w-full rounded-card border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Depot Shop</button>
 							</div>
 						</div>
@@ -159,6 +167,7 @@
 								</div>
 								<input type="hidden" id="bus-rush-score-input" name="score" value="0">
 								<input type="hidden" id="bus-rush-distance-input" name="distance_meters" value="0">
+								<input type="hidden" id="bus-rush-daily-input" name="daily_date" value="">
 							</form>
 
 							<div class="flex gap-2 pt-1">
@@ -174,10 +183,12 @@
 				{{/* On-screen controls for touch devices. Real buttons, so
 				     they're keyboard-reachable too, though arrow keys/WASD
 				     work anywhere on the page during a run. ▲/▼ act while
-				     held (pointerdown → pointerup), ◀/▶ fire once per press. */}}
-				<div class="mx-auto grid w-full max-w-[480px] grid-cols-4 gap-2" aria-label="Driving controls">
+				     held (pointerdown → pointerup), ◀/▶/Shove fire once per
+				     press. */}}
+				<div class="mx-auto grid w-full max-w-[480px] grid-cols-5 gap-2" aria-label="Driving controls">
 					<button type="button" data-bus-rush-control="left" class="rounded-card border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary select-none touch-none" aria-label="Change lane left">◀</button>
 					<button type="button" data-bus-rush-control="faster" class="rounded-card border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary select-none touch-none" aria-label="Speed up">▲</button>
+					<button type="button" data-bus-rush-control="shove" class="rounded-card border border-line bg-surface px-2 py-2 text-xs font-semibold text-primary transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary select-none touch-none" aria-label="Shove a cement mixer">Shove</button>
 					<button type="button" data-bus-rush-control="slower" class="rounded-card border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary select-none touch-none" aria-label="Brake">▼</button>
 					<button type="button" data-bus-rush-control="right" class="rounded-card border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary select-none touch-none" aria-label="Change lane right">▶</button>
 				</div>
@@ -225,7 +236,7 @@
 					</ul>
 					<div class="flex items-center justify-between gap-2 pt-2">
 						<h3 class="text-sm font-semibold text-ink">Achievements</h3>
-						<span id="bus-rush-achievement-count" class="font-mono text-xs tabular-nums text-muted">0 / 9</span>
+						<span id="bus-rush-achievement-count" class="font-mono text-xs tabular-nums text-muted">0 / 14</span>
 					</div>
 					<ul class="space-y-1 text-xs">
 						<li data-achievement-key="joyrider" class="flex items-start gap-2 text-muted" title="Finish your first run">
@@ -263,6 +274,26 @@
 						<li data-achievement-key="wasted" class="flex items-start gap-2 text-muted" title="Get flung to Alcatraz">
 							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
 							<span><span class="font-medium">Scenic Route</span> — Get flung to Alcatraz</span>
+						</li>
+						<li data-achievement-key="beachBum" class="flex items-start gap-2 text-muted" title="Reach Sentosa in one run">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Beach Bum</span> — Reach Sentosa in one run</span>
+						</li>
+						<li data-achievement-key="skyRail" class="flex items-start gap-2 text-muted" title="Ride the MRT track">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Sky Rail</span> — Ride the MRT track</span>
+						</li>
+						<li data-achievement-key="pourDecision" class="flex items-start gap-2 text-muted" title="Topple a cement mixer onto the police">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Pour Decision</span> — Topple a cement mixer onto the police</span>
+						</li>
+						<li data-achievement-key="pancake" class="flex items-start gap-2 text-muted" title="Get flattened by a cement mixer">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Pancake Day</span> — Get flattened by a cement mixer</span>
+						</li>
+						<li data-achievement-key="stormChaser" class="flex items-start gap-2 text-muted" title="Drive through a storm">
+							<span data-achievement-mark class="w-3 shrink-0 text-center">·</span>
+							<span><span class="font-medium">Storm Chaser</span> — Drive through a storm</span>
 						</li>
 					</ul>
 				</section>

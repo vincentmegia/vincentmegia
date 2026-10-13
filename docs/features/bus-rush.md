@@ -11,11 +11,14 @@ of the canvas.
 ## Summary
 
 A top-down canvas driving game at `/bus-rush`: the player has stolen a bus
-and flees the police across four lanes of oncoming traffic and five
+and flees the police across four lanes of oncoming traffic and six
 Singapore districts (levels), collecting fares and dodging cars, vans and
-trucks while police cruisers chase from behind. Fares earn tokens, which
-are spent between runs in a depot shop on upgrades — chiefly a faster
-engine. A public Postgres leaderboard shows the best runs.
+trucks while police cruisers chase from behind. Ramp trucks launch the bus
+onto an elevated MRT track, cement mixers can be shoved over onto the
+police, and storms roll in. Fares earn tokens, which are spent between runs
+in a depot shop on upgrades — chiefly a faster engine. A public Postgres
+leaderboard shows the best runs, all-time and on each day's seeded Daily
+Challenge road.
 
 ## Problem / Motivation
 
@@ -45,9 +48,45 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 * Lives: a collision with a car, van or oncoming bus costs one life, drops the bus to
   the current district's speed floor, and grants a short invulnerability
   window (`HIT_GRACE_SECONDS`). The run ends at zero lives.
-* Garbage trucks (from 500 m), trucks (from 800 m) and semi trucks (from
-  1500 m) are lethal: touching one ends the run instantly, regardless of
-  lives left or grace.
+* Garbage trucks (from 500 m), trucks (from 800 m), semi trucks (from
+  1500 m) and cement mixers (from 600 m) are lethal: touching one ends the
+  run instantly, regardless of lives left or grace.
+* **Tow trucks** (from 250 m) carry a battered, scorched broken-down car on
+  their flatbed and flash an amber beacon; hitting one costs one life.
+* **Hazmat trucks**: some box trucks (25%) and semis (30%) carry gasoline
+  (`hazmatChance`, `isHazmat`), marked with an orange GASOLINE panel and a
+  flammable diamond. Touching one isn't instant death: like a fuel tanker it
+  stuns the bus, but for `HAZMAT_STUN_SECONDS` (20 s), then gives
+  `HAZMAT_FUSE_SECONDS` (4 s) to get clear before it explodes — caught in
+  the blast is the same WASTED cutscene to Alcatraz (`crashTimings`). A
+  shield doesn't stop one.
+* **Cement mixers** (`mixer`, lethal, a turning striped drum): pull
+  alongside one in the next lane and press Space (or the Shove button) to
+  shoulder-charge it (`canShove`). It tips over in slow motion
+  (`TIP_SECONDS` of game time at `TIP_SLOWMO`) *into the bus's lane*, which
+  flashes red. Stay in that lane and it lands on you: the bus is flattened
+  into a pancake and a WASTED card comes up ("Flattened into a pancake").
+  Steer out (away from the mixer) in time and a cutscene plays: the fallen
+  mixer slides back down the road into the chasing police — crushing the
+  one in its path while another screeches to a stop — then a shot from
+  inside the bus of the driver howling with laughter. The pursuit resets,
+  and it scores `MIXER_TOPPLE_POINTS`. There's no shove from an edge lane
+  with the mixer inward (`escapeLane`: nowhere to escape to). A parked
+  mixer also stands in every construction zone.
+* **Ramp trucks and the MRT track**: from `RAMP_MIN_DISTANCE` (400 m) a
+  ramp truck sometimes parks half on the shoulder of an edge lane, facing
+  the same way as the bus, ramps down, with the edge of the MRT viaduct
+  beside it (its lane gets no traffic, like a construction zone, and the
+  two never share the road). Drive up it and the bus jumps onto the
+  elevated track: the police can't follow (they're lost), and the view
+  rises to the viaduct's two tracks — ← → hop between them. Track 0 (left)
+  carries trains up, overtaking from behind; track 1 (right) carries
+  oncoming trains down. Only one train runs at a time, announced
+  `TRAIN_WARNING_SECONDS` ahead with a flashing "TRAIN!" down its track,
+  so the other track is always safe. A train hit ends the run ("Hit by an
+  MRT train!"; a shield won't save you). Fares lie between the rails. After
+  `TRACK_SECONDS` (50 s, on a countdown chip) the bus drops back down onto
+  a fresh, empty stretch of road with the pursuit reset.
 * **Garbage**: most garbage trucks (80%) spill 1–3 garbage piles from
   their rear, the same way trucks drop bananas. Running one over halves
   the bus's top speed (never below the district's floor) for
@@ -81,9 +120,11 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   scales pursuit speed, cruiser count, reaction time, roadblock chance and
   wreck bonus.
 * **Levels** (districts in one continuous run): every 800 m
-  (`LEVEL_DISTANCE`) the bus escapes into the next of five districts —
-  CBD → Heartland → Expressway → Industrial → Changi (the last is
-  endless). Each has its own scenery (see UI's Art style), crossfaded on
+  (`LEVEL_DISTANCE`) the bus escapes into the next of six districts —
+  CBD → Heartland → Expressway → Industrial → Changi → Sentosa (the last is
+  endless). Sentosa has the sea along one side, a beach and palm trees, and
+  its own hazard: **sand drifts** blown across the road (`SAND_CHANCE`,
+  `sandAllowed`) slow the bus for `SAND_SLOW_SECONDS`. Each has its own scenery (see UI's Art style), crossfaded on
   entry with a "LEVEL n / district" banner and a checkpoint bonus
   (250 × district index). Entering a district refills lives to full
   (`maxLives`, so Bumpers count) and makes the bus faster: each district
@@ -124,17 +165,36 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   lost); jaywalkers (from 100 m; one life; they dodge oncoming traffic;
   **never on the Expressway**, `pedestriansAllowed`); **construction
   zones** (from 300 m) close an edge lane for `CONSTRUCTION_LENGTH` px
-  with cones, barriers, a sand pile and a parked dump truck — touching
+  with cones, barriers, a sand pile, a parked dump truck and a parked
+  cement mixer — touching
   them costs a life and shoves the bus a lane inward, police that touch
   them wreck, and while one is on the road its lane gets no traffic and
   lethal **dump trucks** join the traffic (`construction` vehicles);
   **night in Changi** — the last district is dark apart from headlights,
   police lights and street-lamp pools.
+* **Weather**: from `STORM_MIN_DISTANCE` (400 m) a storm can roll in on
+  any traffic row (`stormStarts`) and lasts `STORM_SECONDS` (25 s): rain
+  streaks, a grey wash and lightning flashes; wet roads make accelerating
+  and braking work at `WET_GRIP` (60%), and puddles appear — driving
+  through one splashes muddy water over the windscreen for
+  `SPLASH_SECONDS`, hiding the road (no life lost). Steering is deliberately
+  untouched: a slower lane change would break "every row is passable".
+* **Daily Challenge** (start screen button): today's road (UTC date,
+  `dailyDate`) — every traffic row, zone, ramp, storm and hazard comes from
+  one stream seeded by the date (`seededRng(dailySeed(date))`), so everyone
+  gets the same road — driven in the stock single-decker with no upgrades
+  (`DAILY_BUS`), so runs are comparable. The road stays the same until
+  players' runs diverge (police, the helicopter and the MRT ride are
+  timing-driven, and a track ride skips rows). Tokens, missions and
+  achievements still count. Run Over prefixes "Daily Challenge ·", the
+  submit form carries `daily_date`, and the leaderboard has an All-time /
+  Daily Challenge toggle (daily runs also count all-time). The start screen
+  shows today's daily best; "Drive Again" stays on the daily road.
 * **Missions & achievements** (aside panel above the leaderboard): three
   active missions (`MISSIONS`, e.g. "Wreck 3 police cars in one run",
   "Escape a fuel tanker blast") with live progress; completed ones pay
   their reward at run end and are replaced (`refillMissions`; ones that
-  need Ram Plating are offered only once it's bought). Nine one-time
+  need Ram Plating are offered only once it's bought). Fourteen one-time
   `ACHIEVEMENTS` (run or lifetime stats, `addLifetime`) pay tokens once.
   Run Over shows the bonus and what was completed/unlocked. Missions,
   achievements and lifetime totals live in the same `localStorage` blob.
@@ -143,8 +203,9 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   Fishing Game — there are no visitor accounts.
 * Public leaderboard (Postgres), submitted voluntarily with a display name.
 * A `/projects` card ("Play now", HTMX nav).
-* Touch controls: on-screen ◀ ▲ ▼ ▶ buttons, plus tapping the canvas's left
-  or right half to change lane.
+* Touch controls: on-screen ◀ ▲ Shove ▼ ▶ buttons, plus tapping the
+  canvas's left or right half to change lane. Space (or E) shoves; any key
+  or tap skips a cutscene.
 
 **Out of scope:**
 
@@ -161,8 +222,8 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 ```text
 1. Visitor opens /bus-rush (or "Play now" on /projects).
 2. Start screen ("Hot-wired and ready?") shows tokens, best score, best
-   distance, the bus being driven and the controls; "Start Run" / "Depot
-   Shop".
+   distance, the bus being driven, today's daily best and the controls;
+   "Start Run" / "Daily Challenge" / "Depot Shop".
 3. Run: a "LEVEL 1 / CBD" banner, then traffic and fares scroll down while
    police close in from behind; the player switches lanes and manages
    speed. Every 800 m a new district begins (banner, bonus, lives refilled).
@@ -213,6 +274,29 @@ manholes, worn lane paint, striped kerbs and street lamps. Per district:
 | Expressway | guardrails instead of footpaths, yellow edge lines, trees, lamps twice as often |
 | Industrial | dusty verge, stacked shipping containers, yellow/black hazard kerbs, street trees |
 | Changi | a dense avenue of trees with pink bougainvillea blooms |
+| Sentosa | the sea and foam along the left edge, a sandy verge, coconut palms on the right |
+
+New traffic and set pieces: the tow truck (yellow cab, amber beacon,
+flatbed with a dented, scorched car and a cracked windscreen, boom and
+hook); the cement mixer (orange drum with white spiral stripes that turn,
+chute at the rear) — tipping, it leans and widens toward the lane it's
+falling into over a flashing red danger zone with letterbox bars; fallen,
+it lies on its side across two lanes, wheels out, cement oozing; hazmat
+trucks carry an orange GASOLINE panel and a red flammable diamond; the ramp
+truck is a blue low-loader facing up the road, yellow/black striped ramps
+with white arrows, an "MRT ↑" sign and blinking hazard lights, with a strip
+of the concrete viaduct along that edge. On the track the road below is
+dimmed under the viaduct deck (parapets, ballast, sleepers and rails
+scrolling, painted direction arrows), MRT trains are three silver cars with
+a red stripe, roof units and headlights, and a "MRT 0:42" chip counts down.
+The jump swells the bus and drops its shadow away as it flies over.
+Cutscenes: the mixer-on-the-police shot pans the camera down the road with
+skid marks and CRUNCH!/SCREEEECH!, then cuts inside the bus — windscreen,
+rear-view mirror, the driver shaking with laughter, mouth wide open, tears
+flying, "HAHAHA!"; the pancake shows the mixer slamming down and rolling
+off a flattened, tread-marked bus in a splat, dazed stars over the
+flattened driver. Storms add rain streaks, a grey wash, lightning and
+puddles with ripples; a splash smears muddy droplets over the screen.
 
 Trees are sized to overhang the footpath and kerb so they read at the
 canvas edge. Each player bus has its own paint and roof (`BUS_LOOKS`):
@@ -257,7 +341,13 @@ so it stays sharp on high-DPI screens.
 | Trigger                | Method | Endpoint               | Target                   | Swap        | Indicator |
 | ---------------------- | ------ | ---------------------- | ------------------------ | ----------- | --------- |
 | Page load              | GET    | `/bus-rush/leaderboard` | `#bus-rush-leaderboard` | `outerHTML` | `#bus-rush-leaderboard-loading` |
+| "All-time" tab         | GET    | `/bus-rush/leaderboard` | `#bus-rush-leaderboard` | `outerHTML` | `#bus-rush-leaderboard-loading` |
+| "Daily Challenge" tab  | GET    | `/bus-rush/leaderboard?board=daily` | `#bus-rush-leaderboard` | `outerHTML` | `#bus-rush-leaderboard-loading` |
 | Run Over "Submit"      | POST   | `/bus-rush/score`       | `#bus-rush-leaderboard` | `outerHTML` | `#bus-rush-leaderboard-loading` |
+
+The tabs live inside the fragment (`data-board="all"|"daily"`, `aria-pressed`),
+so the server marks the active one; a daily submission answers with the
+daily board.
 
 "Reset Progress" in the shop is destructive and asks `confirm()` first
 (client-side only; it clears `localStorage`, never server data).
@@ -269,8 +359,8 @@ so it stays sharp on high-DPI screens.
 | Method | Path                    | Handler                    | Auth required | Notes |
 | ------ | ----------------------- | -------------------------- | ------------- | ----- |
 | GET    | `/bus-rush`             | `BusRushHandler.Index`       | no | Page shell; no DB read. |
-| GET    | `/bus-rush/leaderboard` | `BusRushHandler.Leaderboard` | no | Top 20 fragment. |
-| POST   | `/bus-rush/score`       | `BusRushHandler.SubmitScore` | no | Form-encoded `player_name`, `score`, `distance_meters`; rate-limited 5/min per client. |
+| GET    | `/bus-rush/leaderboard` | `BusRushHandler.Leaderboard` | no | Top 20 fragment; `?board=daily` for today's (UTC) Daily Challenge. |
+| POST   | `/bus-rush/score`       | `BusRushHandler.SubmitScore` | no | Form-encoded `player_name`, `score`, `distance_meters`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC); rate-limited 5/min per client. |
 
 ---
 
@@ -285,8 +375,10 @@ so it stays sharp on high-DPI screens.
 |                   | `score`         | INT         | 0–999999   | |
 |                   | `distance_meters` | INT       | 0–999999   | |
 |                   | `created_at`    | TIMESTAMPTZ | default now() | |
+|                   | `daily_date`    | DATE        | nullable    | The Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/011_add_bus_rush_daily_date.sql`. |
 
-Index on `score DESC` for the top-N query.
+Index on `score DESC` for the top-N query, and a partial index on
+`(daily_date, score DESC) WHERE daily_date IS NOT NULL` for the daily board.
 
 ---
 
@@ -363,7 +455,28 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * **Upgrades**: cost grows per level (`upgradeCost`); every upgrade has a
   max level and the buy button disables at max or when tokens are short.
 * **Leaderboard bounds** (server, mirrored by CHECK constraints): name
-  trimmed and 1–20 runes; score and distance 0–999999.
+  trimmed and 1–20 runes; score and distance 0–999999. `daily_date` must
+  parse as YYYY-MM-DD and be within one day of the server's UTC date
+  (`ValidateBusRushDailyDate`) — a run finished across midnight or on a
+  skewed clock still counts, but old days can't be back-filled.
+* **Row spacing** floor is now 360 px (was 350): the sixth district raised
+  the fastest top speed, and the floor must still fit a lane change there.
+* **Hazmat** (`isHazmat`, `explosive`, `crashTimings`): only kinds with a
+  `hazmatChance` (truck, semi) can carry gasoline; an explosive vehicle
+  (tanker or hazmat) starts the stun-then-fuse crash instead of a hit.
+  `shieldAbsorbs` refuses explosives and trains.
+* **Shove** (`canShove`, `escapeLane`): one lane over, overlapping top to
+  bottom (± `SHOVE_REACH_PX`), and only with an escape lane on the far
+  side; every bus's lane change fits inside `TIP_SECONDS` (unit-tested).
+* **MRT track** (`TRACK_SECONDS`, `trainClosingSpeed`, `nextTrainTrack`,
+  `trainGapSeconds`): one train at a time; oncoming trains close at the
+  bus's speed plus `TRAIN_SPEED`, up trains always overtake at
+  `UP_TRAIN_OVERTAKE`; the warning outlasts two lane changes for every bus.
+* **Weather** (`stormStarts`, `WET_GRIP`): storms only past
+  `STORM_MIN_DISTANCE` and never stacked; grip scales accelerating and
+  braking but never the speed bounds.
+* **Daily seed** (`seededRng`, `dailySeed`, `dailyDate`): the same date
+  gives the same stream (and the same rows); the date is the UTC day.
 
 ---
 
@@ -397,11 +510,20 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       fit the fuse), ram levels, SWAT/helicopter star thresholds, spike
       lead time, power-up odds and shield rules, no Expressway jaywalkers,
       closed lanes never break "every row is passable", missions and
-      achievements.
+      achievements; hazmat carriers/odds/timings and shield rules; tow
+      trucks cost a life, mixers are lethal; Sentosa is level 6 with sand
+      only there; storms (minimum distance, no stacking, weaker grip within
+      the speed bounds); shove geometry and escape lanes, lane change fits
+      the tip; train closing speeds, the warning outlasting two lane
+      changes, both tracks used; daily seed determinism and the UTC date;
+      the new missions and achievements.
 * [x] Go: validation bounds, service rejects invalid input before the repo,
       handler empty/populated/escaped leaderboard, 400 on bad input, 429 on
-      flood, error fragment on DB failure.
-* [x] `cmd/server/e2e_test.go`: real round-trip through `bus_rush_scores`.
+      flood, error fragment on DB failure; daily date validation (± 1 day,
+      bad format), the daily board holds only daily runs while all-time
+      holds both, `?board=daily`, tabs in the fragment.
+* [x] `cmd/server/e2e_test.go`: real round-trip through `bus_rush_scores`,
+      including a daily submission showing on `?board=daily`.
 * [x] Playwright `e2e/bus-rush.spec.js` (Chromium + WebKit): overlays on
       load; a run starts and ↑ raises speed; crash → tokens → shop purchase
       persists across reload; trucks and semis are instant game over; a car
@@ -418,21 +540,35 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       stay, or escapes two lanes over; Ram Plating Lv1/Lv3 vs. cruisers
       and SWAT; shield absorbs a truck; EMP wrecks pursuers; pothole,
       jaywalker, spike strip and construction-zone effects; the 5★
-      helicopter and SWAT van; missions/achievements panel and payout.
+      helicopter and SWAT van; missions/achievements panel and payout; a
+      hazmat semi's 20 s stun and 4 s fuse into WASTED; a tow truck costs a
+      life; a ramp truck → jump → ride (← → switch tracks, only two) → drop
+      back to the road with lives intact; an MRT train ends the run;
+      shoving a mixer and steering clear plays the cutscene, wrecks the
+      police and resumes; staying under it is a pancake WASTED (Pancake
+      Day); no shove from the edge lane; a storm puddle splashes without
+      costing a life; Sentosa is level 6 and its sand slows the bus; the
+      Daily Challenge drives the stock bus, submits to the daily board, the
+      tabs switch boards, and Drive Again stays daily.
       Plus
       `e2e/projects.spec.js`'s card tests.
 * Test hooks (`window.__busRushTestHooks`, used only by tests): `crash()`,
   `spawn(kind)` (a vehicle in the bus's lane, incl. `fuel`),
   `stunLeft(s)`, `upgrade(key, lvl)`, `powerup(kind, lane?, y?)`,
   `pothole/spikes/pedestrian(lane?, y?)`, `zone(lane?, bottom?)`,
-  `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y)` (a
-  vehicle anywhere, for screenshots), `banana()` (one just ahead
+  `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y, {hazmat})`
+  (a vehicle anywhere, for screenshots), `spawn(kind, {hazmat})`,
+  `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
+  `quietTrack(s?)`, `mixer(lane?, y?)`, `shove()`, `sceneTime(t)`,
+  `storm(on)`, `puddle(lane?, y?)`, `sand(lane?, y?)`, `banana()` (one just ahead
   of the bus), `garbage()` (a pile just ahead of the bus), `noPolice()`,
   `policeBanana()` (a non-re-aiming cruiser behind the bus
   with a banana at its nose), `policeRam()`,
   `warp(meters)`, `noTraffic()`, `snapshot()` (status, level, km/h, lane,
   lives, bus, skidding, slowed, bananas and garbage on the road, wanted, each pursuer's gap behind the
-  bus, pursuer lanes, pursuers skidding), `grantTokens(n)`.
+  bus, pursuer lanes, pursuers skidding, plus daily, track phase/lane/time
+  left, train, tipping/scene/pancaked, canShove, raining/splash, hazmat
+  count, stun/fuse), `grantTokens(n)`.
 
 ---
 

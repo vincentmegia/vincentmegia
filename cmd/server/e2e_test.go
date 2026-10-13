@@ -263,6 +263,18 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatalf("POST /bus-rush/score: status = %d, body missing the inserted entry: %s", resp.StatusCode, b)
 		}
 
+		// A Daily Challenge run lands on today's daily board too.
+		today := time.Now().UTC().Format("2006-01-02")
+		resp, err = client.PostForm(srv.URL+"/bus-rush/score", url.Values{"player_name": {playerName}, "score": {"1234"}, "distance_meters": {"1000"}, "daily_date": {today}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		resp, body = get(t, client, srv.URL+"/bus-rush/leaderboard?board=daily")
+		if resp.StatusCode != http.StatusOK || !strings.Contains(body, playerName) || !strings.Contains(body, "1234 pts") || strings.Contains(body, "4321 pts") {
+			t.Fatalf("GET daily board: status = %d, want only the daily run: %s", resp.StatusCode, body)
+		}
+
 		resp, err = client.PostForm(srv.URL+"/bus-rush/score", url.Values{"player_name": {"e2e-invalid"}, "score": {"1"}, "distance_meters": {"99999999"}})
 		if err != nil {
 			t.Fatal(err)

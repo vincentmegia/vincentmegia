@@ -54,7 +54,10 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * crowding out the trucks. A `fuel` tanker isn't lethal on contact: it
  * stuns the bus and then explodes (FUEL_STUN_SECONDS, FUEL_FUSE_SECONDS). A
  * `construction` vehicle (the dump truck) only turns up while a
- * construction zone is on the road — see pickVehicle.
+ * construction zone is on the road — see pickVehicle. `hazmatChance` is the
+ * chance a box truck or semi carries gasoline (isHazmat): contact then
+ * stuns like a tanker, only longer (crashTimings). A `mixer` (cement mixer)
+ * can be shoved over (canShove). The tow truck is a one-life hit.
  */
 export const VEHICLES = [
   { kind: 'car', length: 64, width: 50, minDistance: 0 },
@@ -64,10 +67,12 @@ export const VEHICLES = [
   { kind: 'doubledecker', label: 'double-decker', length: 92, width: 58, minDistance: 400, bus: true, weight: 0.4 },
   { kind: 'bendy', label: 'bendy bus', length: 150, width: 56, minDistance: 1000, bus: true, weight: 0.35 },
   { kind: 'garbage', label: 'garbage truck', length: 110, width: 60, minDistance: 500, lethal: true, spills: 'garbage' },
-  { kind: 'truck', length: 118, width: 62, minDistance: 800, lethal: true, spills: 'banana' },
-  { kind: 'semi', length: 170, width: 64, minDistance: 1500, lethal: true, spills: 'banana' },
+  { kind: 'truck', length: 118, width: 62, minDistance: 800, lethal: true, spills: 'banana', hazmatChance: 0.25 },
+  { kind: 'semi', length: 170, width: 64, minDistance: 1500, lethal: true, spills: 'banana', hazmatChance: 0.3 },
   { kind: 'fuel', label: 'fuel tanker', length: 140, width: 60, minDistance: 700, fuel: true, weight: 0.4 },
   { kind: 'dump', label: 'dump truck', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 1.5 },
+  { kind: 'tow', label: 'tow truck', length: 124, width: 60, minDistance: 250, weight: 0.6 },
+  { kind: 'mixer', label: 'cement mixer', length: 128, width: 62, minDistance: 600, lethal: true, mixer: true, weight: 0.6 },
 ];
 
 function level(n, max) {
@@ -102,17 +107,18 @@ export function slowedTopSpeed(engineLevel, levelIndex = 0) {
  * bus's `accel`), brake slows down (brake wins if both are held), neither
  * holds speed. While `slowed`, anything above slowedTopSpeed bleeds off at
  * braking rate rather than snapping down. Always clamped to
- * [minSpeed(levelIndex), maxSpeed(engineLevel, levelIndex)].
+ * [minSpeed(levelIndex), maxSpeed(engineLevel, levelIndex)]. `grip` (WET_GRIP
+ * in a storm) scales both accelerating and braking.
  */
-export function stepSpeed(speed, input, dt, engineLevel, levelIndex = 0, { accel = 1, slowed = false } = {}) {
+export function stepSpeed(speed, input, dt, engineLevel, levelIndex = 0, { accel = 1, slowed = false, grip = 1 } = {}) {
   const floor = minSpeed(levelIndex);
   const ceiling = maxSpeed(engineLevel, levelIndex);
   const cap = slowed ? slowedTopSpeed(engineLevel, levelIndex) : ceiling;
   const start = Number.isFinite(speed) ? speed : floor;
   let next = start;
   const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
-  if (input && input.brake) next -= BRAKING * step;
-  else if (input && input.accelerate) next += ACCELERATION * accel * step;
+  if (input && input.brake) next -= BRAKING * grip * step;
+  else if (input && input.accelerate) next += ACCELERATION * accel * grip * step;
   if (next > cap) next = Math.max(cap, Math.min(next, start - BRAKING * step));
   return Math.min(Math.max(next, floor), ceiling);
 }
@@ -197,7 +203,7 @@ export const POLICE_CAR = { kind: 'police', length: 64, width: 50, police: true,
 // ---------------------------------------------------------------------------
 
 export const LEVEL_DISTANCE = 800;
-export const LEVELS = ['CBD', 'Heartland', 'Expressway', 'Industrial', 'Changi'];
+export const LEVELS = ['CBD', 'Heartland', 'Expressway', 'Industrial', 'Changi', 'Sentosa'];
 export const CHECKPOINT_POINTS = 250;
 
 /** 0-based district index for a distance; the last district is endless. */
@@ -287,7 +293,7 @@ export function maxBlockedLanes(distanceMeters) {
  */
 export const BUS_LENGTH = 88;
 export const ROW_SPACING_MAX = 460;
-export const ROW_SPACING_MIN = 350;
+export const ROW_SPACING_MIN = 360;
 export function rowSpacingPx(distanceMeters) {
   const d = Number.isFinite(distanceMeters) && distanceMeters > 0 ? distanceMeters : 0;
   return Math.max(ROW_SPACING_MIN, ROW_SPACING_MAX - d / 10);
@@ -439,6 +445,27 @@ export const FUEL_BLAST_RADIUS = 180;
 /** Score for steering clear of a tanker blast. */
 export const TANKER_ESCAPE_POINTS = 300;
 
+/** Hazmat trucks: a longer stun and a longer fuse than a tanker. */
+export const HAZMAT_STUN_SECONDS = 20;
+export const HAZMAT_FUSE_SECONDS = 4;
+
+/** Whether a newly spawned vehicle of `kind` carries gasoline (its `hazmatChance`). */
+export function isHazmat(rng, kind) {
+  return Boolean(kind && kind.hazmatChance) && rng() < kind.hazmatChance;
+}
+
+/** Whether touching `v` starts a stun-then-explode crash instead of a normal hit. */
+export function explosive(v) {
+  return Boolean(v && (v.fuel || v.hazmat));
+}
+
+/** How long a crash into an explosive vehicle stuns the bus, and the fuse after it. */
+export function crashTimings(v) {
+  return v && v.hazmat
+    ? { stun: HAZMAT_STUN_SECONDS, fuse: HAZMAT_FUSE_SECONDS }
+    : { stun: FUEL_STUN_SECONDS, fuse: FUEL_FUSE_SECONDS };
+}
+
 /** Whether a bus centre offset (dx, dy) px from the tanker's centre is inside the blast. */
 export function inBlast(dx, dy) {
   return Math.hypot(dx, dy) < FUEL_BLAST_RADIUS;
@@ -517,9 +544,12 @@ export function powerupAt(rng, distanceMeters) {
   return keys[Math.floor(rng() * keys.length)];
 }
 
-/** Whether an active shield absorbs a collision with `thing` — everything but a fuel tanker. */
+/**
+ * Whether an active shield absorbs a collision with `thing` — everything
+ * but something explosive (a tanker or a hazmat truck) or an MRT train.
+ */
 export function shieldAbsorbs(thing) {
-  return !(thing && thing.fuel);
+  return !(explosive(thing) || (thing && thing.train));
 }
 
 // ---------------------------------------------------------------------------
@@ -535,6 +565,15 @@ export const PEDESTRIAN_CHANCE = 0.18;
 export const PEDESTRIAN_MIN_DISTANCE = 100;
 export const PEDESTRIAN_SPEED = 38;
 export const PEDESTRIAN = { kind: 'pedestrian', label: 'pedestrian' };
+
+/** Sand drifts blown across Sentosa's road: chance per row; one slows the bus like garbage. */
+export const SAND_CHANCE = 0.22;
+export const SAND_SLOW_SECONDS = 2.5;
+
+/** Sand drifts only turn up on Sentosa. */
+export function sandAllowed(levelIndex) {
+  return LEVELS[level(levelIndex, LEVELS.length - 1)] === 'Sentosa';
+}
 
 /** Nobody jaywalks across an expressway. */
 export function pedestriansAllowed(levelIndex) {
@@ -563,6 +602,143 @@ export function zonePushLane(lane) {
 }
 
 // ---------------------------------------------------------------------------
+// Weather — storms roll in now and then: wet roads and puddles.
+// ---------------------------------------------------------------------------
+
+/**
+ * A storm can start on any traffic row from STORM_MIN_DISTANCE while the
+ * sky is clear, and lasts STORM_SECONDS. While it rains, accelerating and
+ * braking work at WET_GRIP, and puddles (PUDDLE_CHANCE per row) splash the
+ * windscreen for SPLASH_SECONDS. Steering is untouched on purpose: a slower
+ * lane change would break the row-spacing guarantee.
+ */
+export const STORM_MIN_DISTANCE = 400;
+export const STORM_CHANCE = 0.035;
+export const STORM_SECONDS = 25;
+export const WET_GRIP = 0.6;
+export const PUDDLE_CHANCE = 0.3;
+export const SPLASH_SECONDS = 1.4;
+
+/** Whether a storm starts on this row. */
+export function stormStarts(rng, distanceMeters, raining) {
+  if (raining || wholeOrZero(distanceMeters) < STORM_MIN_DISTANCE) return false;
+  return rng() < STORM_CHANCE;
+}
+
+// ---------------------------------------------------------------------------
+// Cement mixers — shove one over onto the police, or get flattened by it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Slack (px) on the vertical overlap that counts as "alongside" for a shove.
+ * TIP_SECONDS is game time from the shove to the mixer landing in the bus's
+ * lane, all played at TIP_SLOWMO; a lane change must fit inside it.
+ */
+export const SHOVE_REACH_PX = 20;
+export const TIP_SECONDS = 1;
+export const TIP_SLOWMO = 0.3;
+export const MIXER_TOPPLE_POINTS = 500;
+
+/**
+ * The lane a bus alongside a mixer could escape to once it starts tipping
+ * into the bus's lane — one further away from the mixer — or null at the
+ * road edge, where there's no way out.
+ */
+export function escapeLane(busLane, mixerLane) {
+  const lane = busLane + Math.sign(busLane - mixerLane);
+  return lane >= 0 && lane < LANES && lane !== busLane ? lane : null;
+}
+
+/**
+ * Whether the bus (lane, top/bottom y) can shove a mixer (lane, top/bottom
+ * y): one lane over, overlapping it top to bottom (with SHOVE_REACH_PX
+ * slack), and with an escape lane on the far side.
+ */
+export function canShove(busLane, busTop, busBottom, mixerLane, mixerTop, mixerBottom) {
+  if (Math.abs(busLane - mixerLane) !== 1 || escapeLane(busLane, mixerLane) === null) return false;
+  return busTop < mixerBottom + SHOVE_REACH_PX && mixerTop - SHOVE_REACH_PX < busBottom;
+}
+
+// ---------------------------------------------------------------------------
+// The elevated MRT track, reached off a ramp truck parked on the shoulder.
+// ---------------------------------------------------------------------------
+
+/** Ramp trucks park in an edge lane (like a construction zone, which they never share the road with). */
+export const RAMP_MIN_DISTANCE = 400;
+export const RAMP_CHANCE = 0.05;
+export const RAMP_TRUCK = { kind: 'ramp', label: 'ramp truck', length: 120, width: 60 };
+
+/** Seconds the bus may stay up on the track before it drops back to the road. */
+export const TRACK_SECONDS = 50;
+
+/**
+ * Two tracks: 0 runs up the screen (trains overtake the bus from behind,
+ * UP_TRAIN_OVERTAKE m/s faster), 1 runs down (oncoming, at TRAIN_SPEED on
+ * top of the bus's own). Only one train is ever on the viaduct at a time,
+ * announced TRAIN_WARNING_SECONDS ahead, so the other track is always safe.
+ * A train is lethal — even a shield won't stop one.
+ */
+export const TRACKS = 2;
+export const TRAIN_SPEED = 18;
+export const UP_TRAIN_OVERTAKE = 25;
+export const TRAIN_LENGTH = 330;
+export const TRAIN_WARNING_SECONDS = 1.2;
+export const TRAIN_GAP_SECONDS = [1.5, 4];
+export const TRAIN = { kind: 'train', label: 'MRT train', train: true, lethal: true };
+
+/** Which track the next train runs on. */
+export function nextTrainTrack(rng) {
+  return rng() < 0.5 ? 0 : 1;
+}
+
+/** Seconds of quiet before the next train's warning. */
+export function trainGapSeconds(rng) {
+  return TRAIN_GAP_SECONDS[0] + rng() * (TRAIN_GAP_SECONDS[1] - TRAIN_GAP_SECONDS[0]);
+}
+
+/**
+ * How fast (m/s) a train on `track` moves down the screen relative to the
+ * bus: an oncoming one closes at the bus's speed plus its own; an up train
+ * is always overtaking, so it moves up the screen (negative).
+ */
+export function trainClosingSpeed(track, busSpeed) {
+  return track === 1 ? busSpeed + TRAIN_SPEED : -UP_TRAIN_OVERTAKE;
+}
+
+// ---------------------------------------------------------------------------
+// Daily Challenge — one seeded road per (UTC) day, the stock bus, its own board.
+// ---------------------------------------------------------------------------
+
+/** The bus every daily run drives (with no upgrades), so the board is fair. */
+export const DAILY_BUS = 'single';
+
+/** Deterministic [0, 1) PRNG (mulberry32). */
+export function seededRng(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The challenge's date, YYYY-MM-DD in UTC — the server checks it the same way. */
+export function dailyDate(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+/** A day's road seed: an FNV-1a hash of its date string. */
+export function dailySeed(date) {
+  let h = 0x811c9dc5;
+  for (const ch of String(date)) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+// ---------------------------------------------------------------------------
 // Missions (three active at a time, paid when done) and achievements.
 // ---------------------------------------------------------------------------
 
@@ -581,6 +757,9 @@ export const MISSIONS = {
   ram2: { label: 'Ram 2 police cars in one run', stat: 'rammed', target: 2, reward: 20, needs: ['ram'] },
   clean600: { label: 'Drive 600 m without a scratch', stat: 'cleanStretch', target: 600, reward: 15 },
   wanted4: { label: 'Reach a 4-star wanted level', stat: 'wanted', target: 4, reward: 15 },
+  track: { label: 'Ride the MRT track', stat: 'trackRides', target: 1, reward: 20 },
+  mixer: { label: 'Topple a cement mixer onto the police', stat: 'mixerTopples', target: 1, reward: 25 },
+  sentosa: { label: 'Reach Sentosa', stat: 'level', target: 6, reward: 30 },
 };
 export const ACTIVE_MISSIONS = 3;
 
@@ -628,6 +807,11 @@ export const ACHIEVEMENTS = {
   mostWanted: { label: 'Most Wanted', desc: 'Hit a 5-star wanted level', scope: 'run', stat: 'wanted', target: 5, reward: 30 },
   tooClose: { label: 'Too Close for Comfort', desc: 'Escape a fuel tanker blast', scope: 'run', stat: 'tankerEscapes', target: 1, reward: 20 },
   wasted: { label: 'Scenic Route', desc: 'Get flung to Alcatraz', scope: 'run', stat: 'wasted', target: 1, reward: 10 },
+  beachBum: { label: 'Beach Bum', desc: 'Reach Sentosa in one run', scope: 'run', stat: 'level', target: 6, reward: 60 },
+  skyRail: { label: 'Sky Rail', desc: 'Ride the MRT track', scope: 'run', stat: 'trackRides', target: 1, reward: 20 },
+  pourDecision: { label: 'Pour Decision', desc: 'Topple a cement mixer onto the police', scope: 'run', stat: 'mixerTopples', target: 1, reward: 25 },
+  pancake: { label: 'Pancake Day', desc: 'Get flattened by a cement mixer', scope: 'run', stat: 'pancaked', target: 1, reward: 10 },
+  stormChaser: { label: 'Storm Chaser', desc: 'Drive through a storm', scope: 'run', stat: 'storms', target: 1, reward: 15 },
 };
 
 /** Lifetime totals after one more run. */

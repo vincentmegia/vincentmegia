@@ -456,5 +456,172 @@ test('three missions are shown and a finished run keeps three active', async ({ 
 	await page.evaluate(() => window.__busRushTestHooks.crash());
 	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Joyrider');
 	expect(new Set((await snapshot(page)).missions).size).toBe(3);
-	await expect(page.locator('#bus-rush-achievement-count')).toHaveText('1 / 9');
+	await expect(page.locator('#bus-rush-achievement-count')).toHaveText('1 / 14');
+});
+
+test('a semi carrying gasoline stuns for 20 s with a 4 s fuse, then staying close is WASTED', async ({ page }) => {
+	await startQuietRun(page);
+	const lives = await page.locator('#bus-rush-hud-lives').textContent();
+	await page.evaluate(() => window.__busRushTestHooks.spawn('semi', { hazmat: true }));
+	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	expect((await snapshot(page)).stun).toBeGreaterThan(19);
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
+	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
+	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
+	expect((await snapshot(page)).fuse).toBeGreaterThan(3);
+	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 6000 }).toBe(true);
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('WASTED');
+});
+
+test('a tow truck costs one life, not the run', async ({ page }) => {
+	await startQuietRun(page);
+	const lives = parseInt(await page.locator('#bus-rush-hud-lives').textContent(), 10);
+	await page.evaluate(() => window.__busRushTestHooks.spawn('tow'));
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(String(lives - 1), { timeout: 5000 });
+	expect((await snapshot(page)).status).toBe('playing');
+});
+
+test('a ramp truck launches the bus onto the MRT track, where ← → switch tracks, then it drops back to the road', async ({ page }) => {
+	await startQuietRun(page);
+	await page.keyboard.press('ArrowLeft'); // into lane 0, where the ramp parks
+	await page.evaluate(() => window.__busRushTestHooks.ramp(0));
+	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe('jump');
+	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe('ride');
+	let snap = await snapshot(page);
+	expect(snap.trackRides).toBe(1);
+	expect(snap.trackLeft).toBeGreaterThan(45);
+	expect(snap.trackLane).toBe(0);
+	await page.evaluate(() => window.__busRushTestHooks.quietTrack());
+	await page.keyboard.press('ArrowRight');
+	expect((await snapshot(page)).trackLane).toBe(1);
+	await page.keyboard.press('ArrowRight'); // only two tracks
+	expect((await snapshot(page)).trackLane).toBe(1);
+
+	const lives = await page.locator('#bus-rush-hud-lives').textContent();
+	await page.evaluate(() => window.__busRushTestHooks.trackLeft(0.2));
+	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe(null);
+	snap = await snapshot(page);
+	expect(snap.status).toBe('playing');
+	expect(snap.lane).toBe(2);
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
+});
+
+test('an MRT train hitting the bus on the track ends the run', async ({ page }) => {
+	await startQuietRun(page);
+	await page.keyboard.press('ArrowLeft');
+	await page.evaluate(() => window.__busRushTestHooks.ramp(0));
+	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe('ride');
+	await page.evaluate(() => {
+		window.__busRushTestHooks.quietTrack();
+		window.__busRushTestHooks.train(0, 300);
+	});
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible({ timeout: 3000 });
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Hit by an MRT train!');
+});
+
+test('shoving a cement mixer and steering clear topples it onto the police', async ({ page }) => {
+	await startQuietRun(page);
+	// Bus in lane 1, mixer alongside in lane 2: it falls into lane 1, lane 0 is the way out.
+	const shoved = await page.evaluate(() => {
+		window.__busRushTestHooks.mixer(2);
+		const could = window.__busRushTestHooks.snapshot().canShove;
+		window.__busRushTestHooks.shove();
+		return could;
+	});
+	expect(shoved).toBe(true);
+	expect((await snapshot(page)).tipping).toBe(true);
+	await page.keyboard.press('ArrowLeft');
+	await expect.poll(async () => (await snapshot(page)).scene, { timeout: 6000 }).toBe(true);
+	await expect.poll(async () => (await snapshot(page)).wrecked, { timeout: 4000 }).toBeGreaterThan(0);
+	await page.keyboard.press('Enter'); // on to the laugh
+	await page.keyboard.press('Enter'); // back to the road
+	const snap = await snapshot(page);
+	expect(snap.scene).toBe(false);
+	expect(snap.mixerTopples).toBe(1);
+	expect(snap.status).toBe('playing');
+	expect(snap.police).toEqual([]);
+});
+
+test('staying under a shoved cement mixer flattens the bus into a pancake: WASTED', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => {
+		window.__busRushTestHooks.mixer(2);
+		window.__busRushTestHooks.shove();
+	});
+	await expect.poll(async () => (await snapshot(page)).pancaked, { timeout: 6000 }).toBe(true);
+	await page.keyboard.press('Enter');
+	await page.keyboard.press('Enter');
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('WASTED');
+	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Pancake Day');
+});
+
+test('a cement mixer can’t be shoved from the edge lane (nowhere to escape)', async ({ page }) => {
+	await startQuietRun(page);
+	await page.keyboard.press('ArrowLeft');
+	await expect.poll(async () => (await snapshot(page)).lane).toBe(0);
+	await page.waitForTimeout(400); // finish the lane change
+	const could = await page.evaluate(() => {
+		window.__busRushTestHooks.mixer(1);
+		return window.__busRushTestHooks.snapshot().canShove;
+	});
+	expect(could).toBe(false);
+});
+
+test('in a storm, a puddle splashes the windscreen without costing a life', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => window.__busRushTestHooks.storm(true));
+	expect((await snapshot(page)).raining).toBe(true);
+	const lives = await page.locator('#bus-rush-hud-lives').textContent();
+	await page.evaluate(() => window.__busRushTestHooks.puddle());
+	await expect.poll(async () => (await snapshot(page)).splash, { timeout: 3000 }).toBe(true);
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
+});
+
+test('Sentosa is level 6, and its sand drifts slow the bus', async ({ page }) => {
+	await startQuietRun(page);
+	await page.evaluate(() => window.__busRushTestHooks.warp(4000));
+	await expect.poll(async () => (await snapshot(page)).level, { timeout: 3000 }).toBe(6);
+	await page.evaluate(() => window.__busRushTestHooks.sand());
+	await expect.poll(async () => (await snapshot(page)).slowed, { timeout: 3000 }).toBe(true);
+	await page.evaluate(() => window.__busRushTestHooks.crash());
+	await expect(page.locator('#bus-rush-run-over-level')).toHaveText('6 · Sentosa');
+});
+
+test('the Daily Challenge drives the stock bus and submits to its own leaderboard', async ({ page }) => {
+	const playerName = `daily-${Date.now() % 1_000_000}`;
+	try {
+		await page.goto('/bus-rush');
+		await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
+		await page.reload();
+		await page.evaluate(() => window.__busRushTestHooks.upgrade('engine', 3));
+		await page.locator('#bus-rush-daily-button').click();
+		const today = new Date().toISOString().slice(0, 10);
+		const snap = await snapshot(page);
+		expect(snap.daily).toBe(today);
+		expect(snap.bus).toBe('single');
+		expect(snap.upgradesUsed.engine).toBe(0);
+
+		await page.evaluate(() => window.__busRushTestHooks.crash());
+		await expect(page.locator('#bus-rush-run-over-title')).toContainText('Daily Challenge');
+		await expect(page.locator('#bus-rush-daily-input')).toHaveValue(today);
+		await page.locator('#bus-rush-name-input').fill(playerName);
+		await page.locator('#bus-rush-submit-button').click();
+		const board = page.locator('#bus-rush-leaderboard');
+		await expect(board).toHaveAttribute('data-board', 'daily');
+		await expect(board).toContainText(playerName);
+		await expect(board).toContainText(today);
+
+		await board.getByRole('button', { name: 'All-time' }).click();
+		await expect(page.locator('#bus-rush-leaderboard')).toHaveAttribute('data-board', 'all');
+		await page.locator('#bus-rush-leaderboard').getByRole('button', { name: 'Daily Challenge' }).click();
+		await expect(page.locator('#bus-rush-leaderboard')).toContainText(playerName);
+
+		// "Drive Again" stays on the daily road; the start screen remembers today's best.
+		await page.locator('#bus-rush-again-button').click();
+		expect((await snapshot(page)).daily).toBe(today);
+	} finally {
+		await deleteTestScore(playerName);
+	}
 });
