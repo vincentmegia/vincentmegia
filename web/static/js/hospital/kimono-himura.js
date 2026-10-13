@@ -592,18 +592,34 @@ function drawFrontHair(ctx) {
   ctx.lineTo(-9.6, HEAD_Y - 4);
   ctx.closePath();
   ctx.fill();
-  // Hime fringe: pointed locks across the brow, longest in the middle.
-  const locks = [[-9.8, -6.8], [-6.6, -4.6], [-3.4, -5.6], [0, -4.4], [3.4, -5.6], [6.6, -4.6], [9.8, -6.8]];
+  // Hime fringe: soft, blunt-cut bangs falling to just above the eyes
+  // (lengthened — a shorter fringe left a bare forehead and she "looks
+  // bald"; then rounded off — the user didn't like a spiky look). The top
+  // follows the skull; the bottom is a smooth curve of gently rounded clumps.
+  const clumps = 5;
+  const left = -11.2;
+  const right = 11.2;
+  const edgeY = (x) => HEAD_Y - 1.6 - 1.1 * (x / right) ** 2; // a little lower in the middle
   ctx.beginPath();
-  ctx.moveTo(-10.6, HEAD_Y - 9);
-  locks.forEach(([lx, ly], i) => {
-    const prevX = i === 0 ? -10.6 : locks[i - 1][0];
-    ctx.quadraticCurveTo((prevX + lx) / 2, HEAD_Y - 8.4, lx, HEAD_Y + ly);
-  });
-  ctx.lineTo(10.6, HEAD_Y - 9);
+  ctx.moveTo(left, HEAD_Y - 2.8);
+  ctx.bezierCurveTo(-12, HEAD_Y - 16.5, 12, HEAD_Y - 16.5, right, HEAD_Y - 2.8);
+  for (let i = 0; i < clumps; i++) {
+    const x0 = right - (i * (right - left)) / clumps;
+    const x1 = right - ((i + 1) * (right - left)) / clumps;
+    // Each clump bows softly downward between shallow rounded notches.
+    ctx.bezierCurveTo(x0 - 0.6, edgeY(x0) + 0.9, x1 + 0.6, edgeY(x1) + 0.9, x1, edgeY(x1) - (i === clumps - 1 ? 1.2 : 0.35));
+  }
   ctx.closePath();
   ctx.fill();
   outline(ctx, 0.45);
+  ctx.strokeStyle = 'rgba(74,74,120,0.55)';
+  ctx.lineWidth = 0.35;
+  for (const sx of [-6.7, -2.2, 2.2, 6.7]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * 0.9, HEAD_Y - 7.5);
+    ctx.quadraticCurveTo(sx, HEAD_Y - 4.5, sx * 1.04, HEAD_Y - 2.6);
+    ctx.stroke();
+  }
   // Side locks framing the face, falling to the collar.
   for (const dir of [-1, 1]) {
     ctx.beginPath();
