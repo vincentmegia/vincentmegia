@@ -167,6 +167,21 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   options remain (the earlier
   `nurseDress` outfit stays available); the staff keep `scrubs`), and the existing patient designs; bedded patients
   are drawn lying down under a blanket.
+* **Anime patients** (the user: "many different patients designs and
+  make them look like kimono", then — asked — her art style with mixed
+  outfits): patients moved off `people.js` to
+  `web/static/js/hospital/anime-patients.js` (`drawAnimePatient`,
+  feet-anchored; `PATIENT_DESIGNS`), sixteen designs across ages (kids,
+  teens, adults, grandparents — the body scales per age, the head is drawn
+  around its own center), six skin tones, and a mix of kimono/yukata
+  (asanoha, stripes, circles; women's wide obi, men's low kaku-obi) and
+  everyday Japanese clothes (sailor and gakuran uniforms, a masked
+  salaryman, office blouse, hoodie, cardigan, track suit, apron, biker
+  jacket, a kid's tee and dress). A shuffled bag gives every design once
+  before any repeats. They appear in the triage line, beds, triage chart,
+  Oxygen bed, OR table and hallucination ghosts; skin colors for the
+  IV/Bandage/gurney scenes come from the design. Karen and the staff still
+  use people.js.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard
   (`hospital_scores`), `/projects` card.
 

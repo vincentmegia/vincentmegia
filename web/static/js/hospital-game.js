@@ -73,6 +73,7 @@ import {
   STOCK_TECH_DOWNSTAIRS_SECONDS,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
+import { drawAnimePatient, findPatientDesign, PATIENT_DESIGN_KEYS, animeHeadCenterY } from './hospital/anime-patients.js';
 import {
   createInitialState,
   startShift as startShiftState,
@@ -283,8 +284,9 @@ const STOCK_TECH_ER_WAYPOINTS = [[700, 505], [560, 470], [400, 525], [600, 520]]
 const STOCK_TECH_ER_ELEVATOR = [840, 530];
 const STOCK_TECH_SUPPLY_WAYPOINTS = AMBIENT_STAFF.find((d) => d.key === 'stockTech').waypoints;
 
-/** Every design a patient can have (not Karen, not the nurse). */
-export const PATIENT_PERSONALITY_KEYS = ['grumpyRegular', 'shyStudent', 'cheerfulKid', 'teen', 'grandma', 'businessman', 'artist', 'bearded', 'curly'];
+// Patients are drawn in Kimono Himura's anime style by hospital/anime-patients.js
+// (sixteen designs — the user asked for "many different patients designs"
+// that look like Kimono); Karen and the staff still use people.js.
 
 export const PLAYER_NAME = 'Kimono Himura';
 /** Kimono Himura's renderer is drawn in px at her feet; this sizes her beside the 1.55× cast. */
@@ -348,7 +350,7 @@ export function init(canvas, elements) {
 
   let scheduledEvents = [];
   let patientIdCounter = 0;
-  /** id -> { name, vitals, personalityKey } — chart flavor the engine doesn't carry. */
+  /** id -> { name, vitals, designKey } — chart flavor the engine doesn't carry. */
   const patientInfo = new Map();
 
   let ambient = [];
@@ -768,6 +770,28 @@ export function init(canvas, elements) {
     return events.sort((a, b) => a.at - b.at);
   }
 
+  /** A shuffled bag of patient designs, so all sixteen show up before any repeats. */
+  let designBag = [];
+  function nextPatientDesignKey() {
+    if (!designBag.length) {
+      designBag = [...PATIENT_DESIGN_KEYS];
+      for (let i = designBag.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [designBag[i], designBag[j]] = [designBag[j], designBag[i]];
+      }
+    }
+    return designBag.pop();
+  }
+
+  /** Draws a patient (feet at x, y) in the anime style. */
+  function drawPatient(x, y, info, scale, design = findPatientDesign(info?.designKey)) {
+    drawAnimePatient(ctx, x, y, design, { scale, t: performance.now() / 1000 });
+  }
+
+  function patientSkin(info) {
+    return findPatientDesign(info?.designKey).skin;
+  }
+
   function spawnPatient(conditionId) {
     const condition = findCondition(conditionId) ?? conditionForRoll(currentShiftNumber, random());
     const id = `patient-${patientIdCounter++}`;
@@ -775,7 +799,7 @@ export function init(canvas, elements) {
     patientInfo.set(id, {
       name: PATIENT_NAMES[(h + patientIdCounter) % PATIENT_NAMES.length],
       vitals: vitalsForLevel(condition.level, [random(), random(), random(), random(), random()]),
-      personalityKey: PATIENT_PERSONALITY_KEYS[h % PATIENT_PERSONALITY_KEYS.length],
+      designKey: nextPatientDesignKey(),
     });
     shiftState = addPatientToTriage(shiftState, { id, conditionId: condition.id, waitSeconds: queueWaitSecondsForShift(currentShiftNumber) });
     return id;
@@ -1831,7 +1855,7 @@ export function init(canvas, elements) {
     // A patient on the table while the operation's under way.
     const onTable = shiftState?.activeTask?.kind === 'surgery' ? shiftState.activeTask.patientId : shiftState?.orPatient?.patientId;
     if (onTable) {
-      drawHospitalPerson(ctx, 0, 6, { personalityKey: patientInfo.get(onTable)?.personalityKey, scale: 0.6 });
+      drawPatient(0, 6, patientInfo.get(onTable), 0.6);
       drawRoundRect(ctx, -18, -14, 36, 50, 5, '#7fb8a4');
     }
   }
@@ -2084,11 +2108,11 @@ export function init(canvas, elements) {
     if (patient && !patient.inSurgery) {
       const info = patientInfo.get(patient.id);
       const level = findTriageLevel(patient.level);
-      drawHospitalPerson(ctx, 0, 0, { personalityKey: info?.personalityKey, scale: 0.75 });
+      drawPatient(0, 0, info, 0.75);
       // Blanket in a tint of their triage color, folded back at the chest.
       drawRoundRect(ctx, -hw + 9, -24, st.w - 18, hh + 16, 6, shadeColor(level.color, 0.55));
       drawRoundRect(ctx, -hw + 9, -24, st.w - 18, 8, [6, 6, 0, 0], shadeColor(level.color, 0.75));
-      ctx.fillStyle = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+      ctx.fillStyle = patientSkin(info);
       for (const dx of [-14, 14]) {
         ctx.beginPath();
         ctx.arc(dx, -12, 4, 0, Math.PI * 2);
@@ -2131,7 +2155,7 @@ export function init(canvas, elements) {
       if (slot.kind === 'ghost') {
         ctx.save();
         ctx.globalAlpha = 0.35 + 0.2 * Math.sin(performance.now() / 90);
-        drawHospitalPerson(ctx, slot.x + Math.sin(performance.now() / 140) * 2, slot.y, { personalityKey: 'grandma', scale: 0.62 });
+        drawPatient(slot.x + Math.sin(performance.now() / 140) * 2, slot.y, null, 0.62, findPatientDesign('obaachan'));
         ctx.restore();
         drawLabelChip(ctx, slot.x, slot.y + 20, '???', 'bold 9px sans-serif');
         continue;
@@ -2142,7 +2166,7 @@ export function init(canvas, elements) {
         continue;
       }
       const info = patientInfo.get(slot.id);
-      drawHospitalPerson(ctx, slot.x, slot.y, { personalityKey: info?.personalityKey, scale: 0.62 });
+      drawPatient(slot.x, slot.y, info, 0.62);
       drawLabelChip(ctx, slot.x, slot.y + 20, info?.name ?? '', 'bold 9px sans-serif');
       if (slot.waitFraction != null) {
         const f = Math.max(0, Math.min(1, slot.waitFraction));
@@ -2173,7 +2197,7 @@ export function init(canvas, elements) {
       ctx.fill();
     }
     const info = patientInfo.get(patientId);
-    ctx.fillStyle = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+    ctx.fillStyle = patientSkin(info);
     ctx.beginPath();
     ctx.arc(x, y - 20, 8, 0, Math.PI * 2);
     ctx.fill();
@@ -2388,7 +2412,7 @@ export function init(canvas, elements) {
     drawPanel('Triage', 'Read the vitals and pick a priority (or press 1 / 2 / 3).');
 
     drawRoundRect(ctx, PANEL.x + 30, 140, 190, 300, 14, '#e2ece8');
-    drawHospitalPerson(ctx, PANEL.x + 125, 380, { personalityKey: info.personalityKey, scale: 1.7 });
+    drawPatient(PANEL.x + 125, 418, info, 2.55);
 
     const left = PANEL.x + 250;
     ctx.textAlign = 'left';
@@ -2487,7 +2511,7 @@ export function init(canvas, elements) {
         ctx.fillText(value, 690, 208 + i * 60);
       });
     } else if (overlay.task === 'iv') {
-      const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+      const skin = patientSkin(info);
       drawRoundRect(ctx, bar.x - 20, 250, bar.w + 40, 110, 50, skin);
       ctx.fillStyle = 'rgba(58,42,42,0.08)';
       ctx.fillRect(bar.x - 20, 335, bar.w + 40, 10);
@@ -2514,7 +2538,7 @@ export function init(canvas, elements) {
       ctx.stroke();
     } else if (overlay.task === 'meds') {
       // An arm with an IV port at the gold zone; the syringe rides the marker.
-      const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+      const skin = patientSkin(info);
       drawRoundRect(ctx, bar.x - 20, 270, bar.w + 40, 96, 46, skin);
       ctx.fillStyle = 'rgba(58,42,42,0.08)';
       ctx.fillRect(bar.x - 20, 344, bar.w + 40, 10);
@@ -2549,7 +2573,7 @@ export function init(canvas, elements) {
       }
     } else if (overlay.task === 'surgery') {
       drawRoundRect(ctx, 230, 140, 500, 230, 14, '#5f9e86');
-      const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+      const skin = patientSkin(info);
       drawRoundRect(ctx, 380, 190, 200, 130, 16, skin);
       ctx.strokeStyle = 'rgba(58,42,42,0.25)';
       ctx.lineWidth = 2;
@@ -2723,24 +2747,23 @@ export function init(canvas, elements) {
     drawRoundRect(ctx, bay.x + 28, bay.y + 114, 128, 204, 10, '#f6f8fa');
     drawRoundRect(ctx, bay.x + 42, bay.y + 120, 100, 36, 14, '#ffffff');
     // The patient, head on the pillow; the blanket rises with each breath.
-    const scale = 1.25;
-    const S = scale * PERSON_SCALE;
-    const bodyY = bay.y + 210;
-    const headY = bodyY - 34 * S;
-    if (info) drawHospitalPerson(ctx, cx, bodyY, { personalityKey: info.personalityKey, scale });
+    const scale = 1.7;
+    const bodyY = bay.y + 232;
+    const headY = bodyY + animeHeadCenterY(findPatientDesign(info?.designKey)) * scale;
+    if (info) drawPatient(cx, bodyY, info, scale);
     const breath = 3 * squeeze + 1.2 * Math.sin(t * 2.4);
     const level = findTriageLevel(shiftState.beds[shiftState.activeTask?.bedIndex]?.level ?? 'yellow');
-    drawRoundRect(ctx, bay.x + 32, bodyY - 30 - breath, 120, 136 + breath, 10, shadeColor(level.color, 0.55));
-    drawRoundRect(ctx, bay.x + 32, bodyY - 30 - breath, 120, 12, [10, 10, 0, 0], shadeColor(level.color, 0.75));
-    ctx.fillStyle = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+    drawRoundRect(ctx, bay.x + 32, bodyY - 50 - breath, 120, 136 + breath, 10, shadeColor(level.color, 0.55));
+    drawRoundRect(ctx, bay.x + 32, bodyY - 50 - breath, 120, 12, [10, 10, 0, 0], shadeColor(level.color, 0.75));
+    ctx.fillStyle = patientSkin(info);
     for (const dx of [-24, 24]) {
       ctx.beginPath();
-      ctx.arc(cx + dx, bodyY - 14 - breath, 6, 0, Math.PI * 2);
+      ctx.arc(cx + dx, bodyY - 34 - breath, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // Mask over nose and mouth, fogging on each pump.
-    const maskY = headY + 7;
+    const maskY = headY + 8;
     ctx.fillStyle = `rgba(190,228,240,${0.55 + 0.35 * squeeze})`;
     ctx.beginPath();
     ctx.ellipse(cx, maskY, 15, 12, 0, 0, Math.PI * 2);
@@ -2927,7 +2950,7 @@ export function init(canvas, elements) {
   function drawBandageOverlay() {
     drawPanel('Bandage', 'Hold and trace the dashed line along the wound, start to end.');
     const info = patientInfo.get(shiftState.activeTask?.patientId);
-    const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+    const skin = patientSkin(info);
     drawRoundRect(ctx, 200, 170, 560, 260, 40, skin);
     const path = overlay.path;
     // The wound: a jagged red line along the path.

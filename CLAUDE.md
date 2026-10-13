@@ -61,15 +61,19 @@ touching that area rather than expecting this section to carry it:
   referrer-restricted `GOOGLE_MAPS_API_KEY` provisioned.
 - **Bus Rush** (`/bus-rush`, top-down canvas driving game — flee the police
   in a stolen bus (lethal pursuit cars, roadblocks, wanted level) through
-  five districts/levels (CBD → Changi), four buyable buses, oncoming
-  school/city/double-decker/bendy buses, bananas that
-  skid you and garbage that slows you, fuel tankers that stun you then
-  explode (a WASTED cutscene to Alcatraz if you don't get clear),
-  construction zones with dump trucks, potholes, jaywalkers (not on the
+  six districts/levels (CBD → Changi → Sentosa), four buyable buses, oncoming
+  school/city/double-decker/bendy buses and tow trucks, bananas that
+  skid you and garbage that slows you, fuel tankers and gasoline-laden
+  trucks/semis that stun you then explode (a WASTED cutscene to Alcatraz
+  if you don't get clear), cement mixers you can shove over onto the
+  police (or get flattened by), ramp trucks that launch you onto an MRT
+  viaduct with trains for 50 s, storms with puddles, Sentosa sand drifts,
+  construction zones with dump trucks and mixers, potholes, jaywalkers (not on the
   Expressway), a dark Changi, power-ups (Nitro/Shield/Magnet/EMP), a
   SWAT van at 4★ and a spike-dropping helicopter at 5★, missions and
   achievements, dodge oncoming traffic, collect fares, buy
-  Engine/Steering/Bumpers/Fare Box/Ram Plating upgrades;
+  Engine/Steering/Bumpers/Fare Box/Ram Plating upgrades; a seeded Daily
+  Challenge (stock bus, UTC day) with its own board;
   Postgres leaderboard, `localStorage` progress) — `docs/features/bus-rush.md`.
   Rules/tuning live in `web/static/js/busrush/rules.js`; its `/projects`
   card screenshot is `web/static/images/busrush/screenshot.png`.
@@ -81,8 +85,10 @@ touching that area rather than expecting this section to carry it:
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
   down); Karen, Coffee Pour, hallucinations; Postgres leaderboard,
   `localStorage` progress) — `docs/features/hospital-shift.md`. Rules live
-  in `web/static/js/hospital/rules.js`; the nurse's `scrubs` outfit is in
-  the shared `people.js`.
+  in `web/static/js/hospital/rules.js`. The player (Kimono Himura) and the
+  patients have their own anime-style renderers
+  (`hospital/kimono-himura.js`, `hospital/anime-patients.js`); Karen and
+  the staff still use the shared `people.js`.
 - **Projects** (`/projects` card grid: Fishing Game, Kitchen Shift, Puzzle
   Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift) —
   `docs/features/projects.md`.
