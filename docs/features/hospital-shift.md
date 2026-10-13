@@ -147,7 +147,20 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   more better") gave her a soft hime-cut fringe with tapered side locks
   and a single high bun, a curved cap, opt-in `lashes`/`lipColor` face
   details, and an obi with an obiage band, diamond motif and jade
-  obidome in place of side flaps. All new options in `people.js` (the earlier
+  obidome in place of side flaps. Then — "make the kimono color something
+  different from pink … more beautiful like actual Japanese characters,
+  better than library game and kitchen game" — she moved off `people.js`
+  to her own anime-style renderer, `web/static/js/hospital/
+  kimono-himura.js` (`drawKimonoHimura`, anchored at her feet like
+  `drawPerson`): slimmer proportions, a tapered face with big gradient-iris
+  eyes and lashes, hatched blush, long black hair with a hime fringe,
+  angel-ring shine and a half-up bun with a swaying kanzashi, an indigo
+  furisode shading to teal at the hem with sakura, a crimson-and-gold obi
+  with a jade obidome, fine line-art outlines, a walking sway, and a
+  worried face plus sweat drop at low Sanity. Alongside, the canvas now
+  renders at the device pixel ratio (`syncBackingStore`, up to 3×) so the
+  whole game stays crisp in fullscreen/Retina. The earlier people.js
+  options remain (the earlier
   `nurseDress` outfit stays available); the staff keep `scrubs`), and the existing patient designs; bedded patients
   are drawn lying down under a blanket.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard

@@ -72,6 +72,7 @@ import {
   STOCK_TECH_UPSTAIRS_SECONDS,
   STOCK_TECH_DOWNSTAIRS_SECONDS,
 } from './hospital/rules.js';
+import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import {
   createInitialState,
   startShift as startShiftState,
@@ -235,20 +236,10 @@ function insideRect(r, x, y) {
 /** Library Shift's big-character scale. */
 export const PERSON_SCALE = 1.55;
 
+// The player, Kimono Himura, has her own renderer (hospital/kimono-himura.js)
+// rather than a template here.
 export const PERSON_TEMPLATES = {
   ...PEOPLE_TEMPLATES,
-  nurse: {
-    // A Japanese nurse (the user: "make the play look more like a japanese
-    // nurse … also add a lighter skin tone", then "make her with a
-    // kimono"): a pink sakura kimono with a crimson obi, the white nurse
-    // cap, a bun with a straight fringe and a kanzashi pin, tabi and zori.
-    label: 'Kimono Himura',
-    bodyColor: '#f2a7bd', pantsColor: '#f2a7bd', headColor: '#f8dfcb', hairColor: '#1c1416', accentColor: '#b8324a',
-    patternColor: '#fff4f7', kanzashi: '#e0485f', obiageColor: '#f7d6e0', capStripeColor: '#e48aa6',
-    eyeColor: '#3a2622', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
-    lashes: true, lipColor: '#c8566a',
-    hairStyle: 'bunBangs', outfit: 'kimono', accessory: 'nurseCap', shoeColor: '#8a5a3a',
-  },
 };
 
 // Helping staff: they wander between waypoints (set dressing first — the
@@ -296,6 +287,8 @@ const STOCK_TECH_SUPPLY_WAYPOINTS = AMBIENT_STAFF.find((d) => d.key === 'stockTe
 export const PATIENT_PERSONALITY_KEYS = ['grumpyRegular', 'shyStudent', 'cheerfulKid', 'teen', 'grandma', 'businessman', 'artist', 'bearded', 'curly'];
 
 export const PLAYER_NAME = 'Kimono Himura';
+/** Kimono Himura's renderer is drawn in px at her feet; this sizes her beside the 1.55× cast. */
+const PLAYER_ART_SCALE = 1.12;
 
 const PATIENT_NAMES = ['Rahul P.', 'Ana L.', 'Ben O.', 'Mei T.', 'Omar S.', 'Grace K.', 'Leo M.', 'Priya N.', 'Sam W.', 'Ivy C.', 'Tomas R.', 'Zara H.', 'Kenji A.', 'Lola D.', 'Hugo B.', 'Nadia F.'];
 
@@ -2195,15 +2188,15 @@ export function init(canvas, elements) {
     const stress = sanity < HALLUCINATION_START_SANITY ? (HALLUCINATION_START_SANITY - sanity) / HALLUCINATION_START_SANITY : 0;
     const carried = shiftState?.carried;
     if (carried?.kind === 'gurney') drawGurney(player.x + 40, player.y - 6, carried.patientId);
-    drawHospitalPerson(ctx, player.x, player.y, { personalityKey: 'nurse', stress });
+    drawKimonoHimura(ctx, player.x, player.y, { scale: PLAYER_ART_SCALE, stress, t: performance.now() / 1000, walking: moveTarget !== null });
     if (coffeeSplashSeconds > 0) drawCoffeeSplash();
     drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     // The pocketed roll sits on the left, clear of a meds bottle on the right.
-    if (shiftState?.hasBandage) drawBandageRoll(player.x - 22, player.y - 78, 1.1);
+    if (shiftState?.hasBandage) drawBandageRoll(player.x - 24, player.y - 90, 1.1);
     if (carried?.kind === 'meds') {
       const order = findCondition(shiftState.beds[carried.bedIndex]?.conditionId)?.med;
       const color = MEDICATIONS.find((m) => m.name === order?.drug)?.color ?? '#e8b440';
-      drawPillBottle(player.x + 20, player.y - 80, color, 1.1);
+      drawPillBottle(player.x + 22, player.y - 92, color, 1.1);
     }
   }
 
@@ -3234,7 +3227,26 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  /**
+   * Keeps the canvas's backing store matched to its on-screen size × the
+   * device pixel ratio (capped at 3×), so the art stays crisp when the
+   * 960×600 world is shown larger, in fullscreen or on a Retina display.
+   * The world coordinate system is unchanged — render() scales into it.
+   */
+  let backingScale = 1;
+  function syncBackingStore() {
+    const rect = canvas.getBoundingClientRect();
+    const wanted = Math.min(3, Math.max(1, Math.round(((window.devicePixelRatio || 1) * rect.width / CANVAS_WIDTH) * 2) / 2));
+    if (wanted !== backingScale || canvas.width !== CANVAS_WIDTH * wanted) {
+      backingScale = wanted;
+      canvas.width = CANVAS_WIDTH * wanted;
+      canvas.height = CANVAS_HEIGHT * wanted;
+    }
+    ctx.setTransform(backingScale, 0, 0, backingScale, 0, 0);
+  }
+
   function render() {
+    syncBackingStore();
     lastFrameDrewPlayer = false;
     const intensity = currentIntensity();
     const shake = intensity > 0.6 ? (intensity - 0.6) * 5 : 0;
