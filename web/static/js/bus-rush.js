@@ -3908,14 +3908,13 @@ function init(canvas, el) {
     r.cleanBest = Math.max(r.cleanBest, r.distance - r.lastHitAt);
     r.lastHitAt = r.distance;
     r.speed = minSpeed(r.level);
-    shake = vehicle && (vehicle.lethal || vehicle.heavy) ? 0.6 : 0.35;
-    if (vehicle && vehicle.heavy && r.lives > 0) popText(r.busX, BUS_Y - 18, 'WHAM! Down to your last life', '#ff6a4d', 1.4);
+    shake = vehicle && vehicle.lethal ? 0.6 : 0.35;
     const impactX = (r.busX + (vehicle && vehicle.x ? vehicle.x : r.busX)) / 2;
     burst(effects, impactX, BUS_Y + 4, [(vehicle && vehicle.color) || '#888', '#2e4552', '#f1e9d6', BUS_COLOR], 18, 260, 5);
     r.grace = HIT_GRACE_SECONDS;
     if (r.lives <= 0) {
       r.busted = Boolean(vehicle && vehicle.police);
-      r.killedBy = vehicle && (vehicle.lethal || vehicle.heavy) && !r.busted ? vehicle.label || vehicle.kind : null;
+      r.killedBy = vehicle && vehicle.lethal && !r.busted ? vehicle.label || vehicle.kind : null;
       endRun();
     }
   }
@@ -4003,7 +4002,6 @@ function init(canvas, el) {
         seed: Math.floor(r.rng() * 1e6),
         taxi,
         hazmat,
-        heavy: Boolean(kind.heavy),
         load,
         runaway: runaway ? {} : null,
         containerColor: CONTAINER_COLORS[Math.floor(r.rng() * CONTAINER_COLORS.length)],
@@ -5650,7 +5648,6 @@ function init(canvas, el) {
       run.vehicles.push({
         ...def,
         hazmat,
-        heavy: Boolean(def.heavy),
         load: def.flatbed ? load : null,
         runaway: runaway ? {} : null,
         containerColor: CONTAINER_COLORS[lane % CONTAINER_COLORS.length],
@@ -5677,7 +5674,6 @@ function init(canvas, el) {
         lethal: Boolean(def.lethal),
         fuel: Boolean(def.fuel),
         hazmat,
-        heavy: Boolean(def.heavy),
         load: def.flatbed ? load : null,
         bus: Boolean(def.bus),
         route: ROUTES[0],

@@ -62,10 +62,9 @@ touching that area rather than expecting this section to carry it:
 - **Bus Rush** (`/bus-rush`, top-down canvas driving game — flee the police
   in a stolen bus (lethal pursuit cars, roadblocks, wanted level) through
   six districts/levels (CBD → Changi → Sentosa), four buyable buses, oncoming
-  school/city/double-decker/bendy buses, lethal tow, container, refrigerated,
-  flatbed, fire, ladder, crane and heavy haul trucks (runaway steel-coil
-  flatbeds swerve at you), lorries that
-  leave you one life, bananas that
+  school buses and lethal city/double-decker/bendy buses, lethal tow,
+  container, refrigerated, flatbed, fire, ladder, crane and heavy haul trucks
+  (runaway steel-coil flatbeds swerve at you) and lorries, bananas that
   skid you and garbage that slows you, fuel tankers and gasoline-laden
   trucks/semis that stun you then explode (a WASTED cutscene to Alcatraz
   if you don't get clear), cement mixers you drift into (mouse drag) to tip onto the

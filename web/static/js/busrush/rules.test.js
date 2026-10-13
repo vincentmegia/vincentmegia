@@ -104,7 +104,6 @@ import {
   dailyDate,
   dailySeed,
   DAILY_BUS,
-  HEAVY_LIVES_LEFT,
   FLATBED_LOADS,
   flatbedLoad,
   isRunaway,
@@ -322,12 +321,18 @@ describe('traffic', () => {
     assert.ok(zoned.includes('dump'));
   });
 
-  test('oncoming buses unlock with distance, cost one life, and never crowd out trucks', () => {
+  test('oncoming public buses kill, the school bus costs one life, and buses never crowd out trucks', () => {
     const buses = VEHICLES.filter((v) => v.bus);
     assert.deepEqual(buses.map((v) => v.kind).sort(), ['bendy', 'citybus', 'doubledecker', 'schoolbus']);
     buses.forEach((v) => {
-      assert.ok(!v.lethal && !v.spills, `${v.kind} is a plain obstacle`);
-      assert.equal(livesAfterHit(3, v, 0), 2);
+      assert.ok(!v.spills, `${v.kind} spills nothing`);
+      if (v.kind === 'schoolbus') {
+        assert.ok(!v.lethal);
+        assert.equal(livesAfterHit(3, v, 0), 2);
+      } else {
+        assert.ok(v.lethal, `${v.kind} is a public bus`);
+        assert.equal(livesAfterHit(3, v, 1), 0, `${v.kind} ignores grace`);
+      }
     });
     // Late-game traffic: buses are a minority, lethal vehicles still common.
     const rng = seeded(11);
@@ -338,9 +343,9 @@ describe('traffic', () => {
     assert.equal(new Set(picks.filter((v) => v.bus).map((v) => v.kind)).size, 4);
   });
 
-  test('trucks, semis, garbage, dump and tow trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
+  test('trucks, lorries, public buses and cement mixers are lethal; cars, vans, school buses and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['container', 'crane', 'dump', 'fire', 'flatbed', 'garbage', 'heavyhaul', 'ladder', 'mixer', 'reefer', 'semi', 'tow', 'truck']);
+    assert.deepEqual(lethal, ['bendy', 'citybus', 'container', 'crane', 'doubledecker', 'dump', 'fire', 'flatbed', 'garbage', 'heavyhaul', 'ladder', 'lorry', 'mixer', 'reefer', 'semi', 'tow', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -776,15 +781,11 @@ describe('container, flatbed and refrigerated trucks, and lorries', () => {
     }
   });
 
-  test('a lorry takes most of your lives, and your last one', () => {
+  test('a lorry kills on contact, grace or not', () => {
     const lorry = VEHICLES.find((v) => v.kind === 'lorry');
-    assert.ok(!lorry.lethal && lorry.heavy);
-    assert.equal(HEAVY_LIVES_LEFT, 1);
-    assert.equal(livesAfterHit(6, lorry, 0), 1);
-    assert.equal(livesAfterHit(3, lorry, 0), 1);
-    assert.equal(livesAfterHit(2, lorry, 0), 1);
-    assert.equal(livesAfterHit(1, lorry, 0), 0);
-    assert.equal(livesAfterHit(3, lorry, 1), 3, 'grace still covers it');
+    assert.ok(lorry.lethal);
+    assert.equal(livesAfterHit(6, lorry, 0), 0);
+    assert.equal(livesAfterHit(3, lorry, 1), 0);
   });
 
   test('flatbed loads follow their odds, steel coils included', () => {

@@ -92,16 +92,14 @@ for (const kind of ['truck', 'semi']) {
 	});
 }
 
-for (const kind of ['schoolbus', 'citybus', 'doubledecker', 'bendy']) {
-	test(`hitting an oncoming ${kind} costs one life, not the run`, async ({ page }) => {
-		await page.goto('/bus-rush');
-		await page.locator('#bus-rush-start-button').click();
-		const lives = parseInt(await page.locator('#bus-rush-hud-lives').textContent(), 10);
-		await page.evaluate((k) => window.__busRushTestHooks.spawn(k), kind);
-		await expect(page.locator('#bus-rush-hud-lives')).toHaveText(String(lives - 1), { timeout: 5000 });
-		await expect(page.locator('#bus-rush-run-over-screen')).toBeHidden();
-	});
-}
+test('hitting an oncoming school bus costs one life, not the run', async ({ page }) => {
+	await page.goto('/bus-rush');
+	await page.locator('#bus-rush-start-button').click();
+	const lives = parseInt(await page.locator('#bus-rush-hud-lives').textContent(), 10);
+	await page.evaluate(() => window.__busRushTestHooks.spawn('schoolbus'));
+	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(String(lives - 1), { timeout: 5000 });
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeHidden();
+});
 
 test('hitting a car costs one life, not the run', async ({ page }) => {
 	await page.goto('/bus-rush');
@@ -656,25 +654,14 @@ test('the Daily Challenge drives the stock bus and submits to its own leaderboar
 	}
 });
 
-for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul']) {
-	test(`hitting a ${kind} truck is instant game over, whatever lives are left`, async ({ page }) => {
+for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'lorry', 'citybus', 'doubledecker', 'bendy']) {
+	test(`hitting a ${kind} is instant game over, whatever lives are left`, async ({ page }) => {
 		await startQuietRun(page);
 		await page.evaluate((k) => window.__busRushTestHooks.spawn(k), kind);
 		await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible({ timeout: 10000 });
 		await expect(page.locator('#bus-rush-run-over-title')).toContainText('Flattened by a');
 	});
 }
-
-test('a lorry knocks the bus down to its last life, and the next one finishes it', async ({ page }) => {
-	await startQuietRun(page);
-	await expect(page.locator('#bus-rush-hud-lives')).toHaveText('3');
-	await page.evaluate(() => window.__busRushTestHooks.spawn('lorry'));
-	await expect(page.locator('#bus-rush-hud-lives')).toHaveText('1', { timeout: 5000 });
-	expect((await snapshot(page)).status).toBe('playing');
-	await page.waitForTimeout(1700); // let the post-hit grace run out
-	await page.evaluate(() => window.__busRushTestHooks.spawn('lorry'));
-	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Flattened by a lorry!', { timeout: 5000 });
-});
 
 test('a runaway steel-coil truck swerves toward the bus; steering clear dodges it', async ({ page }) => {
 	test.setTimeout(30000);

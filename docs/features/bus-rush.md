@@ -42,10 +42,11 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 * **Oncoming buses**: school buses (from 150 m), single-decker city buses
   (200 m), double-deckers (400 m) and long bendy buses with a concertina
   joint (1000 m) join the traffic, each showing a random route number.
-  They're plain obstacles — a hit costs one life, like a car — and are
-  weighted lighter than other traffic (`weight`) so late-game roads stay
+  Public buses (city, double-decker, bendy) are lethal, like the trucks;
+  the school bus is a plain obstacle — a hit costs one life, like a car.
+  All are weighted lighter than other traffic (`weight`) so late-game roads stay
   mostly cars, vans and lethal trucks.
-* Lives: a collision with a car, van or oncoming bus costs one life, drops the bus to
+* Lives: a collision with a car, van or school bus costs one life, drops the bus to
   the current district's speed floor, and grants a short invulnerability
   window (`HIT_GRACE_SECONDS`). The run ends at zero lives.
 * Garbage trucks (from 500 m), trucks (from 800 m), semi trucks (from
@@ -79,9 +80,8 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   truck.
 * **Singapore lorries** (from 200 m): a short cab and an open cargo bay
   with painted drop sides and workers in hard hats sitting along both
-  sides. Not instantly lethal but `heavy`: a hit leaves the bus on its
-  last life (`HEAVY_LIVES_LEFT`), and a hit on that last life kills it
-  ("Flattened by a lorry!"). Post-hit grace still covers it.
+  sides. Lethal: a hit is "Flattened by a lorry!", whatever lives are
+  left.
 * **Hazmat trucks**: some box trucks (25%) and semis (30%) carry gasoline
   (`hazmatChance`, `isHazmat`), marked with an orange GASOLINE panel and a
   flammable diamond. Touching one isn't instant death: like a fuel tanker it
@@ -264,8 +264,8 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 3. Run: a "LEVEL 1 / CBD" banner, then traffic and fares scroll down while
    police close in from behind; the player switches lanes and manages
    speed. Every 800 m a new district begins (banner, bonus, lives refilled).
-4. A car, van or oncoming bus hit costs a life; a banana skids the bus, garbage slows it;
-   a truck, semi, garbage truck or any police car ends the run at once. When the run ends, the Run Over screen ("Busted!" / "Flattened
+4. A car, van or school bus hit costs a life; a banana skids the bus, garbage slows it;
+   a truck, semi, garbage truck, lorry, public bus or any police car ends the run at once. When the run ends, the Run Over screen ("Busted!" / "Flattened
    by a truck!" / "New best run!") shows distance, fares, level reached,
    police wrecked, score and tokens earned, with an optional leaderboard
    submit.
@@ -554,7 +554,8 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       the speed bounds); drift radius and escape lanes, lane change fits
       the mixer's braking; the new trucks (container, flatbed, reefer,
       fire, ladder, crane, heavy haul) are lethal and fit the row
-      spacing; a lorry leaves one life (and takes the last); flatbed load
+      spacing; lorries and public buses are lethal, the school bus costs
+      one life; flatbed load
       odds; only coil flatbeds past the minimum distance run away; a
       runaway swerves one lane toward the bus, never off the road or into a
       closed lane, early enough to dodge at the fastest closing speed; train closing speeds, the warning outlasting two lane
@@ -578,7 +579,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       lane over, ignores steering mid-skid, and costs no life; a police car
       that runs over a banana skids one lane over; buying a bus drives it,
       changes its lives and persists; garbage halves top speed then
-      recovers, costing no life; each oncoming bus kind costs one life;
+      recovers, costing no life; a school bus costs one life;
       a tanker stuns (steering locked, no life lost) then WASTED if you
       stay, or escapes two lanes over; Ram Plating Lv1/Lv3 vs. cruisers
       and SWAT; shield absorbs a truck; EMP wrecks pursuers; pothole,
@@ -595,9 +596,8 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       costing a life; Sentosa is level 6 and its sand slows the bus; the
       Daily Challenge drives the stock bus, submits to the daily board, the
       tabs switch boards, and Drive Again stays daily; container, flatbed,
-      refrigerated, fire, ladder, crane and heavy haul trucks are instant
-      game over; a lorry drops the bus
-      to one life and the next kills it; a runaway coil truck can be
+      refrigerated, fire, ladder, crane and heavy haul trucks, lorries and
+      city, double-decker and bendy buses are instant game over; a runaway coil truck can be
       dodged by steering clear, and staying in its path is game over.
       Plus
       `e2e/projects.spec.js`'s card tests.

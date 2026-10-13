@@ -50,27 +50,26 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * Oncoming vehicle kinds; length/width in pixels. A `lethal` vehicle ends
  * the run on contact regardless of lives left or post-hit grace. `weight`
  * (default 1) is the relative chance pickVehicle picks it once unlocked —
- * buses (`bus: true`, non-lethal) are lighter so they add variety without
- * crowding out the trucks. A `fuel` tanker isn't lethal on contact: it
+ * buses (`bus: true`) are lighter so they add variety without crowding
+ * out the trucks. Public buses (city, double-decker, bendy) are lethal; the
+ * school bus only costs a life. A `fuel` tanker isn't lethal on contact: it
  * stuns the bus and then explodes (FUEL_STUN_SECONDS, FUEL_FUSE_SECONDS). A
  * `construction` vehicle (the dump truck) only turns up while a
  * construction zone is on the road — see pickVehicle. `hazmatChance` is the
  * chance a box truck or semi carries gasoline (isHazmat): contact then
  * stuns like a tanker, only longer (crashTimings). A `mixer` (cement mixer)
  * can be drifted into until it tips over (canDrift). Tow, container,
- * flatbed, refrigerated, fire, ladder, crane and heavy haul trucks are
- * lethal; a flatbed carries a random
- * load (flatbedLoad) and a steel-coil one may be a runaway (isRunaway). A
- * `heavy` vehicle (the Singapore lorry) takes most of the bus's lives
- * (livesAfterHit).
+ * flatbed, refrigerated, fire, ladder, crane and heavy haul trucks and
+ * Singapore lorries are lethal; a flatbed carries a random load
+ * (flatbedLoad) and a steel-coil one may be a runaway (isRunaway).
  */
 export const VEHICLES = [
   { kind: 'car', length: 64, width: 50, minDistance: 0 },
   { kind: 'schoolbus', label: 'school bus', length: 84, width: 54, minDistance: 150, bus: true, weight: 0.35 },
-  { kind: 'citybus', label: 'bus', length: 92, width: 56, minDistance: 200, bus: true, weight: 0.5 },
+  { kind: 'citybus', label: 'bus', length: 92, width: 56, minDistance: 200, bus: true, lethal: true, weight: 0.5 },
   { kind: 'van', length: 82, width: 56, minDistance: 300 },
-  { kind: 'doubledecker', label: 'double-decker', length: 92, width: 58, minDistance: 400, bus: true, weight: 0.4 },
-  { kind: 'bendy', label: 'bendy bus', length: 150, width: 56, minDistance: 1000, bus: true, weight: 0.35 },
+  { kind: 'doubledecker', label: 'double-decker', length: 92, width: 58, minDistance: 400, bus: true, lethal: true, weight: 0.4 },
+  { kind: 'bendy', label: 'bendy bus', length: 150, width: 56, minDistance: 1000, bus: true, lethal: true, weight: 0.35 },
   { kind: 'garbage', label: 'garbage truck', length: 110, width: 60, minDistance: 500, lethal: true, spills: 'garbage' },
   { kind: 'truck', length: 118, width: 62, minDistance: 800, lethal: true, spills: 'banana', hazmatChance: 0.25 },
   { kind: 'semi', length: 170, width: 64, minDistance: 1500, lethal: true, spills: 'banana', hazmatChance: 0.3 },
@@ -78,7 +77,7 @@ export const VEHICLES = [
   { kind: 'dump', label: 'dump truck', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 1.5 },
   { kind: 'tow', label: 'tow truck', length: 124, width: 60, minDistance: 250, lethal: true, weight: 0.6 },
   { kind: 'mixer', label: 'cement mixer', length: 128, width: 62, minDistance: 600, lethal: true, mixer: true, weight: 0.6 },
-  { kind: 'lorry', label: 'lorry', length: 104, width: 58, minDistance: 200, heavy: true, weight: 0.8 },
+  { kind: 'lorry', label: 'lorry', length: 104, width: 58, minDistance: 200, lethal: true, weight: 0.8 },
   { kind: 'reefer', label: 'refrigerated truck', length: 140, width: 62, minDistance: 600, lethal: true, weight: 0.7 },
   { kind: 'flatbed', label: 'flatbed truck', length: 150, width: 62, minDistance: 700, lethal: true, flatbed: true, weight: 0.8 },
   { kind: 'container', label: 'container truck', length: 168, width: 64, minDistance: 900, lethal: true, weight: 0.7 },
@@ -412,12 +411,8 @@ export function pickBlockedLanes(rng, distanceMeters, prevOpen, closed = []) {
 export function livesAfterHit(lives, vehicle, graceSeconds) {
   if (vehicle && vehicle.lethal) return 0;
   if (graceSeconds > 0) return lives;
-  if (vehicle && vehicle.heavy) return Math.max(0, Math.min(lives - 1, HEAVY_LIVES_LEFT));
   return Math.max(0, lives - 1);
 }
-
-/** A heavy hit (a lorry) leaves the bus at most this many lives — and kills it on its last. */
-export const HEAVY_LIVES_LEFT = 1;
 
 // ---------------------------------------------------------------------------
 // Flatbed loads, and runaway steel-coil trucks.
