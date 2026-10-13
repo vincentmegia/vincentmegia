@@ -239,13 +239,14 @@ export const PERSON_TEMPLATES = {
   ...PEOPLE_TEMPLATES,
   nurse: {
     // A Japanese nurse (the user: "make the play look more like a japanese
-    // nurse … also add a lighter skin tone"): pale-pink one-piece with a
-    // white collar, white nurse cap, a bun with a straight fringe, white
-    // stockings and shoes.
+    // nurse … also add a lighter skin tone", then "make her with a
+    // kimono"): a pink sakura kimono with a crimson obi, the white nurse
+    // cap, a bun with a straight fringe and a kanzashi pin, tabi and zori.
     label: 'Kimono Himura',
-    bodyColor: '#f6c9d6', pantsColor: '#fbf7f4', headColor: '#f8dfcb', hairColor: '#1c1416', accentColor: '#e48aa6',
+    bodyColor: '#f2a7bd', pantsColor: '#f2a7bd', headColor: '#f8dfcb', hairColor: '#1c1416', accentColor: '#b8324a',
+    patternColor: '#fff4f7', kanzashi: '#e0485f',
     eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
-    hairStyle: 'bunBangs', outfit: 'nurseDress', accessory: 'nurseCap', shoeColor: '#ffffff',
+    hairStyle: 'bunBangs', outfit: 'kimono', accessory: 'nurseCap', shoeColor: '#8a5a3a',
   },
 };
 

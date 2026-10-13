@@ -138,10 +138,13 @@ The user asked for a new project, "hospital shift." When asked, they chose:
 * Big expressive characters via `web/static/js/shared/people.js` — a new
   `scrubs` outfit (V-neck, chest pocket, stethoscope) for the player,
   **Nurse Kimono Himura** (renamed from Maya Santos at the user's
-  request, then restyled as a Japanese nurse with a lighter skin tone: a
-  pale-pink `nurseDress` one-piece with white collar, a `nurseCap`
-  accessory, `bunBangs` hair, white stockings and shoes — all new options
-  in `people.js`; the staff keep `scrubs`), and the existing patient designs; bedded patients
+  request, then restyled as a Japanese nurse with a lighter skin tone,
+  then — "make her with a kimono" — dressed in a `kimono`: pink with
+  sakura blossoms, wide sleeves, a crimson obi with a gold cord and side
+  bow, the collar crossed wearer's-left over right (the reverse is
+  funeral dress), tabi and zori; plus the white `nurseCap`, `bunBangs`
+  hair with a kanzashi pin. All new options in `people.js` (the earlier
+  `nurseDress` outfit stays available); the staff keep `scrubs`), and the existing patient designs; bedded patients
   are drawn lying down under a blanket.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard
   (`hospital_scores`), `/projects` card.

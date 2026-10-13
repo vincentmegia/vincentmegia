@@ -201,12 +201,31 @@ function drawBackHair(ctx, x, headY, s, personality) {
     ctx.fill();
   } else if (personality.hairStyle === 'bunBangs') {
     // Hospital Shift's Kimono Himura: a neat bun peeking out on both sides
-    // behind the nurse cap.
+    // behind the nurse cap, with a kanzashi pin and dangling flowers.
     ctx.fillStyle = color;
     for (const dir of [-1, 1]) {
       ctx.beginPath();
       ctx.arc(x + dir * 7 * s, headY - 10.5 * s, 3.6 * s, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (personality.kanzashi) {
+      ctx.strokeStyle = '#d9b44a';
+      ctx.lineWidth = Math.max(1, 0.6 * s);
+      ctx.beginPath();
+      ctx.moveTo(x + 6 * s, headY - 12 * s);
+      ctx.lineTo(x + 13 * s, headY - 7 * s);
+      ctx.moveTo(x + 12 * s, headY - 8 * s);
+      ctx.lineTo(x + 12.5 * s, headY - 2.5 * s);
+      ctx.stroke();
+      for (const [fx, fy, c] of [[11, -11.5, personality.kanzashi], [12.5, -2, '#ffffff'], [12.6, 0.8, personality.kanzashi]]) {
+        ctx.fillStyle = c;
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(x + fx * s + Math.cos(a) * 1.1 * s, headY + fy * s + Math.sin(a) * 1.1 * s, 0.8 * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
   } else if (personality.hairStyle === 'bob') {
     drawRoundRect(ctx, x - 12.5 * s, headY - 6 * s, 25 * s, 15 * s, 5 * s, color);
@@ -554,6 +573,102 @@ function drawOutfitDetail(ctx, x, y, s, personality) {
     ctx.arc(x - 5.5 * s, torsoTop + 9 * s, 1.8 * s, 0, Math.PI * 2);
     ctx.fill();
     drawRoundRect(ctx, x - 11 * s, y - 8 * s, 22 * s, 2.4 * s, 1 * s, '#1e1e24');
+  } else if (personality.outfit === 'kimono') {
+    // Hospital Shift's Kimono Himura (the user: "make her with a kimono"):
+    // an ankle-length kimono (bodyColor) with sakura blossoms, a crossed
+    // left-over-right white collar, wide furisode sleeves, a broad obi
+    // (accentColor) tied with a cord and a bow peeking out at the side,
+    // and white tabi socks with zori (shoeColor) under the hem.
+    const robe = personality.bodyColor;
+    const obi = personality.accentColor || '#b8324a';
+    const hem = y + 5 * s;
+    // Robe skirt down to the ankles, over the legs.
+    ctx.fillStyle = robe;
+    ctx.beginPath();
+    ctx.moveTo(x - 11 * s, y - 10 * s);
+    ctx.lineTo(x + 11 * s, y - 10 * s);
+    ctx.lineTo(x + 10 * s, hem);
+    ctx.lineTo(x - 10 * s, hem);
+    ctx.closePath();
+    ctx.fill();
+    // The front overlap seam, and a darker hem band.
+    ctx.strokeStyle = shadeColor(robe, -0.22);
+    ctx.lineWidth = Math.max(1, 0.6 * s);
+    ctx.beginPath();
+    ctx.moveTo(x + 2 * s, y - 8 * s);
+    ctx.lineTo(x + 4 * s, hem);
+    ctx.stroke();
+    drawRoundRect(ctx, x - 10 * s, hem - 1.8 * s, 20 * s, 1.8 * s, 0.5 * s, shadeColor(robe, -0.18));
+    // Tabi + zori peeking out under the hem.
+    for (const dir of [-1, 1]) {
+      drawRoundRect(ctx, x + (dir < 0 ? -7 : 1) * s, hem - 0.5 * s, 6 * s, 3 * s, 1.2 * s, '#ffffff');
+      drawRoundRect(ctx, x + (dir < 0 ? -7.8 : 0.4) * s, hem + 2.3 * s, 7.4 * s, 1.6 * s, 0.8 * s, personality.shoeColor || '#8a5a3a');
+    }
+    // Wide hanging sleeves over the arms, hands redrawn at the cuffs.
+    for (const dir of [-1, 1]) {
+      const sx = x + dir * 12.5 * s;
+      ctx.fillStyle = shadeColor(robe, -0.06);
+      ctx.beginPath();
+      ctx.moveTo(sx - dir * 2.5 * s, torsoTop + 2 * s);
+      ctx.lineTo(sx + dir * 4 * s, torsoTop + 4 * s);
+      ctx.quadraticCurveTo(sx + dir * 5.5 * s, y - 2 * s, sx + dir * 1 * s, y - 1 * s);
+      ctx.lineTo(sx - dir * 2.5 * s, y - 6 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = personality.headColor;
+      ctx.beginPath();
+      ctx.arc(x + dir * 10 * s, y - 8 * s, 2.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Sakura blossoms scattered on the robe and sleeves.
+    const blossom = personality.patternColor || '#ffffff';
+    for (const [bx, by, r] of [[-6, -20, 1.6], [5, -15, 1.3], [-4, -3, 1.5], [6, 1, 1.4], [-14, -12, 1.2], [14, -8, 1.3], [-1, 2.5, 1.1]]) {
+      ctx.fillStyle = blossom;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(x + bx * s + Math.cos(a) * r * 0.9 * s, y + by * s + Math.sin(a) * r * 0.9 * s, r * 0.62 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#f2c94c';
+      ctx.beginPath();
+      ctx.arc(x + bx * s, y + by * s, r * 0.35 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Crossed collar: white under-collar, then the left panel over the right.
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.4, 1.6 * s);
+    // The wearer's left panel (viewer's right) must lie on top — the
+    // reverse is how the deceased are dressed — so it's drawn last.
+    ctx.beginPath();
+    ctx.moveTo(x - 5.5 * s, torsoTop);
+    ctx.lineTo(x + 2.5 * s, torsoTop + 10 * s);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 5.5 * s, torsoTop);
+    ctx.lineTo(x - 1.5 * s, torsoTop + 10 * s);
+    ctx.stroke();
+    ctx.strokeStyle = shadeColor(robe, -0.3);
+    ctx.lineWidth = Math.max(0.8, 0.5 * s);
+    ctx.beginPath();
+    ctx.moveTo(x + 4 * s, torsoTop);
+    ctx.lineTo(x - 2.2 * s, torsoTop + 8.5 * s);
+    ctx.stroke();
+    // Obi: a broad sash with a contrasting cord and a bow at the side.
+    const obiTop = torsoTop + 10.5 * s;
+    drawRoundRect(ctx, x - 11.2 * s, obiTop, 22.4 * s, 6.5 * s, 1 * s, obi);
+    drawRoundRect(ctx, x - 11.2 * s, obiTop + 0.4 * s, 22.4 * s, 0.9 * s, 0.4 * s, shadeColor(obi, 0.3));
+    drawRoundRect(ctx, x - 11.2 * s, obiTop + 5.2 * s, 22.4 * s, 0.9 * s, 0.4 * s, shadeColor(obi, 0.3));
+    drawRoundRect(ctx, x - 11.2 * s, obiTop + 2.8 * s, 22.4 * s, 1 * s, 0.4 * s, '#f2c94c');
+    ctx.fillStyle = shadeColor(obi, -0.12);
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(x + 11 * s, obiTop + 3.3 * s);
+      ctx.lineTo(x + 15 * s, obiTop + 3.3 * s + dir * 4 * s);
+      ctx.lineTo(x + 15.5 * s, obiTop + 3.3 * s + dir * 0.6 * s);
+      ctx.closePath();
+      ctx.fill();
+    }
   } else if (personality.outfit === 'nurseDress') {
     // Hospital Shift's Kimono Himura: a classic Japanese nurse's one-piece
     // (bodyColor, pale pink) with a white rounded collar, a button placket,
