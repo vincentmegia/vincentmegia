@@ -105,9 +105,12 @@ import {
   SPLASH_SECONDS,
   stormStarts,
   TIP_SECONDS,
+  DRIFT_RADIUS,
+  DRIFT_DRAG_PX,
+  MIXER_BRAKE_SECONDS,
   TIP_SLOWMO,
   MIXER_TOPPLE_POINTS,
-  canShove,
+  canDrift,
   RAMP_MIN_DISTANCE,
   RAMP_CHANCE,
   RAMP_TRUCK,
@@ -1081,7 +1084,7 @@ function drawMixer(ctx, v, x, y, w, l, t) {
 }
 
 /**
- * A mixer lying on its side after being shoved over — seen from above you
+ * A mixer lying on its side after being tipped over — seen from above you
  * get its flank: wheels sticking out toward the lane it fell from, the drum
  * and cab sideways across the lane it fell into, cement oozing out.
  * `dir` is -1 (fell left) or 1 (fell right); `w` is how far it sprawls.
@@ -1224,7 +1227,7 @@ function drawVehicle(ctx, v, t) {
     return;
   }
   if (v.tipping) {
-    // Shoved over: it leans toward the lane it's falling into, its flank
+    // Drifted into: it leans toward the lane it's falling into, its flank
     // widening and darkening as it goes.
     const k = smoothstep(v.tip);
     ctx.translate(v.x + v.fallDir * k * LANE_WIDTH * 0.45, 0);
@@ -2605,18 +2608,43 @@ function drawSandDrift(ctx, d) {
   ctx.restore();
 }
 
-// --- cement mixer: shove prompt, danger zone, the laugh -------------------------
+// --- cement mixer: drift ring, danger zone, the laugh ---------------------------
 
-/** "SPACE: SHOVE!" bubble over a mixer the bus is alongside. */
-function drawShovePrompt(ctx, v, t) {
-  const y = v.y + v.length / 2;
+/**
+ * The drift radius round a mixer the bus is closing on: a dashed ring that
+ * lights up once the bus is inside it, plus a "DRAG → DRIFT!" bubble
+ * pointing toward the mixer (`dir` -1/1) when a drift is on.
+ */
+function drawDriftRing(ctx, v, t, inRange, dir) {
+  const cy = v.y + v.length / 2;
+  ctx.save();
+  ctx.setLineDash([8, 7]);
+  ctx.lineDashOffset = -t * 30;
+  ctx.strokeStyle = inRange ? `rgba(255,181,71,${0.75 + Math.sin(t * 10) * 0.2})` : 'rgba(241,233,214,0.35)';
+  ctx.lineWidth = inRange ? 3 : 2;
+  ctx.beginPath();
+  ctx.arc(v.x, cy, DRIFT_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  if (!inRange) return;
   const pulse = 1 + Math.sin(t * 8) * 0.06;
   ctx.save();
-  ctx.translate(v.x, y);
+  ctx.translate(v.x, cy);
   ctx.scale(pulse, pulse);
-  fillRoundRect(ctx, 'rgba(36,30,24,0.85)', -52, -14, 104, 28, 8);
-  centreText(ctx, 'SPACE: SHOVE!', 0, 1, 'bold 13px Figtree, sans-serif', '#ffb547');
+  fillRoundRect(ctx, 'rgba(36,30,24,0.85)', -64, -14, 128, 28, 8);
+  centreText(ctx, dir < 0 ? 'DRAG ← DRIFT!' : 'DRAG → DRIFT!', 0, 1, 'bold 13px Figtree, sans-serif', '#ffb547');
   ctx.restore();
+}
+
+/** Tyre smoke and rubber off a drifting bus (or a mixer standing on its brakes). */
+function drawTyreSmoke(ctx, x, y, t, k) {
+  for (let i = 0; i < 6; i++) {
+    const p = (t * 1.8 + i / 6) % 1;
+    ctx.fillStyle = `rgba(225,220,212,${0.5 * k * (1 - p)})`;
+    ctx.beginPath();
+    ctx.arc(x + Math.sin(i * 2.1 + t * 3) * 18, y + p * 46, 8 + p * 16, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /** The lane a tipping mixer will land in, flashing red over its length. */
@@ -3296,7 +3324,7 @@ function init(canvas, el) {
       deathTitle: null,
       ramp: null, // parked ramp truck { lane, side, x, y }
       track: null, // up on the MRT viaduct (startJump)
-      tip: null, // the cement mixer being shoved over
+      tip: null, // the cement mixer being tipped over
       scene: null, // the mixer-on-the-police cutscene
       weather: { rain: 0, splash: 0, flash: 0, nextFlash: 2 },
       puddles: [],
@@ -3590,7 +3618,7 @@ function init(canvas, el) {
       updateCrash(r, realDt);
       return;
     }
-    // A mixer being shoved over plays everything in slow motion.
+    // A mixer being tipped over plays everything in slow motion.
     const dt = r.tip ? realDt * TIP_SLOWMO : realDt;
     updateWeather(r, dt);
     if (r.track) {
@@ -3789,6 +3817,10 @@ function init(canvas, el) {
     });
 
     if (r.tip) updateTip(r, dt);
+    if (r.drift) {
+      r.drift.t += dt;
+      if (r.drift.t > DRIFT_SECONDS) r.drift = null;
+    }
     cheerMissions(r);
   }
 
@@ -3804,6 +3836,7 @@ function init(canvas, el) {
   // --- the MRT track ------------------------------------------------------
 
   const JUMP_SECONDS = 1;
+  const DRIFT_SECONDS = 0.5; // game time the bus fishtails for
   const DROP_SECONDS = 0.9;
 
   /** The ramp truck's hitbox: its deck and ramps. */
@@ -3969,38 +4002,63 @@ function init(canvas, el) {
 
   // --- the cement mixer ---------------------------------------------------
 
-  /** A mixer the bus is alongside and could shove over right now, if any. */
-  function shoveTarget(r) {
-    if (r.track || r.tip || r.scene || r.crash) return null;
-    const lane = laneOf(r.busX);
-    const len = busDef(r.bus).length;
-    return r.vehicles.find((v) => v.kind === 'mixer' && !v.tipping && !v.fallen && !v.gone
-      && canShove(lane, BUS_Y, BUS_Y + len, laneOf(v.x), v.y, v.y + v.length)) || null;
+  /** Mixers worth showing a drift ring round: on the road, upright, not too far off. */
+  function nearbyMixers(r) {
+    if (r.track || r.tip || r.scene || r.crash) return [];
+    const cy = BUS_Y + busDef(r.bus).length / 2;
+    return r.vehicles.filter((v) => v.kind === 'mixer' && !v.tipping && !v.fallen && !v.gone
+      && Math.hypot(v.x - r.busX, v.y + v.length / 2 - cy) < DRIFT_RADIUS * 1.6);
   }
 
-  /** Shoulder-charge the mixer: it starts to tip, in slow motion, into the bus's lane. */
-  function shove() {
+  /** A mixer the bus is close enough to drift into right now, if any. */
+  function driftTarget(r) {
+    const lane = laneOf(r.busX);
+    const cy = BUS_Y + busDef(r.bus).length / 2;
+    return nearbyMixers(r).find((v) => canDrift(lane, r.busX, cy, laneOf(v.x), v.x, v.y + v.length / 2)) || null;
+  }
+
+  /**
+   * Drift into the mixer: the bus fishtails toward it, the mixer stands on
+   * its brakes (screeching, MIXER_BRAKE_SECONDS) and then tips over, in
+   * slow motion, into the bus's lane. `dir`, when given, is the way the
+   * player dragged — it has to be toward the mixer.
+   */
+  function drift(dir) {
     const r = run;
-    if (!r || r.status !== 'playing') return;
-    const v = shoveTarget(r);
-    if (!v) return;
+    if (!r || r.status !== 'playing') return false;
+    const v = driftTarget(r);
+    if (!v) return false;
+    const toward = Math.sign(v.x - r.busX);
+    if (dir && dir !== toward) return false;
     const lane = laneOf(r.busX);
     v.tipping = true;
     v.tip = 0;
+    v.brake = MIXER_BRAKE_SECONDS;
     v.mixerLane = laneOf(v.x);
     v.fallLane = lane;
     v.fallDir = Math.sign(lane - v.mixerLane);
     r.tip = v;
+    r.drift = { t: 0, dir: toward };
     shake = Math.max(shake, 0.3);
-    burst(effects, (r.busX + v.x) / 2, BUS_Y + 30, ['#e8833a', '#f4efe4', BUS_COLOR], 14, 220, 5);
-    popText(v.x, v.y + v.length / 2, 'TIMBER!', '#ffb547', 1.6);
+    burst(effects, r.busX + toward * 24, BUS_Y + 60, ['#e1dcd4', '#c9c3b7', '#2b2724'], 16, 200, 6);
+    popText(r.busX, BUS_Y - 18, 'DRIFT!', '#ffb547', 1.2);
+    popText(v.x, v.y + v.length + 12, 'SCREEEECH!', '#f1e9d6', 1.4);
+    return true;
   }
 
-  /** The mixer tips over TIP_SECONDS (game time) and lands in the lane it fell toward. */
+  /**
+   * The mixer brakes (MIXER_BRAKE_SECONDS, laying rubber), then tips over
+   * TIP_SECONDS (game time) and lands in the lane it fell toward.
+   */
   function updateTip(r, dt) {
     const v = r.tip;
     if (v.gone) {
       r.tip = null;
+      return;
+    }
+    if (v.brake > 0) {
+      v.brake = Math.max(0, v.brake - dt);
+      if (v.brake === 0) popText(v.x, v.y + v.length / 2, 'TIMBER!', '#ffb547', 1.6);
       return;
     }
     v.tip = Math.min(1, v.tip + dt / TIP_SECONDS);
@@ -4517,6 +4575,7 @@ function init(canvas, el) {
       if (r.ramp) drawRampTruck(ctx, r.ramp, t);
       if (r.tip) drawTipZone(ctx, r.tip, t);
       r.vehicles.forEach((v) => drawVehicle(ctx, v, t));
+      if (r.tip && r.tip.brake > 0) drawTyreSmoke(ctx, r.tip.x, r.tip.y - 10, t, r.tip.brake / MIXER_BRAKE_SECONDS);
       r.police.forEach((p) => {
         if (p.y >= HEIGHT) drawSirenCue(ctx, p, t);
         else {
@@ -4540,7 +4599,10 @@ function init(canvas, el) {
         drawPancake(ctx, r.cut, r.cut.t, busKey);
       } else if (!r.cut) {
         const flashing = r.grace > 0 && Math.floor(r.grace * 10) % 2 === 0;
-        const wobble = r.skid > 0 ? Math.sin(r.skid * 40) * 0.3 * (r.skid / SKID_SECONDS) : 0;
+        const skidWobble = r.skid > 0 ? Math.sin(r.skid * 40) * 0.3 * (r.skid / SKID_SECONDS) : 0;
+        // A drift kicks the tail out toward the mixer, then snaps back.
+        const wobble = r.drift ? r.drift.dir * 0.45 * Math.sin(Math.PI * Math.min(1, r.drift.t / DRIFT_SECONDS)) : skidWobble;
+        if (r.drift) drawTyreSmoke(ctx, r.busX, BUS_Y + busDef(busKey).length - 6, t, 1 - r.drift.t / DRIFT_SECONDS);
         // Airborne off the ramp (or dropping off the viaduct): the bus swells
         // as it rises, its shadow falling away beneath it.
         const air = tr && tr.phase === 'jump' ? Math.sin(Math.PI * Math.min(1, tr.t / JUMP_SECONDS))
@@ -4581,8 +4643,8 @@ function init(canvas, el) {
       ctx.translate(0, pan);
       drawRain(ctx, r.weather, t);
       if (r.status === 'playing' && !r.scene) {
-        const target = shoveTarget(r);
-        if (target) drawShovePrompt(ctx, target, t);
+        const target = driftTarget(r);
+        nearbyMixers(r).forEach((v) => drawDriftRing(ctx, v, t, v === target, Math.sign(v.x - r.busX)));
       }
     } else {
       drawBus(ctx, laneCenter(1), false, false, 0, busKey);
@@ -4609,6 +4671,7 @@ function init(canvas, el) {
     if (r && tr && tr.phase === 'ride') drawTrackTimer(ctx, tr.left);
     if (r && r.weather.splash > 0) drawSplash(ctx, r.weather.splash / SPLASH_SECONDS);
     if (r && r.scene) drawLetterbox(ctx, Math.min(1, r.scene.t / 0.3));
+    if (r && r.cut && r.cut.kind === 'pancake') drawLetterbox(ctx, Math.min(1, r.cut.t / 0.3));
     if (r && r.tip) drawLetterbox(ctx, Math.min(1, r.tip.tip * 3) * 0.6);
     if (r && r.banner) drawBanner(ctx, r.banner);
     if (r && r.cut && r.cut.kind === 'pancake' && Math.floor(r.cut.t * 1.5) % 2 === 0 && r.status === 'cutscene') {
@@ -4683,7 +4746,7 @@ function init(canvas, el) {
       return;
     }
     const key = e.key.toLowerCase();
-    if (key === ' ' || key === 'e') { if (!e.repeat) shove(); }
+    if (key === ' ' || key === 'e') { if (!e.repeat) drift(); }
     else if (key === 'arrowleft' || key === 'a') { if (!e.repeat) steer(-1); }
     else if (key === 'arrowright' || key === 'd') { if (!e.repeat) steer(1); }
     else if (key === 'arrowup' || key === 'w') input.accelerate = true;
@@ -4698,6 +4761,12 @@ function init(canvas, el) {
     if (key === 'arrowdown' || key === 's') input.brake = false;
   }
 
+  /**
+   * Canvas pointer: a tap steers (left/right half), a drag toward a mixer
+   * in range drifts into it. Taps steer on release so a drag never also
+   * changes lane.
+   */
+  let press = null;
   function onCanvasPointerDown(e) {
     if (run && run.status === 'cutscene') {
       skipCutscene();
@@ -4708,6 +4777,22 @@ function init(canvas, el) {
       skipScene();
       return;
     }
+    press = { id: e.pointerId, x: e.clientX, dragged: false };
+  }
+
+  function onCanvasPointerMove(e) {
+    if (!press || press.id !== e.pointerId || press.dragged || !run || run.status !== 'playing') return;
+    const rect = canvas.getBoundingClientRect();
+    const dx = ((e.clientX - press.x) / rect.width) * WIDTH;
+    if (Math.abs(dx) < DRIFT_DRAG_PX) return;
+    press.dragged = true;
+    drift(Math.sign(dx));
+  }
+
+  function onCanvasPointerUp(e) {
+    const p = press;
+    press = null;
+    if (!p || p.id !== e.pointerId || p.dragged || !run || run.status !== 'playing' || run.scene) return;
     const rect = canvas.getBoundingClientRect();
     steer(e.clientX - rect.left < rect.width / 2 ? -1 : 1);
   }
@@ -4716,7 +4801,7 @@ function init(canvas, el) {
     const action = button.dataset.busRushControl;
     const held = action === 'faster' ? 'accelerate' : action === 'slower' ? 'brake' : null;
     const press = () => {
-      if (action === 'shove') shove();
+      if (action === 'drift') drift();
       else steer(action === 'left' ? -1 : 1);
     };
     const down = (e) => {
@@ -4725,7 +4810,7 @@ function init(canvas, el) {
       else press();
     };
     const up = () => { if (held) input[held] = false; };
-    // Keyboard activation (Enter/Space) of ◀/▶/Shove arrives as a click with
+    // Keyboard activation (Enter/Space) of ◀/▶/Drift arrives as a click with
     // detail 0; pointer presses are already handled on pointerdown.
     const click = (e) => { if (!held && e.detail === 0) press(); };
     button.addEventListener('pointerdown', down);
@@ -4747,6 +4832,9 @@ function init(canvas, el) {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
+  canvas.addEventListener('pointermove', onCanvasPointerMove);
+  canvas.addEventListener('pointerup', onCanvasPointerUp);
+  canvas.addEventListener('pointercancel', () => { press = null; });
   canvas.tabIndex = 0;
 
   el.start.startButton.addEventListener('click', () => startRun(false));
@@ -4866,7 +4954,9 @@ function init(canvas, el) {
         scene: Boolean(run.scene),
         pancaked: run.pancaked,
         mixerTopples: run.mixerTopples,
-        canShove: Boolean(shoveTarget(run)),
+        canDrift: Boolean(driftTarget(run)),
+        drifting: Boolean(run.drift),
+        mixerBraking: Boolean(run.tip && run.tip.brake > 0),
         raining: run.weather.rain > 0,
         splash: run.weather.splash > 0,
         storms: run.storms,
@@ -4904,9 +4994,9 @@ function init(canvas, el) {
       if (!run || run.status !== 'playing') return;
       run.vehicles.push({ ...def, label: def.label, lethal: true, x: laneCenter(lane), y, color: VEHICLE_COLORS[0], drops: [] });
     },
-    // Presses the shove button.
-    shove() {
-      shove();
+    // Presses the Drift button (Space): drifts into a mixer in range.
+    drift() {
+      return drift();
     },
     // Fast-forwards a running cutscene/scene clock to `t` seconds.
     sceneTime(t) {

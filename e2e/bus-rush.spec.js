@@ -475,12 +475,11 @@ test('a semi carrying gasoline stuns for 20 s with a 4 s fuse, then staying clos
 	await expect(page.locator('#bus-rush-run-over-title')).toContainText('WASTED');
 });
 
-test('a tow truck costs one life, not the run', async ({ page }) => {
+test('a tow truck is instant game over, whatever lives are left', async ({ page }) => {
 	await startQuietRun(page);
-	const lives = parseInt(await page.locator('#bus-rush-hud-lives').textContent(), 10);
 	await page.evaluate(() => window.__busRushTestHooks.spawn('tow'));
-	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(String(lives - 1), { timeout: 5000 });
-	expect((await snapshot(page)).status).toBe('playing');
+	await expect(page.locator('#bus-rush-run-over-screen')).toBeVisible({ timeout: 5000 });
+	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Flattened by a tow truck!');
 });
 
 test('a ramp truck launches the bus onto the MRT track, where ← → switch tracks, then it drops back to the road', async ({ page }) => {
@@ -521,35 +520,57 @@ test('an MRT train hitting the bus on the track ends the run', async ({ page }) 
 	await expect(page.locator('#bus-rush-run-over-title')).toContainText('Hit by an MRT train!');
 });
 
-test('shoving a cement mixer and steering clear topples it onto the police', async ({ page }) => {
+// Drags the mouse across the canvas by `dx` canvas px from the bus's lane.
+async function dragOnCanvas(page, dx) {
+	const box = await page.locator('#bus-rush-canvas').boundingBox();
+	const k = box.width / 480;
+	const x = box.x + 150 * k;
+	const y = box.y + 300 * k;
+	await page.mouse.move(x, y);
+	await page.mouse.down();
+	await page.mouse.move(x + dx * k * 0.5, y, { steps: 2 });
+	await page.mouse.move(x + dx * k, y, { steps: 2 });
+	await page.mouse.up();
+}
+
+test('dragging the mouse toward a nearby cement mixer drifts into it; it brakes, tips, and steering clear topples it onto the police', async ({ page }) => {
 	await startQuietRun(page);
-	// Bus in lane 1, mixer alongside in lane 2: it falls into lane 1, lane 0 is the way out.
-	const shoved = await page.evaluate(() => {
-		window.__busRushTestHooks.mixer(2);
-		const could = window.__busRushTestHooks.snapshot().canShove;
-		window.__busRushTestHooks.shove();
-		return could;
+	// Bus in lane 1, mixer in range in lane 2: it falls into lane 1, lane 0 is the way out.
+	await page.evaluate(() => {
+		window.__busRushTestHooks.mixer(2, 320);
+		window.__busRushTestHooks.pause(true);
 	});
-	expect(shoved).toBe(true);
-	expect((await snapshot(page)).tipping).toBe(true);
+	expect((await snapshot(page)).canDrift).toBe(true);
+	await dragOnCanvas(page, -80); // the wrong way: nothing happens, no lane change either
+	let snap = await snapshot(page);
+	expect(snap.tipping).toBe(false);
+	expect(snap.lane).toBe(1);
+	await dragOnCanvas(page, 80);
+	snap = await snapshot(page);
+	expect(snap.tipping).toBe(true);
+	expect(snap.drifting).toBe(true);
+	expect(snap.mixerBraking).toBe(true);
+	expect(snap.lane).toBe(1); // a drag never also steers
+	await page.evaluate(() => window.__busRushTestHooks.pause(false));
 	await page.keyboard.press('ArrowLeft');
 	await expect.poll(async () => (await snapshot(page)).scene, { timeout: 6000 }).toBe(true);
 	await expect.poll(async () => (await snapshot(page)).wrecked, { timeout: 4000 }).toBeGreaterThan(0);
 	await page.keyboard.press('Enter'); // on to the laugh
 	await page.keyboard.press('Enter'); // back to the road
-	const snap = await snapshot(page);
+	snap = await snapshot(page);
 	expect(snap.scene).toBe(false);
 	expect(snap.mixerTopples).toBe(1);
 	expect(snap.status).toBe('playing');
 	expect(snap.police).toEqual([]);
 });
 
-test('staying under a shoved cement mixer flattens the bus into a pancake: WASTED', async ({ page }) => {
+test('staying under a tipping cement mixer flattens the bus into a pancake: WASTED', async ({ page }) => {
 	await startQuietRun(page);
-	await page.evaluate(() => {
+	const drifted = await page.evaluate(() => {
 		window.__busRushTestHooks.mixer(2);
-		window.__busRushTestHooks.shove();
+		return window.__busRushTestHooks.drift();
 	});
+	expect(drifted).toBe(true);
 	await expect.poll(async () => (await snapshot(page)).pancaked, { timeout: 6000 }).toBe(true);
 	await page.keyboard.press('Enter');
 	await page.keyboard.press('Enter');
@@ -557,16 +578,24 @@ test('staying under a shoved cement mixer flattens the bus into a pancake: WASTE
 	await expect(page.locator('#bus-rush-run-over-unlocks')).toContainText('Pancake Day');
 });
 
-test('a cement mixer can’t be shoved from the edge lane (nowhere to escape)', async ({ page }) => {
+test('there’s no drifting into a cement mixer from the edge lane (nowhere to escape), or from outside its radius', async ({ page }) => {
 	await startQuietRun(page);
 	await page.keyboard.press('ArrowLeft');
 	await expect.poll(async () => (await snapshot(page)).lane).toBe(0);
 	await page.waitForTimeout(400); // finish the lane change
 	const could = await page.evaluate(() => {
 		window.__busRushTestHooks.mixer(1);
-		return window.__busRushTestHooks.snapshot().canShove;
+		return window.__busRushTestHooks.snapshot().canDrift;
 	});
 	expect(could).toBe(false);
+	await page.keyboard.press('ArrowRight');
+	await page.waitForTimeout(400);
+	const far = await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.mixer(2, -60);
+		return window.__busRushTestHooks.snapshot().canDrift;
+	});
+	expect(far).toBe(false);
 });
 
 test('in a storm, a puddle splashes the windscreen without costing a life', async ({ page }) => {

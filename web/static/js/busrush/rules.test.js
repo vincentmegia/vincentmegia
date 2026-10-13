@@ -89,7 +89,8 @@ import {
   STORM_MIN_DISTANCE,
   TIP_SECONDS,
   escapeLane,
-  canShove,
+  canDrift,
+  MIXER_BRAKE_SECONDS,
   TRACK_SECONDS,
   TRAIN,
   TRAIN_WARNING_SECONDS,
@@ -329,9 +330,9 @@ describe('traffic', () => {
     assert.equal(new Set(picks.filter((v) => v.bus).map((v) => v.kind)).size, 4);
   });
 
-  test('trucks, semis, garbage trucks, dump trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
+  test('trucks, semis, garbage, dump and tow trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['dump', 'garbage', 'mixer', 'semi', 'truck']);
+    assert.deepEqual(lethal, ['dump', 'garbage', 'mixer', 'semi', 'tow', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -641,10 +642,10 @@ describe('hazmat trucks', () => {
 });
 
 describe('new traffic', () => {
-  test('tow trucks cost a life; cement mixers are lethal', () => {
+  test('tow trucks and cement mixers are lethal', () => {
     const tow = VEHICLES.find((v) => v.kind === 'tow');
     const mixer = VEHICLES.find((v) => v.kind === 'mixer');
-    assert.equal(livesAfterHit(3, tow, 0), 2);
+    assert.equal(livesAfterHit(3, tow, 0), 0);
     assert.equal(livesAfterHit(3, mixer, 0), 0);
     assert.ok(tow.length <= ROW_SPACING_MIN && mixer.length <= ROW_SPACING_MIN);
   });
@@ -677,20 +678,24 @@ describe('weather', () => {
   });
 });
 
-describe('cement mixer shove', () => {
-  test('needs the bus one lane over, alongside, with a way out', () => {
-    assert.ok(canShove(1, 400, 488, 2, 380, 508));
-    assert.ok(!canShove(1, 400, 488, 3, 380, 508), 'two lanes over');
-    assert.ok(!canShove(1, 400, 488, 2, 100, 228), 'not alongside');
-    assert.ok(!canShove(0, 400, 488, 1, 380, 508), 'no escape lane at the road edge');
-    assert.ok(!canShove(3, 400, 488, 2, 380, 508), 'no escape lane at the other edge');
+describe('cement mixer drift', () => {
+  test('needs the bus one lane over, within the radius, with a way out', () => {
+    assert.ok(canDrift(1, 150, 486, 2, 250, 444));
+    assert.ok(canDrift(1, 150, 486, 2, 250, 370), 'a little ahead is still in range');
+    assert.ok(!canDrift(1, 150, 486, 3, 350, 444), 'two lanes over');
+    assert.ok(!canDrift(1, 150, 486, 2, 250, 200), 'outside the radius');
+    assert.ok(!canDrift(0, 50, 486, 1, 150, 444), 'no escape lane at the road edge');
+    assert.ok(!canDrift(3, 350, 486, 2, 250, 444), 'no escape lane at the other edge');
     assert.equal(escapeLane(1, 2), 0);
     assert.equal(escapeLane(2, 1), 3);
     assert.equal(escapeLane(0, 1), null);
   });
 
   test('every bus can change lane before the mixer lands', () => {
-    for (const key of Object.keys(BUSES)) assert.ok(laneChangeSeconds(0, key) < TIP_SECONDS, key);
+    for (const key of Object.keys(BUSES)) {
+      assert.ok(laneChangeSeconds(0, key) < MIXER_BRAKE_SECONDS, `${key} clears while it's still braking`);
+      assert.ok(laneChangeSeconds(0, key) < TIP_SECONDS, key);
+    }
   });
 });
 

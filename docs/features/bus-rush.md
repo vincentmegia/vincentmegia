@@ -14,7 +14,7 @@ A top-down canvas driving game at `/bus-rush`: the player has stolen a bus
 and flees the police across four lanes of oncoming traffic and six
 Singapore districts (levels), collecting fares and dodging cars, vans and
 trucks while police cruisers chase from behind. Ramp trucks launch the bus
-onto an elevated MRT track, cement mixers can be shoved over onto the
+onto an elevated MRT track, cement mixers can be drifted into and tipped onto the
 police, and storms roll in. Fares earn tokens, which are spent between runs
 in a depot shop on upgrades — chiefly a faster engine. A public Postgres
 leaderboard shows the best runs, all-time and on each day's seeded Daily
@@ -49,10 +49,11 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   the current district's speed floor, and grants a short invulnerability
   window (`HIT_GRACE_SECONDS`). The run ends at zero lives.
 * Garbage trucks (from 500 m), trucks (from 800 m), semi trucks (from
-  1500 m) and cement mixers (from 600 m) are lethal: touching one ends the
-  run instantly, regardless of lives left or grace.
-* **Tow trucks** (from 250 m) carry a battered, scorched broken-down car on
-  their flatbed and flash an amber beacon; hitting one costs one life.
+  1500 m), tow trucks (from 250 m) and cement mixers (from 600 m) are
+  lethal: touching one ends the run instantly, regardless of lives left or
+  grace.
+* **Tow trucks** carry a battered, scorched broken-down car on their
+  flatbed and flash an amber beacon — and flatten the bus on contact.
 * **Hazmat trucks**: some box trucks (25%) and semis (30%) carry gasoline
   (`hazmatChance`, `isHazmat`), marked with an orange GASOLINE panel and a
   flammable diamond. Touching one isn't instant death: like a fuel tanker it
@@ -60,17 +61,24 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   `HAZMAT_FUSE_SECONDS` (4 s) to get clear before it explodes — caught in
   the blast is the same WASTED cutscene to Alcatraz (`crashTimings`). A
   shield doesn't stop one.
-* **Cement mixers** (`mixer`, lethal, a turning striped drum): pull
-  alongside one in the next lane and press Space (or the Shove button) to
-  shoulder-charge it (`canShove`). It tips over in slow motion
-  (`TIP_SECONDS` of game time at `TIP_SLOWMO`) *into the bus's lane*, which
-  flashes red. Stay in that lane and it lands on you: the bus is flattened
-  into a pancake and a WASTED card comes up ("Flattened into a pancake").
-  Steer out (away from the mixer) in time and a cutscene plays: the fallen
+* **Cement mixers** (`mixer`, lethal, a turning striped drum): a dashed
+  ring of `DRIFT_RADIUS` shows round a mixer the bus is closing on; once
+  the bus is inside it, one lane over, the ring lights up with "DRAG →
+  DRIFT!". Drag the mouse (or a finger) `DRIFT_DRAG_PX` toward the mixer
+  and the bus drifts into it, tail kicking out in tyre smoke (`canDrift`;
+  Space or the Drift button do the same without a pointer; a drag the
+  wrong way does nothing, and a drag never also changes lane — taps steer
+  on release). The mixer stands on its brakes, screeching and laying
+  rubber, for `MIXER_BRAKE_SECONDS`, then tips over (`TIP_SECONDS`), all
+  in slow motion (`TIP_SLOWMO`), *into the bus's lane*, which flashes red
+  from the moment of the drift. Stay in that lane and a cutscene plays: it
+  lands on the bus, flattening driver and bus like a pancake, and a WASTED
+  card comes up ("Flattened into a pancake"). Steer out (away from the
+  mixer) in time and a cutscene plays: the fallen
   mixer slides back down the road into the chasing police — crushing the
   one in its path while another screeches to a stop — then a shot from
   inside the bus of the driver howling with laughter. The pursuit resets,
-  and it scores `MIXER_TOPPLE_POINTS`. There's no shove from an edge lane
+  and it scores `MIXER_TOPPLE_POINTS`. There's no drifting from an edge lane
   with the mixer inward (`escapeLane`: nowhere to escape to). A parked
   mixer also stands in every construction zone.
 * **Ramp trucks and the MRT track**: from `RAMP_MIN_DISTANCE` (400 m) a
@@ -203,8 +211,9 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   Fishing Game — there are no visitor accounts.
 * Public leaderboard (Postgres), submitted voluntarily with a display name.
 * A `/projects` card ("Play now", HTMX nav).
-* Touch controls: on-screen ◀ ▲ Shove ▼ ▶ buttons, plus tapping the
-  canvas's left or right half to change lane. Space (or E) shoves; any key
+* Touch controls: on-screen ◀ ▲ Drift ▼ ▶ buttons, plus tapping the
+  canvas's left or right half to change lane; dragging across the canvas
+  toward a mixer in range drifts into it. Space (or E) drifts too; any key
   or tap skips a cutscene.
 
 **Out of scope:**
@@ -465,9 +474,10 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `hazmatChance` (truck, semi) can carry gasoline; an explosive vehicle
   (tanker or hazmat) starts the stun-then-fuse crash instead of a hit.
   `shieldAbsorbs` refuses explosives and trains.
-* **Shove** (`canShove`, `escapeLane`): one lane over, overlapping top to
-  bottom (± `SHOVE_REACH_PX`), and only with an escape lane on the far
-  side; every bus's lane change fits inside `TIP_SECONDS` (unit-tested).
+* **Drift** (`canDrift`, `escapeLane`): one lane over, within
+  `DRIFT_RADIUS` centre to centre, and only with an escape lane on the far
+  side; every bus's lane change fits inside the mixer's braking alone
+  (`MIXER_BRAKE_SECONDS`), let alone the tip (unit-tested).
 * **MRT track** (`TRACK_SECONDS`, `trainClosingSpeed`, `nextTrainTrack`,
   `trainGapSeconds`): one train at a time; oncoming trains close at the
   bus's speed plus `TRAIN_SPEED`, up trains always overtake at
@@ -511,10 +521,10 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       lead time, power-up odds and shield rules, no Expressway jaywalkers,
       closed lanes never break "every row is passable", missions and
       achievements; hazmat carriers/odds/timings and shield rules; tow
-      trucks cost a life, mixers are lethal; Sentosa is level 6 with sand
+      trucks and mixers are lethal; Sentosa is level 6 with sand
       only there; storms (minimum distance, no stacking, weaker grip within
-      the speed bounds); shove geometry and escape lanes, lane change fits
-      the tip; train closing speeds, the warning outlasting two lane
+      the speed bounds); drift radius and escape lanes, lane change fits
+      the mixer's braking; train closing speeds, the warning outlasting two lane
       changes, both tracks used; daily seed determinism and the UTC date;
       the new missions and achievements.
 * [x] Go: validation bounds, service rejects invalid input before the repo,
@@ -541,12 +551,14 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       and SWAT; shield absorbs a truck; EMP wrecks pursuers; pothole,
       jaywalker, spike strip and construction-zone effects; the 5★
       helicopter and SWAT van; missions/achievements panel and payout; a
-      hazmat semi's 20 s stun and 4 s fuse into WASTED; a tow truck costs a
-      life; a ramp truck → jump → ride (← → switch tracks, only two) → drop
+      hazmat semi's 20 s stun and 4 s fuse into WASTED; a tow truck is
+      game over; a ramp truck → jump → ride (← → switch tracks, only two) → drop
       back to the road with lives intact; an MRT train ends the run;
-      shoving a mixer and steering clear plays the cutscene, wrecks the
-      police and resumes; staying under it is a pancake WASTED (Pancake
-      Day); no shove from the edge lane; a storm puddle splashes without
+      a mouse drag toward a mixer in range drifts into it (the wrong way
+      does nothing, a drag never steers), it brakes and tips, and steering
+      clear plays the cutscene, wrecks the police and resumes; staying
+      under it is a pancake WASTED (Pancake Day); no drift from the edge
+      lane or outside the radius; a storm puddle splashes without
       costing a life; Sentosa is level 6 and its sand slows the bus; the
       Daily Challenge drives the stock bus, submits to the daily board, the
       tabs switch boards, and Drive Again stays daily.
@@ -559,7 +571,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `swatRam()`, `pause(on)`, `cutTime(t)`, `place(kind, lane, y, {hazmat})`
   (a vehicle anywhere, for screenshots), `spawn(kind, {hazmat})`,
   `ramp(lane?, bottom?)`, `train(track, y)`, `trackLeft(s)`,
-  `quietTrack(s?)`, `mixer(lane?, y?)`, `shove()`, `sceneTime(t)`,
+  `quietTrack(s?)`, `mixer(lane?, y?)`, `drift()`, `sceneTime(t)`,
   `storm(on)`, `puddle(lane?, y?)`, `sand(lane?, y?)`, `banana()` (one just ahead
   of the bus), `garbage()` (a pile just ahead of the bus), `noPolice()`,
   `policeBanana()` (a non-re-aiming cruiser behind the bus
@@ -567,7 +579,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   `warp(meters)`, `noTraffic()`, `snapshot()` (status, level, km/h, lane,
   lives, bus, skidding, slowed, bananas and garbage on the road, wanted, each pursuer's gap behind the
   bus, pursuer lanes, pursuers skidding, plus daily, track phase/lane/time
-  left, train, tipping/scene/pancaked, canShove, raining/splash, hazmat
+  left, train, tipping/scene/pancaked, canDrift, drifting, mixerBraking, raining/splash, hazmat
   count, stun/fuse), `grantTokens(n)`.
 
 ---

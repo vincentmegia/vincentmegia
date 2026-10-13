@@ -57,7 +57,7 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * construction zone is on the road — see pickVehicle. `hazmatChance` is the
  * chance a box truck or semi carries gasoline (isHazmat): contact then
  * stuns like a tanker, only longer (crashTimings). A `mixer` (cement mixer)
- * can be shoved over (canShove). The tow truck is a one-life hit.
+ * can be drifted into until it tips over (canDrift). Tow trucks are lethal.
  */
 export const VEHICLES = [
   { kind: 'car', length: 64, width: 50, minDistance: 0 },
@@ -71,7 +71,7 @@ export const VEHICLES = [
   { kind: 'semi', length: 170, width: 64, minDistance: 1500, lethal: true, spills: 'banana', hazmatChance: 0.3 },
   { kind: 'fuel', label: 'fuel tanker', length: 140, width: 60, minDistance: 700, fuel: true, weight: 0.4 },
   { kind: 'dump', label: 'dump truck', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 1.5 },
-  { kind: 'tow', label: 'tow truck', length: 124, width: 60, minDistance: 250, weight: 0.6 },
+  { kind: 'tow', label: 'tow truck', length: 124, width: 60, minDistance: 250, lethal: true, weight: 0.6 },
   { kind: 'mixer', label: 'cement mixer', length: 128, width: 62, minDistance: 600, lethal: true, mixer: true, weight: 0.6 },
 ];
 
@@ -626,15 +626,21 @@ export function stormStarts(rng, distanceMeters, raining) {
 }
 
 // ---------------------------------------------------------------------------
-// Cement mixers — shove one over onto the police, or get flattened by it.
+// Cement mixers — drift into one to tip it onto the police, or get
+// flattened by it.
 // ---------------------------------------------------------------------------
 
 /**
- * Slack (px) on the vertical overlap that counts as "alongside" for a shove.
- * TIP_SECONDS is game time from the shove to the mixer landing in the bus's
- * lane, all played at TIP_SLOWMO; a lane change must fit inside it.
+ * DRIFT_RADIUS (px, bus centre to mixer centre) is how close the bus must
+ * be to drift into a mixer; a mouse drag of DRIFT_DRAG_PX toward it starts
+ * the drift. The mixer then stands on its brakes, screeching, for
+ * MIXER_BRAKE_SECONDS and tips over TIP_SECONDS more (game time) into the
+ * bus's lane, all played at TIP_SLOWMO; a lane change must fit inside the
+ * brake alone.
  */
-export const SHOVE_REACH_PX = 20;
+export const DRIFT_RADIUS = 170;
+export const DRIFT_DRAG_PX = 36;
+export const MIXER_BRAKE_SECONDS = 0.4;
 export const TIP_SECONDS = 1;
 export const TIP_SLOWMO = 0.3;
 export const MIXER_TOPPLE_POINTS = 500;
@@ -650,13 +656,13 @@ export function escapeLane(busLane, mixerLane) {
 }
 
 /**
- * Whether the bus (lane, top/bottom y) can shove a mixer (lane, top/bottom
- * y): one lane over, overlapping it top to bottom (with SHOVE_REACH_PX
- * slack), and with an escape lane on the far side.
+ * Whether the bus (its lane and centre) can drift into a mixer (its lane
+ * and centre): one lane over, within DRIFT_RADIUS centre to centre, and
+ * with an escape lane on the far side.
  */
-export function canShove(busLane, busTop, busBottom, mixerLane, mixerTop, mixerBottom) {
+export function canDrift(busLane, busX, busY, mixerLane, mixerX, mixerY) {
   if (Math.abs(busLane - mixerLane) !== 1 || escapeLane(busLane, mixerLane) === null) return false;
-  return busTop < mixerBottom + SHOVE_REACH_PX && mixerTop - SHOVE_REACH_PX < busBottom;
+  return Math.hypot(busX - mixerX, busY - mixerY) < DRIFT_RADIUS;
 }
 
 // ---------------------------------------------------------------------------
