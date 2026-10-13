@@ -320,8 +320,42 @@ export const MEDICATIONS = [
 /** Dose choices offered in the Meds Dispensing overlay. */
 export const DOSE_CHOICES = [1, 2, 3];
 
-/** How many bottles the cabinet shows (the ordered one plus decoys). */
-export const MED_CABINET_BOTTLES = 8;
+/**
+ * The Med Cabinet is a search: its shelves hold this many bottles, the
+ * ordered drug exactly once among decoys (the user: "when you get the meds
+ * you need to search for the med").
+ */
+export const MED_CABINET_SHELVES = 3;
+export const MED_CABINET_BOTTLES_PER_SHELF = 9;
+export const MED_CABINET_BOTTLES = MED_CABINET_SHELVES * MED_CABINET_BOTTLES_PER_SHELF;
+/** Share of decoys that are the ordered drug's look-alikes (same first letter), so the shelf is full of near misses. */
+export const MED_CABINET_LOOKALIKE_SHARE = 0.35;
+
+/**
+ * Fills the cabinet: `MED_CABINET_BOTTLES` drug names, shuffled, with
+ * `orderDrug` exactly once and every other bottle a decoy (look-alikes
+ * repeated). `random` is a () => [0, 1) source so tests can seed it.
+ *
+ * @param {string} orderDrug
+ * @param {() => number} random
+ * @returns {string[]}
+ */
+export function medCabinetStock(orderDrug, random) {
+  const decoys = MEDICATIONS.map((m) => m.name).filter((n) => n !== orderDrug);
+  const lookAlikes = decoys.filter((n) => n[0] === orderDrug[0]);
+  const pickFrom = (list) => list[Math.min(list.length - 1, Math.floor(clampRoll(random()) * list.length))];
+  const stock = [orderDrug];
+  // Every look-alike appears at least once, then the rest is a weighted mix.
+  stock.push(...lookAlikes);
+  while (stock.length < MED_CABINET_BOTTLES) {
+    stock.push(lookAlikes.length && random() < MED_CABINET_LOOKALIKE_SHARE ? pickFrom(lookAlikes) : pickFrom(decoys));
+  }
+  for (let i = stock.length - 1; i > 0; i--) {
+    const j = Math.min(i, Math.floor(clampRoll(random()) * (i + 1)));
+    [stock[i], stock[j]] = [stock[j], stock[i]];
+  }
+  return stock;
+}
 
 /**
  * Grades a Meds Dispensing pick.
@@ -349,6 +383,9 @@ export const SKILL_CHECKS = {
   vitals: { zoneWidth: 0.22, hits: 1, speedMultiplier: 1 },
   iv: { zoneWidth: 0.16, hits: 1, speedMultiplier: 1 },
   surgery: { zoneWidth: 0.14, hits: 3, speedMultiplier: 1.15 },
+  // Giving the meds at the bed (the user: "when you go and get it to the
+  // patient you have to do a skill check") — push the syringe into the IV port.
+  meds: { zoneWidth: 0.18, hits: 1, speedMultiplier: 1.05 },
 };
 
 /** Surgery's three stages, one per hit. */

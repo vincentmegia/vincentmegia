@@ -16,6 +16,7 @@ import {
   startMedsDispense,
   resolveMedsDispense,
   deliverMeds,
+  resolveMedsGive,
   dropCarriedSupply,
   pickUpBandage,
   startSurgeryTransport,
@@ -279,9 +280,25 @@ describe('meds', () => {
     s = resolveMedsDispense(s, true);
     assert.deepEqual(s.carried, { kind: 'meds', bedIndex: bed, patientId: 'p1' });
     s = deliverMeds(s, bed);
+    assert.deepEqual(s.activeTask, { kind: 'meds-give', bedIndex: bed, patientId: 'p1' });
+    assert.equal(s.carried.kind, 'meds'); // still in hand until the skill check passes
+    s = resolveMedsGive(s, false);
+    assert.equal(s.mistakeCount, 2);
+    assert.equal(s.activeTask.kind, 'meds-give');
+    s = resolveMedsGive(s, true);
     assert.equal(s.carried, null);
+    assert.equal(s.activeTask, null);
     assert.equal(s.beds[bed], null); // migraine: vitals, meds -> discharged
     assert.equal(s.discharged, 1);
+  });
+
+  test('backing out of the give-meds skill check keeps the meds in hand', () => {
+    let [s, bed] = medsReady();
+    s = deliverMeds(resolveMedsDispense(startMedsDispense(s), true), bed);
+    s = cancelTask(s);
+    assert.equal(s.activeTask, null);
+    assert.equal(s.carried.kind, 'meds');
+    assert.equal(currentStep(s.beds[bed]), 'meds');
   });
 
   test('no meds order means the cabinet does nothing', () => {

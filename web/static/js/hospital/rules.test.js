@@ -19,6 +19,7 @@ import {
   TREATMENTS,
   MEDICATIONS,
   MED_CABINET_BOTTLES,
+  medCabinetStock,
   DOSE_CHOICES,
   conditionsForShift,
   conditionForRoll,
@@ -158,7 +159,19 @@ describe('conditions and meds', () => {
       const lookAlikes = MEDICATIONS.filter((m) => m.name !== c.med.drug && m.name.startsWith(prefix));
       assert.ok(lookAlikes.length >= 1, c.med.drug);
     }
-    assert.ok(MEDICATIONS.length >= MED_CABINET_BOTTLES);
+  });
+
+  test('medCabinetStock fills the shelves with the ordered drug exactly once among look-alikes', () => {
+    let seed = 7;
+    const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    for (const c of CONDITIONS.filter((x) => x.med)) {
+      const stock = medCabinetStock(c.med.drug, random);
+      assert.equal(stock.length, MED_CABINET_BOTTLES);
+      assert.equal(stock.filter((n) => n === c.med.drug).length, 1, c.med.drug);
+      const lookAlikes = MEDICATIONS.filter((m) => m.name !== c.med.drug && m.name[0] === c.med.drug[0]);
+      for (const m of lookAlikes) assert.ok(stock.includes(m.name), `${m.name} on the shelf for ${c.med.drug}`);
+      assert.ok(stock.every((n) => MEDICATIONS.some((m) => m.name === n)));
+    }
   });
 
   test('surgery cases are held back until SURGERY_START_SHIFT', () => {
@@ -186,6 +199,7 @@ describe('skill checks', () => {
   test('surgery needs three hits, vitals and IV one', () => {
     assert.equal(skillCheckHitsRequired('vitals'), 1);
     assert.equal(skillCheckHitsRequired('iv'), 1);
+    assert.equal(skillCheckHitsRequired('meds'), 1);
     assert.equal(skillCheckHitsRequired('surgery'), SURGERY_STAGES.length);
   });
 

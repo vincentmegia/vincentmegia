@@ -18,7 +18,8 @@
 //       // perform the surgery"); any patient's Bandage step uses it
 //     activeTask: null | { kind, bedIndex, patientId },
 //       // the minigame in progress: 'vitals' | 'oxygen' | 'iv' | 'bandage'
-//       // (at a bed), 'meds-dispense' (at the cabinet), 'surgery' (in the OR)
+//       // (at a bed), 'meds-dispense' (searching the cabinet), 'meds-give'
+//       // (the skill check at the bed, meds still in hand), 'surgery' (in the OR)
 //
 //     orderlyGurney: null | { bedIndex, patientId }, // the Orderly wheeling a patient to the OR
 //     orPatient: null | { bedIndex, patientId },     // a patient the Orderly left waiting on the OR table
@@ -315,13 +316,26 @@ export function resolveMedsDispense(state, success) {
   return { ...state, activeTask: null, carried: { kind: 'meds', bedIndex: task.bedIndex, patientId: task.patientId } };
 }
 
-/** Arriving at a bed with that patient's meds: the Meds step completes. */
+/**
+ * Arriving at a bed with that patient's meds opens the give-meds skill
+ * check (`activeTask` 'meds-give'); the meds stay in your hands until it's
+ * passed, so backing out keeps them.
+ */
 export function deliverMeds(state, bedIndex) {
   const carried = state.carried;
-  if (state.phase !== 'playing' || carried?.kind !== 'meds' || carried.bedIndex !== bedIndex) return state;
+  if (state.phase !== 'playing' || state.activeTask || carried?.kind !== 'meds' || carried.bedIndex !== bedIndex) return state;
   const patient = state.beds[bedIndex];
   if (patient?.id !== carried.patientId || currentStep(patient) !== 'meds') return state;
-  return advanceStep({ ...state, carried: null }, bedIndex);
+  return { ...state, activeTask: { kind: 'meds-give', bedIndex, patientId: patient.id } };
+}
+
+/** Success: the meds are given and the Meds step completes. A miss is a mistake; the check stays open. */
+export function resolveMedsGive(state, success) {
+  const task = state.activeTask;
+  if (state.phase !== 'playing' || task?.kind !== 'meds-give') return state;
+  if (state.beds[task.bedIndex]?.id !== task.patientId) return { ...state, activeTask: null };
+  if (!success) return { ...state, ...applyMistake(state) };
+  return advanceStep({ ...state, activeTask: null, carried: null }, task.bedIndex);
 }
 
 /**

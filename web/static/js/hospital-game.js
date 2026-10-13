@@ -33,7 +33,9 @@ import {
   BED_MINIGAME_TREATMENTS,
   MEDICATIONS,
   DOSE_CHOICES,
-  MED_CABINET_BOTTLES,
+  MED_CABINET_SHELVES,
+  MED_CABINET_BOTTLES_PER_SHELF,
+  medCabinetStock,
   gradeMedsPick,
   SURGERY_STAGES,
   skillCheckHitsRequired,
@@ -83,6 +85,7 @@ import {
   startMedsDispense,
   resolveMedsDispense,
   deliverMeds,
+  resolveMedsGive,
   dropCarriedSupply,
   pickUpBandage,
   startSurgeryTransport,
@@ -235,7 +238,7 @@ export const PERSON_SCALE = 1.55;
 export const PERSON_TEMPLATES = {
   ...PEOPLE_TEMPLATES,
   nurse: {
-    label: 'Maya Santos',
+    label: 'Kimono Himura',
     bodyColor: '#6fb3b0', pantsColor: '#5a9e9b', headColor: '#c68e5a', hairColor: '#2a1c14', accentColor: '#34343e',
     eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
     hairStyle: 'bun', outfit: 'scrubs', shoeColor: '#f2f0ea',
@@ -286,7 +289,7 @@ const STOCK_TECH_SUPPLY_WAYPOINTS = AMBIENT_STAFF.find((d) => d.key === 'stockTe
 /** Every design a patient can have (not Karen, not the nurse). */
 export const PATIENT_PERSONALITY_KEYS = ['grumpyRegular', 'shyStudent', 'cheerfulKid', 'teen', 'grandma', 'businessman', 'artist', 'bearded', 'curly'];
 
-export const PLAYER_NAME = 'Nurse Maya';
+export const PLAYER_NAME = 'Kimono Himura';
 
 const PATIENT_NAMES = ['Rahul P.', 'Ana L.', 'Ben O.', 'Mei T.', 'Omar S.', 'Grace K.', 'Leo M.', 'Priya N.', 'Sam W.', 'Ivy C.', 'Tomas R.', 'Zara H.', 'Kenji A.', 'Lola D.', 'Hugo B.', 'Nadia F.'];
 
@@ -809,18 +812,32 @@ export function init(canvas, elements) {
     };
   }
 
+  /** The Med Cabinet's shelves: where its bottles stand (see medsBottleRects). */
+  const MED_CABINET = { x: 140, y: 172, w: CANVAS_WIDTH - 280, shelfH: 92 };
+
+  /**
+   * The cabinet is a search (the user: "when you get the meds you need to
+   * search for the med"): a crowded shelf of small bottles, mostly
+   * look-alikes, with the ordered drug exactly once. Each bottle gets a
+   * fixed jitter — size, offset, a slight tilt — when the cabinet opens, so
+   * the shelf doesn't shuffle while you look.
+   */
   function openMedsOverlay() {
     const order = findCondition(shiftState.beds[shiftState.activeTask.bedIndex].conditionId).med;
-    const others = MEDICATIONS.filter((m) => m.name !== order.drug);
-    // Always include the look-alikes (same first letter), then fill with others.
-    const lookAlikes = others.filter((m) => m.name[0] === order.drug[0]);
-    const rest = others.filter((m) => m.name[0] !== order.drug[0]).sort(() => random() - 0.5);
-    const picks = [MEDICATIONS.find((m) => m.name === order.drug), ...lookAlikes, ...rest].slice(0, MED_CABINET_BOTTLES);
-    for (let i = picks.length - 1; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      [picks[i], picks[j]] = [picks[j], picks[i]];
-    }
-    overlay = { kind: 'meds', order, bottles: picks, picked: null, flash: null };
+    const slotW = MED_CABINET.w / MED_CABINET_BOTTLES_PER_SHELF;
+    const bottles = medCabinetStock(order.drug, random).map((name, i) => {
+      const shelf = Math.floor(i / MED_CABINET_BOTTLES_PER_SHELF);
+      const slot = i % MED_CABINET_BOTTLES_PER_SHELF;
+      const w = 44 + random() * 14;
+      const h = 50 + random() * 22;
+      const x = MED_CABINET.x + slot * slotW + (slotW - w) / 2 + (random() - 0.5) * 8;
+      const shelfFloor = MED_CABINET.y + (shelf + 1) * MED_CABINET.shelfH - 6;
+      return {
+        name, color: MEDICATIONS.find((m) => m.name === name)?.color ?? '#e8b440',
+        x, y: shelfFloor - h, w, h, tilt: (random() - 0.5) * 0.22, found: false,
+      };
+    });
+    overlay = { kind: 'meds', order, bottles, picked: null, flash: null };
   }
 
   function openKarenOverlay() {
@@ -981,9 +998,11 @@ export function init(canvas, elements) {
         showToast(`These meds are for ${bedLabel(carried.bedIndex)}.`);
         return;
       }
+      // Giving them is a skill check (the user: "when you go and get it to
+      // the patient you have to do a skill check").
       const before = shiftState;
       shiftState = deliverMeds(shiftState, bedIndex);
-      if (shiftState !== before) announceStepDone(bedIndex, before, 'Meds given');
+      if (shiftState !== before) openSkillOverlay('meds');
       return;
     }
     if (carried?.kind === 'gurney') {
@@ -1058,7 +1077,7 @@ export function init(canvas, elements) {
     if (overlay.flash && !overlay.flash.good && overlay.flash.seconds > 0.6) return; // brief lockout after a miss
     const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()));
     const hit = isSkillCheckSuccess(overlay.gauge, zone);
-    const resolve = overlay.task === 'surgery' ? resolveSurgery : resolveBedTask;
+    const resolve = overlay.task === 'surgery' ? resolveSurgery : (overlay.task === 'meds' ? resolveMedsGive : resolveBedTask);
     if (!hit) {
       shiftState = resolve(shiftState, false);
       flash('Missed!', false);
@@ -1076,7 +1095,8 @@ export function init(canvas, elements) {
     shiftState = resolve(shiftState, true);
     const task = overlay.task;
     overlay = null;
-    announceStepDone(bedIndex, before, task === 'surgery' ? 'Surgery went well' : `${TREATMENT_LABELS[task]} done`);
+    const doneText = task === 'surgery' ? 'Surgery went well' : (task === 'meds' ? 'Meds given' : `${TREATMENT_LABELS[task]} done`);
+    announceStepDone(bedIndex, before, doneText);
   }
 
   /**
@@ -1128,12 +1148,25 @@ export function init(canvas, elements) {
   }
 
   function medsBottleRects() {
-    const cols = 4;
-    const w = 120;
-    const h = 112;
-    const gapX = 26;
-    const startX = CANVAS_WIDTH / 2 - (cols * w + (cols - 1) * gapX) / 2;
-    return overlay.bottles.map((b, i) => ({ ...b, index: i, x: startX + (i % cols) * (w + gapX), y: 176 + Math.floor(i / cols) * (h + 14), w, h }));
+    return overlay.bottles.map((b, i) => ({ ...b, index: i }));
+  }
+
+  /**
+   * A click on a cabinet bottle: the ordered drug is found (then pick the
+   * dose); any other bottle is the wrong medication — a mistake, and that
+   * bottle is set aside (greyed) so the same slip can't cost twice.
+   */
+  function pickBottle(index) {
+    const bottle = overlay.bottles[index];
+    if (bottle.found || overlay.picked) return;
+    if (gradeMedsPick(overlay.order, bottle.name, overlay.order.dose) === 'wrong-drug') {
+      bottle.found = true;
+      shiftState = resolveMedsDispense(shiftState, false);
+      flash(`That's ${bottle.name} — read the label!`, false);
+      return;
+    }
+    overlay.picked = bottle.name;
+    flash(`Found ${bottle.name}! Now the dose.`, true);
   }
 
   function medsDoseRects() {
@@ -1145,7 +1178,7 @@ export function init(canvas, elements) {
 
   function pickDose(dose) {
     if (!overlay.picked) {
-      flash('Pick a bottle first.', false);
+      flash(`Find the ${overlay.order.drug} first.`, false);
       return;
     }
     const result = gradeMedsPick(overlay.order, overlay.picked, dose);
@@ -1158,8 +1191,7 @@ export function init(canvas, elements) {
       return;
     }
     shiftState = resolveMedsDispense(shiftState, false);
-    flash(result === 'wrong-drug' ? 'Wrong medication — read the label!' : 'Wrong dose — check the order!', false);
-    overlay.picked = null;
+    flash('Wrong dose — check the order!', false);
   }
 
   function karenButtonRects() {
@@ -1192,8 +1224,9 @@ export function init(canvas, elements) {
     } else if (overlay.kind === 'oxygen') {
       handleOxygenClick(x, y);
     } else if (overlay.kind === 'meds') {
-      const bottle = medsBottleRects().find((r) => insideRect(r, x, y));
-      if (bottle) { overlay.picked = bottle.name; return; }
+      // Topmost (last-drawn) bottle wins where neighbours overlap.
+      const bottle = medsBottleRects().filter((r) => insideRect(r, x, y)).pop();
+      if (bottle) { pickBottle(bottle.index); return; }
       const dose = medsDoseRects().find((r) => insideRect(r, x, y));
       if (dose) pickDose(dose.dose);
     } else if (overlay.kind === 'karen') {
@@ -1431,8 +1464,6 @@ export function init(canvas, elements) {
         return;
       }
       if (overlay.kind === 'meds') {
-        if (e.key === 'Backspace') { e.preventDefault(); overlay.picked = null; return; }
-        if (!overlay.picked && digit >= 1 && digit <= overlay.bottles.length) { e.preventDefault(); overlay.picked = overlay.bottles[digit - 1].name; return; }
         if (overlay.picked && DOSE_CHOICES.includes(digit)) { e.preventDefault(); pickDose(digit); return; }
       }
       if (e.key === ' ' || e.key === 'Enter') {
@@ -2408,6 +2439,7 @@ export function init(canvas, elements) {
     vitals: ['Vitals Check', 'Stop the marker in the gold zone to log the reading.'],
     iv: ['Start an IV', 'The needle sways — tap when it lines up with the vein.'],
     surgery: ['Surgery', 'Three steady hands: Incision, Repair, Sutures.'],
+    meds: ['Give Meds', 'Push the syringe when it lines up with the IV port.'],
   };
 
   function skillBar() {
@@ -2475,6 +2507,41 @@ export function init(canvas, elements) {
       ctx.moveTo(nx, 210);
       ctx.lineTo(nx, 262);
       ctx.stroke();
+    } else if (overlay.task === 'meds') {
+      // An arm with an IV port at the gold zone; the syringe rides the marker.
+      const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+      drawRoundRect(ctx, bar.x - 20, 270, bar.w + 40, 96, 46, skin);
+      ctx.fillStyle = 'rgba(58,42,42,0.08)';
+      ctx.fillRect(bar.x - 20, 344, bar.w + 40, 10);
+      const portX = bar.x + 0.5 * bar.w;
+      const portW = Math.max(14, zone.width * bar.w * 0.7);
+      drawRoundRect(ctx, portX - portW / 2, 300, portW, 30, 6, 'rgba(240,246,250,0.92)');
+      drawRoundRect(ctx, portX - 8, 278, 16, 26, 4, '#7fb0d6');
+      ctx.strokeStyle = 'rgba(58,42,42,0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(portX - portW / 2, 300, portW, 30, 6);
+      ctx.stroke();
+      const order = findCondition(shiftState.beds[shiftState.activeTask?.bedIndex]?.conditionId)?.med;
+      const drugColor = MEDICATIONS.find((m) => m.name === order?.drug)?.color ?? '#e8b440';
+      const nx = bar.x + overlay.gauge * bar.w;
+      drawRoundRect(ctx, nx - 6, 130, 12, 14, 2, '#d8dde2'); // plunger
+      drawRoundRect(ctx, nx - 12, 142, 24, 6, 2, '#d8dde2');
+      drawRoundRect(ctx, nx - 9, 148, 18, 92, 4, 'rgba(240,246,250,0.95)');
+      drawRoundRect(ctx, nx - 7, 178, 14, 60, 3, drugColor);
+      ctx.strokeStyle = '#8a9098';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(nx, 240);
+      ctx.lineTo(nx, 276);
+      ctx.stroke();
+      if (order) {
+        ctx.fillStyle = LABEL_TEXT_COLOR;
+        ctx.font = 'bold 15px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(`${order.drug} × ${order.dose}`, CANVAS_WIDTH / 2, 404);
+      }
     } else if (overlay.task === 'surgery') {
       drawRoundRect(ctx, 230, 140, 500, 230, 14, '#5f9e86');
       const skin = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
@@ -2735,7 +2802,9 @@ export function init(canvas, elements) {
   function drawMedsOverlay() {
     const bedIndex = shiftState.activeTask?.bedIndex ?? 0;
     const name = patientInfo.get(shiftState.activeTask?.patientId)?.name ?? '';
-    drawPanel('Med Cabinet', 'Pick the ordered medication, then the dose (keys: bottle 1–8, then dose 1–3).');
+    drawPanel('Med Cabinet', overlay.picked
+      ? 'Found it — now pick the dose (keys 1–3).'
+      : 'Search the shelves for the ordered medication. Look-alikes are everywhere!');
     drawRoundRect(ctx, CANVAS_WIDTH / 2 - 210, 134, 420, 30, 8, '#2f5f6f');
     ctx.fillStyle = CREAM;
     ctx.font = 'bold 15px sans-serif';
@@ -2743,31 +2812,44 @@ export function init(canvas, elements) {
     ctx.textBaseline = 'middle';
     ctx.fillText(`Order · ${bedLabel(bedIndex)} · ${name}: ${overlay.order.drug} × ${overlay.order.dose}`, CANVAS_WIDTH / 2, 149);
 
-    medsBottleRects().forEach((b, i) => {
+    // The cabinet: a wooden frame with glass-backed shelves.
+    const cab = MED_CABINET;
+    const cabH = MED_CABINET_SHELVES * cab.shelfH;
+    drawRoundRect(ctx, cab.x - 12, cab.y - 6, cab.w + 24, cabH + 14, 10, '#8a6a4a');
+    drawRoundRect(ctx, cab.x, cab.y, cab.w, cabH, 4, '#e6eef0');
+    for (let shelf = 0; shelf < MED_CABINET_SHELVES; shelf++) {
+      const floorY = cab.y + (shelf + 1) * cab.shelfH - 6;
+      drawRoundRect(ctx, cab.x - 4, floorY, cab.w + 8, 8, 2, '#b08a62');
+    }
+
+    for (const b of overlay.bottles) {
       const picked = overlay.picked === b.name;
-      drawRoundRect(ctx, b.x, b.y, b.w, b.h, 10, picked ? '#fbe9b8' : '#ffffff');
-      ctx.strokeStyle = picked ? '#e0a83a' : 'rgba(58,42,42,0.2)';
-      ctx.lineWidth = picked ? 3 : 1.5;
-      ctx.beginPath();
-      ctx.roundRect(b.x, b.y, b.w, b.h, 10);
-      ctx.stroke();
-      const cx = b.x + b.w / 2;
-      drawRoundRect(ctx, cx - 18, b.y + 22, 36, 48, 6, b.color);
-      drawRoundRect(ctx, cx - 21, b.y + 12, 42, 14, 4, '#f2f0ea');
-      drawRoundRect(ctx, cx - 15, b.y + 36, 30, 22, 3, CREAM);
-      ctx.fillStyle = 'rgba(58,42,42,0.5)';
-      ctx.fillRect(cx - 10, b.y + 42, 20, 2);
-      ctx.fillRect(cx - 10, b.y + 48, 14, 2);
+      ctx.save();
+      ctx.translate(b.x + b.w / 2, b.y + b.h);
+      ctx.rotate(b.tilt);
+      ctx.globalAlpha = b.found ? 0.3 : 1;
+      const w = b.w;
+      const h = b.h;
+      drawRoundRect(ctx, -w / 2 + 4, -h + 10, w - 8, h - 10, 6, b.color);
+      drawRoundRect(ctx, -w / 2 + 8, -h, w - 16, 12, 3, '#f2f0ea');
+      drawRoundRect(ctx, -w / 2 + 6, -h * 0.62, w - 12, 18, 2, CREAM);
       ctx.fillStyle = LABEL_TEXT_COLOR;
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(b.name, cx, b.y + 90);
-      ctx.font = '10px sans-serif';
-      ctx.fillStyle = 'rgba(58,42,42,0.55)';
-      ctx.fillText(String(i + 1), b.x + 10, b.y + 16);
-    });
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(b.name, 0, -h * 0.62 + 9, w - 14);
+      if (picked) {
+        ctx.strokeStyle = '#e0a83a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-w / 2 + 1, -h - 3, w - 2, h + 3, 8);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 14px sans-serif';
     ctx.fillText(overlay.picked ? `${overlay.picked} — dose:` : 'Dose:', CANVAS_WIDTH / 2 + 6, 499);

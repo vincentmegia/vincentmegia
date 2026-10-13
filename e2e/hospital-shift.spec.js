@@ -217,21 +217,28 @@ test.describe('treatments', () => {
 		expect((await shiftState(page)).hasBandage).toBe(false); // the roll was used up
 		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getOverlay() === null);
 
-		// Meds: the wrong drug is a mistake, the right one is carried to the bed.
+		// Meds: search the cabinet — a wrong bottle is a mistake, the right
+		// one plus the dose is carried to the bed.
 		await walkTo(page, 'med-cabinet');
 		const meds = await waitForOverlay(page, 'meds');
 		const layout = await hooks(page, 'getMedsLayout');
+		expect(layout.bottles.filter((b) => b.name === meds.order.drug)).toHaveLength(1);
+		const center = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 		const decoy = layout.bottles.find((b) => b.name !== meds.order.drug);
-		await clickCanvasPoint(page, { x: decoy.x + 40, y: decoy.y + 40 });
-		const dose = layout.doses.find((d) => d.dose === meds.order.dose);
-		await clickCanvasPoint(page, { x: dose.x + 20, y: dose.y + 20 });
+		await clickCanvasPoint(page, center(decoy));
 		expect((await shiftState(page)).mistakeCount).toBe(1);
 		const right = layout.bottles.find((b) => b.name === meds.order.drug);
-		await clickCanvasPoint(page, { x: right.x + 40, y: right.y + 40 });
+		await clickCanvasPoint(page, center(right));
+		const dose = layout.doses.find((d) => d.dose === meds.order.dose);
 		await clickCanvasPoint(page, { x: dose.x + 20, y: dose.y + 20 });
 		expect((await shiftState(page)).carried).toMatchObject({ kind: 'meds', patientId: id });
 
+		// Giving them at the bed is a skill check.
 		await walkTo(page, 'bed', bed);
+		const give = await waitForOverlay(page, 'skill');
+		expect(give.task).toBe('meds');
+		await passSkillCheck(page);
+		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getOverlay() === null);
 		const s = await shiftState(page);
 		expect(s.beds[bed]).toBeNull();
 		expect(s.discharged).toBe(1);

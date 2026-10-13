@@ -17,7 +17,8 @@ Additions made during the build, beyond the original scope list: an ×
 button (and Escape) backs out of any minigame without a mistake
 (`cancelTask`), since a Red patient can arrive while you're mid-bandage;
 the Med Cabinet always shows the ordered drug's look-alikes (Amoxicillin/
-Amoxapine, Albuterol/Atenolol, Epinephrine/Ephedrine…).
+Amoxapine, Albuterol/Atenolol, Epinephrine/Ephedrine…), and is now a
+search across 27 bottles with a skill check to give the meds at the bed.
 
 ## Summary
 
@@ -85,9 +86,17 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     dashed line along the wound, graded on coverage and accuracy. A
     finished dressing uses up the roll; a botched one or backing out
     keeps it. Any patient's Bandage step can use any roll.
-  * **Meds** (Meds Dispensing) — at the Med Cabinet, pick the ordered
-    drug from bottles with look-alike names and the right dose, carry it to
-    the patient's bed.
+  * **Meds** (search + skill check) — the Med Cabinet is a **search**:
+    three shelves of 27 small, slightly jumbled bottles, mostly look-alikes
+    (`medCabinetStock`: the ordered drug exactly once, every look-alike at
+    least once, ~35% of the rest look-alikes). Find the ordered bottle (a
+    wrong one is a mistake and greys out so it can't cost twice), pick the
+    dose, carry it to the patient's bed — where **giving** it is a 1-hit
+    skill check (`SKILL_CHECKS.meds`, zone 0.18: push the syringe when it
+    lines up with the IV port). The meds stay in your hands until that
+    check passes, so backing out keeps them. Both added at the user's
+    request: "when you get the meds you need to search for the med and when
+    you go and get it to the patient you have to do a skill check".
   * A missed skill check, failed trace, or wrong drug/dose is a mistake;
     the minigame stays open for an immediate retry (Library Shift's
     retry-on-failure).
@@ -122,7 +131,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   leaderboard submission.
 * Big expressive characters via `web/static/js/shared/people.js` — a new
   `scrubs` outfit (V-neck, chest pocket, stethoscope) for the player,
-  **Nurse Maya Santos**, and the existing patient designs; bedded patients
+  **Nurse Kimono Himura** (renamed from Maya Santos at the user's
+  request), and the existing patient designs; bedded patients
   are drawn lying down under a blanket.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard
   (`hospital_scores`), `/projects` card.
@@ -191,8 +201,9 @@ The user asked for a new project, "hospital shift." When asked, they chose:
    - Vitals / IV: a skill check at the bed; Oxygen: find the hearts, avoid the skulls.
    - Bandage: get a roll from the Supply Cart on the 2nd Floor (Stairs,
      Elevator or "Go Upstairs"), come back down, trace the wound.
-   - Meds: the bed says "Meds"; walk to the Med Cabinet → pick drug + dose →
-     carry it back to the bed.
+   - Meds: the bed says "Meds"; walk to the Med Cabinet → search the shelves
+     for the ordered drug, pick the dose → carry it back to the bed → pass
+     the give-meds skill check.
    - Surgery: at the bed you take the gurney; walk to the Operating Room →
      three-stage skill check → patient returns to the bed.
 5. Last step done → discharged (+Gard), bed frees.
@@ -297,7 +308,7 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   multiplier at arrival/bedding. A patient in surgery (gurney carried) has
   their patience paused.
 * **Skill checks** (`SKILL_CHECKS`): zone width / hits — Vitals 0.22 / 1,
-  IV 0.16 / 1, Surgery 0.14 / 3. Sweep speed ramps with
+  Meds (giving) 0.18 / 1, IV 0.16 / 1, Surgery 0.14 / 3. Sweep speed ramps with
   shift number; shaky hands shrink the zone to 50% and speed it 1.6× at full
   hallucination.
 * **Bandage trace**: graded by `gradeBandageTrace(samples, path)` —
@@ -335,7 +346,7 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       round trip in `cmd/server/e2e_test.go`.
 * [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
       triage agreement, condition gating, skill-check zones, bandage
-      grading, every engine-state transition (triage, bed tasks, meds,
+      grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
       surgery transport, patience transfers, Karen, coffee, closing,
       payout), floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
@@ -363,7 +374,7 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
 * [x] Handler/service/repository boundaries followed.
 * [x] Accessibility: Enter on a hovered station walks to it; skill checks
       accept Space/Enter; Triage Sort accepts 1/2/3; Meds accepts number
-      keys. Bandage trace stays pointer-only (precision tracing has no
+      keys for the dose. The cabinet search and the Bandage trace stay pointer-only (precision tracing has no
       keyboard equivalent — same stance as Library Shift's scene search).
 * [x] Tests in the Testing Plan pass.
 * [x] `/hospital-shift` on the Projects grid (real screenshot).
