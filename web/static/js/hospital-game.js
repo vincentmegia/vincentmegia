@@ -83,6 +83,7 @@ import {
   ZERO_SANITY_COLLAPSE_SECONDS,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
+import { patientProfileFor } from './hospital/patient-names.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
   createInitialState,
@@ -280,14 +281,6 @@ export const PLAYER_NAME = 'Kimono Himura';
 /** Kimono Himura's renderer is drawn in px at her feet; this sizes her beside the rest of the cast. */
 const PLAYER_ART_SCALE = 1.12;
 
-const PATIENT_NAMES = ['Rahul P.', 'Ana L.', 'Ben O.', 'Mei T.', 'Omar S.', 'Grace K.', 'Leo M.', 'Priya N.', 'Sam W.', 'Ivy C.', 'Tomas R.', 'Zara H.', 'Kenji A.', 'Lola D.', 'Hugo B.', 'Nadia F.'];
-
-function hashId(id) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
-
 // ---------------------------------------------------------------------------
 // init()
 // ---------------------------------------------------------------------------
@@ -333,7 +326,7 @@ export function init(canvas, elements) {
 
   let scheduledEvents = [];
   let patientIdCounter = 0;
-  /** id -> { name, vitals, designKey } — chart flavor the engine doesn't carry. */
+  /** id -> { name, shortName, age, vitals, designKey } — chart flavor the engine doesn't carry (names: hospital/patient-names.js). */
   const patientInfo = new Map();
 
   let ambient = [];
@@ -781,11 +774,12 @@ export function init(canvas, elements) {
   function spawnPatient(conditionId) {
     const condition = findCondition(conditionId) ?? conditionForRoll(currentShiftNumber, random());
     const id = `patient-${patientIdCounter++}`;
-    const h = hashId(id);
+    const designKey = nextPatientDesignKey();
+    const usedNames = new Set([...patientInfo.values()].map((info) => info.name));
     patientInfo.set(id, {
-      name: PATIENT_NAMES[(h + patientIdCounter) % PATIENT_NAMES.length],
+      ...patientProfileFor(designKey, random(), random(), usedNames),
       vitals: vitalsForLevel(condition.level, [random(), random(), random(), random(), random()]),
-      designKey: nextPatientDesignKey(),
+      designKey,
     });
     shiftState = addPatientToTriage(shiftState, { id, conditionId: condition.id, waitSeconds: queueWaitSecondsForShift(currentShiftNumber) });
     return id;
@@ -2322,7 +2316,7 @@ export function init(canvas, elements) {
       }
       const info = patientInfo.get(slot.id);
       drawPatient(slot.x, slot.y, info, 0.62);
-      drawLabelChip(ctx, slot.x, slot.y + 20, info?.name ?? '', 'bold 9px sans-serif');
+      drawLabelChip(ctx, slot.x, slot.y + 20, info?.shortName ?? '', 'bold 9px sans-serif');
       if (slot.waitFraction != null) {
         const f = Math.max(0, Math.min(1, slot.waitFraction));
         drawRoundRect(ctx, slot.x - 18, slot.y + 30, 36, 5, 2.5, 'rgba(58,42,42,0.25)');
@@ -2574,7 +2568,7 @@ export function init(canvas, elements) {
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(info.name, left, 162);
+    ctx.fillText(`${info.name}, ${info.age}`, left, 162);
     ctx.font = 'italic 14px Georgia, serif';
     ctx.fillStyle = 'rgba(58,42,42,0.85)';
     ctx.fillText(`“${condition.complaint}”`, left, 188);

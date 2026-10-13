@@ -3,7 +3,7 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (107 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (112 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
 Playwright: `e2e/hospital-shift.spec.js` (27 tests, Chromium + WebKit),
@@ -220,6 +220,14 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   wedding guest in black crested montsuki, a shopkeeper in mustard
   seigaiha), so 10 of 22 wear traditional dress. A shuffled bag gives every design once
   before any repeats. They appear in the triage line, beds, triage chart,
+  Names followed ("make the names more better"): instead of one shared
+  list of 16 handed out at random, each design has its own pool of four
+  names and an age range that fit how they look
+  (`web/static/js/hospital/patient-names.js`'s `PATIENT_PROFILES` —
+  grandparents 70–91, kids 5–10, the coming-of-age girl 20; mostly
+  Japanese, a few international). Names don't repeat within a shift. The
+  triage chart shows the full name and age ("Hana Sato, 81"); queue chips
+  show the short form ("Hana S.") so the line still fits.
   Oxygen bed, OR table and hallucination ghosts; skin colors for the
   IV/Bandage/gurney scenes come from the design. Then — "the staff and
   karen to also match kimonos style" — `STAFF_DESIGNS` in the same module:
@@ -448,7 +456,8 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       triage agreement, condition gating, skill-check zones, bandage
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
       surgery transport, patience transfers, Karen, Mel, coffee, closing,
-      payout), Mel's arrival roll / secret code / card lines, floor-plan geometry.
+      payout), Mel's arrival roll / secret code / card lines, patient name
+      pools (one per design, no name shared, ages in range), floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
       coffee → Karen → Mel (typing "mel" → card → gift → badge survives a
