@@ -656,7 +656,7 @@ test('the Daily Challenge drives the stock bus and submits to its own leaderboar
 	}
 });
 
-for (const kind of ['container', 'flatbed', 'reefer']) {
+for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul']) {
 	test(`hitting a ${kind} truck is instant game over, whatever lives are left`, async ({ page }) => {
 		await startQuietRun(page);
 		await page.evaluate((k) => window.__busRushTestHooks.spawn(k), kind);

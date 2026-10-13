@@ -340,7 +340,7 @@ describe('traffic', () => {
 
   test('trucks, semis, garbage, dump and tow trucks and cement mixers are lethal; cars, vans and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['container', 'dump', 'flatbed', 'garbage', 'mixer', 'reefer', 'semi', 'tow', 'truck']);
+    assert.deepEqual(lethal, ['container', 'crane', 'dump', 'fire', 'flatbed', 'garbage', 'heavyhaul', 'ladder', 'mixer', 'reefer', 'semi', 'tow', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -768,7 +768,7 @@ describe('new missions and achievements', () => {
 
 describe('container, flatbed and refrigerated trucks, and lorries', () => {
   test('the new trucks kill on contact and fit the row spacing', () => {
-    for (const kind of ['container', 'flatbed', 'reefer']) {
+    for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul']) {
       const v = VEHICLES.find((x) => x.kind === kind);
       assert.equal(livesAfterHit(5, v, 0), 0, kind);
       assert.equal(livesAfterHit(5, v, 1), 0, `${kind} ignores grace`);

@@ -60,6 +60,14 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   and **flatbed trucks** (from 700 m) are lethal too. A flatbed carries a
   random load (`FLATBED_LOADS`, `flatbedLoad`): steel coils (30%), lumber,
   pipes, pallets of bricks or crates.
+* **Fire trucks** (from 400 m, a red pumper with hose reels, a racked
+  ladder and a flashing light bar), **ladder trucks** (from 800 m, the
+  aerial ladder laid along the body on its turntable, tip over the rear),
+  **crane trucks** (from 1100 m, a yellow mobile crane with outriggers,
+  counterweight and the boom stowed forward past the nose, hook swinging)
+  and **heavy haul trucks** (from 1800 m, a multi-axle lowboy carrying a
+  chained-down excavator under an OVERSIZE banner, amber beacons) are all
+  lethal.
 * **Runaway steel-coil trucks**: from `RUNAWAY_MIN_DISTANCE` (900 m) a
   coil flatbed is out of control with `RUNAWAY_CHANCE` (`isRunaway`). It
   fishtails down the road with hazard flashers and a "!" ("OUT OF
@@ -544,7 +552,8 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       trucks and mixers are lethal; Sentosa is level 6 with sand
       only there; storms (minimum distance, no stacking, weaker grip within
       the speed bounds); drift radius and escape lanes, lane change fits
-      the mixer's braking; the new trucks are lethal and fit the row
+      the mixer's braking; the new trucks (container, flatbed, reefer,
+      fire, ladder, crane, heavy haul) are lethal and fit the row
       spacing; a lorry leaves one life (and takes the last); flatbed load
       odds; only coil flatbeds past the minimum distance run away; a
       runaway swerves one lane toward the bus, never off the road or into a
@@ -585,8 +594,9 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       lane or outside the radius; a storm puddle splashes without
       costing a life; Sentosa is level 6 and its sand slows the bus; the
       Daily Challenge drives the stock bus, submits to the daily board, the
-      tabs switch boards, and Drive Again stays daily; container, flatbed
-      and refrigerated trucks are instant game over; a lorry drops the bus
+      tabs switch boards, and Drive Again stays daily; container, flatbed,
+      refrigerated, fire, ladder, crane and heavy haul trucks are instant
+      game over; a lorry drops the bus
       to one life and the next kills it; a runaway coil truck can be
       dodged by steering clear, and staying in its path is game over.
       Plus

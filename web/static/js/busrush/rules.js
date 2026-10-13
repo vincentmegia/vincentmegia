@@ -58,7 +58,8 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * chance a box truck or semi carries gasoline (isHazmat): contact then
  * stuns like a tanker, only longer (crashTimings). A `mixer` (cement mixer)
  * can be drifted into until it tips over (canDrift). Tow, container,
- * flatbed and refrigerated trucks are lethal; a flatbed carries a random
+ * flatbed, refrigerated, fire, ladder, crane and heavy haul trucks are
+ * lethal; a flatbed carries a random
  * load (flatbedLoad) and a steel-coil one may be a runaway (isRunaway). A
  * `heavy` vehicle (the Singapore lorry) takes most of the bus's lives
  * (livesAfterHit).
@@ -81,6 +82,10 @@ export const VEHICLES = [
   { kind: 'reefer', label: 'refrigerated truck', length: 140, width: 62, minDistance: 600, lethal: true, weight: 0.7 },
   { kind: 'flatbed', label: 'flatbed truck', length: 150, width: 62, minDistance: 700, lethal: true, flatbed: true, weight: 0.8 },
   { kind: 'container', label: 'container truck', length: 168, width: 64, minDistance: 900, lethal: true, weight: 0.7 },
+  { kind: 'fire', label: 'fire truck', length: 130, width: 62, minDistance: 400, lethal: true, weight: 0.5 },
+  { kind: 'ladder', label: 'ladder truck', length: 160, width: 62, minDistance: 800, lethal: true, weight: 0.4 },
+  { kind: 'crane', label: 'crane truck', length: 150, width: 64, minDistance: 1100, lethal: true, weight: 0.5 },
+  { kind: 'heavyhaul', label: 'heavy haul truck', length: 170, width: 64, minDistance: 1800, lethal: true, weight: 0.4 },
 ];
 
 function level(n, max) {

@@ -1467,6 +1467,197 @@ function drawLorry(ctx, v, x, y, w, l) {
   drawCab(ctx, v.color, x + 2, y + l - cab, w - 4, cab);
 }
 
+const FIRE_RED = '#c8302a';
+
+/** A fire appliance's red light bar across the cab roof, its halves alternating with `t`. */
+function drawFireLightBar(ctx, x, y, w, t) {
+  const on = Math.floor(t * 6) % 2;
+  const red = '#ff4a3d';
+  fillRoundRect(ctx, '#2b2724', x + 6, y, w - 12, 6, 2);
+  fillRoundRect(ctx, on ? red : shade(red, -0.5), x + 8, y + 1, (w - 16) / 2 - 1, 4, 1.5);
+  fillRoundRect(ctx, on ? shade(red, -0.5) : red, x + w / 2 + 1, y + 1, (w - 16) / 2 - 1, 4, 1.5);
+  const g = ctx.createRadialGradient(x + w / 2, y + 3, 1, x + w / 2, y + 3, 34);
+  g.addColorStop(0, 'rgba(255,74,61,0.4)');
+  g.addColorStop(1, 'rgba(255,74,61,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - 10, y - 30, w + 20, 66);
+}
+
+/** A red/white rescue stripe down both flanks of a fire appliance. */
+function drawFireStripes(ctx, x, y, w, len) {
+  ctx.fillStyle = '#f4efe4';
+  ctx.fillRect(x + 1, y + 4, 3, len - 8);
+  ctx.fillRect(x + w - 4, y + 4, 3, len - 8);
+  ctx.fillStyle = '#e0b54a';
+  for (let ry = y + 6; ry < y + len - 8; ry += 12) {
+    ctx.fillRect(x + 1, ry, 3, 5);
+    ctx.fillRect(x + w - 4, ry, 3, 5);
+  }
+}
+
+/**
+ * Fire truck (a pumper): red body, roof lockers with two hose reels and a
+ * short ladder racked on top, a flashing light bar on the cab.
+ */
+function drawFireTruck(ctx, v, x, y, w, l, t) {
+  const cab = 36;
+  const body = l - cab - 2;
+  drawWheels(ctx, x, y, w, l, [0.14, 0.3, 0.84]);
+  drawBody(ctx, FIRE_RED, x, y, w, body, 4);
+  drawFireStripes(ctx, x, y, w, body);
+  fillRoundRect(ctx, shade(FIRE_RED, 0.12), x + 6, y + 6, w - 12, body - 12, 3); // roof lockers
+  // Racked ladder: two rails and rungs.
+  ctx.fillStyle = '#c9ced2';
+  ctx.fillRect(x + 12, y + 8, 3, body - 40);
+  ctx.fillRect(x + w - 15, y + 8, 3, body - 40);
+  for (let ry = y + 12; ry < y + body - 34; ry += 7) ctx.fillRect(x + 12, ry, w - 24, 2);
+  // Hose reels behind the cab.
+  for (const hx of [x + w / 2 - 11, x + w / 2 + 11]) {
+    ctx.fillStyle = '#e0b54a';
+    ctx.beginPath();
+    ctx.arc(hx, y + body - 16, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#a88350';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(hx, y + body - 16, 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  drawChevrons(ctx, x, y - 2, w);
+  drawCab(ctx, FIRE_RED, x + 2, y + l - cab, w - 4, cab);
+  drawFireLightBar(ctx, x + 2, y + l - cab + 3, w - 4, t);
+}
+
+/**
+ * Ladder truck: a long red appliance with the aerial ladder laid along its
+ * full length on a turntable, the ladder's tip overhanging the rear, and a
+ * flashing light bar.
+ */
+function drawLadderTruck(ctx, v, x, y, w, l, t) {
+  const cab = 36;
+  const body = l - cab - 2;
+  drawWheels(ctx, x, y, w, l, [0.1, 0.22, 0.86]);
+  drawBody(ctx, FIRE_RED, x, y + 10, w, body - 10, 4);
+  drawFireStripes(ctx, x, y + 10, w, body - 10);
+  // Turntable just behind the cab.
+  ctx.fillStyle = '#3a3734';
+  ctx.beginPath();
+  ctx.arc(x + w / 2, y + body - 18, 15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#9aa1a6';
+  ctx.beginPath();
+  ctx.arc(x + w / 2, y + body - 18, 10, 0, Math.PI * 2);
+  ctx.fill();
+  // The aerial: nested silver sections, rungs, tip over the rear bumper.
+  const lw = w - 22;
+  const lx = x + 11;
+  fillRoundRect(ctx, '#b9bfc3', lx, y - 4, lw, body - 14, 2);
+  fillRoundRect(ctx, '#d6dadd', lx + 4, y - 4, lw - 8, body - 30, 2);
+  ctx.fillStyle = '#8a9196';
+  for (let ry = y; ry < y + body - 36; ry += 6) ctx.fillRect(lx + 4, ry, lw - 8, 1.5);
+  ctx.fillStyle = '#e0b54a'; // tip
+  ctx.fillRect(lx, y - 6, lw, 4);
+  drawChevrons(ctx, x, y + 8, w);
+  drawCab(ctx, FIRE_RED, x + 2, y + l - cab, w - 4, cab);
+  drawFireLightBar(ctx, x + 2, y + l - cab + 3, w - 4, t);
+}
+
+/**
+ * Crane truck (a mobile crane): a yellow carrier with outrigger beams and
+ * pads, the counterweighted slewing cab, and the telescopic boom stowed
+ * forward over the driver's cab, its hook hanging off the nose.
+ */
+function drawCraneTruck(ctx, v, x, y, w, l, t) {
+  const cab = 30;
+  const body = l - cab - 2;
+  const yellow = '#e3b23c';
+  drawWheels(ctx, x, y, w, l, [0.1, 0.22, 0.34, 0.7, 0.86]);
+  drawBody(ctx, '#4a4744', x + 2, y, w - 4, body, 3); // carrier deck
+  // Outrigger beams and pads, front and rear.
+  for (const oy of [y + 10, y + body - 14]) {
+    ctx.fillStyle = '#c9402c';
+    ctx.fillRect(x - 3, oy, w + 6, 5);
+    fillRoundRect(ctx, '#3a3734', x - 5, oy - 2, 5, 9, 1.5);
+    fillRoundRect(ctx, '#3a3734', x + w, oy - 2, 5, 9, 1.5);
+  }
+  // Counterweight and slewing superstructure at the rear.
+  fillRoundRect(ctx, shade(yellow, -0.3), x + 4, y + 4, w - 8, 22, 3);
+  ctx.fillStyle = '#2b2724';
+  for (let sx = x + 8; sx < x + w - 8; sx += 8) ctx.fillRect(sx, y + 7, 4, 16);
+  drawBody(ctx, yellow, x + 6, y + 26, w - 12, 34, 4);
+  fillRoundRect(ctx, GLASS, x + w - 22, y + 46, 12, 10, 2); // operator's cab
+  // Telescopic boom, stowed forward over the cab and past the nose.
+  const bx = x + w / 2 - 8;
+  drawBody(ctx, yellow, bx, y + 34, 16, l - 34 + 8, 3);
+  ctx.fillStyle = shade(yellow, -0.25);
+  for (const f of [0.35, 0.6, 0.82]) ctx.fillRect(bx, y + 34 + (l - 26) * f, 16, 2);
+  // Hook block swinging a little off the boom head.
+  const swing = Math.sin(t * 3) * 2;
+  ctx.fillStyle = '#3a3734';
+  ctx.fillRect(x + w / 2 - 0.5 + swing, y + l + 4, 1, 6);
+  fillRoundRect(ctx, '#e0b54a', x + w / 2 - 4 + swing, y + l + 9, 8, 7, 2);
+  drawChevrons(ctx, x, y - 2, w);
+  drawCab(ctx, yellow, x + 2, y + l - cab, w / 2 - 10, cab); // offset half-cab beside the boom
+}
+
+/**
+ * Heavy haul truck: a prime mover towing a multi-axle lowboy carrying a
+ * yellow excavator, chained down, with an OVERSIZE LOAD banner and amber
+ * beacons.
+ */
+function drawHeavyHaul(ctx, v, x, y, w, l, t) {
+  const cab = 34;
+  const deck = l - cab - 10;
+  drawWheels(ctx, x, y, w, l, [0.05, 0.11, 0.17, 0.23, 0.29, 0.78, 0.92]);
+  drawBody(ctx, '#3a3734', x, y, w, deck, 2); // lowboy deck
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let ry = y + 6; ry < y + deck - 4; ry += 9) ctx.fillRect(x + 3, ry, w - 6, 1.5);
+  // Gooseneck to the prime mover.
+  ctx.fillStyle = '#2b2724';
+  ctx.fillRect(x + 8, y + deck, w - 16, 10);
+  // The excavator: tracks, house, counterweight, the arm folded forward.
+  const ey = y + 14;
+  const el = deck - 30;
+  fillRoundRect(ctx, '#2b2724', x + 3, ey, 10, el, 3);
+  fillRoundRect(ctx, '#2b2724', x + w - 13, ey, 10, el, 3);
+  ctx.fillStyle = '#5f5a54';
+  for (let ry = ey + 2; ry < ey + el - 2; ry += 5) {
+    ctx.fillRect(x + 4, ry, 8, 2);
+    ctx.fillRect(x + w - 12, ry, 8, 2);
+  }
+  drawBody(ctx, '#e3a92f', x + 10, ey + 8, w - 20, el * 0.55, 5); // house
+  fillRoundRect(ctx, shade('#e3a92f', -0.35), x + 12, ey + 8, w - 24, 10, 3); // counterweight
+  fillRoundRect(ctx, GLASS, x + w - 26, ey + el * 0.32, 12, 14, 2); // operator's cab
+  drawBody(ctx, '#e3a92f', x + w / 2 - 7, ey + el * 0.45, 14, el * 0.5, 3); // boom and stick
+  fillRoundRect(ctx, '#5f5a54', x + w / 2 - 10, ey + el - 10, 20, 12, 3); // bucket
+  // Chains to the deck corners.
+  ctx.strokeStyle = '#c9ced2';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  for (const [ax, ay, bx, by] of [
+    [x + 2, y + 4, x + 12, ey + 6], [x + w - 2, y + 4, x + w - 12, ey + 6],
+    [x + 2, y + deck - 4, x + 12, ey + el - 4], [x + w - 2, y + deck - 4, x + w - 12, ey + el - 4],
+  ]) {
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // OVERSIZE LOAD banner across the rear.
+  fillRoundRect(ctx, '#f2c230', x + 2, y - 4, w - 4, 11, 2);
+  centreText(ctx, 'OVERSIZE', x + w / 2, y + 1.5, 'bold 8px sans-serif', '#2b2724', 'rgba(0,0,0,0)');
+  drawCab(ctx, v.color, x + 3, y + l - cab, w - 6, cab);
+  // Amber beacons on the cab corners.
+  const on = Math.floor(t * 4) % 2;
+  for (const bx of [x + 8, x + w - 8]) {
+    ctx.fillStyle = on ? '#ffb547' : '#9a6a20';
+    ctx.beginPath();
+    ctx.arc(bx, y + l - cab + 5, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 // Oncoming vehicle, nose pointing down the screen. A crashed tanker is
 // drawn jackknifed (`crashAngle`).
 function drawVehicle(ctx, v, t) {
@@ -1519,6 +1710,10 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'reefer') drawReefer(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'flatbed') drawFlatbed(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'lorry') drawLorry(ctx, v, x, v.y, v.width, v.length);
+  else if (v.kind === 'fire') drawFireTruck(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'ladder') drawLadderTruck(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'crane') drawCraneTruck(ctx, v, x, v.y, v.width, v.length, t);
+  else if (v.kind === 'heavyhaul') drawHeavyHaul(ctx, v, x, v.y, v.width, v.length, t);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
   if (v.hazmat) drawHazmatMarks(ctx, x, v.y, v.width, v.length - 36);
   ctx.restore();
