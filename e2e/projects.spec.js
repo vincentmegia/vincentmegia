@@ -97,13 +97,16 @@ for (const project of PROJECTS.filter((p) => !p.fullPageLoad)) {
 	});
 }
 
-// Bus Rush has no ImagePath yet (no screenshot), so it's the one card that
-// exercises projects.html's placeholder-tile branch.
-test('a card without a screenshot renders the placeholder tile, not an <img>', async ({ page }) => {
+// Every card now has an ImagePath, so none renders projects.html's
+// "Screenshot coming soon" placeholder tile.
+test('every card renders its screenshot, none the placeholder tile', async ({ page }) => {
 	await page.goto('/projects');
-	const card = page.locator('.project-card').filter({ hasText: 'Bus Rush' });
-	await expect(card).toContainText('Screenshot coming soon');
-	await expect(card.locator('img')).toHaveCount(0);
+	await expect(page.locator('#main-content')).not.toContainText('Screenshot coming soon');
+	for (const project of PROJECTS) {
+		const img = page.locator('.project-card').filter({ hasText: project.title }).locator('img');
+		await expect(img).toHaveCount(1);
+		await expect.poll(() => img.evaluate((el) => el.naturalWidth), { message: project.title }).toBeGreaterThan(0);
+	}
 });
 
 test('the Bus Stop Finder card opens /bus-stops with a full page load, not an HTMX swap', async ({ page }) => {

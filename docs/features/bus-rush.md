@@ -4,8 +4,9 @@
 
 `Shipped` — implemented and verified against a real Postgres: Go unit +
 DB-gated e2e tests, `node --test` rules tests, and `e2e/bus-rush.spec.js`
-(Chromium + WebKit). Tuning numbers remain illustrative. No `/projects`
-screenshot yet (placeholder tile).
+(Chromium + WebKit). Tuning numbers remain illustrative. The `/projects`
+card uses `web/static/images/busrush/screenshot.png`, a staged 16:10 crop
+of the canvas.
 
 ## Summary
 

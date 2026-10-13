@@ -25,8 +25,8 @@ out to the End marker). Library Shift (`docs/features/library-game.md`)
 followed with its own real screenshot; Bus Stop Finder
 (`docs/features/bus-stop-finder.md`) is the one `FullPageLoad` card (a
 plain "Open" link, because its route sets its own CSP); Bus Rush
-(`docs/features/bus-rush.md`) has no screenshot yet, so it's the one card
-showing the "Screenshot coming soon" placeholder tile; Hospital Shift
+(`docs/features/bus-rush.md`) has a staged gameplay capture (see Open
+Questions); Hospital Shift
 (`docs/features/hospital-shift.md`) has a real mid-shift screenshot. None
 of the seven is a mockup. The four fictional sample cards the pulled-in design
 mockup originally shipped with (Fieldnotes, Tidewatch, Loom UI,
@@ -117,7 +117,7 @@ were removed rather than left in place until real replacements existed
    written up (see Open Questions); the grid isn't padded with placeholder
    cards in the meantime.
 3. Each card shows a real screenshot (a live capture of the game/demo in
-   use) or, for Bus Rush, the "Screenshot coming soon" tile, plus a title,
+   use), plus a title,
    a description, and its tag pills.
 4. Every card has an internal LiveURL (External: false), so it renders a
    "Play now" link rather than a "Live demo" link — except Bus Stop Finder
@@ -209,7 +209,7 @@ States this feature's UI must handle:
 | -------------------------------- | -------- |
 | Default                          | Grid renders all entries in `projectItems`. |
 | Card with `ImagePath` set         | Renders a real `<img>`, `object-cover`'d into the `aspect-[16/10]` tile — five of the six cards. |
-| Card with no `ImagePath`          | Renders the "Screenshot coming soon" placeholder tile instead of an `<img>` — currently the Bus Rush card. |
+| Card with no `ImagePath`          | Renders the "Screenshot coming soon" placeholder tile instead of an `<img>` — no current card (all seven have screenshots). |
 | Card with no `LiveURL`            | Omits the "Live demo"/"Play now" link entirely — no disabled/greyed-out link. |
 | Loading                          | Nav swap into `/projects` uses the shell's existing `#nav-loading` indicator — no new indicator needed. |
 | Empty (`projectItems` has zero entries) | Not currently exercised — `projectItems` always has at least one hardcoded entry; the template's `{{range}}` would simply render nothing, no empty-state message. |
@@ -322,7 +322,7 @@ grid order:
   tags `Go`/`HTMX`/`LTA DataMall`, `TagTint: "accent"`, `ImagePath:
   "/static/images/bus/screenshot.png"`.
 * **Bus Rush** — `LiveURL: "/bus-rush"`, tags `Go`/`Canvas`/`PostgreSQL`,
-  `TagTint: "primary"`, no `ImagePath` yet (placeholder tile).
+  `TagTint: "primary"`, `ImagePath: "/static/images/busrush/screenshot.png"`.
 
 `projectItems` originally also had four fictional sample projects
 (Fieldnotes/Tidewatch/Loom UI/Nightlight, the pulled-in design mockup's own
@@ -398,10 +398,11 @@ what copy, is now content, not code.
       fixture (all six entries) and `cards.toHaveCount(PROJECTS.length)`
       assertion cover the current grid.
 * [x] A card with `ImagePath` set renders a real `<img>`; a card without it
-      renders the "Screenshot coming soon" placeholder tile — the `<img>`
-      branch is visually verified (five cards), and the placeholder branch
-      is covered by `e2e/projects.spec.js` via the Bus Rush card (no
-      `<img>`, "Screenshot coming soon" shown).
+      renders the "Screenshot coming soon" placeholder tile —
+      `e2e/projects.spec.js` checks every card loads its `<img>` and none
+      shows the placeholder. Since Bus Rush got its screenshot no card
+      exercises the placeholder branch any more; it's kept for future
+      cards and is no longer covered by a test.
 * [x] A card with `LiveURL` set and `External: true` renders a "Live demo"
       link that opens in a new tab with `rel="noopener noreferrer"`; a card
       without `LiveURL` renders no such link — `e2e/projects.spec.js` asserts
@@ -462,7 +463,7 @@ what copy, is now content, not code.
   (`docs/features/puzzle-solver.md`) followed as a third, same pattern
   including its own real screenshot. Library Shift, Bus Stop Finder and Bus
   Rush followed the same way (Bus Stop Finder as a `FullPageLoad` card;
-  Bus Rush still without a screenshot).
+  Bus Rush, whose screenshot came later).
 * More of Vincent's actual work (copy, screenshots, live links) to keep
   growing the grid beyond these six cards.
 * Should `projectItems` move to Postgres, following the same path
@@ -482,7 +483,10 @@ what copy, is now content, not code.
   `web/static/images/fishing/` otherwise holds. Kitchen Shift, Puzzle
   Solver, Library Shift and Bus Stop Finder each got the same treatment
   once they shipped (`web/static/images/{cooking,puzzle,library,bus}/
-  screenshot.png`). Bus Rush doesn't have one yet.
+  screenshot.png`). Bus Rush's (`web/static/images/busrush/screenshot.png`
+  — `bus/` was already Bus Stop Finder's) is a 16:10 crop of a staged
+  scene, set up through `window.__busRushTestHooks` (place/pause), since
+  its canvas is portrait and random traffic rarely frames well.
 
 ---
 

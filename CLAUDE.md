@@ -71,8 +71,8 @@ touching that area rather than expecting this section to carry it:
   achievements, dodge oncoming traffic, collect fares, buy
   Engine/Steering/Bumpers/Fare Box/Ram Plating upgrades;
   Postgres leaderboard, `localStorage` progress) — `docs/features/bus-rush.md`.
-  Rules/tuning live in `web/static/js/busrush/rules.js`; no screenshot yet,
-  so its `/projects` card shows the placeholder tile.
+  Rules/tuning live in `web/static/js/busrush/rules.js`; its `/projects`
+  card screenshot is `web/static/images/busrush/screenshot.png`.
 - **Hospital Shift** (`/hospital-shift`, canvas ER-nurse shift sim mirroring
   Library Shift — triage the queue into 4 beds, then treat each patient's
   plan: Vitals/IV/Surgery skill checks, Oxygen find-the-hearts, a Bandage

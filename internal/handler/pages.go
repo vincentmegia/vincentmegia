@@ -139,9 +139,10 @@ func (h *PagesHandler) Projects(w http.ResponseWriter, r *http.Request) {
 // Bus Stop Finder (docs/features/bus-stop-finder.md) is the fifth entry.
 // It's FullPageLoad: /bus-stops sets its own route-scoped CSP for Google
 // Maps, which only applies on a real document load, never an HTMX swap.
-// Bus Rush (docs/features/bus-rush.md) is the sixth; it has no screenshot
-// yet, so it renders the placeholder tile. Hospital Shift (docs/features/
-// hospital-shift.md) is the seventh.
+// Bus Rush (docs/features/bus-rush.md) is the sixth; its screenshot
+// (web/static/images/busrush/screenshot.png) is a staged 16:10 crop of the
+// portrait canvas, set up via window.__busRushTestHooks. Hospital Shift
+// (docs/features/hospital-shift.md) is the seventh.
 var projectItems = []Project{
 	{
 		Title:       "Fishing Game",
@@ -190,6 +191,7 @@ var projectItems = []Project{
 		Tags:        []string{"Go", "Canvas", "PostgreSQL"},
 		TagTint:     "primary",
 		LiveURL:     "/bus-rush",
+		ImagePath:   "/static/images/busrush/screenshot.png",
 	},
 	{
 		Title:       "Hospital Shift",
