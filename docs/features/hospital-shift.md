@@ -108,8 +108,9 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     retry-on-failure).
   * Finishing a step tips +5 Gard; finishing the last step discharges the
     patient for a Red/Yellow/Green bonus (60/40/25 Gard) and frees the bed.
-* **Karen** (the scripted difficult visitor): once per run on a shift
-  rolled from 10–15, an angry relative storms the Triage Desk demanding her
+* **Karen** (the scripted difficult visitor): once per run, on shift 2
+  (rolled from 10–15 until the user asked for shift 2), an angry relative
+  storms the Triage Desk demanding her
   mother be seen first. "Explain Triage" (+30 Gard) or "Let Her Cut In" (a
   mistake and −50 Ward Mood); a 12 s timer auto-resolves as the latter.
 * **Ward Mood** (Library Mood's analog): starts at 100, −25 per mistake,
@@ -267,7 +268,7 @@ The user asked for a new project, "hospital shift." When asked, they chose:
 5. Last step done → discharged (+Gard), bed frees.
 6. Coffee Machine any time: Coffee Pour restores Sanity and lifts Ward Mood.
 7. 7:00 PM → 20 s handover → enter the Charge Nurse's office → paycheck.
-8. Repeat for 30 shifts (Karen once, shift 10–15). Shift 30: Final Paycheck +
+8. Repeat for 30 shifts (Karen once, on shift 2). Shift 30: Final Paycheck +
    optional leaderboard submission; "Start New Month" resets.
 ```
 

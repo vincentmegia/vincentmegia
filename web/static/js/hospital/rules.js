@@ -120,13 +120,14 @@ export function inGameTimeLabel(clockSecondsRemaining, totalClockSeconds) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Karen — the angry relative, once per run on a shift rolled from 10–15,
-//    derived deterministically from the save's seed so it survives a reload
-//    (Library Shift's karenShiftForSeed, same mulberry32 hash).
+// 3. Karen — the angry relative, once per run. She was rolled from shifts
+//    10–15 (Library Shift's karenShiftForSeed, same mulberry32 hash); the
+//    user asked for her on shift 2, so the range is now just 2 — widen
+//    MIN/MAX again to bring back the roll.
 // ---------------------------------------------------------------------------
 
-export const KAREN_SHIFT_MIN = 10;
-export const KAREN_SHIFT_MAX = 15;
+export const KAREN_SHIFT_MIN = 2;
+export const KAREN_SHIFT_MAX = 2;
 
 function mulberry32(seed) {
   let t = seed >>> 0;
