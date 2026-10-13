@@ -873,6 +873,10 @@ export function init(canvas, elements) {
       kind: 'oxygen',
       items: points.map((p, i) => ({ id: i, x: p.x, y: p.y, kind: kinds[i], found: false, fade: 0, phase: random() * Math.PI * 2 })),
       hits: 0, required: OXYGEN_HEARTS, squeeze: 0, flash: null,
+      // The monitor's SpO₂ climbs from the patient's triage reading to 98%
+      // as the good pumps land (display only — the step is the three hearts).
+      spo2Start: Math.min(88, patientInfo.get(shiftState.activeTask?.patientId)?.vitals?.spo2 ?? 86),
+      spo2: Math.min(88, patientInfo.get(shiftState.activeTask?.patientId)?.vitals?.spo2 ?? 86),
     };
   }
 
@@ -1373,7 +1377,9 @@ export function init(canvas, elements) {
       if (overlay.flash.seconds <= 0) overlay.flash = null;
     }
     if (overlay.kind === 'oxygen') {
-      overlay.squeeze = Math.max(0, overlay.squeeze - dt * 3);
+      overlay.squeeze = Math.max(0, overlay.squeeze - dt * 2.2);
+      const spo2Target = overlay.spo2Start + (98 - overlay.spo2Start) * (overlay.hits / overlay.required);
+      overlay.spo2 += (spo2Target - overlay.spo2) * Math.min(1, dt * 2.5);
       for (const it of overlay.items) if (it.found) it.fade = Math.min(1, it.fade + dt * 2.5);
     } else if (overlay.kind === 'skill') {
       const speed = skillCheckSweepSpeed(currentShiftNumber, overlay.task) * shakyHandsSweepMultiplier(currentIntensity());
@@ -2670,70 +2676,251 @@ export function init(canvas, elements) {
     }
   }
 
+  /** The Oxygen overlay's left column: SpO₂ monitor, then the patient in bed with the bag-valve mask. */
+  const OXYGEN_BAY = { x: PANEL.x + 24, y: 142, w: 230, h: 336 };
+
+  function drawOxygenMonitor(t) {
+    const m = { x: OXYGEN_BAY.x + 12, y: OXYGEN_BAY.y + 12, w: OXYGEN_BAY.w - 24, h: 74 };
+    drawRoundRect(ctx, m.x - 4, m.y - 4, m.w + 8, m.h + 8, 10, '#4a5560');
+    drawRoundRect(ctx, m.x, m.y, m.w, m.h, 7, '#14211f');
+    const spo2 = Math.round(overlay.spo2);
+    const color = spo2 >= 95 ? '#7fd68a' : (spo2 >= 90 ? '#e8c45a' : '#ef6f6a');
+    // Pleth wave: bigger, steadier beats as saturation recovers.
+    const amp = 6 + 10 * ((spo2 - overlay.spo2Start) / Math.max(1, 98 - overlay.spo2Start));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= 110; px += 2) {
+      const phase = ((px + t * 90) % 46) / 46;
+      const dy = phase < 0.35 ? -Math.sin((phase / 0.35) * Math.PI) * amp : -Math.sin(((phase - 0.35) / 0.65) * Math.PI) * amp * 0.25;
+      const x = m.x + 10 + px;
+      const y = m.y + 50 + dy;
+      if (px === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(200,230,220,0.7)';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('SpO₂ %', m.x + m.w - 10, m.y + 18);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 32px ui-monospace, monospace';
+    ctx.fillText(String(spo2), m.x + m.w - 10, m.y + 56);
+    // Alarm light blinks while it's low.
+    if (spo2 < 90 && Math.sin(t * 8) > 0) {
+      ctx.fillStyle = '#ef6f6a';
+      ctx.beginPath();
+      ctx.arc(m.x + 12, m.y + 12, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawOxygenPatient(info, t) {
+    const bay = OXYGEN_BAY;
+    const cx = bay.x + 84;
+    const squeeze = overlay.squeeze;
+    // Bed: frame, mattress, pillow.
+    drawRoundRect(ctx, bay.x + 22, bay.y + 108, 140, 216, 14, '#9aa6b0');
+    drawRoundRect(ctx, bay.x + 28, bay.y + 114, 128, 204, 10, '#f6f8fa');
+    drawRoundRect(ctx, bay.x + 42, bay.y + 120, 100, 36, 14, '#ffffff');
+    // The patient, head on the pillow; the blanket rises with each breath.
+    const scale = 1.25;
+    const S = scale * PERSON_SCALE;
+    const bodyY = bay.y + 210;
+    const headY = bodyY - 34 * S;
+    if (info) drawHospitalPerson(ctx, cx, bodyY, { personalityKey: info.personalityKey, scale });
+    const breath = 3 * squeeze + 1.2 * Math.sin(t * 2.4);
+    const level = findTriageLevel(shiftState.beds[shiftState.activeTask?.bedIndex]?.level ?? 'yellow');
+    drawRoundRect(ctx, bay.x + 32, bodyY - 30 - breath, 120, 136 + breath, 10, shadeColor(level.color, 0.55));
+    drawRoundRect(ctx, bay.x + 32, bodyY - 30 - breath, 120, 12, [10, 10, 0, 0], shadeColor(level.color, 0.75));
+    ctx.fillStyle = PERSON_TEMPLATES[info?.personalityKey]?.headColor ?? '#e0ac69';
+    for (const dx of [-24, 24]) {
+      ctx.beginPath();
+      ctx.arc(cx + dx, bodyY - 14 - breath, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Mask over nose and mouth, fogging on each pump.
+    const maskY = headY + 7;
+    ctx.fillStyle = `rgba(190,228,240,${0.55 + 0.35 * squeeze})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, maskY, 15, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(70,120,140,0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(70,120,140,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 15, maskY - 2);
+    ctx.lineTo(cx - 22, maskY - 10);
+    ctx.moveTo(cx + 15, maskY - 2);
+    ctx.lineTo(cx + 22, maskY - 10);
+    ctx.stroke();
+
+    // Valve + self-inflating bag to the right of the head, reservoir behind it.
+    const valveX = cx + 20;
+    drawRoundRect(ctx, valveX, maskY - 6, 16, 12, 3, '#5a7080');
+    const bagCx = cx + 74;
+    const bagRx = 38 - 8 * squeeze;
+    const bagRy = 20 - 5 * squeeze;
+    // Reservoir bag (green) hanging below, and the O₂ tube up to the wall flowmeter.
+    ctx.fillStyle = 'rgba(127,200,140,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(bagCx + 14, maskY + 50, 15, 22 + 3 * squeeze, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#8fbf9a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(bagCx + 26, maskY + 60);
+    ctx.bezierCurveTo(bay.x + bay.w - 4, maskY + 70, bay.x + bay.w - 4, bay.y + 140, bay.x + bay.w - 16, bay.y + 114);
+    ctx.stroke();
+    drawRoundRect(ctx, bay.x + bay.w - 28, bay.y + 96, 22, 18, 4, '#3f7a6a');
+    ctx.fillStyle = CREAM;
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('O₂', bay.x + bay.w - 17, bay.y + 109);
+    // The bag itself, ribbed.
+    ctx.fillStyle = '#7fb8d0';
+    ctx.beginPath();
+    ctx.ellipse(bagCx, maskY, bagRx, bagRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4f8aa8';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(79,138,168,0.45)';
+    ctx.lineWidth = 1.5;
+    for (let i = -2; i <= 2; i++) {
+      const rx = bagCx + i * bagRx * 0.32;
+      const ry = bagRy * Math.sqrt(Math.max(0, 1 - (i * 0.32) ** 2)) * 0.85;
+      ctx.beginPath();
+      ctx.moveTo(rx, maskY - ry);
+      ctx.lineTo(rx, maskY + ry);
+      ctx.stroke();
+    }
+    drawRoundRect(ctx, valveX + 14, maskY - 4, bagCx - bagRx - valveX - 12, 8, 2, '#8a9aa6');
+    // Gloved hand squeezing from above.
+    ctx.fillStyle = '#9c8ed8';
+    drawRoundRect(ctx, bagCx - 24, maskY - bagRy - 10 + 6 * squeeze, 48, 16, 8, '#9c8ed8');
+    for (let i = 0; i < 4; i++) drawRoundRect(ctx, bagCx - 22 + i * 12, maskY - bagRy + 2 + 6 * squeeze, 10, 12, 5, '#8a7cc8');
+
+    // A puff of air travelling down the tube into the mask after each pump.
+    if (squeeze > 0) {
+      const k = 1 - squeeze;
+      for (let i = 0; i < 3; i++) {
+        const f = Math.min(1, k * 1.4 + i * 0.12);
+        ctx.fillStyle = `rgba(220,245,255,${squeeze})`;
+        ctx.beginPath();
+        ctx.arc(bagCx - bagRx + (cx - (bagCx - bagRx)) * f, maskY - 2 + i * 2, 3.5 - i * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   function drawOxygenOverlay() {
     drawPanel('Oxygen', 'Find the hearts to pump the bag — three good pumps. Skulls are missed pumps!');
     const info = patientInfo.get(shiftState.activeTask?.patientId);
     const t = performance.now() / 1000;
-    const squeeze = overlay.squeeze;
 
-    // Left column: the patient with a mask, tubed to the bag above.
-    drawRoundRect(ctx, PANEL.x + 24, 142, 230, 336, 14, '#e2ece8');
-    if (info) drawHospitalPerson(ctx, PANEL.x + 110, 420, { personalityKey: info.personalityKey, scale: 1.25 });
-    drawRoundRect(ctx, PANEL.x + 94, 352, 32, 22, 9, 'rgba(160,210,230,0.9)');
-    ctx.strokeStyle = '#9aa6b0';
-    ctx.lineWidth = 5;
+    // Left: the patient bay.
+    drawRoundRect(ctx, OXYGEN_BAY.x, OXYGEN_BAY.y, OXYGEN_BAY.w, OXYGEN_BAY.h, 14, '#dfe9e5');
+    drawOxygenMonitor(t);
+    drawOxygenPatient(info, t);
+
+    // Right: the search field — a deep-teal airway with drifting O₂ bubbles.
+    const field = { x: OXYGEN_SCENE.x - 30, y: OXYGEN_SCENE.y - 30, w: OXYGEN_SCENE.w + 60, h: OXYGEN_SCENE.h + 60 };
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(PANEL.x + 126, 362);
-    ctx.quadraticCurveTo(PANEL.x + 200, 330, PANEL.x + 190, 262);
-    ctx.stroke();
-    ctx.fillStyle = '#7fb8d0';
-    ctx.beginPath();
-    ctx.ellipse(PANEL.x + 190, 210, 40 - 12 * squeeze, 52 - 10 * squeeze, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#4f8aa8';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    drawRoundRect(ctx, PANEL.x + 176, 150 + 8 * squeeze, 28, 14, 5, '#5a7080');
-    if (squeeze > 0) {
-      ctx.fillStyle = `rgba(200,235,250,${squeeze})`;
-      for (const [dx, dy, r] of [[-26, -22, 9], [-40, -36, 6], [-14, -40, 5]]) {
-        ctx.beginPath();
-        ctx.arc(PANEL.x + 110 + dx, 352 + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    ctx.roundRect(field.x, field.y, field.w, field.h, 16);
+    ctx.clip();
+    const bg = ctx.createLinearGradient(0, field.y, 0, field.y + field.h);
+    bg.addColorStop(0, '#2c5a66');
+    bg.addColorStop(1, '#1d3b45');
+    ctx.fillStyle = bg;
+    ctx.fillRect(field.x, field.y, field.w, field.h);
+    for (let i = 0; i < 22; i++) {
+      const speed = 14 + (i % 4) * 7;
+      const bx = field.x + ((i * 97 + Math.sin(t * 0.8 + i) * 14) % field.w);
+      const by = field.y + field.h - ((t * speed + i * 53) % (field.h + 20)) + 10;
+      const r = 2 + (i % 5);
+      ctx.strokeStyle = 'rgba(190,232,245,0.22)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(bx, by, r, 0, Math.PI * 2);
+      ctx.stroke();
     }
+    ctx.restore();
 
-    // The scene: bobbing hearts (pulsing) and skulls.
-    drawRoundRect(ctx, OXYGEN_SCENE.x - 30, OXYGEN_SCENE.y - 30, OXYGEN_SCENE.w + 60, OXYGEN_SCENE.h + 60, 16, '#ece6da');
     for (const it of overlay.items) {
-      const bob = Math.sin(t * 2 + it.phase) * 4;
-      const alpha = it.kind === 'skull' ? 1 - it.fade : 1;
-      if (alpha <= 0) continue;
-      ctx.save();
-      ctx.globalAlpha = alpha;
+      const bob = Math.sin(t * 2 + it.phase) * 5;
+      const x = it.x;
+      const y = it.y + bob;
       if (it.kind === 'heart') {
-        const pulse = it.found ? 1 : 1 + 0.08 * Math.sin(t * 6 + it.phase);
-        drawHeart(it.x, it.y + bob, 20 * pulse, it.found ? 'rgba(224,72,79,0.25)' : '#e0484f');
-        if (it.found) drawLabelChip(ctx, it.x, it.y + bob, '✓', 'bold 12px sans-serif', '#5fa86a', CREAM);
+        if (!it.found) {
+          const pulse = 1 + 0.1 * Math.max(0, Math.sin(t * 5 + it.phase));
+          const glow = ctx.createRadialGradient(x, y, 4, x, y, 40);
+          glow.addColorStop(0, 'rgba(255,140,150,0.45)');
+          glow.addColorStop(1, 'rgba(255,140,150,0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(x, y, 40, 0, Math.PI * 2);
+          ctx.fill();
+          drawHeart(x, y, 21 * pulse, '#ef4f5a');
+        } else {
+          // Burst: expanding rings and a rising "+O₂", then a faint outline stays.
+          const k = it.fade;
+          if (k < 1) {
+            ctx.strokeStyle = `rgba(255,170,175,${1 - k})`;
+            ctx.lineWidth = 3;
+            for (const r of [18 + 40 * k, 10 + 26 * k]) {
+              ctx.beginPath();
+              ctx.arc(x, y, r, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1 - k;
+            drawLabelChip(ctx, x, y - 22 - 30 * k, '+O₂', 'bold 13px sans-serif', '#5fa86a', CREAM);
+            ctx.globalAlpha = 1;
+          }
+          drawHeart(x, y, 16, 'rgba(255,170,175,0.25)');
+        }
       } else {
-        drawSkull(it.x, it.y + bob, 21);
+        const alpha = 1 - it.fade;
+        if (alpha <= 0) continue;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const glow = ctx.createRadialGradient(x, y, 4, x, y, 36);
+        glow.addColorStop(0, 'rgba(120,80,150,0.4)');
+        glow.addColorStop(1, 'rgba(120,80,150,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, 36, 0, Math.PI * 2);
+        ctx.fill();
+        const shake = it.found ? Math.sin(t * 60) * 3 * alpha : 0;
+        drawSkull(x + shake, y, 21);
         if (it.found) {
-          ctx.strokeStyle = '#d9534f';
+          ctx.strokeStyle = '#ef4f5a';
           ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.moveTo(it.x - 16, it.y + bob - 18);
-          ctx.lineTo(it.x + 16, it.y + bob + 14);
-          ctx.moveTo(it.x + 16, it.y + bob - 18);
-          ctx.lineTo(it.x - 16, it.y + bob + 14);
+          ctx.moveTo(x - 16, y - 18);
+          ctx.lineTo(x + 16, y + 14);
+          ctx.moveTo(x + 16, y - 18);
+          ctx.lineTo(x - 16, y + 14);
           ctx.stroke();
         }
+        ctx.restore();
       }
-      ctx.restore();
     }
 
+    // Pump counter.
+    const pipsX = OXYGEN_SCENE.x + OXYGEN_SCENE.w / 2;
+    ctx.fillStyle = LABEL_TEXT_COLOR;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Pumps ${overlay.hits}/${overlay.required}`, pipsX - 34, 510);
     for (let i = 0; i < overlay.required; i++) {
-      ctx.globalAlpha = 1;
-      drawHeart(OXYGEN_SCENE.x + OXYGEN_SCENE.w / 2 - 30 + i * 30, 506, 9, i < overlay.hits ? '#e0484f' : 'rgba(58,42,42,0.2)');
+      drawHeart(pipsX - 8 + i * 32, 508, 11, i < overlay.hits ? '#ef4f5a' : 'rgba(58,42,42,0.18)');
     }
     drawFlash(160);
   }

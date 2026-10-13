@@ -73,7 +73,13 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     good pump (three finish it); a skull is a missed skill check — a
     mistake — and fades out so one slip can't cost twice. Changed from a
     3-hit timing bar at the user's request ("make it find hearts and
-    there will be skulls that symbol missed skill checks").
+    there will be skulls that symbol missed skill checks"). Later restyled
+    when the user asked to "make it better": the patient lies in bed
+    under an SpO₂ monitor that climbs from their reading (≤ 88%, alarm
+    blinking) to 98% as pumps land; a ribbed bag-valve mask with a gloved
+    hand, reservoir bag and O₂ line squeezes and puffs air into the mask;
+    the search field is a deep-teal airway with drifting bubbles, glowing
+    hearts that burst into "+O₂", and skulls that shake when hit.
   * **IV** (skill check, 1 hit, narrower) — the needle sways over the arm;
     tap when it's over the vein.
   * **Surgery** (skill check, 3 stages: Incision → Repair → Sutures,
