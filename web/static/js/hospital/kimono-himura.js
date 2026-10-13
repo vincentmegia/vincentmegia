@@ -457,10 +457,17 @@ function drawHead(ctx, stress, t) {
   }
 }
 
+/** Each eye is drawn at this size around its own center (the user: "make the eyes a bit more smaller"). */
+const EYE_SCALE = 0.68;
+
 function drawEyes(ctx, stress) {
-  const h = 4.6 - stress * 0.9; // half-height
+  const h = 4.6 - stress * 0.9; // half-height, before EYE_SCALE
   for (const dir of [-1, 1]) {
-    const ex = dir * 4.6;
+    const ex = dir * 4.4;
+    ctx.save();
+    ctx.translate(ex, EYE_Y);
+    ctx.scale(EYE_SCALE, EYE_SCALE);
+    ctx.translate(-ex, -EYE_Y);
     // White of the eye.
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
@@ -504,6 +511,7 @@ function drawEyes(ctx, stress) {
     ctx.moveTo(ex - dir * 1, EYE_Y + h + 0.3);
     ctx.lineTo(ex + dir * 2.4, EYE_Y + h - 0.4);
     ctx.stroke();
+    ctx.restore();
   }
 }
 
