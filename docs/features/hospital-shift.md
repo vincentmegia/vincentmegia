@@ -143,7 +143,11 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   sakura blossoms, wide sleeves, a crimson obi with a gold cord and side
   bow, the collar crossed wearer's-left over right (the reverse is
   funeral dress), tabi and zori; plus the white `nurseCap`, `bunBangs`
-  hair with a kanzashi pin. All new options in `people.js` (the earlier
+  hair with a kanzashi pin. A later polish pass ("make the character
+  more better") gave her a soft hime-cut fringe with tapered side locks
+  and a single high bun, a curved cap, opt-in `lashes`/`lipColor` face
+  details, and an obi with an obiage band, diamond motif and jade
+  obidome in place of side flaps. All new options in `people.js` (the earlier
   `nurseDress` outfit stays available); the staff keep `scrubs`), and the existing patient designs; bedded patients
   are drawn lying down under a blanket.
 * `localStorage` progress (`hospital-game:v1`), Postgres leaderboard

@@ -113,6 +113,23 @@ function drawLibraryFace(ctx, x, y, s, personality, angryTint) {
     ctx.arc(ex - 0.5 * s, eyeY - 0.5 * s, 0.5 * s, 0, Math.PI * 2);
     ctx.fill();
 
+    if (personality.lashes) {
+      // Opt-in (Hospital Shift's Kimono Himura): a second sparkle, an
+      // upper lash line and a flick at the outer corner.
+      ctx.beginPath();
+      ctx.arc(ex + 0.6 * s, eyeY + 0.9 * s, 0.3 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = personality.eyeColor;
+      ctx.lineWidth = Math.max(0.8, 0.5 * s);
+      ctx.beginPath();
+      ctx.ellipse(ex, eyeY, rx * 1.05, ry * 1.02, 0, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ex + dir * rx * 0.95, eyeY - ry * 0.45);
+      ctx.lineTo(ex + dir * (rx + 1.1 * s), eyeY - ry * 0.85);
+      ctx.stroke();
+    }
+
     // Eyebrow — angle mirrors between the two eyes (a V-shape frown reads
     // as angled DOWN toward the nose on both sides, not literally parallel
     // tilted lines), so `dir` flips the sign for the outer-vs-inner end.
@@ -136,7 +153,7 @@ function drawLibraryFace(ctx, x, y, s, personality, angryTint) {
 
   // Mouth: curve sign/magnitude from personality.mouthCurve — a small arc
   // whose bow direction and depth vary, rather than one fixed smile shape.
-  ctx.strokeStyle = '#8a4a4a';
+  ctx.strokeStyle = personality.lipColor || '#8a4a4a';
   ctx.lineWidth = Math.max(1, 0.8 * s);
   const mouthY = headCenterY + 5 * s;
   const curve = personality.mouthCurve;
@@ -200,31 +217,45 @@ function drawBackHair(ctx, x, headY, s, personality) {
     ctx.arc(x, headY - 12.5 * s, 4.8 * s, 0, Math.PI * 2);
     ctx.fill();
   } else if (personality.hairStyle === 'bunBangs') {
-    // Hospital Shift's Kimono Himura: a neat bun peeking out on both sides
-    // behind the nurse cap, with a kanzashi pin and dangling flowers.
+    // Hospital Shift's Kimono Himura: a rounded bun high at the back,
+    // peeking over the nurse cap, with a soft shine and a kanzashi pin.
     ctx.fillStyle = color;
-    for (const dir of [-1, 1]) {
-      ctx.beginPath();
-      ctx.arc(x + dir * 7 * s, headY - 10.5 * s, 3.6 * s, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.beginPath();
+    ctx.arc(x + 1 * s, headY - 13.5 * s, 5.4 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = shadeColor(color, 0.22);
+    ctx.lineWidth = Math.max(1, 0.6 * s);
+    ctx.beginPath();
+    ctx.arc(x + 1 * s, headY - 13.5 * s, 3.6 * s, Math.PI * 1.15, Math.PI * 1.6);
+    ctx.stroke();
+    // Long side hair falling behind the shoulders.
+    drawRoundRect(ctx, x - 11.6 * s, headY - 4 * s, 23.2 * s, 13 * s, 5 * s, color);
     if (personality.kanzashi) {
       ctx.strokeStyle = '#d9b44a';
       ctx.lineWidth = Math.max(1, 0.6 * s);
       ctx.beginPath();
-      ctx.moveTo(x + 6 * s, headY - 12 * s);
-      ctx.lineTo(x + 13 * s, headY - 7 * s);
-      ctx.moveTo(x + 12 * s, headY - 8 * s);
-      ctx.lineTo(x + 12.5 * s, headY - 2.5 * s);
+      ctx.moveTo(x + 2 * s, headY - 15 * s);
+      ctx.lineTo(x + 10 * s, headY - 17.5 * s);
       ctx.stroke();
-      for (const [fx, fy, c] of [[11, -11.5, personality.kanzashi], [12.5, -2, '#ffffff'], [12.6, 0.8, personality.kanzashi]]) {
+      // A cluster of blossoms on the pin, and a short dangle of two more.
+      const flowers = [[9.5, -17.6, 1.5, personality.kanzashi], [7.4, -18.6, 1.1, '#ffffff'], [10.8, -15.6, 1.1, '#ffffff']];
+      ctx.beginPath();
+      ctx.moveTo(x + 10 * s, headY - 16 * s);
+      ctx.lineTo(x + 11 * s, headY - 11 * s);
+      ctx.stroke();
+      flowers.push([11, -10.6, 0.9, personality.kanzashi], [11.2, -8.6, 0.8, '#ffffff']);
+      for (const [fx, fy, r, c] of flowers) {
         ctx.fillStyle = c;
         for (let i = 0; i < 5; i++) {
-          const a = (i / 5) * Math.PI * 2;
+          const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
           ctx.beginPath();
-          ctx.arc(x + fx * s + Math.cos(a) * 1.1 * s, headY + fy * s + Math.sin(a) * 1.1 * s, 0.8 * s, 0, Math.PI * 2);
+          ctx.arc(x + fx * s + Math.cos(a) * r * s, headY + fy * s + Math.sin(a) * r * s, r * 0.7 * s, 0, Math.PI * 2);
           ctx.fill();
         }
+        ctx.fillStyle = '#f2c94c';
+        ctx.beginPath();
+        ctx.arc(x + fx * s, headY + fy * s, r * 0.35 * s, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   } else if (personality.hairStyle === 'bob') {
@@ -289,12 +320,33 @@ function drawFrontHair(ctx, x, headY, s, personality) {
   ctx.fill();
 
   if (personality.hairStyle === 'bunBangs') {
-    // A straight-cut fringe across the forehead and short side locks
-    // framing the cheeks.
-    drawRoundRect(ctx, x - 9.4 * s, headY - 7.5 * s, 18.8 * s, 4.6 * s, 1.2 * s, color);
+    // A soft hime-cut fringe that follows the forehead, its lower edge in
+    // three gentle points, and side locks tapering to the jaw.
+    ctx.beginPath();
+    ctx.moveTo(x - 10.4 * s, headY - 3 * s);
+    ctx.quadraticCurveTo(x - 9 * s, headY - 11 * s, x, headY - 11 * s);
+    ctx.quadraticCurveTo(x + 9 * s, headY - 11 * s, x + 10.4 * s, headY - 3 * s);
+    ctx.quadraticCurveTo(x + 7.5 * s, headY - 4.6 * s, x + 6 * s, headY - 3.4 * s);
+    ctx.quadraticCurveTo(x + 4 * s, headY - 5 * s, x + 2 * s, headY - 3.6 * s);
+    ctx.quadraticCurveTo(x, headY - 5.2 * s, x - 2 * s, headY - 3.6 * s);
+    ctx.quadraticCurveTo(x - 4 * s, headY - 5 * s, x - 6 * s, headY - 3.4 * s);
+    ctx.quadraticCurveTo(x - 7.5 * s, headY - 4.6 * s, x - 10.4 * s, headY - 3 * s);
+    ctx.closePath();
+    ctx.fill();
     for (const dir of [-1, 1]) {
-      drawRoundRect(ctx, x + (dir < 0 ? -10.8 : 8.2) * s, headY - 4 * s, 2.6 * s, 9.5 * s, 1.3 * s, color);
+      ctx.beginPath();
+      ctx.moveTo(x + dir * 10.6 * s, headY - 4 * s);
+      ctx.quadraticCurveTo(x + dir * 11.4 * s, headY + 3 * s, x + dir * 9.6 * s, headY + 8.5 * s);
+      ctx.quadraticCurveTo(x + dir * 8.4 * s, headY + 3 * s, x + dir * 8.2 * s, headY - 3 * s);
+      ctx.closePath();
+      ctx.fill();
     }
+    // Shine across the crown.
+    ctx.strokeStyle = shadeColor(color, 0.28);
+    ctx.lineWidth = Math.max(1, 0.7 * s);
+    ctx.beginPath();
+    ctx.arc(x, headY - 2 * s, 8.4 * s, Math.PI * 1.22, Math.PI * 1.42);
+    ctx.stroke();
   } else if (personality.hairStyle === 'bangs') {
     // A soft fringe of three scallops across the forehead, plus side locks.
     for (const dx of [-5.5, 0, 5.5]) {
@@ -654,21 +706,36 @@ function drawOutfitDetail(ctx, x, y, s, personality) {
     ctx.moveTo(x + 4 * s, torsoTop);
     ctx.lineTo(x - 2.2 * s, torsoTop + 8.5 * s);
     ctx.stroke();
-    // Obi: a broad sash with a contrasting cord and a bow at the side.
+    // Obi: a broad sash with a soft obiage band peeking above it and an
+    // obijime cord with a jade obidome at the center.
     const obiTop = torsoTop + 10.5 * s;
-    drawRoundRect(ctx, x - 11.2 * s, obiTop, 22.4 * s, 6.5 * s, 1 * s, obi);
-    drawRoundRect(ctx, x - 11.2 * s, obiTop + 0.4 * s, 22.4 * s, 0.9 * s, 0.4 * s, shadeColor(obi, 0.3));
-    drawRoundRect(ctx, x - 11.2 * s, obiTop + 5.2 * s, 22.4 * s, 0.9 * s, 0.4 * s, shadeColor(obi, 0.3));
-    drawRoundRect(ctx, x - 11.2 * s, obiTop + 2.8 * s, 22.4 * s, 1 * s, 0.4 * s, '#f2c94c');
-    ctx.fillStyle = shadeColor(obi, -0.12);
-    for (const dir of [-1, 1]) {
+    drawRoundRect(ctx, x - 11.2 * s, obiTop - 1.4 * s, 22.4 * s, 2 * s, 1 * s, personality.obiageColor || '#f7d6e0');
+    drawRoundRect(ctx, x - 11.2 * s, obiTop, 22.4 * s, 6.6 * s, 0.8 * s, obi);
+    ctx.strokeStyle = shadeColor(obi, 0.25);
+    ctx.lineWidth = Math.max(0.6, 0.35 * s);
+    for (const dy of [0.9, 5.7]) {
       ctx.beginPath();
-      ctx.moveTo(x + 11 * s, obiTop + 3.3 * s);
-      ctx.lineTo(x + 15 * s, obiTop + 3.3 * s + dir * 4 * s);
-      ctx.lineTo(x + 15.5 * s, obiTop + 3.3 * s + dir * 0.6 * s);
+      ctx.moveTo(x - 11 * s, obiTop + dy * s);
+      ctx.lineTo(x + 11 * s, obiTop + dy * s);
+      ctx.stroke();
+    }
+    // A woven diamond motif in the sash.
+    ctx.fillStyle = shadeColor(obi, 0.18);
+    for (const dx of [-7.5, 7.5]) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx * s, obiTop + 1.6 * s);
+      ctx.lineTo(x + (dx + 1.6) * s, obiTop + 3.3 * s);
+      ctx.lineTo(x + dx * s, obiTop + 5 * s);
+      ctx.lineTo(x + (dx - 1.6) * s, obiTop + 3.3 * s);
       ctx.closePath();
       ctx.fill();
     }
+    drawRoundRect(ctx, x - 11.2 * s, obiTop + 2.9 * s, 22.4 * s, 0.9 * s, 0.4 * s, '#f2c94c');
+    drawRoundRect(ctx, x - 1.8 * s, obiTop + 2.1 * s, 3.6 * s, 2.5 * s, 1 * s, '#5fb39a');
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.arc(x - 0.7 * s, obiTop + 2.9 * s, 0.5 * s, 0, Math.PI * 2);
+    ctx.fill();
   } else if (personality.outfit === 'nurseDress') {
     // Hospital Shift's Kimono Himura: a classic Japanese nurse's one-piece
     // (bodyColor, pale pink) with a white rounded collar, a button placket,
@@ -808,16 +875,17 @@ function drawAccessory(ctx, x, headY, s, personality) {
     const capY = headY - 11 * s;
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(x - 9 * s, capY + 3 * s);
-    ctx.lineTo(x - 7 * s, capY - 4 * s);
-    ctx.lineTo(x + 7 * s, capY - 4 * s);
-    ctx.lineTo(x + 9 * s, capY + 3 * s);
+    ctx.moveTo(x - 8 * s, capY + 2.6 * s);
+    ctx.quadraticCurveTo(x - 7.4 * s, capY - 3.6 * s, x - 5.6 * s, capY - 4 * s);
+    ctx.lineTo(x + 5.6 * s, capY - 4 * s);
+    ctx.quadraticCurveTo(x + 7.4 * s, capY - 3.6 * s, x + 8 * s, capY + 2.6 * s);
+    ctx.quadraticCurveTo(x, capY + 1.2 * s, x - 8 * s, capY + 2.6 * s);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = 'rgba(58,42,42,0.25)';
     ctx.lineWidth = Math.max(0.8, 0.4 * s);
     ctx.stroke();
-    drawRoundRect(ctx, x - 8.3 * s, capY - 0.2 * s, 16.6 * s, 1.6 * s, 0.5 * s, personality.accentColor || '#e48aa6');
+    drawRoundRect(ctx, x - 7.6 * s, capY - 0.3 * s, 15.2 * s, 1.4 * s, 0.5 * s, personality.capStripeColor || personality.accentColor || '#e48aa6');
     ctx.fillStyle = '#d9534f';
     ctx.fillRect(x - 0.6 * s, capY - 3.3 * s, 1.2 * s, 3 * s);
     ctx.fillRect(x - 1.5 * s, capY - 2.4 * s, 3 * s, 1.2 * s);

@@ -244,8 +244,9 @@ export const PERSON_TEMPLATES = {
     // cap, a bun with a straight fringe and a kanzashi pin, tabi and zori.
     label: 'Kimono Himura',
     bodyColor: '#f2a7bd', pantsColor: '#f2a7bd', headColor: '#f8dfcb', hairColor: '#1c1416', accentColor: '#b8324a',
-    patternColor: '#fff4f7', kanzashi: '#e0485f',
-    eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
+    patternColor: '#fff4f7', kanzashi: '#e0485f', obiageColor: '#f7d6e0', capStripeColor: '#e48aa6',
+    eyeColor: '#3a2622', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
+    lashes: true, lipColor: '#c8566a',
     hairStyle: 'bunBangs', outfit: 'kimono', accessory: 'nurseCap', shoeColor: '#8a5a3a',
   },
 };
