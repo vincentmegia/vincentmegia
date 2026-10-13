@@ -238,10 +238,14 @@ export const PERSON_SCALE = 1.55;
 export const PERSON_TEMPLATES = {
   ...PEOPLE_TEMPLATES,
   nurse: {
+    // A Japanese nurse (the user: "make the play look more like a japanese
+    // nurse … also add a lighter skin tone"): pale-pink one-piece with a
+    // white collar, white nurse cap, a bun with a straight fringe, white
+    // stockings and shoes.
     label: 'Kimono Himura',
-    bodyColor: '#6fb3b0', pantsColor: '#5a9e9b', headColor: '#c68e5a', hairColor: '#2a1c14', accentColor: '#34343e',
+    bodyColor: '#f6c9d6', pantsColor: '#fbf7f4', headColor: '#f8dfcb', hairColor: '#1c1416', accentColor: '#e48aa6',
     eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
-    hairStyle: 'bun', outfit: 'scrubs', shoeColor: '#f2f0ea',
+    hairStyle: 'bunBangs', outfit: 'nurseDress', accessory: 'nurseCap', shoeColor: '#ffffff',
   },
 };
 

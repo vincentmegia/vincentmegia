@@ -199,6 +199,15 @@ function drawBackHair(ctx, x, headY, s, personality) {
     ctx.beginPath();
     ctx.arc(x, headY - 12.5 * s, 4.8 * s, 0, Math.PI * 2);
     ctx.fill();
+  } else if (personality.hairStyle === 'bunBangs') {
+    // Hospital Shift's Kimono Himura: a neat bun peeking out on both sides
+    // behind the nurse cap.
+    ctx.fillStyle = color;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(x + dir * 7 * s, headY - 10.5 * s, 3.6 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else if (personality.hairStyle === 'bob') {
     drawRoundRect(ctx, x - 12.5 * s, headY - 6 * s, 25 * s, 15 * s, 5 * s, color);
   } else if (personality.hairStyle === 'pigtails') {
@@ -260,7 +269,14 @@ function drawFrontHair(ctx, x, headY, s, personality) {
   ctx.arc(x, headY - 2.5 * s, 10.6 * s, Math.PI, 0);
   ctx.fill();
 
-  if (personality.hairStyle === 'bangs') {
+  if (personality.hairStyle === 'bunBangs') {
+    // A straight-cut fringe across the forehead and short side locks
+    // framing the cheeks.
+    drawRoundRect(ctx, x - 9.4 * s, headY - 7.5 * s, 18.8 * s, 4.6 * s, 1.2 * s, color);
+    for (const dir of [-1, 1]) {
+      drawRoundRect(ctx, x + (dir < 0 ? -10.8 : 8.2) * s, headY - 4 * s, 2.6 * s, 9.5 * s, 1.3 * s, color);
+    }
+  } else if (personality.hairStyle === 'bangs') {
     // A soft fringe of three scallops across the forehead, plus side locks.
     for (const dx of [-5.5, 0, 5.5]) {
       ctx.beginPath();
@@ -538,6 +554,35 @@ function drawOutfitDetail(ctx, x, y, s, personality) {
     ctx.arc(x - 5.5 * s, torsoTop + 9 * s, 1.8 * s, 0, Math.PI * 2);
     ctx.fill();
     drawRoundRect(ctx, x - 11 * s, y - 8 * s, 22 * s, 2.4 * s, 1 * s, '#1e1e24');
+  } else if (personality.outfit === 'nurseDress') {
+    // Hospital Shift's Kimono Himura: a classic Japanese nurse's one-piece
+    // (bodyColor, pale pink) with a white rounded collar, a button placket,
+    // piped trim (accentColor), a name badge and a flared skirt.
+    const trim = personality.accentColor || '#e48aa6';
+    ctx.fillStyle = shadeColor(personality.bodyColor, -0.04);
+    ctx.beginPath();
+    ctx.moveTo(x - 10.5 * s, y - 8 * s);
+    ctx.lineTo(x + 10.5 * s, y - 8 * s);
+    ctx.lineTo(x + 13.5 * s, y + 0.5 * s);
+    ctx.lineTo(x - 13.5 * s, y + 0.5 * s);
+    ctx.closePath();
+    ctx.fill();
+    drawRoundRect(ctx, x - 13.5 * s, y - 0.6 * s, 27 * s, 1.4 * s, 0.6 * s, trim);
+    drawRoundRect(ctx, x - 10.8 * s, y - 9 * s, 21.6 * s, 1.6 * s, 0.6 * s, trim);
+    ctx.fillStyle = '#ffffff';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(x + dir * 3.4 * s, torsoTop + 1.6 * s, 3.8 * s, 2.4 * s, dir * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = shadeColor(personality.bodyColor, -0.25);
+    for (const by of [6.5, 10.5, 14.5]) {
+      ctx.beginPath();
+      ctx.arc(x, torsoTop + by * s, 0.8 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawRoundRect(ctx, x - 8.5 * s, torsoTop + 6.5 * s, 5 * s, 3.2 * s, 0.6 * s, '#ffffff');
+    drawRoundRect(ctx, x - 8.5 * s, torsoTop + 6.5 * s, 5 * s, 1 * s, 0.4 * s, trim);
   } else if (personality.outfit === 'scrubs') {
     // Hospital Shift's nurse: a V-neck scrub top with a chest pocket and
     // pen, and a stethoscope (accentColor) draped around the neck.
@@ -642,6 +687,25 @@ function drawAccessory(ctx, x, headY, s, personality) {
     ctx.ellipse(x + 2 * s, headY - 9.5 * s, 10.5 * s, 4 * s, -0.18, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillRect(x + 1.5 * s, headY - 15 * s, 1.5 * s, 2.5 * s);
+  } else if (personality.accessory === 'nurseCap') {
+    // A starched white nurse's cap perched on the crown: a folded band
+    // with a colored stripe (accentColor) and a small red cross.
+    const capY = headY - 11 * s;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(x - 9 * s, capY + 3 * s);
+    ctx.lineTo(x - 7 * s, capY - 4 * s);
+    ctx.lineTo(x + 7 * s, capY - 4 * s);
+    ctx.lineTo(x + 9 * s, capY + 3 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(58,42,42,0.25)';
+    ctx.lineWidth = Math.max(0.8, 0.4 * s);
+    ctx.stroke();
+    drawRoundRect(ctx, x - 8.3 * s, capY - 0.2 * s, 16.6 * s, 1.6 * s, 0.5 * s, personality.accentColor || '#e48aa6');
+    ctx.fillStyle = '#d9534f';
+    ctx.fillRect(x - 0.6 * s, capY - 3.3 * s, 1.2 * s, 3 * s);
+    ctx.fillRect(x - 1.5 * s, capY - 2.4 * s, 3 * s, 1.2 * s);
   } else if (personality.accessory === 'ribbon') {
     // A hair bow (two loops + a knot) on the upper right of the head.
     const bx = x + 7 * s;
