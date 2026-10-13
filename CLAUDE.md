@@ -85,7 +85,9 @@ touching that area rather than expecting this section to carry it:
   trace with a roll from the 2nd-Floor Supply Room's cart, Meds from the
   cabinet; helping staff (Dr. Okafor rescues near-transfer patients, the
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
-  down); Karen, Coffee Pour, hallucinations; Postgres leaderboard,
+  down); Karen, Coffee Pour, hallucinations; an easter egg — Mel in a
+  dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
+  the back-wall vase, or typing "mel"); Postgres leaderboard,
   `localStorage` progress) — `docs/features/hospital-shift.md`. Rules live
   in `web/static/js/hospital/rules.js`. Everyone in it is drawn by its own
   anime-style renderers — the player (Kimono Himura) by

@@ -30,6 +30,8 @@ import {
   doctorAssist,
   startKarenEvent,
   resolveKarenEvent,
+  melArrives,
+  visitMel,
   tick,
   isOfficeReady,
   enterOffice,
@@ -48,6 +50,9 @@ import {
   KAREN_CALMED_TIP_GARD,
   KAREN_MOOD_PENALTY,
   KAREN_EVENT_TIMER_SECONDS,
+  MEL_GIFT_GARD,
+  MEL_SANITY_RESTORE,
+  MEL_MOOD_RESTORE,
   CLOSING_WAIT_SECONDS,
   COFFEE_PERFECT_TIP_GARD,
   COFFEE_MOOD_RESTORE,
@@ -481,6 +486,33 @@ describe('Karen', () => {
     const s = tick(startKarenEvent(playing(12)), KAREN_EVENT_TIMER_SECONDS + 1);
     assert.equal(s.karen.outcome, 'letCut');
     assert.equal(s.karen.active, false);
+  });
+});
+
+describe('Mel (easter egg)', () => {
+  test('she joins the line once per shift, and only while playing', () => {
+    assert.equal(melArrives(createInitialState(1, 12)).mel.waiting, false);
+    const s = melArrives(playing());
+    assert.equal(s.mel.waiting, true);
+    assert.equal(melArrives(s), s);
+    const visited = visitMel(s);
+    assert.equal(melArrives(visited), visited);
+  });
+
+  test('visiting her is a gift: Gard, Sanity and Ward Mood, never a mistake', () => {
+    const s = melArrives(playing(5, { sanity: 40, wardMood: 50 }));
+    const after = visitMel(s);
+    assert.deepEqual(after.mel, { waiting: false, visited: true });
+    assert.equal(after.bonusGard, MEL_GIFT_GARD);
+    assert.equal(after.sanity, 40 + MEL_SANITY_RESTORE);
+    assert.equal(after.wardMood, 50 + MEL_MOOD_RESTORE);
+    assert.equal(after.mistakeCount, 0);
+    assert.equal(visitMel(after), after);
+  });
+
+  test('she has to be waiting to visit', () => {
+    const s = playing();
+    assert.equal(visitMel(s), s);
   });
 });
 

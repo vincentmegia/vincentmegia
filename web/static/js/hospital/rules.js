@@ -155,6 +155,63 @@ export const KAREN_MOOD_PENALTY = 50;
 export const KAREN_LINE = "MY MOTHER HAS BEEN WAITING FOR HOURS! SEE HER RIGHT NOW!";
 
 // ---------------------------------------------------------------------------
+// 3b. Mel — the easter egg (the user: "the easter egg is mel in a kimono",
+//     then "add all" of the ways to find her). Kitchen Shift's Mel visits in
+//     a kimono at most once per shift, joining the triage line; talking to
+//     her at the desk gets you a hand-drawn card and a pick-me-up. She shows
+//     up four ways: rarely with an arriving patient (MEL_ARRIVAL_CHANCE),
+//     always on MEL_FIXED_SHIFT, after MEL_VASE_CLICKS clicks on the
+//     dandelion vase on the ER's back wall, or by typing MEL_SECRET_CODE.
+// ---------------------------------------------------------------------------
+
+/** Chance, per arriving patient, that Mel walks in with them. */
+export const MEL_ARRIVAL_CHANCE = 1 / 40;
+/** The shift she always visits on (if she hasn't already that shift). */
+export const MEL_FIXED_SHIFT = 7;
+/** How far into that shift she walks in (fraction of the clock). */
+export const MEL_FIXED_SHIFT_AT = 0.5;
+/** Clicks on the dandelion vase that bring her in. */
+export const MEL_VASE_CLICKS = 5;
+/** Typed during a shift (case-insensitive) to bring her in. */
+export const MEL_SECRET_CODE = 'mel';
+/** Her visit: a thank-you card worth Gard, plus Sanity and Ward Mood back. */
+export const MEL_GIFT_GARD = 40;
+export const MEL_SANITY_RESTORE = 30;
+export const MEL_MOOD_RESTORE = 20;
+
+/** What she writes on the card — one per shift, cycling. */
+export const MEL_CARD_LINES = [
+  "I drew you a dandelion! Make a wish — you're doing great.",
+  'Brought you a little sunshine for your shift. Don\'t forget to drink water!',
+  'I cycled all the way here to say: you\'re the kindest nurse on the ward.',
+  'A tulip, a rose and a dandelion — one for every patient you made smile today.',
+  "Take a deep breath. You've got this, and I'm cheering for you!",
+];
+
+export function melCardLineForShift(shiftNumber) {
+  const n = Number.isFinite(shiftNumber) ? Math.max(1, Math.floor(shiftNumber)) : 1;
+  return MEL_CARD_LINES[(n - 1) % MEL_CARD_LINES.length];
+}
+
+/** Whether Mel walks in with this arriving patient, given a 0..1 roll. */
+export function melArrivesWithPatient(roll) {
+  return roll < MEL_ARRIVAL_CHANCE;
+}
+
+/**
+ * The secret-code tracker: append a typed key to the last few typed
+ * letters (kept no longer than the code) and report whether they now
+ * spell it. Non-letter keys reset it.
+ *
+ * @returns {{buffer: string, matched: boolean}}
+ */
+export function typeSecretCodeKey(buffer, key, code = MEL_SECRET_CODE) {
+  if (typeof key !== 'string' || !/^[a-z]$/i.test(key)) return { buffer: '', matched: false };
+  const next = (buffer + key.toLowerCase()).slice(-code.length);
+  return next === code ? { buffer: '', matched: true } : { buffer: next, matched: false };
+}
+
+// ---------------------------------------------------------------------------
 // 4. Triage levels and vitals. vitalsForLevel generates a chart that
 //    triageLevelForVitals classifies back to the same level, so the Triage
 //    Sort is a real read-the-vitals decision with one right answer.

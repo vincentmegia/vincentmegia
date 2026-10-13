@@ -23,6 +23,15 @@ import {
   karenShiftForSeed,
   KAREN_LINE,
   KAREN_CALMED_TIP_GARD,
+  MEL_FIXED_SHIFT,
+  MEL_FIXED_SHIFT_AT,
+  MEL_VASE_CLICKS,
+  MEL_GIFT_GARD,
+  MEL_SANITY_RESTORE,
+  MEL_MOOD_RESTORE,
+  melCardLineForShift,
+  melArrivesWithPatient,
+  typeSecretCodeKey,
   TRIAGE_LEVELS,
   findTriageLevel,
   TRIAGE_LEGEND,
@@ -97,6 +106,8 @@ import {
   cancelTask,
   startKarenEvent,
   resolveKarenEvent,
+  melArrives,
+  visitMel,
   tick,
   isOfficeReady,
   collapseSecondsRemaining,
@@ -132,7 +143,7 @@ import {
 const STORAGE_KEY = 'hospital-game:v1';
 
 function defaultSave() {
-  return { version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: Date.now() };
+  return { version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: Date.now(), foundMel: false };
 }
 
 function probeStorageAvailable() {
@@ -165,6 +176,8 @@ export function loadSave(storageAvailable) {
       currentShift: Math.min(SHIFTS_PER_MONTH, Math.max(1, Math.round(parsed.currentShift))),
       bestRunTotal: Math.max(0, parsed.bestRunTotal),
       karenSeed: Math.round(parsed.karenSeed),
+      // The easter egg's badge — optional, so saves from before Mel still load.
+      foundMel: parsed.foundMel === true,
     };
   } catch {
     return defaultSave();
@@ -538,7 +551,7 @@ export function init(canvas, elements) {
   }
 
   let overlay = null;
-  let pendingTriageAction = null; // { kind: 'patient'|'karen'|'ghost', id? }
+  let pendingTriageAction = null; // { kind: 'patient'|'karen'|'mel'|'ghost', id? }
   let waitingAtOffice = false;
 
   let sanityFontReady = false;
@@ -710,6 +723,7 @@ export function init(canvas, elements) {
     if (!shiftState) return [];
     const slots = [];
     if (karenAvailable && !shiftState.karen.triggered && shiftState.phase === 'playing') slots.push({ kind: 'karen', id: 'karen' });
+    if (shiftState.mel.waiting && shiftState.phase === 'playing') slots.push({ kind: 'mel', id: 'mel' });
     shiftState.triageQueue.slice(0, QUEUE_VISIBLE_MAX).forEach((p) => slots.push({
       kind: 'patient', id: p.id, waitFraction: p.waitMaxSeconds ? p.waitRemainingSeconds / p.waitMaxSeconds : null,
     }));
@@ -738,10 +752,11 @@ export function init(canvas, elements) {
     const rolls = Array.from({ length: count }, () => random());
     for (const at of patientArrivalTimes(count, total, rolls)) events.push({ type: 'patient', at });
     if (currentShiftNumber === karenShiftNumber) events.push({ type: 'karen', at: total * 0.3 });
+    if (currentShiftNumber === MEL_FIXED_SHIFT) events.push({ type: 'mel', at: total * MEL_FIXED_SHIFT_AT });
     return events.sort((a, b) => a.at - b.at);
   }
 
-  /** A shuffled bag of patient designs, so all sixteen show up before any repeats. */
+  /** A shuffled bag of patient designs, so every design shows up before any repeats. */
   let designBag = [];
   function nextPatientDesignKey() {
     if (!designBag.length) {
@@ -780,9 +795,71 @@ export function init(canvas, elements) {
     const elapsed = shiftState.totalClockSeconds - shiftState.clockSeconds;
     while (scheduledEvents.length && scheduledEvents[0].at <= elapsed) {
       const event = scheduledEvents.shift();
-      if (event.type === 'patient') spawnPatient();
-      else if (event.type === 'karen') karenAvailable = true;
+      if (event.type === 'patient') {
+        spawnPatient();
+        if (melArrivesWithPatient(random())) bringMelIn('arrival');
+      } else if (event.type === 'karen') karenAvailable = true;
+      else if (event.type === 'mel') bringMelIn('arrival');
     }
+  }
+
+  // -- Mel, the easter egg ----------------------------------------------------------
+  //
+  // Kitchen Shift's Mel, in a dandelion kimono, visits at most once per shift
+  // (engine-state's melArrives/visitMel). Four ways in, all landing her in
+  // the triage line: a rare arrival with a patient, MEL_FIXED_SHIFT, five
+  // clicks on the dandelion vase on the back wall, or typing "mel".
+
+  // On the back wall between the clock and the EMERGENCY sign, clear of the HUD.
+  const MEL_VASE_RECT = { x: 616, y: 6, w: 40, h: 52 };
+  let melVaseClicks = 0;
+  let melVaseWiggle = 0;
+  let melCodeBuffer = '';
+
+  const MEL_ARRIVAL_TOASTS = {
+    arrival: 'Someone in a dandelion kimono just joined the triage line…',
+    vase: 'The dandelions rustle… and someone in a matching kimono joins the triage line.',
+    code: 'You whisper her name — Mel waves at you from the triage line!',
+  };
+
+  /** Puts Mel in the triage line (once per shift); true if she wasn't there yet. */
+  function bringMelIn(via) {
+    if (!shiftState) return false;
+    const before = shiftState;
+    shiftState = melArrives(shiftState);
+    if (shiftState === before) return false;
+    showToast(MEL_ARRIVAL_TOASTS[via] ?? MEL_ARRIVAL_TOASTS.arrival, 4);
+    return true;
+  }
+
+  function onMelVaseClick() {
+    melVaseWiggle = 0.5;
+    melVaseClicks++;
+    if (melVaseClicks >= MEL_VASE_CLICKS) {
+      melVaseClicks = 0;
+      bringMelIn('vase');
+    }
+  }
+
+  function renderMelBadge() {
+    elements.startScreen.melBadge?.classList.toggle('hidden', !save.foundMel);
+  }
+
+  /** Accepting her card — the button, Enter/Space, or closing the overlay all do it. */
+  function thankMel() {
+    if (overlay?.kind !== 'mel') return;
+    shiftState = visitMel(shiftState);
+    overlay = null;
+    const firstTime = !save.foundMel;
+    if (firstTime) {
+      save.foundMel = true;
+      persistSave(storageAvailable, save);
+      renderMelBadge();
+    }
+    const gift = `+${MEL_GIFT_GARD}g, +${MEL_SANITY_RESTORE} Sanity, +${MEL_MOOD_RESTORE} Mood`;
+    showToast(firstTime
+      ? `✿ Easter egg found — Mel in a kimono! ${gift}.`
+      : `Mel waves goodbye and pedals off. ${gift}.`, 4.5);
   }
 
   // -- Overlays: open ---------------------------------------------------------------
@@ -836,6 +913,10 @@ export function init(canvas, elements) {
 
   function openKarenOverlay() {
     overlay = { kind: 'karen' };
+  }
+
+  function openMelOverlay() {
+    overlay = { kind: 'mel', line: melCardLineForShift(currentShiftNumber), age: 0 };
   }
 
   function openCoffeeOverlay() {
@@ -910,6 +991,7 @@ export function init(canvas, elements) {
     if (station.kind === 'triage-desk') {
       const action = pendingTriageAction
         ?? (karenAvailable && !shiftState.karen.triggered ? { kind: 'karen' } : null)
+        ?? (shiftState.mel.waiting ? { kind: 'mel' } : null)
         ?? (shiftState.triageQueue[0] ? { kind: 'patient', id: shiftState.triageQueue[0].id } : null);
       pendingTriageAction = null;
       if (!action) {
@@ -918,6 +1000,8 @@ export function init(canvas, elements) {
         halluc.ghosts = halluc.ghosts.filter((g) => g.id !== action.id);
         shiftState = startleFromHallucination(shiftState);
         showToast("…the chair is empty. There was nobody there.");
+      } else if (action.kind === 'mel') {
+        if (shiftState.mel.waiting) openMelOverlay();
       } else if (action.kind === 'karen') {
         const before = shiftState;
         shiftState = startKarenEvent(shiftState);
@@ -1046,6 +1130,7 @@ export function init(canvas, elements) {
   function closeOverlay() {
     if (!overlay) return;
     if (overlay.kind === 'karen') return; // she won't be ignored — answer her
+    if (overlay.kind === 'mel') { thankMel(); return; }
     if (overlay.kind === 'coffee-pour' && (overlay.pouring || overlay.grade)) return;
     if (TASK_OVERLAYS.has(overlay.kind)) shiftState = cancelTask(shiftState);
     overlay = null;
@@ -1201,6 +1286,10 @@ export function init(canvas, elements) {
     };
   }
 
+  function melButtonRect() {
+    return { x: 540, y: 462, w: 220, h: 44 };
+  }
+
   function answerKaren(outcome) {
     shiftState = resolveKarenEvent(shiftState, outcome);
     overlay = null;
@@ -1231,6 +1320,8 @@ export function init(canvas, elements) {
       const b = karenButtonRects();
       if (insideRect(b.explain, x, y)) answerKaren('explain');
       else if (insideRect(b.letCut, x, y)) answerKaren('letCut');
+    } else if (overlay.kind === 'mel') {
+      if (insideRect(melButtonRect(), x, y)) thankMel();
     }
   }
 
@@ -1407,6 +1498,10 @@ export function init(canvas, elements) {
       onStaffClick(member);
       return;
     }
+    if (shiftState?.phase === 'playing' && currentFloor === FLOOR_1 && insideRect(MEL_VASE_RECT, x, y)) {
+      onMelVaseClick();
+      return;
+    }
     if (shiftState?.phase === 'playing') {
       const slot = triageSlotAtPoint(x, y);
       if (slot) {
@@ -1471,8 +1566,14 @@ export function init(canvas, elements) {
         if (e.repeat) return;
         if (overlay.kind === 'coffee-pour') startCoffeePour();
         else if (overlay.kind === 'skill') sampleSkillCheck();
+        else if (overlay.kind === 'mel') thankMel();
       }
       return;
+    }
+    if (shiftState?.phase === 'playing' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const typed = typeSecretCodeKey(melCodeBuffer, e.key);
+      melCodeBuffer = typed.buffer;
+      if (typed.matched) bringMelIn('code');
     }
     if (e.key === 'Enter' && hoverStation) {
       e.preventDefault();
@@ -1503,6 +1604,8 @@ export function init(canvas, elements) {
     overlay = null;
     pendingTriageAction = null;
     karenAvailable = false;
+    melVaseClicks = 0;
+    melCodeBuffer = '';
     patientInfo.clear();
     scheduledEvents = scheduleShiftEvents();
     lastTimestamp = null;
@@ -1650,6 +1753,50 @@ export function init(canvas, elements) {
     const coffee = stationOfKind('coffee-machine');
     drawRoundRect(ctx, coffee.x - 70, coffee.y - 62, 190, 120, 16, 'rgba(194,138,90,0.18)');
     drawWallClock();
+    drawDandelionVase();
+  }
+
+  /**
+   * A little vase of dandelions on a shelf on the back wall — set dressing
+   * that's secretly the easter egg's trigger (click it five times). It
+   * wiggles when clicked and gives nothing else away.
+   */
+  function drawDandelionVase() {
+    const cx = MEL_VASE_RECT.x + MEL_VASE_RECT.w / 2;
+    const base = MEL_VASE_RECT.y + MEL_VASE_RECT.h - 4;
+    drawRoundRect(ctx, cx - 22, base, 44, 4, 2, '#c9a77a');
+    ctx.save();
+    ctx.translate(cx, base);
+    ctx.rotate(Math.sin(melVaseWiggle * 40) * melVaseWiggle * 0.5);
+    ctx.strokeStyle = '#6f9a4a';
+    ctx.lineWidth = 1.4;
+    const heads = [[-9, -36], [0, -42], [9, -34]];
+    for (const [hx, hy] of heads) {
+      ctx.beginPath();
+      ctx.moveTo(0, -12);
+      ctx.quadraticCurveTo(hx * 0.4, (hy - 12) / 2, hx, hy);
+      ctx.stroke();
+    }
+    heads.forEach(([hx, hy], i) => {
+      ctx.fillStyle = i === 2 ? '#ffffff' : '#f2c230';
+      for (let k = 0; k < 10; k++) {
+        const ang = (k / 10) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(hx + Math.cos(ang) * 3.4, hy + Math.sin(ang) * 3.4, 1.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = i === 2 ? '#d8d2c0' : '#e0a81e';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    drawRoundRect(ctx, -7, -14, 14, 14, 4, 'rgba(160,200,215,0.85)');
+    ctx.strokeStyle = 'rgba(58,42,42,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(-7, -14, 14, 14, 4);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** The 2nd Floor: a stockroom — warm grey tiles, shelving along the walls. */
@@ -2166,6 +2313,11 @@ export function init(canvas, elements) {
       if (slot.kind === 'karen') {
         drawAnimePerson(ctx, slot.x, slot.y, STAFF_DESIGNS.karen, { scale: 0.62, angryTint: true, t: performance.now() / 1000 });
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
+        continue;
+      }
+      if (slot.kind === 'mel') {
+        drawAnimePerson(ctx, slot.x, slot.y, STAFF_DESIGNS.mel, { scale: 0.62, t: performance.now() / 1000 });
+        drawLabelChip(ctx, slot.x, slot.y + 20, 'Mel ✿', 'bold 10px sans-serif', '#f6dc8a');
         continue;
       }
       const info = patientInfo.get(slot.id);
@@ -3095,6 +3247,91 @@ export function init(canvas, elements) {
     ctx.fillText('Let Her Cut In', b.letCut.x + b.letCut.w / 2, b.letCut.y + 27);
   }
 
+  /** Mel's visit: her, in her kimono, holding out a hand-drawn card. */
+  function drawMelOverlay() {
+    const t = performance.now() / 1000;
+    drawPanel('A visitor in a dandelion kimono', 'Mel cycled over with something for you');
+    // Dandelion seeds drifting across the panel.
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeStyle = 'rgba(120,110,90,0.45)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 9; i++) {
+      const sx = PANEL.x + 40 + ((i * 97 + t * 26) % (PANEL.w - 80));
+      const sy = PANEL.y + 120 + ((i * 53) % 300) + Math.sin(t * 1.3 + i) * 10;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx, sy + 7);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    drawAnimePerson(ctx, 300, 500, STAFF_DESIGNS.mel, { scale: 3.3, t });
+
+    // The card, tilted a touch, with her crayon drawing and note.
+    ctx.save();
+    ctx.translate(650, 280);
+    ctx.rotate(-0.04);
+    drawRoundRect(ctx, -150, -150, 300, 300, 10, '#fffdf6');
+    ctx.strokeStyle = '#f2c230';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(-142, -142, 284, 284, 8);
+    ctx.stroke();
+    // Crayon dandelion and a sun.
+    ctx.strokeStyle = '#6f9a4a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-40, 10);
+    ctx.quadraticCurveTo(-30, -30, -36, -70);
+    ctx.stroke();
+    ctx.fillStyle = '#f2c230';
+    for (let k = 0; k < 14; k++) {
+      const ang = (k / 14) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(-36 + Math.cos(ang) * 14, -84 + Math.sin(ang) * 14, 7, 4, ang, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#e0a81e';
+    ctx.beginPath();
+    ctx.arc(-36, -84, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#f6b64a';
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 8; k++) {
+      const ang = (k / 8) * Math.PI * 2 + t * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(70 + Math.cos(ang) * 20, -90 + Math.sin(ang) * 20);
+      ctx.lineTo(70 + Math.cos(ang) * 28, -90 + Math.sin(ang) * 28);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ffd86a';
+    ctx.beginPath();
+    ctx.arc(70, -90, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = LABEL_TEXT_COLOR;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = 'italic 15px sans-serif';
+    wrapText(overlay.line, 0, 42, 250, 21);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText('— Mel ✿', 70, 128);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(58,42,42,0.75)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`+${MEL_GIFT_GARD}g · +${MEL_SANITY_RESTORE} Sanity · +${MEL_MOOD_RESTORE} Ward Mood`, 650, 450);
+    const b = melButtonRect();
+    drawRoundRect(ctx, b.x, b.y, b.w, b.h, 8, '#e0a81e');
+    ctx.fillStyle = CREAM;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText('Thank you, Mel!', b.x + b.w / 2, b.y + 28);
+  }
+
   function drawCoffeePourOverlay() {
     ctx.fillStyle = 'rgba(20,30,30,0.55)';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -3249,6 +3486,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'bandage') drawBandageOverlay();
     else if (overlay.kind === 'meds') drawMedsOverlay();
     else if (overlay.kind === 'karen') drawKarenOverlay();
+    else if (overlay.kind === 'mel') drawMelOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     ctx.restore();
   }
@@ -3309,6 +3547,7 @@ export function init(canvas, elements) {
     lastTimestamp = timestamp;
 
     if (!overlay) updatePlayer(dt);
+    melVaseWiggle = Math.max(0, melVaseWiggle - dt);
 
     const before = shiftState;
     shiftState = tick(shiftState, dt);
@@ -3323,7 +3562,7 @@ export function init(canvas, elements) {
       overlay = null;
       if (shiftState.phase === 'playing') showToast('Too late — the patient was transferred to another hospital.');
     }
-    if (overlay && (overlay.kind === 'triage' || overlay.kind === 'coffee-pour') && shiftState.phase !== 'playing') overlay = null;
+    if (overlay && (overlay.kind === 'triage' || overlay.kind === 'coffee-pour' || overlay.kind === 'mel') && shiftState.phase !== 'playing') overlay = null;
     if (overlay?.kind === 'triage' && !shiftState.triageQueue.some((p) => p.id === overlay.patientId)) {
       overlay = null;
       showToast('They got tired of waiting and left.');
@@ -3457,6 +3696,8 @@ export function init(canvas, elements) {
     getTriageButtonRects: () => triageButtonRects(),
     getMedsLayout: () => (overlay?.kind === 'meds' ? { bottles: medsBottleRects(), doses: medsDoseRects() } : null),
     getKarenButtonRects: () => karenButtonRects(),
+    getMelButtonRect: () => melButtonRect(),
+    getMelVaseRect: () => ({ ...MEL_VASE_RECT }),
     getCloseRect: () => ({ ...CLOSE_RECT }),
     getPatientInfo: (id) => patientInfo.get(id) ?? null,
     spawnPatientNow: (conditionId) => (shiftState?.phase === 'playing' ? spawnPatient(conditionId) : null),
@@ -3471,6 +3712,7 @@ export function init(canvas, elements) {
       shiftState = { ...shiftState, karen: { ...shiftState.karen, shiftNumber: currentShiftNumber } };
       karenAvailable = true;
     },
+    bringMelInNow: () => bringMelIn('code'),
     spawnGhostNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
     getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.length }),
     wasPlayerDrawnLastFrame: () => lastFrameDrewPlayer,
@@ -3486,6 +3728,7 @@ export function init(canvas, elements) {
 
   showScreen('start');
   renderHud();
+  renderMelBadge();
   return teardown;
 }
 
@@ -3505,7 +3748,7 @@ function bootstrap() {
     toast: byId('hospital-toast'),
     fullscreenButton: byId('hospital-fullscreen-button'),
     floorButton: byId('hospital-floor-button'),
-    startScreen: { root: byId('hospital-start-screen'), shiftButton: byId('hospital-start-shift-button') },
+    startScreen: { root: byId('hospital-start-screen'), shiftButton: byId('hospital-start-shift-button'), melBadge: byId('hospital-mel-badge') },
     paycheckScreen: {
       root: byId('hospital-paycheck-screen'),
       title: byId('hospital-paycheck-title'),

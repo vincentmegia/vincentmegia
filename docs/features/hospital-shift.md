@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (71 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (107 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (15 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (27 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -113,6 +113,31 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   storms the Triage Desk demanding her
   mother be seen first. "Explain Triage" (+30 Gard) or "Let Her Cut In" (a
   mistake and −50 Ward Mood); a 12 s timer auto-resolves as the latter.
+* **Mel — the easter egg** (the user: "the easter egg is mel in a kimono",
+  then "add all" when offered four ways to find her). Kitchen Shift's Mel
+  (`cooking-game.js`'s `drawMel`: honey-brown hair, white ribbon, yellow
+  clip, a dandelion behind her ear, creamy yellow and white) visits in a
+  cream kimono with a `dandelion` print and a white obi —
+  `STAFF_DESIGNS.mel` in `anime-people.js`, with a single `bow` and
+  `eyes.sparkle` highlights added for her. At most once per shift she
+  joins the front of the triage line ("Mel ✿"), by any of four triggers:
+  * a rare arrival — each arriving patient has a `MEL_ARRIVAL_CHANCE`
+    (1/40) roll to bring her along;
+  * always on `MEL_FIXED_SHIFT` (7), halfway through the clock;
+  * `MEL_VASE_CLICKS` (5) clicks on the little dandelion vase on the ER's
+    back wall (between the clock and the EMERGENCY sign; it only wiggles,
+    giving nothing else away, and clicking it doesn't walk you there);
+  * typing `MEL_SECRET_CODE` ("mel") during a shift with no overlay open
+    (`typeSecretCodeKey`; any non-letter key resets it).
+
+  Click her (or the desk) → walk to the Triage Desk → her overlay: Mel
+  holds out a hand-drawn card (a crayon dandelion and sun, one of
+  `MEL_CARD_LINES`, cycling per shift). "Thank you, Mel!", Enter/Space,
+  Escape or × all accept it: +`MEL_GIFT_GARD` (40) Gard, +30 Sanity,
+  +20 Ward Mood (engine-state's `melArrives`/`visitMel`; never a mistake).
+  The first visit ever sets `foundMel` in the save, which shows a
+  "✿ You found Mel in her kimono" badge (`#hospital-mel-badge`) on the
+  start screen. She doesn't time out; if the shift ends first she's gone.
 * **Ward Mood** (Library Mood's analog): starts at 100, −25 per mistake,
   raised by coffee (below),
   scales new patients' wait and treatment patience (×1.0 → ×0.6), drives
@@ -183,13 +208,17 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   make them look like kimono", then — asked — her art style with mixed
   outfits): patients moved off `people.js` to
   `web/static/js/hospital/anime-people.js` (`drawAnimePatient`,
-  feet-anchored; `PATIENT_DESIGNS`), sixteen designs across ages (kids,
+  feet-anchored; `PATIENT_DESIGNS`), twenty-two designs across ages (kids,
   teens, adults, grandparents — the body scales per age, the head is drawn
   around its own center), six skin tones, and a mix of kimono/yukata
   (asanoha, stripes, circles; women's wide obi, men's low kaku-obi) and
   everyday Japanese clothes (sailor and gakuran uniforms, a masked
   salaryman, office blouse, hoodie, cardigan, track suit, apron, biker
-  jacket, a kid's tee and dress). A shuffled bag gives every design once
+  jacket, a kid's tee and dress). Six more in kimono followed ("make some
+  patients with kimonos": a teal furisode with a kanzashi, a tea teacher in
+  lavender asanoha, a girl in red sakura, a boy in navy ichimatsu checks, a
+  wedding guest in black crested montsuki, a shopkeeper in mustard
+  seigaiha), so 10 of 22 wear traditional dress. A shuffled bag gives every design once
   before any repeats. They appear in the triage line, beds, triage chart,
   Oxygen bed, OR table and hallucination ghosts; skin colors for the
   IV/Bandage/gurney scenes come from the design. Then — "the staff and
@@ -204,7 +233,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   under his beanie, at the user's request. Necks were shortened for the whole cast
   (head 12 units above the shoulders, was 15; Kimono Himura's `NECK_DROP`).
   Hospital Shift no longer draws anyone with people.js.
-* `localStorage` progress (`hospital-game:v1`), Postgres leaderboard
+* `localStorage` progress (`hospital-game:v1`; the optional `foundMel`
+  flag is the easter egg's badge, so older saves still load), Postgres leaderboard
   (`hospital_scores`), `/projects` card.
 
 * **Two floors + Supply Cart** (added after v1 — the user asked for a
@@ -417,12 +447,13 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
 * [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
       triage agreement, condition gating, skill-check zones, bandage
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
-      surgery transport, patience transfers, Karen, coffee, closing,
-      payout), floor-plan geometry.
+      surgery transport, patience transfers, Karen, Mel, coffee, closing,
+      payout), Mel's arrival roll / secret code / card lines, floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
-      coffee → Karen → handover → paycheck → final-shift leaderboard
-      submit; HTMX revisit stays interactive. Uses
+      coffee → Karen → Mel (typing "mel" → card → gift → badge survives a
+      reload; five vase clicks bring her in) → handover → paycheck →
+      final-shift leaderboard submit; HTMX revisit stays interactive. Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

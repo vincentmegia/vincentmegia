@@ -471,6 +471,50 @@ test.describe('Karen', () => {
 	});
 });
 
+test.describe('Mel (easter egg)', () => {
+	test('typing "mel" brings her to triage; her card is a gift and the badge sticks', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await expect(page.locator('#hospital-mel-badge')).toBeHidden();
+		await startShift(page);
+		await hooks(page, 'setSanity', 40);
+		await hooks(page, 'setWardMood', 50);
+		await page.keyboard.type('mel');
+		const mel = (await hooks(page, 'getTriageSlots')).find((s) => s.kind === 'mel');
+		expect(mel).toBeTruthy();
+		await clickCanvasPoint(page, { x: mel.x, y: mel.y - 20 });
+		await waitUntilArrived(page);
+		await waitForOverlay(page, 'mel');
+		const button = await hooks(page, 'getMelButtonRect');
+		await clickCanvasPoint(page, { x: button.x + 20, y: button.y + 20 });
+		const s = await shiftState(page);
+		expect(s.mel).toEqual({ waiting: false, visited: true });
+		expect(s.bonusGard).toBe(40);
+		expect(s.sanity).toBeGreaterThan(65);
+		expect(s.wardMood).toBe(70);
+		expect(s.mistakeCount).toBe(0);
+		await expect(page.locator('#hospital-toast')).toContainText('Easter egg found');
+
+		// Once per shift: the code does nothing more after her visit.
+		await page.keyboard.type('mel');
+		expect((await hooks(page, 'getTriageSlots')).some((slot) => slot.kind === 'mel')).toBe(false);
+
+		await page.reload();
+		await expect(page.locator('#hospital-mel-badge')).toBeVisible();
+	});
+
+	test('five clicks on the dandelion vase bring her in', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		const vase = await hooks(page, 'getMelVaseRect');
+		const center = { x: vase.x + vase.w / 2, y: vase.y + vase.h / 2 };
+		for (let i = 0; i < 4; i++) await clickCanvasPoint(page, center);
+		expect((await shiftState(page)).mel.waiting).toBe(false);
+		await clickCanvasPoint(page, center);
+		expect((await shiftState(page)).mel.waiting).toBe(true);
+		expect(await hooks(page, 'isPlayerMoving')).toBe(false);
+	});
+});
+
 test.describe('hallucinations', () => {
 	test('at 0 Sanity a ghost appears in the triage line and startles you', async ({ page }) => {
 		await page.goto('/hospital-shift');

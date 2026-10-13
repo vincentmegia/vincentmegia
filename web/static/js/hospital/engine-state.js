@@ -27,6 +27,7 @@
 //     doctorCooldownSeconds: number,                 // until Dr. Okafor can step in again
 //     doctorAssists: number,                         // times he did this shift
 //     karen: { shiftNumber, active, triggered, resolved, outcome, timerSecondsRemaining },
+//     mel: { waiting, visited },  // the easter egg: in the triage line / already visited this shift
 //     wardMood, sanity, rating, walkouts, transfers, discharged,
 //     zeroSanitySeconds, mistakeCount, bonusGard, payout,
 //   }
@@ -57,6 +58,9 @@ import {
   KAREN_EVENT_TIMER_SECONDS,
   KAREN_CALMED_TIP_GARD,
   KAREN_MOOD_PENALTY,
+  MEL_GIFT_GARD,
+  MEL_SANITY_RESTORE,
+  MEL_MOOD_RESTORE,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
   COFFEE_PERFECT_TIP_GARD,
@@ -107,6 +111,7 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
       outcome: null,
       timerSecondsRemaining: 0,
     },
+    mel: { waiting: false, visited: false },
 
     wardMood: WARD_MOOD_MAX,
     sanity: SANITY_MAX,
@@ -517,6 +522,27 @@ function resolveKarenOutcome(state, outcome) {
 export function resolveKarenEvent(state, outcome) {
   if (state.phase !== 'playing' || !state.karen.active) return state;
   return resolveKarenOutcome(state, outcome === 'explain' ? 'explain' : 'letCut');
+}
+
+// ---------------------------------------------------------------------------
+// Mel — the easter egg: once per shift she joins the triage line, and
+// talking to her there is a gift (Gard, Sanity, Ward Mood), never a mistake.
+// ---------------------------------------------------------------------------
+
+export function melArrives(state) {
+  if (state.phase !== 'playing' || state.mel.waiting || state.mel.visited) return state;
+  return { ...state, mel: { ...state.mel, waiting: true } };
+}
+
+export function visitMel(state) {
+  if (state.phase !== 'playing' || !state.mel.waiting) return state;
+  return {
+    ...state,
+    mel: { waiting: false, visited: true },
+    bonusGard: state.bonusGard + MEL_GIFT_GARD,
+    sanity: clampSanity(state.sanity + MEL_SANITY_RESTORE),
+    wardMood: clampWardMood(state.wardMood + MEL_MOOD_RESTORE),
+  };
 }
 
 // ---------------------------------------------------------------------------

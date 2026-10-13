@@ -46,10 +46,10 @@ const SKIN = {
 };
 
 /**
- * Sixteen patients. Fields: key, label, age, skin, hair {color, back,
+ * The first sixteen patients (six more in kimono are pushed below). Fields: key, label, age, skin, hair {color, back,
  * fringe}, eyes {color, style, lashes}, brows ('thin'|'thick'), mouth,
  * outfit {kind, …colors/pattern}, extras (glasses, mask, mustache, beard,
- * clip, ribbon, cap, headphones, pearls, earrings).
+ * clip, ribbon, bow, cap, headphones, pearls, earrings), and eyes.sparkle for highlights.
  */
 export const PATIENT_DESIGNS = [
   {
@@ -166,6 +166,53 @@ export const PATIENT_DESIGNS = [
   },
 ];
 
+// More patients in kimono (the user: "make some patients with kimonos") —
+// formal and casual, kids to grown-ups, each with its own pattern.
+PATIENT_DESIGNS.push(
+  {
+    key: 'furisodeWoman', label: 'Coming-of-age girl', age: 'adult', skin: SKIN.porcelain,
+    hair: { color: '#1b1828', back: 'bun', fringe: 'blunt' },
+    eyes: { color: '#5a2a4a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#2e8a7a', robeHem: '#1e5e54', pattern: 'sakura', patternColor: '#ffd6e0', hemPattern: '#ffffff', obi: '#e8c25a', obiAccent: '#c23a3a' },
+    extras: { kanzashi: '#e0485f' },
+  },
+  {
+    key: 'teaLady', label: 'Tea teacher', age: 'adult', skin: SKIN.light,
+    hair: { color: '#3a2620', back: 'bun', fringe: 'parted' },
+    eyes: { color: '#4a2e26', style: 'calm', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#b9a6d8', robeHem: '#9a86c0', pattern: 'asanoha', patternColor: '#f2ecfa', obi: '#5a4a8a', obiAccent: '#e8c25a' },
+    extras: { kanzashi: '#ffffff' },
+  },
+  {
+    key: 'kimonoKidGirl', label: 'Kid', age: 'kid', skin: SKIN.light,
+    hair: { color: '#1e1418', back: 'bob', fringe: 'blunt' },
+    eyes: { color: '#3a2a2a', style: 'big', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'kimono', robe: '#d23a4a', robeHem: '#a8283a', pattern: 'sakura', patternColor: '#ffffff', obi: '#f2c94c', obiAccent: '#ffffff' },
+    extras: { kanzashi: '#f2a6c0' },
+  },
+  {
+    key: 'kimonoKidBoy', label: 'Kid', age: 'kid', skin: SKIN.warm,
+    hair: { color: '#1e1a22', back: 'short', fringe: 'messy' },
+    eyes: { color: '#2a1a12', style: 'big' }, brows: 'thick', mouth: 'open',
+    outfit: { kind: 'kimono', robe: '#2a3a6a', robeHem: '#22305a', pattern: 'checks', patternColor: '#3e5290', obi: '#c9a26a', obiAccent: '#8a6a3a', mens: true },
+    extras: {},
+  },
+  {
+    key: 'formalMan', label: 'Wedding guest', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#1e1a22', back: 'short', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'kimono', robe: '#1e1c22', robeHem: '#2a2830', pattern: 'crest', patternColor: '#f2f2f2', obi: '#6a6a72', obiAccent: '#c8ccd4', mens: true },
+    extras: {},
+  },
+  {
+    key: 'waveWoman', label: 'Shopkeeper', age: 'adult', skin: SKIN.brown,
+    hair: { color: '#2a1810', back: 'ponytail', fringe: 'side' },
+    eyes: { color: '#3a2214', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#d9a63a', robeHem: '#b8862a', pattern: 'seigaiha', patternColor: '#fff3d0', obi: '#2a3a6a', obiAccent: '#e8c25a' },
+    extras: {},
+  },
+);
+
 export const PATIENT_DESIGN_KEYS = PATIENT_DESIGNS.map((d) => d.key);
 
 export function findPatientDesign(key) {
@@ -203,9 +250,20 @@ export const STAFF_DESIGNS = {
     outfit: { kind: 'blazer', top: '#d23a4a', inner: '#f2ead8', bottom: '#2e2a30', shoes: '#2a2020' },
     extras: { sunglasses: true, earrings: GOLD, handbag: '#8a5a3a' },
   },
+  // The easter egg (the user: "the easter egg is mel in a kimono"): Kitchen
+  // Shift's Mel — long honey-brown hair, white ribbon, yellow clip, a
+  // dandelion behind her ear, her favorite creamy yellow and white — in a
+  // cream kimono with a dandelion print and a white obi.
+  mel: {
+    key: 'mel', label: 'Mel', age: 'adult', skin: SKIN.light,
+    hair: { color: '#b9783e', back: 'long', fringe: 'side' },
+    eyes: { color: '#5a3a2a', style: 'big', sparkle: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#fdf0c2', robeHem: '#f6dc8a', pattern: 'dandelion', patternColor: '#f2c230', obi: '#ffffff', obiAccent: '#f2c230' },
+    extras: { bow: '#ffffff', clip: '#f2c230', dandelion: true },
+  },
 };
 
-/** Any anime design by key — patient, staff or Karen. */
+/** Any anime design by key — patient, staff, Karen or Mel. */
 export function findAnimeDesign(key) {
   return STAFF_DESIGNS[key] ?? findPatientDesign(key);
 }
@@ -993,6 +1051,69 @@ function drawPattern(ctx, o, x, y, w, h) {
     for (let py = y + 4; py < y + h; py += 8) {
       for (let px = x + ((py / 8) % 2 ? 3 : 7); px < x + w; px += 8) blossom(ctx, px, py, 1.8, c, GOLD);
     }
+  } else if (o.pattern === 'seigaiha') {
+    // Overlapping wave arcs, row on row.
+    ctx.lineWidth = 0.4;
+    for (let row = 0, py = y + 3; py < y + h + 3; row++, py += 2.6) {
+      for (let px = x - 3 + (row % 2 ? 0 : 3); px < x + w + 3; px += 6) {
+        for (const r of [3, 2, 1]) {
+          ctx.strokeStyle = r === 2 ? GOLD : c;
+          ctx.beginPath();
+          ctx.arc(px, py, r, Math.PI, 0);
+          ctx.stroke();
+        }
+      }
+    }
+  } else if (o.pattern === 'checks') {
+    // Ichimatsu: a checkerboard of two tones.
+    ctx.fillStyle = c;
+    const cell = 3.2;
+    for (let iy = 0; iy * cell < h; iy++) {
+      for (let ix = 0; ix * cell < w; ix++) {
+        if ((ix + iy) % 2) ctx.fillRect(x + ix * cell, y + iy * cell, cell, cell);
+      }
+    }
+  } else if (o.pattern === 'dandelion') {
+    // Mel's dandelions: yellow puffs on short stems, with a few white seed clocks.
+    for (let row = 0, py = y + 4; py < y + h; row++, py += 8) {
+      for (let col = 0, px = x + (row % 2 ? 3 : 7); px < x + w; col++, px += 8) {
+        ctx.strokeStyle = '#8aa65a';
+        ctx.lineWidth = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(px, py + 1.4);
+        ctx.lineTo(px + 0.4, py + 3.6);
+        ctx.stroke();
+        const seedClock = (row + col) % 3 === 2;
+        ctx.fillStyle = seedClock ? '#ffffff' : c;
+        for (let i = 0; i < 8; i++) {
+          const ang = (i / 8) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(px + Math.cos(ang) * 1.1, py + Math.sin(ang) * 1.1, 0.75, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = seedClock ? '#e8e2d0' : shade(c, -0.15);
+        ctx.beginPath();
+        ctx.arc(px, py, 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (o.pattern === 'crest') {
+    // Montsuki: white family crests on the chest (and one per sleeve).
+    const crests = w > 20 ? [[-6.5, -34], [6.5, -34]] : [[x + w / 2, y + 9]];
+    for (const [cx, cy] of crests) {
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 0.45;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.9, 0, Math.PI * 2);
+      ctx.stroke();
+      blossom(ctx, cx, cy, 1.4, c, c);
+    }
+  }
+  if (o.hemPattern) {
+    // Furisode-style flowers gathered along the hem only.
+    for (const [px, py, r] of [[x + 4, y + h - 7, 2.4], [x + 9, y + h - 4, 1.8], [x + w - 6, y + h - 8, 2.2], [x + w - 11, y + h - 3.5, 1.6]]) {
+      blossom(ctx, px, py, r, o.hemPattern, GOLD);
+    }
   }
 }
 
@@ -1162,6 +1283,14 @@ function drawEyes(ctx, d) {
     ctx.quadraticCurveTo(ex, ey - h - 0.1, ex - dir * w * 1.05, ey - h * 0.05);
     ctx.closePath();
     ctx.fill();
+    if (e.sparkle) {
+      // Soft anime highlights: a big catchlight and a small one.
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath();
+      ctx.arc(ex - dir * 0.9 - 0.4, ey - h * 0.35, 1, 0, Math.PI * 2);
+      ctx.arc(ex + dir * 0.9 + 0.3, ey + h * 0.4, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (style === 'sharp') {
       ctx.strokeStyle = lineColor;
       ctx.lineWidth = 0.4;
@@ -1461,8 +1590,62 @@ function drawHeadExtras(ctx, d) {
     ctx.arc(0, -19, 2.4, 0, Math.PI * 2);
     fillPath(ctx, shade(x.beanie, 0.3), 0.4);
   }
+  if (x.kanzashi) {
+    // A flower kanzashi pinned beside the bun, with a short dangle.
+    blossom(ctx, 7.6, -12.2, 2.4, x.kanzashi, GOLD);
+    blossom(ctx, 9.8, -10.4, 1.6, '#ffffff', GOLD);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(10.4, -9.4);
+    ctx.lineTo(11, -5.6);
+    ctx.stroke();
+    blossom(ctx, 11, -5, 0.9, x.kanzashi, GOLD);
+  }
   if (x.clip) {
     rr(ctx, -9.2, -7.8, 4.2, 1.3, 0.6, x.clip, 0.3);
+  }
+  if (x.bow) {
+    // One big bow tied at the back of the head, on the left: two loops,
+    // a knot and two short tails.
+    const bx = -8.6;
+    const by = -11.2;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.bezierCurveTo(bx + side * 2, by - 4.6, bx + side * 6.4, by - 3.2, bx + side * 5.2, by + 0.4);
+      ctx.bezierCurveTo(bx + side * 4.4, by + 2.6, bx + side * 1.6, by + 1.4, bx, by);
+      fillPath(ctx, x.bow, 0.45);
+      ctx.beginPath();
+      ctx.moveTo(bx - side * 0.4, by + 0.8);
+      ctx.lineTo(bx + side * 2.2, by + 5.6);
+      ctx.lineTo(bx + side * 3.4, by + 4.4);
+      ctx.closePath();
+      fillPath(ctx, x.bow, 0.4);
+    }
+    ctx.beginPath();
+    ctx.arc(bx, by + 0.2, 1.3, 0, Math.PI * 2);
+    fillPath(ctx, shade(x.bow, -0.08), 0.4);
+  }
+  if (x.dandelion) {
+    // Tucked behind her right ear: a stem and a yellow puff.
+    ctx.strokeStyle = '#6f9a4a';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(10.2, 1.5);
+    ctx.lineTo(12.6, -5.2);
+    ctx.stroke();
+    ctx.fillStyle = '#f2c230';
+    for (let i = 0; i < 10; i++) {
+      const ang = (i / 10) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(12.8 + Math.cos(ang) * 1.6, -6.4 + Math.sin(ang) * 1.6, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#e0a81e';
+    ctx.beginPath();
+    ctx.arc(12.8, -6.4, 0.9, 0, Math.PI * 2);
+    ctx.fill();
   }
   if (x.ribbon) {
     ctx.fillStyle = x.ribbon;

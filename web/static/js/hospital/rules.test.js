@@ -13,6 +13,11 @@ import {
   karenShiftForSeed,
   KAREN_SHIFT_MIN,
   KAREN_SHIFT_MAX,
+  MEL_ARRIVAL_CHANCE,
+  MEL_CARD_LINES,
+  melCardLineForShift,
+  melArrivesWithPatient,
+  typeSecretCodeKey,
   vitalsForLevel,
   triageLevelForVitals,
   CONDITIONS,
@@ -110,6 +115,38 @@ describe('Karen', () => {
     const seen = new Set();
     for (let seed = 0; seed < 500; seed++) seen.add(karenShiftForSeed(seed));
     assert.equal(seen.size, KAREN_SHIFT_MAX - KAREN_SHIFT_MIN + 1);
+  });
+});
+
+describe('Mel (easter egg)', () => {
+  test('she walks in with a patient only on a roll under the chance', () => {
+    assert.equal(melArrivesWithPatient(0), true);
+    assert.equal(melArrivesWithPatient(MEL_ARRIVAL_CHANCE - 1e-9), true);
+    assert.equal(melArrivesWithPatient(MEL_ARRIVAL_CHANCE), false);
+    assert.equal(melArrivesWithPatient(0.99), false);
+  });
+
+  test('typing m-e-l matches, case-insensitively, amid other letters', () => {
+    let buffer = '';
+    let matched = false;
+    for (const key of ['x', 'M', 'e']) ({ buffer, matched } = typeSecretCodeKey(buffer, key));
+    assert.equal(matched, false);
+    ({ buffer, matched } = typeSecretCodeKey(buffer, 'L'));
+    assert.equal(matched, true);
+    assert.equal(buffer, '');
+  });
+
+  test('a non-letter key resets the code', () => {
+    let { buffer } = typeSecretCodeKey('', 'm');
+    ({ buffer } = typeSecretCodeKey(buffer, 'e'));
+    ({ buffer } = typeSecretCodeKey(buffer, 'Enter'));
+    assert.equal(typeSecretCodeKey(buffer, 'l').matched, false);
+  });
+
+  test('her card line cycles per shift', () => {
+    assert.equal(melCardLineForShift(1), MEL_CARD_LINES[0]);
+    assert.equal(melCardLineForShift(MEL_CARD_LINES.length + 1), MEL_CARD_LINES[0]);
+    assert.equal(melCardLineForShift(Number.NaN), MEL_CARD_LINES[0]);
   });
 });
 
