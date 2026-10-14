@@ -49,7 +49,7 @@ const SKIN = {
  * The first sixteen patients (six more in kimono are pushed below). Fields: key, label, age, skin, hair {color, back,
  * fringe}, eyes {color, style, lashes}, brows ('thin'|'thick'), mouth,
  * outfit {kind, …colors/pattern}, extras (glasses, mask, mustache, beard,
- * clip, ribbon, bow, cap, headphones, pearls, earrings), and eyes.sparkle for highlights.
+ * clip, ribbon, bow, cap, headphones, pearls, earrings).
  */
 export const PATIENT_DESIGNS = [
   {
@@ -257,7 +257,7 @@ export const STAFF_DESIGNS = {
   mel: {
     key: 'mel', label: 'Mel', age: 'adult', skin: SKIN.light,
     hair: { color: '#b9783e', back: 'long', fringe: 'side' },
-    eyes: { color: '#5a3a2a', style: 'big', sparkle: true }, brows: 'thin', mouth: 'smile',
+    eyes: { color: '#5a3a2a', style: 'big' }, brows: 'thin', mouth: 'smile',
     outfit: { kind: 'kimono', robe: '#fdf0c2', robeHem: '#f6dc8a', pattern: 'dandelion', patternColor: '#f2c230', obi: '#ffffff', obiAccent: '#f2c230' },
     extras: { bow: '#ffffff', clip: '#f2c230', dandelion: true },
   },
@@ -316,6 +316,20 @@ function blossom(ctx, cx, cy, r, petal, core) {
   ctx.beginPath();
   ctx.arc(cx, cy, r * 0.26, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * Cel shading for clothes: light from the viewer's upper left — a soft
+ * highlight on the left edge, easing into shadow on the right.
+ */
+function softShade(ctx, x, y, w, h) {
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, 'rgba(255,255,255,0.14)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0)');
+  g.addColorStop(0.62, 'rgba(20,10,40,0)');
+  g.addColorStop(1, 'rgba(20,10,40,0.24)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
 }
 
 // ---------------------------------------------------------------------------
@@ -394,10 +408,7 @@ function drawBody(ctx, d) {
   ctx.save();
   torsoPath(ctx, -40, -15, 12.3);
   ctx.clip();
-  ctx.fillStyle = 'rgba(20,10,40,0.12)';
-  ctx.fillRect(5.5, -42, 9, 30);
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(-9.5, -40, 3, 24);
+  softShade(ctx, -13, -42, 26, 30);
   ctx.restore();
   drawNeck(ctx, d);
   if (d.extras?.handbag) drawHandbag(ctx, d.extras.handbag);
@@ -941,8 +952,7 @@ function drawKimono(ctx, d) {
   robe();
   ctx.clip();
   drawPattern(ctx, o, -14, -42, 28, 48);
-  ctx.fillStyle = 'rgba(20,10,30,0.18)';
-  ctx.fillRect(5, -42, 9, 50);
+  softShade(ctx, -13, -42, 26, 50);
   ctx.strokeStyle = 'rgba(20,10,30,0.4)';
   ctx.lineWidth = 0.7;
   ctx.beginPath();
@@ -1158,6 +1168,10 @@ function drawBackHair(ctx, d) {
     return drawBackHairAccents(ctx, d);
   }
   ctx.closePath();
+  const g = ctx.createLinearGradient(0, -8, 0, 30);
+  g.addColorStop(0, shade(c, -0.18));
+  g.addColorStop(1, shade(c, 0.02));
+  ctx.fillStyle = g;
   ctx.fill();
   outline(ctx, 0.5);
   drawBackHairAccents(ctx, d);
@@ -1202,14 +1216,40 @@ function drawHead(ctx, d, angryTint = false) {
   }
   facePath(ctx);
   fillPath(ctx, skin, 0.5);
+  // Soft cel shading: the bangs' shadow across the forehead, and a little
+  // under the jaw on the shadow side.
+  ctx.save();
+  facePath(ctx);
+  ctx.clip();
+  const shadow = ctx.createLinearGradient(0, -9, 0, -3);
+  shadow.addColorStop(0, shade(skin, -0.16));
+  shadow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = shadow;
+  ctx.fillRect(-12, -14, 24, 11);
+  const jaw = ctx.createRadialGradient(9.5, 6, 0, 9.5, 6, 8);
+  jaw.addColorStop(0, 'rgba(120,60,60,0.12)');
+  jaw.addColorStop(1, 'rgba(120,60,60,0)');
+  ctx.fillStyle = jaw;
+  ctx.fillRect(0, -4, 12, 18);
+  ctx.restore();
   drawEyes(ctx, d);
   drawBrows(ctx, d);
-  // Blush and a hint of nose.
-  ctx.fillStyle = 'rgba(240,120,140,0.32)';
+  // Blush with a few anime hatch strokes, and a hint of nose.
+  ctx.fillStyle = 'rgba(240,120,140,0.3)';
   for (const dir of [-1, 1]) {
     ctx.beginPath();
     ctx.ellipse(dir * 6.6, 3.6, 2.3, 1.2, 0, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(220,90,110,0.4)';
+  ctx.lineWidth = 0.3;
+  for (const dir of [-1, 1]) {
+    for (const off of [-1, 0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 6.6 + off * 0.9 - 0.3, 4.2);
+      ctx.lineTo(dir * 6.6 + off * 0.9 + 0.3, 3);
+      ctx.stroke();
+    }
   }
   ctx.strokeStyle = 'rgba(160,90,80,0.6)';
   ctx.lineWidth = 0.5;
@@ -1283,14 +1323,23 @@ function drawEyes(ctx, d) {
     ctx.quadraticCurveTo(ex, ey - h - 0.1, ex - dir * w * 1.05, ey - h * 0.05);
     ctx.closePath();
     ctx.fill();
-    if (e.sparkle) {
-      // Soft anime highlights: a big catchlight and a small one.
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.beginPath();
-      ctx.arc(ex - dir * 0.9 - 0.4, ey - h * 0.35, 1, 0, Math.PI * 2);
-      ctx.arc(ex + dir * 0.9 + 0.3, ey + h * 0.4, 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Soft anime highlights on every open eye: a big catchlight up top and
+    // a small one low on the other side (sized to the eye), plus a faint
+    // lower lash line.
+    const glint = Math.min(1, h * 0.32);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(ex - dir * 0.9 - 0.4, ey - h * 0.35, glint, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex + dir * 0.9 + 0.3, ey + h * 0.4, glint * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(42,26,46,0.45)';
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(ex - w * 0.55, ey + h + 0.25);
+    ctx.quadraticCurveTo(ex, ey + h + 0.75, ex + w * 0.55, ey + h + 0.25);
+    ctx.stroke();
     if (style === 'sharp') {
       ctx.strokeStyle = lineColor;
       ctx.lineWidth = 0.4;
@@ -1453,7 +1502,8 @@ function drawFrontHair(ctx, d) {
     ctx.quadraticCurveTo(-10, -6.4, -11.2, -2.8);
   }
   ctx.closePath();
-  fillPath(ctx, c, 0.45);
+  fillPath(ctx, hairFill(ctx, c), 0.45);
+  drawHairGloss(ctx, c);
   if (d.hair.streaks) {
     // Chunky highlights.
     ctx.strokeStyle = d.hair.streaks;
@@ -1477,16 +1527,39 @@ function drawFrontHair(ctx, d) {
       fillPath(ctx, c, 0.45);
     }
   }
-  // Shine across the crown.
-  ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-  ctx.lineWidth = 1;
+}
+
+/** The front hair's fill: a touch lighter at the crown, deeper toward the bangs. */
+function hairFill(ctx, c) {
+  const g = ctx.createLinearGradient(0, -15, 0, 0);
+  g.addColorStop(0, shade(c, 0.1));
+  g.addColorStop(1, shade(c, -0.12));
+  return g;
+}
+
+/**
+ * The anime "angel ring": a glossy band across the crown, broken into
+ * strands. Clipped to the hair path that's current when it's called.
+ */
+function drawHairGloss(ctx, c) {
+  ctx.save();
+  ctx.clip();
   ctx.lineCap = 'round';
+  ctx.strokeStyle = shade(c, 0.5);
+  ctx.globalAlpha = 0.38;
+  ctx.lineWidth = 1.15;
+  for (const [a0, a1] of [[1.22, 1.34], [1.4, 1.52], [1.58, 1.7], [1.76, 1.84]]) {
+    ctx.beginPath();
+    ctx.arc(0, -1.5, 9.2, Math.PI * a0, Math.PI * a1);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.8;
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 0.5;
   ctx.beginPath();
-  ctx.arc(0, -3, 9.4, Math.PI * 1.25, Math.PI * 1.42);
-  ctx.moveTo(Math.cos(Math.PI * 1.56) * 9.4, -3 + Math.sin(Math.PI * 1.56) * 9.4);
-  ctx.arc(0, -3, 9.4, Math.PI * 1.56, Math.PI * 1.7);
+  ctx.arc(0, -1.5, 9.2, Math.PI * 1.43, Math.PI * 1.5);
   ctx.stroke();
-  ctx.lineCap = 'butt';
+  ctx.restore();
 }
 
 /**

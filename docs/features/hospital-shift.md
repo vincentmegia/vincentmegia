@@ -119,8 +119,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   (`cooking-game.js`'s `drawMel`: honey-brown hair, white ribbon, yellow
   clip, a dandelion behind her ear, creamy yellow and white) visits in a
   cream kimono with a `dandelion` print and a white obi —
-  `STAFF_DESIGNS.mel` in `anime-people.js`, with a single `bow` and
-  `eyes.sparkle` highlights added for her. At most once per shift she
+  `STAFF_DESIGNS.mel` in `anime-people.js`, with a single `bow` added
+  for her. At most once per shift she
   joins the front of the triage line ("Mel ✿"), by any of four triggers:
   * a rare arrival — each arriving patient has a `MEL_ARRIVAL_CHANCE`
     (1/40) roll to bring her along;
@@ -275,7 +275,16 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   "NOT smooth" but not spiky); the Stock tech keeps soft rounded tufts
   under his beanie, at the user's request. Necks were shortened for the whole cast
   (head 12 units above the shoulders, was 15; Kimono Himura's `NECK_DROP`).
-  Hospital Shift no longer draws anyone with people.js.
+  Hospital Shift no longer draws anyone with people.js. A polish pass
+  followed ("make the characters look a little bit better"), applied in
+  `anime-people.js` so every patient, staff member, Karen and Mel got it
+  (Kimono Himura's own renderer was left as is): catchlights and a soft
+  lower lash line on every open eye; the bangs' shadow across the
+  forehead and a soft radial shade under the jaw; anime blush hatch
+  strokes; hair filled with a crown-to-bangs gradient plus a glossy
+  "angel ring" of broken strands (`hairFill`/`drawHairGloss`); and clothes
+  cel-shaded light-left to shadow-right (`softShade`) instead of a hard
+  dark strip.
 * **Progress resets on leaving** (the user: "when you leave the website
   make it reset back to shift 1", then "ALL" — every way of leaving, and
   everything resets). Nothing is saved: shift, month Gard, best run total,
