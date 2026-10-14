@@ -684,21 +684,139 @@ export function drawOrganCooler(ctx, st, opts = {}) {
   sparkle(ctx, hw - 16, hh - 16, 5, '#ffffff');
 }
 
-/** The OR's double swing doors back to the ER, with round windows. */
-export function drawOrDoor(ctx, st) {
+/** The OR's double swing doors back to the ER, with round windows (`sign`/`color` restyle them). */
+export function drawOrDoor(ctx, st, opts = {}) {
   const hw = st.w / 2;
   const hh = st.h / 2;
   for (const dir of [-1, 1]) {
     const x = dir < 0 ? -hw + 10 : 1;
-    block(ctx, x, -hh + 8, hw - 11, st.h - 14, 5, '#d4f5e8', 1.4);
+    block(ctx, x, -hh + 8, hw - 11, st.h - 14, 5, opts.color ?? '#d4f5e8', 1.4);
     circle(ctx, x + (hw - 11) / 2, -hh + 26, 8, '#c9ecff', 1.2);
   }
-  flat(ctx, -22, -hh - 2, 44, 12, 4, ANIME.coral, 1.2);
-  ctx.fillStyle = '#ffffff';
+  const sign = opts.sign ?? '↓ ER';
   ctx.font = 'bold 8px sans-serif';
+  const sw = Math.max(44, ctx.measureText(sign).width + 14);
+  flat(ctx, -sw / 2, -hh - 2, sw, 12, 4, opts.signColor ?? ANIME.coral, 1.2);
+  ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('↓ ER', 0, -hh + 4.5);
+  ctx.fillText(sign, 0, -hh + 4.5);
+}
+
+// ---------------------------------------------------------------------------
+// Food and drink (rules.js VENDING_ITEMS, the Cafeteria's meal)
+// ---------------------------------------------------------------------------
+
+/** A food/drink icon centered on (x, y) at scale s, by VENDING_ITEMS id (or 'meal'). */
+export function drawFoodIcon(ctx, x, y, s, id) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  if (id === 'onigiri') {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.quadraticCurveTo(10, 4, 8, 8);
+    ctx.lineTo(-8, 8);
+    ctx.quadraticCurveTo(-10, 4, 0, -10);
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    flat(ctx, -5, 1, 10, 7, 1, '#2f3a32', 0.8);
+    kawaii(ctx, 0, -2, 0.55);
+  } else if (id === 'chips') {
+    block(ctx, -8, -11, 16, 21, 3, '#ffd166', 1.2);
+    flat(ctx, -6, -4, 12, 6, 2, '#ff8a7a', 0.8);
+    ctx.fillStyle = INK;
+    ctx.font = 'bold 4.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CHIPS', 0, -1);
+  } else if (id === 'candy') {
+    flat(ctx, -11, -4, 22, 8, 2, '#c8865a', 1.1);
+    flat(ctx, -5, -4, 10, 8, 0, '#ffd1e3', 0.8);
+  } else if (id === 'water' || id === 'juice' || id === 'tea') {
+    const fill = { water: '#bfe6ff', juice: '#ffb47a', tea: '#a8e0b0' }[id];
+    flat(ctx, -3, -13, 6, 4, 1, id === 'water' ? ANIME.skyDeep : '#ffffff', 0.9);
+    block(ctx, -6, -10, 12, 21, 4, fill, 1.2);
+    flat(ctx, -5, -1, 10, 6, 1, '#ffffff', 0.7);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillRect(-4, -8, 2, 6);
+  } else if (id === 'meal') {
+    // A tray: rice bowl, a little dish and a cup of water.
+    flat(ctx, -14, -8, 28, 18, 4, '#e8c9a8', 1.2);
+    circle(ctx, -6, 0, 6, '#ffffff', 1);
+    circle(ctx, -6, -1, 4, '#fffdf6', 0);
+    circle(ctx, 6, 3, 4, '#ffd166', 0.9);
+    flat(ctx, 5, -8, 6, 8, 2, '#bfe6ff', 0.9);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Vending machine (a station now) and the Cafeteria
+// ---------------------------------------------------------------------------
+
+/** The ER's vending machine as a station (context at its center). */
+export function drawVendingStation(ctx, st) {
+  drawVendingMachine(ctx, { x: 0, y: 0, w: st.w - 10, h: st.h - 6 });
+}
+
+/** The ER's door down to the Cafeteria: warm wood doors and a little cup sign. */
+export function drawCafeteriaDoor(ctx, st) {
+  drawOrDoor(ctx, st, { sign: '☕ CAFETERIA', color: '#ffe0c2', signColor: ANIME.goldDeep });
+}
+
+/** The Cafeteria's door back to the ER. */
+export function drawCafeDoor(ctx, st) {
+  drawOrDoor(ctx, st, { sign: '↑ ER', color: '#ffe0c2', signColor: ANIME.coral });
+}
+
+/**
+ * The Cafeteria counter with the lady behind it: `opts.drawLady(x, y)`
+ * draws her (feet at y) before the counter's front covers her lower half;
+ * trays of food sit on top.
+ */
+export function drawCafeCounter(ctx, st, opts = {}) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  // Back shelf with jars and a rice cooker.
+  flat(ctx, -hw + 10, -hh + 2, st.w - 20, 10, 3, '#e8c9a8', 1.2);
+  circle(ctx, -hw + 34, -hh + 1, 7, '#ffffff', 1.1);
+  for (let i = 0; i < 4; i++) flat(ctx, hw - 80 + i * 16, -hh - 8, 10, 12, 3, [ANIME.pink, ANIME.gold, ANIME.mint, ANIME.sky][i], 0.9);
+  if (opts.drawLady) opts.drawLady(0, 22);
+  // Counter: wooden top over a peach front with a heart.
+  block(ctx, -hw + 4, 4, st.w - 8, hh - 8, 8, '#ffcfa8', 1.5);
+  block(ctx, -hw, -4, st.w, 10, 5, '#e8b58a', 1.5);
+  heart(ctx, 0, hh - 16, 5, 'rgba(232,85,143,0.7)');
+  for (const [tx, id] of [[-hw + 40, 'meal'], [hw - 40, 'meal'], [-hw + 90, 'onigiri'], [hw - 92, 'tea']]) drawFoodIcon(ctx, tx, -10, 1, id);
+}
+
+function drawCafeTable(ctx, d) {
+  // Four little stools, then the round table with a cloth and a vase.
+  for (const [cx, cy] of [[-d.w / 2 + 6, -6], [d.w / 2 - 6, -6], [-d.w / 2 + 6, 18], [d.w / 2 - 6, 18]]) {
+    block(ctx, d.x + cx - 9, d.y + cy - 7, 18, 14, 6, '#ffc2da', 1.2);
+  }
+  ctx.fillStyle = 'rgba(59,42,74,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(d.x, d.y + 22, d.w * 0.32, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(d.x, d.y, d.w * 0.34, d.h * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(232,85,143,0.5)';
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.ellipse(d.x, d.y, d.w * 0.28, d.h * 0.25, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  flat(ctx, d.x - 4, d.y - 14, 8, 12, 3, '#c9ecff', 1);
+  circle(ctx, d.x, d.y - 17, 3.2, '#ffd166', 0.9);
 }
 
 /** The Supply Room's Implant Shelf: two shelves of mesh patches, bone plates and decoys. */
@@ -866,6 +984,7 @@ function drawLadder(ctx, d) {
 }
 
 const DECOR_DRAWERS = {
+  'cafe-table': drawCafeTable,
   'waiting-chairs': drawWaitingChairs,
   'water-cooler': drawWaterCooler,
   plant: drawPlant,

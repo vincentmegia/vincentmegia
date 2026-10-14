@@ -42,6 +42,9 @@ import {
   brewCoffee,
   startleFromHallucination,
   collapseSecondsRemaining,
+  hungerThirstCollapse,
+  buyVendingItem,
+  cafeteriaMeal,
 } from './engine-state.js';
 import {
   findCondition,
@@ -55,6 +58,15 @@ import {
   KAREN_MOOD_PENALTY,
   KAREN_EVENT_TIMER_SECONDS,
   MEL_GIFT_GARD,
+  HUNGER_DRAIN_PER_SECOND,
+  THIRST_DRAIN_PER_SECOND,
+  EMPTY_STAT_SANITY_DRAIN,
+  HUNGER_THIRST_COLLAPSE_SECONDS,
+  HUNGER_THIRST_LOW,
+  VENDING_ITEMS,
+  findVendingItem,
+  walkMultiplierForHungerThirst,
+  skillZoneScaleForHungerThirst,
   surgeryItemFor,
   surgeryStagesFor,
   isTransplant,
@@ -562,6 +574,57 @@ describe('surgery kit (scalpel + organ/implant)', () => {
     assert.deepEqual(failed.surgeryKit, { scalpel: true, item: 'mesh' }, 'a miss keeps the kit');
     s = resolveSurgery(s, true);
     assert.deepEqual(s.surgeryKit, { scalpel: false, item: null });
+  });
+});
+
+describe('hunger and thirst', () => {
+  test('both start full and drain over the shift', () => {
+    const s = tick(playing(), 60);
+    assert.equal(s.hunger, 100 - HUNGER_DRAIN_PER_SECOND * 60);
+    assert.equal(s.thirst, 100 - THIRST_DRAIN_PER_SECOND * 60);
+    assert.ok(s.thirst < s.hunger, 'thirst drains faster');
+  });
+
+  test('low stats slow you down and shrink the zones; full stats do not', () => {
+    assert.equal(walkMultiplierForHungerThirst(100, 100), 1);
+    assert.ok(walkMultiplierForHungerThirst(HUNGER_THIRST_LOW - 1, 100) < 1);
+    assert.ok(skillZoneScaleForHungerThirst(100, HUNGER_THIRST_LOW - 1) < 1);
+  });
+
+  test('at 0, Sanity drains faster, and 20 s there is a collapse', () => {
+    const base = tick(playing(5, { sanity: 80 }), 10).sanity;
+    const starving = tick(playing(5, { sanity: 80, hunger: 0, thirst: 0 }), 10).sanity;
+    assert.ok(Math.abs((base - starving) - EMPTY_STAT_SANITY_DRAIN * 2 * 10) < 1e-9);
+    let s = playing(5, { thirst: 0 });
+    s = tick(s, HUNGER_THIRST_COLLAPSE_SECONDS / 2);
+    assert.equal(hungerThirstCollapse(s).stat, 'thirst');
+    assert.ok(Math.abs(hungerThirstCollapse(s).seconds - HUNGER_THIRST_COLLAPSE_SECONDS / 2) < 1e-9);
+    s = tick(s, HUNGER_THIRST_COLLAPSE_SECONDS / 2 + 0.1);
+    assert.equal(s.phase, 'game-over');
+    assert.equal(s.gameOverReason, 'thirst');
+    assert.equal(tick(playing(5, { hunger: 0, zeroHungerSeconds: HUNGER_THIRST_COLLAPSE_SECONDS - 0.05 }), 0.1).gameOverReason, 'hunger');
+    assert.equal(HUNGER_THIRST_COLLAPSE_SECONDS, 5);
+    assert.equal(HUNGER_THIRST_LOW, 25);
+  });
+
+  test('vending items cost Gard off the shift pay and refill; eating off 0 resets the collapse timer', () => {
+    const water = findVendingItem('water');
+    let s = playing(5, { thirst: 0, zeroThirstSeconds: 12 });
+    s = buyVendingItem(s, 'water');
+    assert.equal(s.thirst, water.thirst);
+    assert.equal(s.zeroThirstSeconds, 0);
+    assert.equal(s.bonusGard, -water.price);
+    assert.equal(buyVendingItem(s, 'nope'), s);
+    assert.ok(VENDING_ITEMS.some((i) => i.kind === 'snack') && VENDING_ITEMS.some((i) => i.kind === 'drink'));
+  });
+
+  test("the Cafeteria Lady's meal is free and fills both bars", () => {
+    const s = cafeteriaMeal(playing(5, { hunger: 10, thirst: 0, sanity: 50, bonusGard: 30 }));
+    assert.equal(s.hunger, 100);
+    assert.equal(s.thirst, 100);
+    assert.equal(s.sanity, 60);
+    assert.equal(s.bonusGard, 30);
+    assert.equal(hungerThirstCollapse(s), null);
   });
 });
 

@@ -90,7 +90,9 @@ touching that area rather than expecting this section to carry it:
   trace with a roll from the 2nd-Floor Supply Room's cart, Meds from the
   cabinet; helping staff (Dr. Okafor rescues near-transfer patients, the
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
-  down); Karen, Coffee Pour, hallucinations; an easter egg — Mel in a
+  down); Karen, Coffee Pour, hallucinations; Hunger/Thirst (vending
+  machine snacks for Gard, a walk-in Cafeteria where Auntie Yumi's meal is
+  free, uncomfortable under 25%, collapse after 5 s at 0%); an easter egg — Mel in a
   dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
   the back-wall vase, or typing "mel"); a 10-rank nurse career (a perk
   per rank, `rules.js` §3c); a seeded Daily Challenge (one UTC-day shift

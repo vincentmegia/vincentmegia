@@ -99,6 +99,16 @@ import {
   STOCK_TECH_UPSTAIRS_SECONDS,
   STOCK_TECH_DOWNSTAIRS_SECONDS,
   ZERO_SANITY_COLLAPSE_SECONDS,
+  HUNGER_MAX,
+  THIRST_MAX,
+  HUNGER_THIRST_LOW,
+  HUNGER_THIRST_COLLAPSE_SECONDS,
+  VENDING_ITEMS,
+  CAFE_MEAL,
+  CAFE_LADY_NAME,
+  CAFE_LADY_LINE,
+  walkMultiplierForHungerThirst,
+  skillZoneScaleForHungerThirst,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { patientProfileFor } from './hospital/patient-names.js';
@@ -137,6 +147,11 @@ import {
   drawOrganCooler,
   drawOrDoor,
   drawImplantShelf,
+  drawVendingStation,
+  drawCafeteriaDoor,
+  drawCafeDoor,
+  drawCafeCounter,
+  drawFoodIcon,
 } from './hospital/anime-furniture.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
@@ -176,6 +191,9 @@ import {
   surgeryMissing,
   surgeryPatient,
   surgeryItemsNeeded,
+  buyVendingItem,
+  cafeteriaMeal,
+  hungerThirstCollapse,
   doctorAssistTarget,
   doctorAssist,
 } from './hospital/engine-state.js';
@@ -187,6 +205,7 @@ import {
   FLOOR_1,
   FLOOR_2,
   FLOOR_OR,
+  FLOOR_CAFE,
   stationAtPoint,
   standoffFor,
   approachPoint,
@@ -277,14 +296,14 @@ const AMBIENT_STAFF = [
   // Floor 1 routes stay below the beds and in the right-hand corridor, clear
   // of the triage line, so staff never read as patients waiting there.
   { key: 'doctor', name: 'Dr. Okafor', floor: 1, waypoints: [[220, 462], [420, 470], [600, 462], [700, 470], [736, 262]] },
-  { key: 'orderly', name: 'Orderly', floor: 1, waypoints: [[560, 525], [300, 525], [170, 520], [730, 266], [480, 520]] },
+  { key: 'orderly', name: 'Orderly', floor: 1, waypoints: [[512, 472], [300, 525], [170, 520], [730, 266], [480, 520]] },
   { key: 'stockTech', name: 'Stock tech', floor: 2, waypoints: [[160, 250], [600, 330], [240, 430], [560, 440], [700, 200]] },
 ];
 const AMBIENT_SPEED = 70;
 /** Staff on an errand walk faster than when they're idling. */
 const ERRAND_SPEED = 130;
 /** Where the Stock tech walks while he's downstairs with bandages (start and end at the Elevator). */
-const STOCK_TECH_ER_WAYPOINTS = [[700, 505], [560, 470], [400, 525], [600, 520]];
+const STOCK_TECH_ER_WAYPOINTS = [[690, 470], [560, 470], [400, 525], [650, 478]];
 const STOCK_TECH_ER_ELEVATOR = [840, 530];
 const STOCK_TECH_SUPPLY_WAYPOINTS = AMBIENT_STAFF.find((d) => d.key === 'stockTech').waypoints;
 
@@ -623,6 +642,10 @@ export function init(canvas, elements) {
       case 'organ-cooler': return 'Organ Cooler';
       case 'implant-shelf': return 'Implant Shelf';
       case 'or-door': return 'Door → ER';
+      case 'vending-machine': return 'Vending Machine';
+      case 'cafeteria-door': return 'Cafeteria ↓';
+      case 'cafe-counter': return `${CAFE_LADY_NAME} · free meals`;
+      case 'cafe-door': return 'Door → ER';
       case 'coffee-machine': return dailyEffect('noCoffee') ? 'Coffee (out of order)' : 'Coffee Machine';
       case 'supply-cart': return 'Supply Cart';
       case 'stairs': return station.targetFloor === FLOOR_2 ? 'Stairs ↑ Supply Room' : 'Stairs ↓ ER';
@@ -694,7 +717,7 @@ export function init(canvas, elements) {
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
     const gurney = shiftState?.carried?.kind === 'gurney' ? GURNEY_WALK_MULTIPLIER : 1;
-    const rankWalk = shiftState?.perks?.walk ?? 1;
+    const rankWalk = (shiftState?.perks?.walk ?? 1) * (shiftState ? walkMultiplierForHungerThirst(shiftState.hunger, shiftState.thirst) : 1);
     const step = 240 * walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX) * gurney * rankWalk * deltaSeconds;
     const dx = moveTarget.x - player.x;
     const dy = moveTarget.y - player.y;
@@ -713,7 +736,9 @@ export function init(canvas, elements) {
   function updateFloorButton() {
     if (!elements.floorButton) return;
     const upstairs = currentFloor === FLOOR_2;
-    elements.floorButton.textContent = currentFloor === FLOOR_OR ? 'Leave the OR' : (upstairs ? 'Go Downstairs' : 'Go Upstairs');
+    elements.floorButton.textContent = currentFloor === FLOOR_OR ? 'Leave the OR'
+      : currentFloor === FLOOR_CAFE ? 'Leave the Cafeteria'
+        : (upstairs ? 'Go Downstairs' : 'Go Upstairs');
     elements.floorButton.setAttribute('aria-pressed', String(currentFloor !== FLOOR_1));
   }
 
@@ -1095,7 +1120,7 @@ export function init(canvas, elements) {
   function samplePickGrab() {
     if (!overlay.chosen || overlay.closeIn > 0) return;
     if (overlay.dropLock > 0) return; // a beat after a drop, so mashing doesn't retry instantly
-    const zone = skillCheckSuccessZone('grab', shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+    const zone = skillCheckSuccessZone('grab', skillZoneScaleNow());
     if (!isSkillCheckSuccess(overlay.gauge, zone)) {
       flash('Dropped it! Try again.', false);
       overlay.gauge = 0;
@@ -1247,6 +1272,23 @@ export function init(canvas, elements) {
       switchFloor(FLOOR_1, 'or-exit');
       return;
     }
+    if (station.kind === 'cafeteria-door') {
+      switchFloor(FLOOR_CAFE, 'cafe-enter');
+      showToast(`The Cafeteria — ${CAFE_LADY_NAME} serves free meals and water at the counter.`);
+      return;
+    }
+    if (station.kind === 'cafe-door') {
+      switchFloor(FLOOR_1, 'cafe-exit');
+      return;
+    }
+    if (station.kind === 'vending-machine') {
+      overlay = { kind: 'vending', flash: null };
+      return;
+    }
+    if (station.kind === 'cafe-counter') {
+      overlay = { kind: 'cafe', flash: null, served: false, closeIn: 0 };
+      return;
+    }
     if (station.kind === 'or-table') {
       const before = shiftState;
       shiftState = startSurgery(shiftState);
@@ -1371,6 +1413,12 @@ export function init(canvas, elements) {
     else showToast(`Not quite — ${name} is ${actual.name}. The charge nurse corrected it. ${name} → ${bedLabel(bedIndex)}.`, 3.6);
   }
 
+  /** Every skill-check zone's scale right now: shaky hands, the rank perk, and Hunger/Thirst. */
+  function skillZoneScaleNow() {
+    const fed = shiftState ? skillZoneScaleForHungerThirst(shiftState.hunger, shiftState.thirst) : 1;
+    return shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1) * fed;
+  }
+
   /** The table's stage names for the patient in surgery (SURGERY_STAGES for other tasks). */
   function skillStages() {
     if (overlay?.task !== 'surgery') return SURGERY_STAGES;
@@ -1380,7 +1428,7 @@ export function init(canvas, elements) {
 
   function sampleSkillCheck() {
     if (overlay.flash && !overlay.flash.good && overlay.flash.seconds > 0.6) return; // brief lockout after a miss
-    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+    const zone = skillCheckSuccessZone(overlay.task, skillZoneScaleNow());
     const hit = isSkillCheckSuccess(overlay.gauge, zone);
     const resolve = overlay.task === 'surgery' ? resolveSurgery : (overlay.task === 'meds' ? resolveMedsGive : resolveBedTask);
     if (!hit) {
@@ -1544,6 +1592,11 @@ export function init(canvas, elements) {
       else if (insideRect(b.letCut, x, y)) answerKaren('letCut');
     } else if (overlay.kind === 'mel') {
       if (insideRect(melButtonRect(), x, y)) thankMel();
+    } else if (overlay.kind === 'vending') {
+      const card = vendingCardRects().find((r) => insideRect(r, x, y));
+      if (card) buyFromVending(card.id);
+    } else if (overlay.kind === 'cafe') {
+      if (insideRect(cafeButtonRect(), x, y)) eatCafeMeal();
     } else if (overlay.kind === 'pick') {
       if (overlay.chosen) { samplePickGrab(); return; }
       const card = pickCardRects().find((r) => insideRect(r, x, y));
@@ -1696,6 +1749,9 @@ export function init(canvas, elements) {
       const speed = skillCheckSweepSpeed(currentShiftNumber, overlay.task) * shakyHandsSweepMultiplier(currentIntensity());
       overlay.gauge += overlay.direction * speed * dt;
       if (overlay.gauge >= 1) { overlay.gauge = 1; overlay.direction = -1; } else if (overlay.gauge <= 0) { overlay.gauge = 0; overlay.direction = 1; }
+    } else if (overlay.kind === 'cafe' && overlay.closeIn > 0) {
+      overlay.closeIn -= dt;
+      if (overlay.closeIn <= 0) overlay = null;
     } else if (overlay.kind === 'pick') {
       overlay.dropLock = Math.max(0, overlay.dropLock - dt);
       if (overlay.closeIn > 0) {
@@ -1804,6 +1860,7 @@ export function init(canvas, elements) {
         else if (overlay.kind === 'skill') sampleSkillCheck();
         else if (overlay.kind === 'mel') thankMel();
         else if (overlay.kind === 'pick') samplePickGrab();
+        else if (overlay.kind === 'cafe') eatCafeMeal();
       }
       return;
     }
@@ -2017,9 +2074,11 @@ export function init(canvas, elements) {
     screen.root.dataset.outcome = 'game-over';
     screen.root.dataset.final = 'false';
     screen.title.textContent = 'Game Over';
-    screen.outcome.textContent = shiftState.gameOverReason === 'sanity'
-      ? `You collapsed after ${ZERO_SANITY_COLLAPSE_SECONDS} seconds at 0% Sanity. Grab coffee before it runs out!`
-      : 'Out of stars — too many patients walked out or were transferred.';
+    screen.outcome.textContent = {
+      sanity: `You collapsed after ${ZERO_SANITY_COLLAPSE_SECONDS} seconds at 0% Sanity. Grab coffee before it runs out!`,
+      hunger: `You collapsed from hunger after ${HUNGER_THIRST_COLLAPSE_SECONDS} seconds at 0%. Grab a snack or visit the Cafeteria!`,
+      thirst: `You collapsed from thirst after ${HUNGER_THIRST_COLLAPSE_SECONDS} seconds at 0%. Grab a drink or visit the Cafeteria!`,
+    }[shiftState.gameOverReason] ?? 'Out of stars — too many patients walked out or were transferred.';
     screen.root.dataset.daily = daily ? 'true' : 'false';
     screen.shiftTotal.textContent = '0 Gard';
     screen.monthTotal.textContent = daily ? `${dailyBest?.date === daily.date ? dailyBest.payout : 0} Gard` : `${save.monthToDateGard} Gard`;
@@ -2049,6 +2108,10 @@ export function init(canvas, elements) {
     }
     if (currentFloor === FLOOR_OR) {
       drawOperatingTheaterFloor();
+      return;
+    }
+    if (currentFloor === FLOOR_CAFE) {
+      drawCafeteriaFloor();
       return;
     }
     drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
@@ -2148,6 +2211,18 @@ export function init(canvas, elements) {
     ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
     ctx.fillStyle = 'rgba(59,42,74,0.12)';
     ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
+  }
+
+  /** Uncomfortable (Hunger/Thirst under 25%): a faint warm vignette that pulses, stronger as a bar nears 0. */
+  function drawDiscomfortVignette() {
+    const lowest = Math.min(shiftState.hunger, shiftState.thirst);
+    const depth = 1 - lowest / HUNGER_THIRST_LOW; // 0 at the line, 1 at empty
+    const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 260);
+    const g = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_HEIGHT * 0.45, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.62);
+    g.addColorStop(0, 'rgba(224,80,62,0)');
+    g.addColorStop(1, `rgba(224,80,62,${(0.12 + 0.22 * depth) * pulse})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   /**
@@ -2252,6 +2327,34 @@ export function init(canvas, elements) {
       ctx.arc(655, 26 + i * 5, 14 - i * 1.5, Math.PI * 1.15, Math.PI * 1.85);
       ctx.stroke();
     }
+    drawWallClock();
+  }
+
+  /**
+   * The Cafeteria: warm peach tiles, sunbeams, a pink wall with a chalk menu
+   * board, a sakura branch and the sign.
+   */
+  function drawCafeteriaFloor() {
+    drawAnimeTiles('#fff1e2', '#ffe6cf', 'rgba(255,255,255,0.18)');
+    drawSunbeams();
+    drawBackWall();
+    drawEmergencySign('☕ CAFETERIA', ANIME.gold, ANIME.goldDeep);
+    sakuraBranch(ctx, 470, 24, 1.1);
+    // A chalk menu board.
+    drawRoundRect(ctx, 590, 6, 120, 46, 6, '#3f5a4a');
+    ctx.strokeStyle = '#c99e78';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(590, 6, 120, 46, 6);
+    ctx.stroke();
+    ctx.fillStyle = '#fffaf0';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText("TODAY'S MENU", 602, 17);
+    ctx.font = '8px sans-serif';
+    ctx.fillText('Curry rice · Miso soup', 602, 30);
+    ctx.fillText('Water · Green tea ♥', 602, 42);
     drawWallClock();
   }
 
@@ -2490,6 +2593,10 @@ export function init(canvas, elements) {
     'organ-cooler': '#e0f6ff',
     'or-door': '#d4f5e8',
     'implant-shelf': '#f2e6d0',
+    'vending-machine': '#e6ddff',
+    'cafeteria-door': '#ffe8d0',
+    'cafe-counter': '#fff0dc',
+    'cafe-door': '#ffe8d0',
   };
   const STATION_DETAILS = {
     office: drawOfficeDetail,
@@ -2512,6 +2619,12 @@ export function init(canvas, elements) {
     'organ-cooler': (st) => drawOrganCooler(ctx, st, { organs: ['kidney', 'liver', 'heart'].filter((id) => shiftState?.surgeryKit.item !== id) }),
     'or-door': (st) => drawOrDoor(ctx, st),
     'implant-shelf': (st) => drawImplantShelf(ctx, st),
+    'vending-machine': (st) => drawVendingStation(ctx, st),
+    'cafeteria-door': (st) => drawCafeteriaDoor(ctx, st),
+    'cafe-door': (st) => drawCafeDoor(ctx, st),
+    'cafe-counter': (st) => drawCafeCounter(ctx, st, {
+      drawLady: (x, y) => drawAnimePerson(ctx, x, y + 6, STAFF_DESIGNS.cafeLady, { scale: 1.25, t: performance.now() / 1000 }),
+    }),
   };
 
   function stationOutline(st, highlightColor) {
@@ -2755,6 +2868,13 @@ export function init(canvas, elements) {
     drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     // The pocketed roll sits on the left, clear of a meds bottle on the right.
     if (shiftState?.hasBandage) drawBandageRoll(player.x - 24, player.y - 90, 1.1);
+    // A little thought bubble when she's hungry or thirsty.
+    if (shiftState && (shiftState.hunger < HUNGER_THIRST_LOW || shiftState.thirst < HUNGER_THIRST_LOW)) {
+      const want = shiftState.thirst <= shiftState.hunger ? 'water' : 'onigiri';
+      const bob = Math.sin(performance.now() / 300) * 2;
+      speechBubble(ctx, { x: player.x - 46, y: player.y - 118 + bob, w: 30, h: 26 }, { tailX: player.x - 24, tailY: player.y - 84 + bob });
+      drawFoodIcon(ctx, player.x - 31, player.y - 105 + bob, 0.8, want);
+    }
     // The surgery kit floats beside her: scalpel and organ/implant.
     if (shiftState?.surgeryKit.scalpel) drawSurgeryItemIcon(ctx, player.x + 26, player.y - 96, 0.9, 'scalpel');
     if (shiftState?.surgeryKit.item) drawSurgeryItemIcon(ctx, player.x + 26, player.y - 78, 0.9, shiftState.surgeryKit.item);
@@ -2816,6 +2936,28 @@ export function init(canvas, elements) {
     }
   }
 
+  /** Two compact gauges under the stars: Hunger (onigiri badge) and Thirst (drop badge). */
+  function drawHungerThirst() {
+    const hunger = shiftState ? shiftState.hunger : HUNGER_MAX;
+    const thirst = shiftState ? shiftState.thirst : THIRST_MAX;
+    const gauges = [
+      { x: 160, value: hunger, max: HUNGER_MAX, colors: [ANIME.gold, ANIME.goldDeep], glyph: '🍙' },
+      { x: 214, value: thirst, max: THIRST_MAX, colors: [ANIME.sky, ANIME.skyDeep], glyph: '💧' },
+    ];
+    for (const g of gauges) {
+      const frac = g.value / g.max;
+      const [top, deep] = g.value < HUNGER_THIRST_LOW ? [ANIME.coral, ANIME.coralDeep] : g.colors;
+      animeGauge(ctx, g.x, 41, 44, 14, frac, top, deep);
+      animeBadge(ctx, g.x, 48, 8, top, deep, null);
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(g.glyph, g.x, 48.5);
+      ctx.font = 'bold 9px sans-serif';
+      outlinedText(ctx, `${Math.round(g.value)}%`, g.x + 25, 48.5, '#ffffff', ANIME.ink, 2.2);
+    }
+  }
+
   let lastSeenBonusGard = 0;
   let gardPops = [];
 
@@ -2856,7 +2998,7 @@ export function init(canvas, elements) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(`+${bonus}g shift`, x + 27, y + 11.5);
+    ctx.fillText(`${bonus < 0 ? '−' : '+'}${Math.abs(bonus)}g shift`, x + 27, y + 11.5);
     ctx.font = '10px sans-serif';
     ctx.fillStyle = ANIME.inkSoft;
     ctx.textAlign = 'right';
@@ -2890,6 +3032,8 @@ export function init(canvas, elements) {
     karen: [ANIME.coral, ANIME.coralDeep],
     mel: [ANIME.gold, ANIME.goldDeep],
     pick: [ANIME.mint, ANIME.mintDeep],
+    vending: [ANIME.lavender, ANIME.lavenderDeep],
+    cafe: [ANIME.gold, ANIME.goldDeep],
   };
 
   /** An anime dialog window (hospital/anime-ui.js) over a dimmed, sparkly ER. */
@@ -3024,7 +3168,7 @@ export function init(canvas, elements) {
     }
     drawPanel(title, subtitle);
     const bar = skillBar();
-    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+    const zone = skillCheckSuccessZone(overlay.task, skillZoneScaleNow());
     const patientId = shiftState.activeTask?.patientId;
     const info = patientInfo.get(patientId);
     const t = performance.now() / 1000;
@@ -3664,6 +3808,96 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  // -- Hunger and Thirst: the vending machine and the Cafeteria ----------------
+
+  const VENDING_CARD = { w: 160, h: 130, gap: 22, top: 140 };
+
+  /** The vending machine's 3×2 grid of item cards. */
+  function vendingCardRects() {
+    if (overlay?.kind !== 'vending') return [];
+    const cols = 3;
+    const total = cols * VENDING_CARD.w + (cols - 1) * VENDING_CARD.gap;
+    const x0 = CANVAS_WIDTH / 2 - total / 2;
+    return VENDING_ITEMS.map((item, i) => ({
+      id: item.id,
+      x: x0 + (i % cols) * (VENDING_CARD.w + VENDING_CARD.gap),
+      y: VENDING_CARD.top + Math.floor(i / cols) * (VENDING_CARD.h + VENDING_CARD.gap),
+      w: VENDING_CARD.w,
+      h: VENDING_CARD.h,
+    }));
+  }
+
+  function buyFromVending(id) {
+    const item = VENDING_ITEMS.find((i) => i.id === id);
+    if (!item) return;
+    shiftState = buyVendingItem(shiftState, id);
+    flash(`${item.name}! −${item.price}g`, true);
+  }
+
+  function cafeButtonRect() {
+    return { x: 520, y: 430, w: 250, h: 50 };
+  }
+
+  /** Auntie Yumi's free meal and water. */
+  function eatCafeMeal() {
+    if (overlay?.kind !== 'cafe' || overlay.served) return;
+    shiftState = cafeteriaMeal(shiftState);
+    overlay.served = true;
+    overlay.closeIn = 1.2;
+    flash(`Full and refreshed! +${CAFE_MEAL.sanity} Sanity`, true);
+    showToast(`${CAFE_LADY_NAME}: "Back to work, dear — and come see me again!"`);
+  }
+
+  function effectText(item) {
+    const parts = [];
+    if (item.hunger > 0) parts.push(`+${item.hunger} Hunger`);
+    if (item.thirst > 0) parts.push(`+${item.thirst} Thirst`);
+    if (item.sanity > 0) parts.push(`+${item.sanity} Sanity`);
+    return parts.join(' · ');
+  }
+
+  function drawVendingOverlay() {
+    drawPanel('Vending Machine', 'Snacks and drinks — paid from this shift\'s Gard.');
+    for (const r of vendingCardRects()) {
+      const item = VENDING_ITEMS.find((i) => i.id === r.id);
+      animeTile(ctx, r.x, r.y, r.w, r.h, 16, item.kind === 'snack' ? '#fff2dc' : '#e6f4ff');
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(r.x, r.y, r.w, r.h, 16);
+      ctx.stroke();
+      drawFoodIcon(ctx, r.x + r.w / 2, r.y + 42, 2.2, item.id);
+      ctx.fillStyle = LABEL_TEXT_COLOR;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(item.name, r.x + r.w / 2, r.y + 88);
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = ANIME.inkSoft;
+      ctx.fillText(effectText(item), r.x + r.w / 2, r.y + 104, r.w - 12);
+      drawLabelChip(ctx, r.x + r.w / 2, r.y + r.h - 12, `${item.price}g`, 'bold 11px sans-serif', ANIME.goldDeep, '#ffffff');
+    }
+    drawFlash(118);
+  }
+
+  function drawCafeOverlay() {
+    const t = performance.now() / 1000;
+    drawPanel('The Cafeteria', `${CAFE_LADY_NAME} serves a warm meal and water — free for staff.`);
+    drawAnimePerson(ctx, 280, 500, STAFF_DESIGNS.cafeLady, { scale: 3.2, t });
+    speechBubble(ctx, { x: 440, y: 150, w: 360, h: 92 }, { tailX: 400, tailY: 290 });
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    wrapText(CAFE_LADY_LINE, 620, 186, 320, 20);
+    drawFoodIcon(ctx, 645, 330, 4.2, 'meal');
+    ctx.fillStyle = ANIME.inkSoft;
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`Hunger and Thirst to full · +${CAFE_MEAL.sanity} Sanity`, 645, 408);
+    animeButton(ctx, cafeButtonRect(), overlay.served ? 'Itadakimasu! ♥' : 'Eat & Drink (free)', ANIME.gold, ANIME.goldDeep);
+    drawFlash(118);
+  }
+
   /** A tray/cooler/shelf close-up: item cards, then the grab check for the chosen one. */
   function drawPickOverlay() {
     const def = SURGERY_SOURCES[overlay.source];
@@ -3695,7 +3929,7 @@ export function init(canvas, elements) {
     }
     if (overlay.chosen) {
       const bar = skillBar();
-      const zone = skillCheckSuccessZone('grab', shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+      const zone = skillCheckSuccessZone('grab', skillZoneScaleNow());
       animeGauge(ctx, bar.x, bar.y, bar.w, bar.h, 0, ANIME.pink, ANIME.pinkDeep);
       const zx = bar.x + zone.start * bar.w;
       const zw = zone.width * bar.w;
@@ -3945,6 +4179,8 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'karen') drawKarenOverlay();
     else if (overlay.kind === 'mel') drawMelOverlay();
     else if (overlay.kind === 'pick') drawPickOverlay();
+    else if (overlay.kind === 'vending') drawVendingOverlay();
+    else if (overlay.kind === 'cafe') drawCafeOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     ctx.restore();
   }
@@ -3983,6 +4219,7 @@ export function init(canvas, elements) {
     drawHallucinations();
     ctx.restore();
     if (dailyEffect('night')) drawNightShade();
+    if (shiftState && (shiftState.hunger < HUNGER_THIRST_LOW || shiftState.thirst < HUNGER_THIRST_LOW)) drawDiscomfortVignette();
     if (daily && shiftState) {
       drawLabelChip(ctx, CANVAS_WIDTH / 2, 588, `✦ Daily Challenge · ${daily.twist.name} ✦`, 'bold 11px sans-serif', ANIME.lavenderDeep, '#ffffff');
     }
@@ -3996,7 +4233,16 @@ export function init(canvas, elements) {
       drawLabelChip(ctx, CANVAS_WIDTH / 2, 80, `0% Sanity — you'll collapse in ${Math.ceil(collapseIn)}s! Get coffee!`, 'bold 13px sans-serif', '#d9534f', CREAM);
       ctx.restore();
     }
+    const starving = shiftState ? hungerThirstCollapse(shiftState) : null;
+    if (starving && !overlay) {
+      ctx.save();
+      ctx.globalAlpha = 0.75 + 0.25 * Math.sin(performance.now() / 120);
+      const what = starving.stat === 'hunger' ? 'Hunger — eat something' : 'Thirst — drink something';
+      drawLabelChip(ctx, CANVAS_WIDTH / 2, collapseIn != null ? 102 : 80, `0% ${what}! You'll collapse in ${Math.ceil(starving.seconds)}s!`, 'bold 13px sans-serif', '#d9534f', CREAM);
+      ctx.restore();
+    }
     drawRatingStars();
+    drawHungerThirst();
     drawGardCounter();
     drawRankBar();
     drawOverlay();
@@ -4026,7 +4272,7 @@ export function init(canvas, elements) {
       overlay = null;
       if (shiftState.phase === 'playing') showToast('Too late — the patient was transferred to another hospital.');
     }
-    if (overlay && ['triage', 'coffee-pour', 'mel', 'pick'].includes(overlay.kind) && shiftState.phase !== 'playing') overlay = null;
+    if (overlay && ['triage', 'coffee-pour', 'mel', 'pick', 'vending', 'cafe'].includes(overlay.kind) && shiftState.phase !== 'playing') overlay = null;
     if (overlay?.kind === 'triage' && !shiftState.triageQueue.some((p) => p.id === overlay.patientId)) {
       overlay = null;
       showToast('They got tired of waiting and left.');
@@ -4039,6 +4285,12 @@ export function init(canvas, elements) {
     // XP mostly changes in click/key handlers between frames, so check the
     // live rank every frame rather than diffing this tick.
     announceLiveRankUp();
+    // Getting uncomfortable: a heads-up the moment Hunger or Thirst dips under the line.
+    for (const [stat, fix] of [['hunger', 'grab a snack'], ['thirst', 'grab a drink']]) {
+      if (before[stat] >= HUNGER_THIRST_LOW && shiftState[stat] < HUNGER_THIRST_LOW) {
+        showToast(`You're getting uncomfortable — ${stat === 'hunger' ? 'hungry' : 'thirsty'}! ${fix[0].toUpperCase()}${fix.slice(1)} or visit the Cafeteria.`, 3.6);
+      }
+    }
 
     if (shiftState.transfers > before.transfers) {
       showToast(`A patient waited too long and was transferred out — mistake, −${RATING_PENALTY_PER_WALKOUT}★`);
@@ -4106,6 +4358,7 @@ export function init(canvas, elements) {
   elements.fullscreenButton.addEventListener('click', toggleFullscreen);
   elements.floorButton?.addEventListener('click', () => {
     if (currentFloor === FLOOR_OR) switchFloor(FLOOR_1, 'or-exit');
+    else if (currentFloor === FLOOR_CAFE) switchFloor(FLOOR_1, 'cafe-exit');
     else switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1, 'button');
   });
   elements.startScreen.shiftButton.addEventListener('click', startShift);
@@ -4171,6 +4424,10 @@ export function init(canvas, elements) {
     getKarenButtonRects: () => karenButtonRects(),
     getMelButtonRect: () => melButtonRect(),
     getPickCardRects: () => pickCardRects(),
+    getVendingCardRects: () => vendingCardRects(),
+    getCafeButtonRect: () => cafeButtonRect(),
+    setHunger(value) { if (shiftState) shiftState = { ...shiftState, hunger: value }; },
+    setThirst(value) { if (shiftState) shiftState = { ...shiftState, thirst: value }; },
     setPickGauge(pos) { if (overlay?.kind === 'pick') { overlay.gauge = pos; overlay.direction = 0; } },
     giveSurgeryKit(item) { if (shiftState) shiftState = { ...shiftState, surgeryKit: { scalpel: true, item } }; },
     getMelVaseRect: () => ({ ...MEL_VASE_RECT }),

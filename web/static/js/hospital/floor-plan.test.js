@@ -11,6 +11,7 @@ import {
   FLOOR_1,
   FLOOR_2,
   FLOOR_OR,
+  FLOOR_CAFE,
   stationAtPoint,
   standoffFor,
   approachPoint,
@@ -24,11 +25,12 @@ describe('floor plan', () => {
 
   test('the ER on the 1st Floor, the Supply Cart alone upstairs, stairs and an elevator on both', () => {
     const kinds = (floor) => new Set(stationsOnFloor(stations, floor).map((s) => s.kind));
-    for (const kind of ['office', 'triage-desk', 'med-cabinet', 'operating-room', 'coffee-machine', 'bed', 'stairs', 'elevator']) assert.ok(kinds(FLOOR_1).has(kind), kind);
+    for (const kind of ['office', 'triage-desk', 'med-cabinet', 'operating-room', 'coffee-machine', 'bed', 'stairs', 'elevator', 'vending-machine', 'cafeteria-door']) assert.ok(kinds(FLOOR_1).has(kind), kind);
+    assert.deepEqual([...kinds(FLOOR_CAFE)].sort(), ['cafe-counter', 'cafe-door']);
     assert.deepEqual([...kinds(FLOOR_2)].sort(), ['elevator', 'implant-shelf', 'stairs', 'supply-cart']);
     assert.deepEqual([...kinds(FLOOR_OR)].sort(), ['instrument-tray', 'or-door', 'or-table', 'organ-cooler']);
     assert.deepEqual(stations.filter((s) => s.kind === 'bed').map((s) => s.bedIndex), [0, 1, 2, 3]);
-    assert.ok(stations.every((s) => [FLOOR_1, FLOOR_2, FLOOR_OR].includes(s.floor)));
+    assert.ok(stations.every((s) => [FLOOR_1, FLOOR_2, FLOOR_OR, FLOOR_CAFE].includes(s.floor)));
   });
 
   test('stairs and elevator lead to the other floor from the same spot', () => {
@@ -43,7 +45,7 @@ describe('floor plan', () => {
   test('you land beside the fixture you used, clear of every station', () => {
     // Where each way in lands: the stairs/elevator/button on either floor,
     // the OR door's two sides on their own floors.
-    const floorsFor = { stairs: [FLOOR_1, FLOOR_2], elevator: [FLOOR_1, FLOOR_2], button: [FLOOR_1, FLOOR_2], 'or-enter': [FLOOR_OR], 'or-exit': [FLOOR_1] };
+    const floorsFor = { stairs: [FLOOR_1, FLOOR_2], elevator: [FLOOR_1, FLOOR_2], button: [FLOOR_1, FLOOR_2], 'or-enter': [FLOOR_OR], 'or-exit': [FLOOR_1], 'cafe-enter': [FLOOR_CAFE], 'cafe-exit': [FLOOR_1] };
     for (const [via, floors] of Object.entries(floorsFor)) {
       const p = entryPointFor(via);
       for (const floor of floors) assert.equal(stationAtPoint(p.x, p.y, stationsOnFloor(stations, floor)), null, `${via} on floor ${floor}`);

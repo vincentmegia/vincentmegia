@@ -250,6 +250,16 @@ export const STAFF_DESIGNS = {
     outfit: { kind: 'blazer', top: '#d23a4a', inner: '#f2ead8', bottom: '#2e2a30', shoes: '#2a2020' },
     extras: { sunglasses: true, earrings: GOLD, handbag: '#8a5a3a' },
   },
+  // The Cafeteria Lady (the user: "add an cafetria lady which she gives food
+  // and water"): Auntie Yumi, a smiley grandmother in a pink apron and a
+  // white kerchief, behind the Cafeteria counter.
+  cafeLady: {
+    key: 'cafeLady', label: 'Auntie Yumi', age: 'elder', skin: SKIN.warm,
+    hair: { color: '#5a4a52', back: 'bun', fringe: 'parted' },
+    eyes: { color: '#4a3a2e', style: 'smile' }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#f2a6c0', apron: '#ffffff', skirt: '#8a6a9a', legs: '#e8d6c8', shoes: '#5a4a52' },
+    extras: { kerchief: '#ffffff' },
+  },
   // The easter egg (the user: "the easter egg is mel in a kimono"): Kitchen
   // Shift's Mel — long honey-brown hair, white ribbon, yellow clip, a
   // dandelion behind her ear, her favorite creamy yellow and white — in a
@@ -1697,6 +1707,27 @@ function drawHeadExtras(ctx, d) {
         ctx.closePath();
         ctx.fill();
       }
+    }
+  }
+  if (x.kerchief) {
+    // A cafeteria kerchief tied over the hair, knot at the back.
+    ctx.beginPath();
+    ctx.moveTo(-11.6, -5.5);
+    ctx.bezierCurveTo(-12.2, -18, 12.2, -18, 11.6, -5.5);
+    ctx.quadraticCurveTo(0, -9.5, -11.6, -5.5);
+    ctx.closePath();
+    fillPath(ctx, x.kerchief, 0.5);
+    ctx.strokeStyle = 'rgba(232,85,143,0.55)';
+    ctx.lineWidth = 0.5;
+    for (const px of [-6, 0, 6]) {
+      ctx.beginPath();
+      ctx.arc(px, -12, 0.9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(10.5 + dir * 1.5, -8, 2.2, 1.2, dir * 0.6, 0, Math.PI * 2);
+      fillPath(ctx, x.kerchief, 0.4);
     }
   }
   if (x.cap) {

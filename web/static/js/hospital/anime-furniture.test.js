@@ -11,6 +11,11 @@ import {
   drawSupplyCart,
   drawBandageRoll,
   drawDecor,
+  drawVendingStation,
+  drawCafeteriaDoor,
+  drawCafeDoor,
+  drawCafeCounter,
+  drawFoodIcon,
   DECOR_KINDS,
 } from './anime-furniture.js';
 import { buildStations, buildDecor } from './floor-plan.js';
@@ -48,6 +53,13 @@ describe('anime furniture', () => {
     drawElevator(ctx, byKind.elevator, { t: 0.5 });
     drawSupplyCart(ctx, byKind['supply-cart']);
     drawBandageRoll(ctx, 0, 0, 0.8);
+    drawVendingStation(ctx, byKind['vending-machine']);
+    drawCafeteriaDoor(ctx, byKind['cafeteria-door']);
+    drawCafeDoor(ctx, byKind['cafe-door']);
+    let ladyAt = null;
+    drawCafeCounter(ctx, byKind['cafe-counter'], { drawLady: (x, y) => { ladyAt = [x, y]; } });
+    assert.deepEqual(ladyAt, [0, 22]);
+    for (const id of ['onigiri', 'chips', 'candy', 'water', 'juice', 'tea', 'meal']) drawFoodIcon(ctx, 0, 0, 1, id);
     assert.deepEqual(onTable, [0, 8]);
     assert.ok(ctx.calls.count > 200);
   });

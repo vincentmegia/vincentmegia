@@ -28,6 +28,7 @@
 //     doctorAssists: number,                         // times he did this shift
 //     karen: { shiftNumber, active, triggered, resolved, outcome, timerSecondsRemaining },
 //     mel: { waiting, visited },  // the easter egg: in the triage line / already visited this shift
+//     hunger, thirst, zeroHungerSeconds, zeroThirstSeconds,  // rules.js "Hunger and Thirst"
 //     surgeryKit: { scalpel, item },  // scrubbed-in items for the next operation (item = SURGERY_ITEMS id)
 //     xp,     // career XP earned this shift (rules.js's XP_*); the game adds it to the save
 //     perks,  // { walk, skillZone, patience, sanityDrain, pay } from the nurse's rank (rules.js's perksForRank)
@@ -71,6 +72,16 @@ import {
   XP_MEL_VISIT,
   NEUTRAL_PERKS,
   SURGERY_ITEMS,
+  HUNGER_MAX,
+  THIRST_MAX,
+  HUNGER_DRAIN_PER_SECOND,
+  THIRST_DRAIN_PER_SECOND,
+  EMPTY_STAT_SANITY_DRAIN,
+  HUNGER_THIRST_COLLAPSE_SECONDS,
+  clampHunger,
+  clampThirst,
+  findVendingItem,
+  CAFE_MEAL,
   surgeryItemFor,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
@@ -129,6 +140,10 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
 
     wardMood: WARD_MOOD_MAX,
     sanity: SANITY_MAX,
+    hunger: HUNGER_MAX,
+    thirst: THIRST_MAX,
+    zeroHungerSeconds: 0,
+    zeroThirstSeconds: 0,
     rating: RATING_MAX,
     walkouts: 0,
     transfers: 0,
@@ -641,9 +656,17 @@ export function tick(state, deltaSeconds) {
     return { ...state, closingWaitSecondsRemaining: Math.max(0, state.closingWaitSecondsRemaining - delta) };
   }
 
-  const drainPerSecond = SANITY_DRAIN_PER_SECOND * state.perks.sanityDrain;
+  // Hunger and Thirst drain; each one sitting at 0 drains Sanity faster.
+  const hunger = clampHunger(state.hunger - HUNGER_DRAIN_PER_SECOND * delta);
+  const thirst = clampThirst(state.thirst - THIRST_DRAIN_PER_SECOND * delta);
+  const emptyStats = (hunger <= 0 ? 1 : 0) + (thirst <= 0 ? 1 : 0);
+  const drainPerSecond = SANITY_DRAIN_PER_SECOND * state.perks.sanityDrain + EMPTY_STAT_SANITY_DRAIN * emptyStats;
   let next = {
     ...state,
+    hunger,
+    thirst,
+    zeroHungerSeconds: hunger <= 0 ? state.zeroHungerSeconds + Math.max(0, delta - Math.max(0, state.hunger) / HUNGER_DRAIN_PER_SECOND) : 0,
+    zeroThirstSeconds: thirst <= 0 ? state.zeroThirstSeconds + Math.max(0, delta - Math.max(0, state.thirst) / THIRST_DRAIN_PER_SECOND) : 0,
     sanity: clampSanity(state.sanity - drainPerSecond * delta),
     doctorCooldownSeconds: Math.max(0, (state.doctorCooldownSeconds ?? 0) - delta),
   };
@@ -692,6 +715,8 @@ export function tick(state, deltaSeconds) {
 
   // Game over: collapsing after too long at 0 Sanity, or running out of stars.
   if (next.zeroSanitySeconds >= ZERO_SANITY_COLLAPSE_SECONDS) return gameOver(next, 'sanity');
+  if (next.zeroHungerSeconds >= HUNGER_THIRST_COLLAPSE_SECONDS) return gameOver(next, 'hunger');
+  if (next.zeroThirstSeconds >= HUNGER_THIRST_COLLAPSE_SECONDS) return gameOver(next, 'thirst');
   if (next.rating <= 0) return gameOver(next, 'stars');
 
   const clockSeconds = Math.max(0, next.clockSeconds - delta);
@@ -710,6 +735,50 @@ function gameOver(state, reason) {
 export function collapseSecondsRemaining(state) {
   if (state.phase !== 'playing' || state.sanity > 0) return null;
   return Math.max(0, ZERO_SANITY_COLLAPSE_SECONDS - state.zeroSanitySeconds);
+}
+
+/**
+ * The most urgent Hunger/Thirst collapse countdown: { stat, seconds } while
+ * either is at 0, else null.
+ */
+export function hungerThirstCollapse(state) {
+  if (state.phase !== 'playing') return null;
+  const timers = [];
+  if (state.hunger <= 0) timers.push({ stat: 'hunger', seconds: Math.max(0, HUNGER_THIRST_COLLAPSE_SECONDS - state.zeroHungerSeconds) });
+  if (state.thirst <= 0) timers.push({ stat: 'thirst', seconds: Math.max(0, HUNGER_THIRST_COLLAPSE_SECONDS - state.zeroThirstSeconds) });
+  return timers.sort((a, b) => a.seconds - b.seconds)[0] ?? null;
+}
+
+/** Applies a food/drink's effects; leaving 0 resets that stat's collapse timer. */
+function feed(state, { hunger = 0, thirst = 0, sanity = 0 }) {
+  const nextHunger = clampHunger(state.hunger + hunger);
+  const nextThirst = clampThirst(state.thirst + thirst);
+  return {
+    ...state,
+    hunger: nextHunger,
+    thirst: nextThirst,
+    sanity: clampSanity(state.sanity + sanity),
+    zeroHungerSeconds: nextHunger > 0 ? 0 : state.zeroHungerSeconds,
+    zeroThirstSeconds: nextThirst > 0 ? 0 : state.zeroThirstSeconds,
+  };
+}
+
+/**
+ * Buys one vending-machine item (rules.js VENDING_ITEMS): its price comes
+ * off the shift's pay (bonusGard, which may go below 0 — the paycheck
+ * still floors at 0) and its effects apply. Unknown items do nothing.
+ */
+export function buyVendingItem(state, itemId) {
+  if (state.phase !== 'playing') return state;
+  const item = findVendingItem(itemId);
+  if (!item) return state;
+  return { ...feed(state, item), bonusGard: state.bonusGard - item.price };
+}
+
+/** The Cafeteria Lady's free meal and water (rules.js CAFE_MEAL). */
+export function cafeteriaMeal(state) {
+  if (state.phase !== 'playing') return state;
+  return feed(state, CAFE_MEAL);
 }
 
 export function isOfficeReady(state) {

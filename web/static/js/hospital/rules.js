@@ -1002,3 +1002,79 @@ export const DOCTOR_ASSIST_COOLDOWN_SECONDS = 50;
 /** The Stock tech's rhythm: this long upstairs, then this long downstairs with bandage rolls. */
 export const STOCK_TECH_UPSTAIRS_SECONDS = 35;
 export const STOCK_TECH_DOWNSTAIRS_SECONDS = 25;
+
+// ---------------------------------------------------------------------------
+// Hunger and Thirst (the user: "add an hunger and thirst system you can get
+// snacks from the vending machine and drinks add an cafetria for breaks and
+// add an cafetria lady which she gives food and water", then — asked — slow
+// down and hurt Sanity when low, plus "when 0% hunger/thrist you collaspe" —
+// then "low 25% you start to get uncomfortable" and "5 seconds before game over").
+// Both drain over a shift; under HUNGER_THIRST_LOW you walk slower and the
+// skill-check zones shrink; at 0 Sanity drains faster, and staying at 0 for
+// HUNGER_THIRST_COLLAPSE_SECONDS is a collapse (game over), like 0 Sanity.
+// The vending machine sells snacks/drinks for Gard off the shift's pay; the
+// Cafeteria Lady's meal and water are free but you have to walk there.
+// ---------------------------------------------------------------------------
+
+export const HUNGER_MAX = 100;
+export const THIRST_MAX = 100;
+/** Full to empty in about 9 minutes (hunger) and 7 minutes (thirst). */
+export const HUNGER_DRAIN_PER_SECOND = HUNGER_MAX / 540;
+export const THIRST_DRAIN_PER_SECOND = THIRST_MAX / 420;
+/**
+ * Below this you're uncomfortable (the user: "when the players hunger/thrist
+ * bar is low 25% you start to get uncomfortable"): slower walking, narrower
+ * skill zones. Was 30.
+ */
+export const HUNGER_THIRST_LOW = 25;
+export const LOW_WALK_MULTIPLIER = 0.85;
+export const LOW_SKILL_ZONE_SCALE = 0.85;
+/** Extra Sanity drained per second for each of Hunger/Thirst sitting at 0. */
+export const EMPTY_STAT_SANITY_DRAIN = SANITY_MAX / 300;
+/** Seconds at 0 Hunger or Thirst before you collapse ("if it is on 0% you have 5 seconds before game over"; was 20). */
+export const HUNGER_THIRST_COLLAPSE_SECONDS = 5;
+
+export function clampHunger(value) {
+  return Math.max(0, Math.min(HUNGER_MAX, Number.isFinite(value) ? value : 0));
+}
+
+export function clampThirst(value) {
+  return Math.max(0, Math.min(THIRST_MAX, Number.isFinite(value) ? value : 0));
+}
+
+/** Whether either stat is low enough to slow you down. */
+export function isPeckish(hunger, thirst) {
+  return hunger < HUNGER_THIRST_LOW || thirst < HUNGER_THIRST_LOW;
+}
+
+/** Walk-speed multiplier for the current Hunger/Thirst. */
+export function walkMultiplierForHungerThirst(hunger, thirst) {
+  return isPeckish(hunger, thirst) ? LOW_WALK_MULTIPLIER : 1;
+}
+
+/** Skill-check zone scale for the current Hunger/Thirst. */
+export function skillZoneScaleForHungerThirst(hunger, thirst) {
+  return isPeckish(hunger, thirst) ? LOW_SKILL_ZONE_SCALE : 1;
+}
+
+/**
+ * The vending machine's stock: snacks fill Hunger, drinks fill Thirst (a
+ * couple also nudge Sanity). Prices come off the shift's pay (bonusGard).
+ */
+export const VENDING_ITEMS = [
+  { id: 'onigiri', name: 'Onigiri', kind: 'snack', price: 20, hunger: 35, thirst: 0, sanity: 0, color: '#f4f4ee' },
+  { id: 'chips', name: 'Chips', kind: 'snack', price: 15, hunger: 25, thirst: -5, sanity: 3, color: '#ffd166' },
+  { id: 'candy', name: 'Candy Bar', kind: 'snack', price: 10, hunger: 18, thirst: 0, sanity: 5, color: '#c8865a' },
+  { id: 'water', name: 'Water', kind: 'drink', price: 10, hunger: 0, thirst: 35, sanity: 0, color: '#8fd3ff' },
+  { id: 'juice', name: 'Juice', kind: 'drink', price: 15, hunger: 5, thirst: 28, sanity: 3, color: '#ff9f6a' },
+  { id: 'tea', name: 'Green Tea', kind: 'drink', price: 15, hunger: 0, thirst: 30, sanity: 5, color: '#8fd6a4' },
+];
+
+export function findVendingItem(id) {
+  return VENDING_ITEMS.find((item) => item.id === id) ?? null;
+}
+
+/** The Cafeteria Lady's free meal and water: both bars full, a little Sanity. */
+export const CAFE_MEAL = { name: 'Meal and water', hunger: HUNGER_MAX, thirst: THIRST_MAX, sanity: 10 };
+export const CAFE_LADY_NAME = 'Auntie Yumi';
+export const CAFE_LADY_LINE = "You look famished, dear! Sit, eat — and drink your water.";

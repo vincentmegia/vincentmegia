@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (136 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (141 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (36 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (39 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -316,6 +316,33 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   asked to "remove the shine" — both eyes and hair, as they had for
   Kimono Himura's eyes — so the crown shine and the eye highlights are
   gone.
+* **Hunger, Thirst and the Cafeteria** (the user: "add an hunger and
+  thirst system you can get snacks from the vending machine and drinks add
+  an cafetria for breaks and add an cafetria lady which she gives food and
+  water", then — asked — slow down and hurt Sanity when low, a walk-in
+  Cafeteria, vending costs Gard and the lady is free, plus "when 0%
+  hunger/thrist you collaspe"; `rules.js` "Hunger and Thirst"). Both start
+  full and drain over the shift (Hunger empties in ~9 min, Thirst in ~7);
+  compact gauges with onigiri/droplet badges sit under the stars. Under
+  25% (`HUNGER_THIRST_LOW`; was 30 until the user said "low 25% you start
+  to get uncomfortable") you're uncomfortable: a toast the moment a bar
+  crosses the line, a faint pulsing warm vignette that deepens toward 0%,
+  a thought bubble over the nurse showing what she wants, 15% slower
+  walking and 15% narrower skill-check zones. At 0% each empty stat drains
+  Sanity faster (`EMPTY_STAT_SANITY_DRAIN`), and 5 s at 0%
+  (`HUNGER_THIRST_COLLAPSE_SECONDS`; was 20 until "if it is on 0% you have
+  5 seconds before game over") is a collapse — game over — with a pulsing
+  countdown chip like 0% Sanity's. The ER's vending machine
+  is now a station: a shop close-up of six snacks and drinks
+  (`VENDING_ITEMS`: onigiri, chips, candy bar, water, juice, green tea)
+  whose prices come off the shift's pay (`bonusGard` can dip below 0; the
+  paycheck still floors at 0). A door at the bottom of the ER leads to the
+  walk-in **Cafeteria** (`FLOOR_CAFE`; "Leave the Cafeteria" on the HUD
+  button): peach tiles, a chalk menu board, four tables, plants, and the
+  counter where **Auntie Yumi** (`STAFF_DESIGNS.cafeLady`, apron and
+  kerchief) serves a free meal and water — both bars to full and +10
+  Sanity (`cafeteriaMeal`). Two staff waypoints moved off the new door,
+  and the vending machine left the decor list for the station list.
 * **Daily Challenge** (the user: "i want to add daily chalenge", then —
   asked — one seeded shift, a rotating twist and a separate daily board;
   `rules.js` §3d). A "Play Daily Challenge" card on the start screen shows
@@ -661,7 +688,9 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       Rush Hour volume, Flu Season bias), the surgery kit (items per
       condition and stage names, wrong organ/decoy = mistake, the table
       waits for the full kit, a finished operation uses it up), floor-plan
-      geometry (the OR room and Implant Shelf, floor-aware entry points) (decor clear
+      geometry (the OR room and Implant Shelf, the Cafeteria, floor-aware
+      entry points), hunger/thirst (drain, low effects, extra Sanity drain
+      and collapse at 0, vending prices, the free meal) (decor clear
       of stations, the triage line and the player start), anime-furniture
       smoke tests (every station and decor drawer runs; every decor kind
       has one).
@@ -684,7 +713,9 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       without a kit; scalpel from the tray, mesh patch from the Implant
       Shelf upstairs, then three stages; a transplant where the wrong organ
       and a decoy are mistakes and a dropped grab isn't; the HUD button
-      leaves the OR). Uses
+      leaves the OR); hunger/thirst (the vending machine sells water and an
+      onigiri off the shift pay; the Cafeteria's free meal fills both bars;
+      5 s at 0% Thirst is a collapse). Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

@@ -35,6 +35,12 @@ export const FLOOR_2 = 2;
  * door and left through its own door back to the ER.
  */
 export const FLOOR_OR = 3;
+/**
+ * The Cafeteria (the user: "add an cafetria for breaks and add an cafetria
+ * lady"): its own room through a door at the bottom of the ER, with the
+ * Cafeteria Lady's counter and tables.
+ */
+export const FLOOR_CAFE = 4;
 
 /** Where the nurse starts each shift: the open middle of the floor, below the triage line. */
 export const PLAYER_START = { x: 480, y: 520 };
@@ -61,6 +67,10 @@ export function buildStations(bedCount = 4) {
     { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 90, y: 530, w: s, h: s },
     { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, targetFloor: FLOOR_2, x: 878, y: 112, w: s, h: s },
     { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, targetFloor: FLOOR_2, x: 878, y: 530, w: s, h: s },
+    // Snacks and drinks (it was set dressing until the hunger/thirst system).
+    { id: 'vending-machine', kind: 'vending-machine', floor: FLOOR_1, x: 740, y: 524, w: 60, h: 84 },
+    // The door down to the Cafeteria, at the bottom of the ER.
+    { id: 'cafeteria-door', kind: 'cafeteria-door', floor: FLOOR_1, targetFloor: FLOOR_CAFE, x: 590, y: 558, w: 96, h: 68 },
     // The Supply Room: the cart sits in the middle, shelves line the walls.
     { id: 'supply-cart', kind: 'supply-cart', floor: FLOOR_2, x: 420, y: 330, w: 124, h: s },
     { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 112, w: s, h: s },
@@ -74,6 +84,9 @@ export function buildStations(bedCount = 4) {
     { id: 'instrument-tray', kind: 'instrument-tray', floor: FLOOR_OR, x: 230, y: 330, w: 120, h: s },
     { id: 'organ-cooler', kind: 'organ-cooler', floor: FLOOR_OR, x: 730, y: 330, w: 110, h: 120 },
     { id: 'or-door', kind: 'or-door', floor: FLOOR_OR, targetFloor: FLOOR_1, x: 480, y: 540, w: 120, h: 80 },
+    // The Cafeteria: the counter (the lady stands behind it) and the door back.
+    { id: 'cafe-counter', kind: 'cafe-counter', floor: FLOOR_CAFE, x: 480, y: 150, w: 300, h: 92 },
+    { id: 'cafe-door', kind: 'cafe-door', floor: FLOOR_CAFE, targetFloor: FLOOR_1, x: 480, y: 545, w: 120, h: 80 },
   ];
   // Evenly spaced, with room between beds for each bed's IV pole.
   const bedXs = [150, 320, 490, 660];
@@ -101,8 +114,13 @@ export function buildDecor(bedCount = 4) {
     // the staff's walking routes).
     { kind: 'plant', floor: FLOOR_1, x: 36, y: 372, w: 30, h: 46 },
     { kind: 'plant', floor: FLOOR_1, x: 34, y: 452, w: 30, h: 46 },
-    // A vending machine across from the Elevator.
-    { kind: 'vending-machine', floor: FLOOR_1, x: 762, y: 524, w: 46, h: 78 },
+    // Cafeteria: four tables with chairs and two plants.
+    { kind: 'cafe-table', floor: FLOOR_CAFE, x: 210, y: 330, w: 130, h: 80 },
+    { kind: 'cafe-table', floor: FLOOR_CAFE, x: 750, y: 330, w: 130, h: 80 },
+    { kind: 'cafe-table', floor: FLOOR_CAFE, x: 210, y: 480, w: 130, h: 80 },
+    { kind: 'cafe-table', floor: FLOOR_CAFE, x: 750, y: 480, w: 130, h: 80 },
+    { kind: 'plant', floor: FLOOR_CAFE, x: 40, y: 230, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_CAFE, x: 920, y: 230, w: 30, h: 46 },
     // Supply Room: a step ladder and a plant.
     { kind: 'ladder', floor: FLOOR_2, x: 566, y: 232, w: 30, h: 62 },
     { kind: 'plant', floor: FLOOR_2, x: 878, y: 318, w: 30, h: 46 },
@@ -129,6 +147,8 @@ export function stationsOnFloor(stations, floor) {
 export function entryPointFor(via) {
   if (via === 'or-enter') return { x: 480, y: 470 }; // just inside the OR door
   if (via === 'or-exit') return { x: 760, y: 362 }; // in the ER, beside the OR door
+  if (via === 'cafe-enter') return { x: 480, y: 470 }; // just inside the Cafeteria door
+  if (via === 'cafe-exit') return { x: 590, y: 488 }; // in the ER, just above the Cafeteria door
   return via === 'elevator' ? { x: 790, y: 530 } : { x: 790, y: 130 };
 }
 

@@ -699,6 +699,66 @@ test.describe('hallucinations', () => {
 	});
 });
 
+test.describe('hunger, thirst and the Cafeteria', () => {
+	test('the vending machine sells snacks and drinks off the shift pay', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setThirst', 10);
+		await hooks(page, 'setHunger', 50);
+		await walkTo(page, 'vending-machine');
+		await waitForOverlay(page, 'vending');
+		const cards = await hooks(page, 'getVendingCardRects');
+		const water = cards.find((c) => c.id === 'water');
+		await clickCanvasPoint(page, { x: water.x + water.w / 2, y: water.y + 20 });
+		const onigiri = cards.find((c) => c.id === 'onigiri');
+		await clickCanvasPoint(page, { x: onigiri.x + onigiri.w / 2, y: onigiri.y + 20 });
+		const s = await shiftState(page);
+		expect(s.thirst).toBeGreaterThanOrEqual(44);
+		expect(s.hunger).toBeGreaterThanOrEqual(84);
+		expect(s.bonusGard).toBe(-30);
+		// The × closes the shop (in fullscreen, WebKit's Escape leaves fullscreen instead).
+		const close = await hooks(page, 'getCloseRect');
+		await clickCanvasPoint(page, { x: close.x + 14, y: close.y + 14 });
+		await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+	});
+
+	test("the Cafeteria: walk in, Auntie Yumi's free meal fills both bars, then leave", async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setHunger', 5);
+		await hooks(page, 'setThirst', 5);
+		await hooks(page, 'setSanity', 50);
+		await walkTo(page, 'cafeteria-door');
+		expect(await hooks(page, 'getCurrentFloor')).toBe(4);
+		await expect(page.locator('#hospital-floor-button')).toHaveText('Leave the Cafeteria');
+		await walkTo(page, 'cafe-counter');
+		await waitForOverlay(page, 'cafe');
+		const button = await hooks(page, 'getCafeButtonRect');
+		await clickCanvasPoint(page, { x: button.x + 20, y: button.y + 20 });
+		const s = await shiftState(page);
+		// Full, give or take the frame that's drained since.
+		expect(s.hunger).toBeGreaterThan(99.5);
+		expect(s.thirst).toBeGreaterThan(99.5);
+		expect(s.sanity).toBeGreaterThan(55);
+		expect(s.bonusGard).toBe(0);
+		await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+		await walkTo(page, 'cafe-door');
+		expect(await hooks(page, 'getCurrentFloor')).toBe(1);
+	});
+
+	test('dropping under 25% warns you; 5 s at 0% Thirst is a collapse', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setThirst', 25.001);
+		await expect(page.locator('#hospital-toast')).toContainText('uncomfortable', { timeout: 5000 });
+		await hooks(page, 'setThirst', 0);
+		const started = Date.now();
+		await expect(page.locator('#hospital-paycheck-title')).toHaveText('Game Over', { timeout: 10000 });
+		expect(Date.now() - started).toBeLessThan(9000);
+		await expect(page.locator('#hospital-paycheck-outcome')).toContainText('thirst');
+	});
+});
+
 test.describe('game over', () => {
 	test('20 s at 0% Sanity is a game over; Retry replays the same shift with the month kept', async ({ page }) => {
 		await seedSave(page, 5, 1200);
