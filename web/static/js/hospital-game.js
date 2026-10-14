@@ -37,6 +37,14 @@ import {
   perksForRank,
   ranksGained,
   NURSE_RANKS,
+  DAILY_SHIFT_NUMBER,
+  hospitalDailyDate,
+  dailySeed,
+  seededRandom,
+  dailyTwistForDate,
+  dailyPerksForTwist,
+  dailyPatientVolume,
+  dailyConditionForRolls,
   TRIAGE_LEVELS,
   findTriageLevel,
   TRIAGE_LEGEND,
@@ -292,6 +300,16 @@ export function init(canvas, elements) {
   let karenShiftNumber = karenShiftForSeed(save.karenSeed);
   let karenAvailable = false;
 
+  // Daily Challenge (rules.js §3d): set while a daily shift is being played
+  // (and through its paycheck, so Try Again replays it); null for the
+  // month run. dailyBest is this visit's best paycheck on today's date —
+  // nothing outlasts a visit (see "Progress: this visit only").
+  let daily = null; // { date, twist }
+  let dailyBest = null; // { date, payout }
+  /** The stream a shift's patients are rolled from: seeded by the date in a Daily Challenge. */
+  let shiftRandom = random;
+  const dailyEffect = (key) => Boolean(daily?.twist?.effect?.[key]);
+
   let shiftState = null;
   let running = false;
   let paused = false;
@@ -308,7 +326,7 @@ export function init(canvas, elements) {
   let pendingStaffPickup = false; // walking up to the Stock tech for a roll
 
   function resetAmbient() {
-    ambient = AMBIENT_STAFF.map((def, i) => {
+    ambient = AMBIENT_STAFF.filter((def) => !(def.key === 'doctor' && dailyEffect('noDoctor'))).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
       return {
         ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2,
@@ -540,7 +558,7 @@ export function init(canvas, elements) {
   }
 
   function renderHud() {
-    elements.hud.shift.textContent = `${currentShiftNumber}/${SHIFTS_PER_MONTH}`;
+    elements.hud.shift.textContent = daily ? 'Daily' : `${currentShiftNumber}/${SHIFTS_PER_MONTH}`;
     if (elements.hud.rank) {
       const rank = rankForXp(liveCareerXp());
       elements.hud.rank.textContent = `Lv ${rank.rank}`;
@@ -572,7 +590,7 @@ export function init(canvas, elements) {
       case 'triage-desk': return 'Triage Desk';
       case 'med-cabinet': return 'Med Cabinet';
       case 'operating-room': return 'Operating Room';
-      case 'coffee-machine': return 'Coffee Machine';
+      case 'coffee-machine': return dailyEffect('noCoffee') ? 'Coffee (out of order)' : 'Coffee Machine';
       case 'supply-cart': return 'Supply Cart';
       case 'stairs': return station.targetFloor === FLOOR_2 ? 'Stairs ↑ Supply Room' : 'Stairs ↓ ER';
       case 'elevator': return station.targetFloor === FLOOR_2 ? 'Elevator ↑' : 'Elevator ↓';
@@ -719,12 +737,31 @@ export function init(canvas, elements) {
 
   // -- Spawning -------------------------------------------------------------------
 
+  /**
+   * Schedules the shift's arrivals and pre-rolls every patient (condition,
+   * look, name, age, vitals) from shiftRandom, in a fixed order — so a
+   * Daily Challenge's patients are identical for everyone, however the
+   * shift is played.
+   */
   function scheduleShiftEvents() {
     const total = shiftState.totalClockSeconds;
     const events = [];
-    const count = patientVolumeForShift(currentShiftNumber);
-    const rolls = Array.from({ length: count }, () => random());
-    for (const at of patientArrivalTimes(count, total, rolls)) events.push({ type: 'patient', at });
+    const count = daily ? dailyPatientVolume(daily.twist) : patientVolumeForShift(currentShiftNumber);
+    const rolls = Array.from({ length: count }, () => shiftRandom());
+    for (const at of patientArrivalTimes(count, total, rolls)) {
+      const r = shiftRandom;
+      events.push({
+        type: 'patient',
+        at,
+        spec: {
+          conditionId: (daily ? dailyConditionForRolls(daily.twist, r(), r()) : conditionForRoll(currentShiftNumber, r())).id,
+          designKey: nextPatientDesignKey(r),
+          nameRoll: r(),
+          ageRoll: r(),
+          vitalsRolls: [r(), r(), r(), r(), r()],
+        },
+      });
+    }
     if (currentShiftNumber === karenShiftNumber) events.push({ type: 'karen', at: total * 0.3 });
     if (currentShiftNumber === MEL_FIXED_SHIFT) events.push({ type: 'mel', at: total * MEL_FIXED_SHIFT_AT });
     return events.sort((a, b) => a.at - b.at);
@@ -732,11 +769,11 @@ export function init(canvas, elements) {
 
   /** A shuffled bag of patient designs, so every design shows up before any repeats. */
   let designBag = [];
-  function nextPatientDesignKey() {
+  function nextPatientDesignKey(rng = random) {
     if (!designBag.length) {
       designBag = [...PATIENT_DESIGN_KEYS];
       for (let i = designBag.length - 1; i > 0; i--) {
-        const j = Math.floor(random() * (i + 1));
+        const j = Math.floor(rng() * (i + 1));
         [designBag[i], designBag[j]] = [designBag[j], designBag[i]];
       }
     }
@@ -752,14 +789,15 @@ export function init(canvas, elements) {
     return findPatientDesign(info?.designKey).skin;
   }
 
-  function spawnPatient(conditionId) {
-    const condition = findCondition(conditionId) ?? conditionForRoll(currentShiftNumber, random());
+  /** Adds a patient to triage: from a pre-rolled `spec` (scheduled arrivals), or fresh rolls (test hooks). */
+  function spawnPatient(conditionId, spec = null) {
+    const condition = findCondition(spec?.conditionId ?? conditionId) ?? conditionForRoll(currentShiftNumber, random());
     const id = `patient-${patientIdCounter++}`;
-    const designKey = nextPatientDesignKey();
+    const designKey = spec?.designKey ?? nextPatientDesignKey();
     const usedNames = new Set([...patientInfo.values()].map((info) => info.name));
     patientInfo.set(id, {
-      ...patientProfileFor(designKey, random(), random(), usedNames),
-      vitals: vitalsForLevel(condition.level, [random(), random(), random(), random(), random()]),
+      ...patientProfileFor(designKey, spec?.nameRoll ?? random(), spec?.ageRoll ?? random(), usedNames),
+      vitals: vitalsForLevel(condition.level, spec?.vitalsRolls ?? [random(), random(), random(), random(), random()]),
       designKey,
     });
     shiftState = addPatientToTriage(shiftState, { id, conditionId: condition.id, waitSeconds: queueWaitSecondsForShift(currentShiftNumber) });
@@ -771,7 +809,7 @@ export function init(canvas, elements) {
     while (scheduledEvents.length && scheduledEvents[0].at <= elapsed) {
       const event = scheduledEvents.shift();
       if (event.type === 'patient') {
-        spawnPatient();
+        spawnPatient(null, event.spec);
         if (melArrivesWithPatient(random())) bringMelIn('arrival');
       } else if (event.type === 'karen') karenAvailable = true;
       else if (event.type === 'mel') bringMelIn('arrival');
@@ -1096,7 +1134,10 @@ export function init(canvas, elements) {
       return;
     }
 
-    if (station.kind === 'coffee-machine') openCoffeeOverlay();
+    if (station.kind === 'coffee-machine') {
+      if (dailyEffect('noCoffee')) showToast("The coffee machine is out of order today — that's the Daily Challenge twist.");
+      else openCoffeeOverlay();
+    }
   }
 
   function handsFullReason() {
@@ -1636,10 +1677,20 @@ export function init(canvas, elements) {
     resetHallucinations();
     lastSeenBonusGard = 0;
     gardPops = [];
-    currentShiftNumber = save.currentShift;
-    karenShiftNumber = karenShiftForSeed(save.karenSeed);
+    if (daily) {
+      // The day's shift: shift 12's clock and pace, neutral perks plus the
+      // twist's, Karen only on Karen Day, patients from the date's stream.
+      currentShiftNumber = DAILY_SHIFT_NUMBER;
+      karenShiftNumber = dailyEffect('karen') ? DAILY_SHIFT_NUMBER : 0;
+      shiftRandom = seededRandom(dailySeed(daily.date));
+      designBag = [];
+    } else {
+      currentShiftNumber = save.currentShift;
+      karenShiftNumber = karenShiftForSeed(save.karenSeed);
+      shiftRandom = random;
+    }
     shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber, {
-      perks: perksForRank(rankForXp(save.careerXp).rank),
+      perks: daily ? dailyPerksForTwist(daily.twist) : perksForRank(rankForXp(save.careerXp).rank),
     }));
     lastLiveRank = rankForXp(save.careerXp).rank;
     shiftXpAwarded = false;
@@ -1664,8 +1715,59 @@ export function init(canvas, elements) {
   }
 
   function startShift() {
+    daily = null;
     requestFullscreen();
     beginShift();
+  }
+
+  /** Today's Daily Challenge (the UTC date's seeded shift and twist). */
+  function startDaily() {
+    const date = hospitalDailyDate();
+    daily = { date, twist: dailyTwistForDate(date) };
+    requestFullscreen();
+    beginShift();
+  }
+
+  /** The paycheck's main button: the next month shift, or the daily again. */
+  function continueFromPaycheck() {
+    if (daily) startDaily();
+    else startShift();
+  }
+
+  /** Back to the start screen from a daily paycheck. */
+  function backToStart() {
+    daily = null;
+    shiftState = null;
+    renderHud();
+    renderDailyCard();
+    showScreen('start');
+  }
+
+  /** The start screen's Daily Challenge card: today's date, twist and this visit's best. */
+  function renderDailyCard() {
+    const card = elements.startScreen.daily;
+    if (!card?.root) return;
+    const date = hospitalDailyDate();
+    const twist = dailyTwistForDate(date);
+    card.date.textContent = date;
+    card.twist.textContent = twist.name;
+    card.blurb.textContent = twist.blurb;
+    card.best.textContent = dailyBest?.date === date ? `Your best today: ${dailyBest.payout} Gard` : 'No run yet today.';
+  }
+
+  /** Sets up the paycheck's submit form and labels for a month run or a Daily Challenge. */
+  function setPaycheckMode({ submit, payout = 0, earnings = 0 }) {
+    const screen = elements.paycheckScreen;
+    screen.finalBlock.classList.toggle('hidden', !submit);
+    screen.backButton?.classList.toggle('hidden', !daily);
+    if (screen.monthLabel) screen.monthLabel.textContent = daily ? "Today's best" : 'Run total';
+    if (screen.finalHeading) screen.finalHeading.textContent = daily ? `Daily Challenge · ${daily.twist.name}` : 'Final Paycheck';
+    if (screen.dailyInput) screen.dailyInput.value = daily ? daily.date : '';
+    if (submit) {
+      if (screen.earningsInput) screen.earningsInput.value = String(daily ? payout : earnings);
+      if (screen.shiftsInput) screen.shiftsInput.value = String(daily ? 1 : SHIFTS_PER_MONTH);
+      if (screen.submitButton) screen.submitButton.disabled = false;
+    }
   }
 
   function endShift() {
@@ -1675,8 +1777,12 @@ export function init(canvas, elements) {
       rafHandle = null;
     }
     const payout = shiftState.payout ?? 0;
-    save.monthToDateGard += payout;
     const xpResult = awardShiftXp();
+    if (daily) {
+      showDailyPaycheck(payout, xpResult);
+      return;
+    }
+    save.monthToDateGard += payout;
     const isFinalShift = currentShiftNumber >= SHIFTS_PER_MONTH;
     if (isFinalShift) save.bestRunTotal = Math.max(save.bestRunTotal, save.monthToDateGard);
     else save.currentShift = currentShiftNumber + 1;
@@ -1684,6 +1790,7 @@ export function init(canvas, elements) {
     const screen = elements.paycheckScreen;
     screen.root.dataset.outcome = shiftState.mistakeCount > 0 ? 'upset' : 'ok';
     screen.root.dataset.final = isFinalShift ? 'true' : 'false';
+    screen.root.dataset.daily = 'false';
     screen.title.textContent = isFinalShift ? 'Final Paycheck' : 'Handover';
     const s = shiftState;
     const parts = [
@@ -1700,14 +1807,37 @@ export function init(canvas, elements) {
     screen.nextShiftButton.textContent = 'Start Next Shift';
     screen.nextShiftButton.classList.toggle('hidden', isFinalShift);
     screen.newMonthButton.classList.toggle('hidden', !isFinalShift);
-    screen.finalBlock.classList.toggle('hidden', !isFinalShift);
+    setPaycheckMode({ submit: isFinalShift, earnings: save.monthToDateGard });
     renderPaycheckXp(xpResult);
     renderRankCard();
-    if (isFinalShift) {
-      if (screen.earningsInput) screen.earningsInput.value = String(save.monthToDateGard);
-      if (screen.shiftsInput) screen.shiftsInput.value = String(SHIFTS_PER_MONTH);
-      if (screen.submitButton) screen.submitButton.disabled = false;
-    }
+    renderHud();
+    showScreen('paycheck');
+  }
+
+  /** A finished Daily Challenge: the shift's paycheck is the score, submittable to today's board. */
+  function showDailyPaycheck(payout, xpResult) {
+    if (dailyBest?.date !== daily.date || payout > dailyBest.payout) dailyBest = { date: daily.date, payout };
+    const screen = elements.paycheckScreen;
+    const s = shiftState;
+    screen.root.dataset.outcome = s.mistakeCount > 0 ? 'upset' : 'ok';
+    screen.root.dataset.final = 'false';
+    screen.root.dataset.daily = 'true';
+    screen.title.textContent = 'Daily Challenge';
+    screen.outcome.textContent = [
+      daily.twist.name,
+      s.mistakeCount > 0 ? `${s.mistakeCount} mistake${s.mistakeCount === 1 ? '' : 's'}` : 'No mistakes',
+      `${s.discharged} discharged`,
+      `${s.rating}★`,
+    ].join(' · ');
+    screen.shiftTotal.textContent = `${payout} Gard`;
+    screen.monthTotal.textContent = `${dailyBest.payout} Gard`;
+    screen.nextShiftButton.textContent = 'Try Again';
+    screen.nextShiftButton.classList.remove('hidden');
+    screen.newMonthButton.classList.add('hidden');
+    setPaycheckMode({ submit: true, payout });
+    renderPaycheckXp(xpResult);
+    renderRankCard();
+    renderDailyCard();
     renderHud();
     showScreen('paycheck');
   }
@@ -1737,12 +1867,13 @@ export function init(canvas, elements) {
     screen.outcome.textContent = shiftState.gameOverReason === 'sanity'
       ? `You collapsed after ${ZERO_SANITY_COLLAPSE_SECONDS} seconds at 0% Sanity. Grab coffee before it runs out!`
       : 'Out of stars — too many patients walked out or were transferred.';
+    screen.root.dataset.daily = daily ? 'true' : 'false';
     screen.shiftTotal.textContent = '0 Gard';
-    screen.monthTotal.textContent = `${save.monthToDateGard} Gard`;
-    screen.nextShiftButton.textContent = `Retry Shift ${currentShiftNumber}`;
+    screen.monthTotal.textContent = daily ? `${dailyBest?.date === daily.date ? dailyBest.payout : 0} Gard` : `${save.monthToDateGard} Gard`;
+    screen.nextShiftButton.textContent = daily ? 'Try Again' : `Retry Shift ${currentShiftNumber}`;
     screen.nextShiftButton.classList.remove('hidden');
     screen.newMonthButton.classList.add('hidden');
-    screen.finalBlock.classList.add('hidden');
+    setPaycheckMode({ submit: false });
     renderHud();
     showScreen('paycheck');
   }
@@ -1776,7 +1907,7 @@ export function init(canvas, elements) {
     drawEmergencySign('✚ EMERGENCY', ANIME.coral, ANIME.coralDeep);
 
     // Break-room rug under the coffee machine: a soft pink rug with a
-    // stitched border and a little heart.
+    // stitched border.
     const coffee = stationOfKind('coffee-machine');
     const rx = coffee.x - 70;
     const ry = coffee.y - 62;
@@ -1860,6 +1991,25 @@ export function init(canvas, elements) {
     ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
     ctx.fillStyle = 'rgba(59,42,74,0.12)';
     ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
+  }
+
+  /**
+   * Night Shift's dim ER: a deep-blue night over everything, with a soft
+   * pool of light around the nurse and a few stars twinkling up top.
+   */
+  function drawNightShade() {
+    ctx.save();
+    const g = ctx.createRadialGradient(player.x, player.y - 30, 70, player.x, player.y - 30, 430);
+    g.addColorStop(0, 'rgba(20,18,60,0.05)');
+    g.addColorStop(1, 'rgba(20,18,60,0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    const t = performance.now() / 1000;
+    [[300, 300], [460, 380], [740, 330], [880, 250], [220, 480]].forEach(([sx, sy], i) => {
+      ctx.globalAlpha = 0.4 + 0.4 * Math.sin(t * 1.5 + i * 1.7);
+      sparkle(ctx, sx, sy, 4 + (i % 2) * 2, '#fff6d6');
+    });
+    ctx.restore();
   }
 
   /** The sign on the back wall (EMERGENCY / SUPPLY ROOM), anime-plated. */
@@ -2380,6 +2530,24 @@ export function init(canvas, elements) {
     ctx.translate(Math.round(st.x), Math.round(st.y));
     animeTile(ctx, -st.w / 2, -st.h / 2, st.w, st.h, 12, locked ? '#cfc8d8' : STATION_COLORS[st.kind]);
     STATION_DETAILS[st.kind]?.(st);
+    if (st.kind === 'coffee-machine' && dailyEffect('noCoffee')) {
+      // Out of order: caution tape across it and a sign.
+      ctx.save();
+      ctx.rotate(-0.35);
+      drawRoundRect(ctx, -st.w / 2 - 6, -6, st.w + 12, 12, 2, ANIME.gold);
+      ctx.fillStyle = ANIME.ink;
+      for (let x = -st.w / 2 - 4; x < st.w / 2 + 6; x += 10) {
+        ctx.beginPath();
+        ctx.moveTo(x, -6);
+        ctx.lineTo(x + 5, -6);
+        ctx.lineTo(x, 6);
+        ctx.lineTo(x - 5, 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      drawLabelChip(ctx, 0, -st.h / 2 - 10, 'OUT OF ORDER', 'bold 10px sans-serif', ANIME.coralDeep, '#ffffff');
+    }
     if (locked) {
       drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
       ctx.strokeStyle = '#5a5060';
@@ -3738,6 +3906,10 @@ export function init(canvas, elements) {
     drawPlayer();
     drawHallucinations();
     ctx.restore();
+    if (dailyEffect('night')) drawNightShade();
+    if (daily && shiftState) {
+      drawLabelChip(ctx, CANVAS_WIDTH / 2, 588, `✦ Daily Challenge · ${daily.twist.name} ✦`, 'bold 11px sans-serif', ANIME.lavenderDeep, '#ffffff');
+    }
     drawStatBar(14, 'Sanity', shiftState ? shiftState.sanity : SANITY_MAX, SANITY_MAX, [ANIME.mint, ANIME.mintDeep], sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif');
     drawStatBar(36, 'Mood', shiftState ? shiftState.wardMood : WARD_MOOD_MAX, WARD_MOOD_MAX, [ANIME.sky, ANIME.skyDeep], 'bold 10px sans-serif');
     const collapseIn = shiftState ? collapseSecondsRemaining(shiftState) : null;
@@ -3858,7 +4030,9 @@ export function init(canvas, elements) {
   elements.fullscreenButton.addEventListener('click', toggleFullscreen);
   elements.floorButton?.addEventListener('click', () => switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1, 'button'));
   elements.startScreen.shiftButton.addEventListener('click', startShift);
-  elements.paycheckScreen.nextShiftButton.addEventListener('click', startShift);
+  elements.startScreen.daily?.button?.addEventListener('click', startDaily);
+  elements.paycheckScreen.nextShiftButton.addEventListener('click', continueFromPaycheck);
+  elements.paycheckScreen.backButton?.addEventListener('click', backToStart);
   elements.paycheckScreen.newMonthButton.addEventListener('click', startNewMonth);
   elements.paycheckScreen.submitButton?.addEventListener('click', () => {
     // Disabling a submit button synchronously in its own click handler
@@ -3933,6 +4107,14 @@ export function init(canvas, elements) {
       karenAvailable = true;
     },
     bringMelInNow: () => bringMelIn('code'),
+    getDaily: () => (daily ? { date: daily.date, twist: daily.twist.id } : null),
+    /** The shift's pre-rolled arrivals still to come (condition, look, name/age rolls). */
+    getScheduledPatients: () => scheduledEvents.filter((e) => e.type === 'patient').map((e) => ({ at: e.at, ...e.spec })),
+    /** Starts a Daily Challenge for any date (twists are date-driven). */
+    startDailyFor(date) {
+      daily = { date, twist: dailyTwistForDate(date) };
+      beginShift();
+    },
     getCareerXp: () => save.careerXp,
     addShiftXp(amount) { if (shiftState) shiftState = { ...shiftState, xp: shiftState.xp + amount }; },
     spawnGhostNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
@@ -3952,6 +4134,7 @@ export function init(canvas, elements) {
   renderHud();
   renderMelBadge();
   renderRankCard();
+  renderDailyCard();
   return teardown;
 }
 
@@ -3976,6 +4159,14 @@ function bootstrap() {
       shiftButton: byId('hospital-start-shift-button'),
       melBadge: byId('hospital-mel-badge'),
       rank: { root: byId('hospital-rank-card'), title: byId('hospital-rank-title'), bar: byId('hospital-rank-bar'), next: byId('hospital-rank-next'), perks: byId('hospital-rank-perks') },
+      daily: {
+        root: byId('hospital-daily-card'),
+        date: byId('hospital-daily-date'),
+        twist: byId('hospital-daily-twist'),
+        blurb: byId('hospital-daily-blurb'),
+        best: byId('hospital-daily-best'),
+        button: byId('hospital-daily-button'),
+      },
     },
     paycheckScreen: {
       root: byId('hospital-paycheck-screen'),
@@ -3985,6 +4176,10 @@ function bootstrap() {
       monthTotal: byId('hospital-paycheck-month-total'),
       xp: byId('hospital-paycheck-xp'),
       rankUp: byId('hospital-paycheck-rankup'),
+      monthLabel: byId('hospital-paycheck-month-label'),
+      finalHeading: byId('hospital-final-paycheck-heading'),
+      dailyInput: byId('hospital-paycheck-daily-input'),
+      backButton: byId('hospital-paycheck-back-button'),
       finalBlock: byId('hospital-final-paycheck-block'),
       earningsInput: byId('hospital-paycheck-earnings-input'),
       shiftsInput: byId('hospital-paycheck-shifts-input'),

@@ -8,8 +8,17 @@ import (
 	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/middleware"
+	"github.com/vincentmegia/vincentmegia/internal/model"
 	"github.com/vincentmegia/vincentmegia/internal/service"
 )
+
+// hospitalLeaderboardView is the hospital-leaderboard fragment's data: one
+// board's top scores, and which board it is — Daily is the Daily
+// Challenge's YYYY-MM-DD date, "" for the all-time board.
+type hospitalLeaderboardView struct {
+	Scores []model.HospitalScore
+	Daily  string
+}
 
 // hospitalLeaderboardLimit is the top-N size shown on the public
 // leaderboard, same value as cookingLeaderboardLimit
@@ -55,21 +64,37 @@ func (h *HospitalShiftHandler) Index(w http.ResponseWriter, r *http.Request) {
 // Leaderboard handles GET /hospital-shift/leaderboard, returning the
 // hospital-leaderboard fragment (innerHTML target, per the HTMX
 // Interactions table). Always a bare fragment, never wrapped in the page
-// shell.
+// shell. ?board=daily returns today's Daily Challenge board instead.
 func (h *HospitalShiftHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
-	scores, err := h.Service.Leaderboard(r.Context(), hospitalLeaderboardLimit)
+	daily := ""
+	if r.URL.Query().Get("board") == "daily" {
+		daily = h.Service.Today()
+	}
+	h.renderBoard(w, r, daily)
+}
+
+// renderBoard renders one board's fragment (daily "" = all-time).
+func (h *HospitalShiftHandler) renderBoard(w http.ResponseWriter, r *http.Request, daily string) {
+	var scores []model.HospitalScore
+	var err error
+	if daily == "" {
+		scores, err = h.Service.Leaderboard(r.Context(), hospitalLeaderboardLimit)
+	} else {
+		scores, err = h.Service.DailyLeaderboard(r.Context(), daily, hospitalLeaderboardLimit)
+	}
 	if err != nil {
-		slog.Error("get hospital leaderboard", "error", err)
+		slog.Error("get hospital leaderboard", "daily", daily, "error", err)
 		writeHospitalLeaderboardError(w)
 		return
 	}
-	h.Renderer.RenderFragment(w, "hospital-leaderboard", scores)
+	h.Renderer.RenderFragment(w, "hospital-leaderboard", hospitalLeaderboardView{Scores: scores, Daily: daily})
 }
 
 // SubmitScore handles POST /hospital-shift/score: validates and inserts a
 // leaderboard entry, then returns the refreshed fragment (outerHTML
 // target, per the HTMX Interactions table) so a successful submission's
-// own row is visible immediately.
+// own row is visible immediately — the daily board for a Daily Challenge
+// run (form field daily_date).
 //
 // Request parsing: standard HTML form encoding
 // (application/x-www-form-urlencoded), read via r.ParseForm()/
@@ -99,7 +124,8 @@ func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted); err != nil {
+	daily := r.FormValue("daily_date")
+	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted, daily); err != nil {
 		if isHospitalValidationError(err) {
 			// A curated, user-facing sentinel from
 			// service.ValidateHospitalScoreSubmission — safe to surface
@@ -113,13 +139,7 @@ func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	scores, err := h.Service.Leaderboard(r.Context(), hospitalLeaderboardLimit)
-	if err != nil {
-		slog.Error("get hospital leaderboard after submit", "error", err)
-		writeHospitalLeaderboardError(w)
-		return
-	}
-	h.Renderer.RenderFragment(w, "hospital-leaderboard", scores)
+	h.renderBoard(w, r, daily)
 }
 
 // isHospitalValidationError reports whether err is one of
@@ -132,6 +152,9 @@ func isHospitalValidationError(err error) bool {
 		service.ErrHospitalScorePlayerNameTooLong,
 		service.ErrHospitalScoreEarningsOutOfRange,
 		service.ErrHospitalScoreShiftsOutOfRange,
+		service.ErrHospitalDailyDateInvalid,
+		service.ErrHospitalDailyDateStale,
+		service.ErrHospitalDailyShiftsInvalid,
 	} {
 		if errors.Is(err, sentinel) {
 			return true
@@ -149,7 +172,7 @@ func writeHospitalLeaderboardError(w http.ResponseWriter) {
 	// 200, not 5xx — see writeCookingLeaderboardError's doc comment for why.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`<p id="hospital-leaderboard" class="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">Couldn't load the leaderboard.</p>`))
+	w.Write([]byte(`<p id="hospital-leaderboard" class="ha-panel ha-muted px-4 py-3 text-sm">Couldn't load the leaderboard.</p>`))
 }
 
 // hospitalScoreSubmitLimit/hospitalScoreSubmitWindow bound this feature's own

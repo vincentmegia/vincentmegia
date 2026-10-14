@@ -18,6 +18,9 @@
        #hospital-start-screen, #hospital-start-shift-button, #hospital-mel-badge
        #hospital-rank-card and its -title/-bar/-next/-perks nodes
        #hospital-paycheck-xp, #hospital-paycheck-rankup
+       #hospital-daily-card and its -date/-twist/-blurb/-best nodes, #hospital-daily-button
+       #hospital-paycheck-month-label, #hospital-final-paycheck-heading,
+         #hospital-paycheck-daily-input, #hospital-paycheck-back-button   (Daily Challenge)
        #hospital-paycheck-screen and its -title/-outcome/-shift-total/
          -month-total text nodes, #hospital-final-paycheck-block,
          -name/-earnings/-shifts inputs, -submit/-next-shift/-new-month buttons
@@ -86,8 +89,9 @@
 						>Your browser doesn't support the canvas element needed to play this game.</canvas>
 
 						{{/* Start screen — visible by default (the only screen shown pre-JS). */}}
-						<div id="hospital-start-screen" class="absolute inset-0 flex items-center justify-center p-4">
-							<div class="ha-card w-full max-w-xs space-y-4 p-6 text-center">
+						<div id="hospital-start-screen" class="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
+							<div class="ha-card mt-6 grid w-full max-w-2xl gap-5 p-6 text-center sm:grid-cols-2">
+							<div class="space-y-4">
 								<h2 class="ha-ribbon">The ER</h2>
 								<p class="ha-muted text-xs">
 									You're <span class="ha-ink font-semibold">Nurse Kimono Himura</span>. Triage patients at the desk,
@@ -108,6 +112,22 @@
 									class="ha-btn w-full px-4 py-2 text-sm"
 								>Start Shift</button>
 							</div>
+
+							{{/* Daily Challenge: today's seeded shift and twist (hospital-game.js fills it). */}}
+							<div id="hospital-daily-card" class="ha-panel flex flex-col gap-2 p-4 text-left">
+								<p class="ha-heading text-lg leading-tight">Daily Challenge</p>
+								<p class="ha-muted text-xs">Same patients for everyone today · <span id="hospital-daily-date">—</span> (UTC)</p>
+								<p class="ha-ink text-sm font-bold">Twist: <span id="hospital-daily-twist">—</span></p>
+								<p id="hospital-daily-blurb" class="ha-muted text-xs"></p>
+								<p id="hospital-daily-best" class="ha-ink text-xs font-semibold">No run yet today.</p>
+								<p class="ha-muted text-[11px]">Ranks don't apply — everyone plays as a Student Nurse.</p>
+								<button
+									type="button"
+									id="hospital-daily-button"
+									class="ha-btn ha-btn--gold mt-auto w-full px-4 py-2 text-sm"
+								>Play Daily Challenge</button>
+							</div>
+							</div>
 						</div>
 
 						{{/* Paycheck screen — hidden by default; hospital-game.js unhides
@@ -126,7 +146,7 @@
 										<dd id="hospital-paycheck-shift-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 									<div class="flex items-center justify-between">
-										<dt class="ha-muted">Run total</dt>
+										<dt id="hospital-paycheck-month-label" class="ha-muted">Run total</dt>
 										<dd id="hospital-paycheck-month-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 									<div class="flex items-start justify-between gap-3">
@@ -138,7 +158,7 @@
 
 								{{/* Final Paycheck — shown only after shift 30. */}}
 								<div id="hospital-final-paycheck-block" class="hidden space-y-2 border-t border-line pt-4">
-									<p class="ha-ink text-sm font-bold">Final Paycheck</p>
+									<p id="hospital-final-paycheck-heading" class="ha-ink text-sm font-bold">Final Paycheck</p>
 									<form
 										hx-post="/hospital-shift/score"
 										hx-target="#hospital-leaderboard"
@@ -167,6 +187,7 @@
 										</div>
 										<input type="hidden" id="hospital-paycheck-earnings-input" name="total_earnings" value="0">
 										<input type="hidden" id="hospital-paycheck-shifts-input" name="shifts_completed" value="30">
+											<input type="hidden" id="hospital-paycheck-daily-input" name="daily_date" value="">
 									</form>
 								</div>
 
@@ -181,6 +202,11 @@
 										id="hospital-paycheck-new-month-button"
 										class="hidden ha-btn ha-btn--gold w-full px-4 py-2 text-sm"
 									>Start New Month</button>
+										<button
+											type="button"
+											id="hospital-paycheck-back-button"
+											class="hidden ha-btn ha-btn--soft w-full px-4 py-2 text-sm"
+										>Back to Start</button>
 								</div>
 							</div>
 						</div>

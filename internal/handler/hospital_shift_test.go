@@ -22,15 +22,21 @@ import (
 // fakeCookingRepository's doc comment for the same reasoning).
 type fakeHospitalRepository struct {
 	scores    []model.HospitalScore
+	daily     []model.HospitalScore // Daily Challenge rows (any day)
 	insertErr error
 	topErr    error
 }
 
-func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int) error {
+func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
 	if f.insertErr != nil {
 		return f.insertErr
 	}
-	f.scores = append(f.scores, model.HospitalScore{PlayerName: playerName, TotalEarnings: totalEarnings, ShiftsCompleted: shiftsCompleted})
+	row := model.HospitalScore{PlayerName: playerName, TotalEarnings: totalEarnings, ShiftsCompleted: shiftsCompleted}
+	if dailyDate != nil {
+		f.daily = append(f.daily, row)
+		return nil
+	}
+	f.scores = append(f.scores, row)
 	return nil
 }
 
@@ -42,6 +48,16 @@ func (f *fakeHospitalRepository) TopScores(ctx context.Context, limit int) ([]mo
 		return f.scores, nil
 	}
 	return f.scores[:limit], nil
+}
+
+func (f *fakeHospitalRepository) TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.HospitalScore, error) {
+	if f.topErr != nil {
+		return nil, f.topErr
+	}
+	if len(f.daily) <= limit {
+		return f.daily, nil
+	}
+	return f.daily[:limit], nil
 }
 
 func newTestHospitalHandler(t *testing.T, repo *fakeHospitalRepository) *HospitalShiftHandler {
@@ -231,4 +247,59 @@ func TestHospitalShiftHandler_Index(t *testing.T) {
 		t.Errorf("index missing title/content\n--- output ---\n%s", out)
 	}
 	assertMainContentContainer(t, out)
+}
+
+// TestHospitalShiftHandler_DailyBoard verifies ?board=daily renders today's
+// Daily Challenge board with its tab pressed, that a daily submission lands
+// on (and answers with) the daily board rather than the all-time one, and
+// that both boards carry the All-time / Daily tabs.
+func TestHospitalShiftHandler_DailyBoard(t *testing.T) {
+	repo := &fakeHospitalRepository{scores: []model.HospitalScore{{PlayerName: "Month", TotalEarnings: 90000, ShiftsCompleted: 30}}}
+	h := newTestHospitalHandler(t, repo)
+	today := h.Service.Today()
+
+	rec := httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/hospital-shift/leaderboard?board=daily", nil))
+	out := rec.Body.String()
+	for _, want := range []string{`data-board="daily"`, "No one has worked today's shift yet", today, "/hospital-shift/leaderboard?board=daily"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("daily board missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Month") {
+		t.Errorf("daily board shows an ordinary run\n--- output ---\n%s", out)
+	}
+
+	form := url.Values{"player_name": {"Daily Dan"}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}}
+	req := httptest.NewRequest(http.MethodPost, "/hospital-shift/score", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "203.0.113.77:12345"
+	rec = httptest.NewRecorder()
+	h.SubmitScore(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("daily submit status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	out = rec.Body.String()
+	if !strings.Contains(out, `data-board="daily"`) || !strings.Contains(out, "Daily Dan") || !strings.Contains(out, "4321 Gard") {
+		t.Errorf("daily submit should answer with the daily board including the run\n--- output ---\n%s", out)
+	}
+	if len(repo.scores) != 1 {
+		t.Errorf("daily run leaked onto the all-time board: %+v", repo.scores)
+	}
+
+	rec = httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/hospital-shift/leaderboard", nil))
+	if out := rec.Body.String(); !strings.Contains(out, `data-board="all"`) || strings.Contains(out, "Daily Dan") {
+		t.Errorf("all-time board wrong\n--- output ---\n%s", out)
+	}
+
+	stale := url.Values{"player_name": {"Late"}, "total_earnings": {"10"}, "shifts_completed": {"1"}, "daily_date": {"2001-01-01"}}
+	req = httptest.NewRequest(http.MethodPost, "/hospital-shift/score", strings.NewReader(stale.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "203.0.113.78:12345"
+	rec = httptest.NewRecorder()
+	h.SubmitScore(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("stale daily date status = %d, want 400", rec.Code)
+	}
 }

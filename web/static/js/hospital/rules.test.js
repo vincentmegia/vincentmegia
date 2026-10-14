@@ -24,6 +24,17 @@ import {
   rankProgress,
   perksForRank,
   ranksGained,
+  DAILY_SHIFT_NUMBER,
+  DAILY_TWISTS,
+  hospitalDailyDate,
+  dailySeed,
+  seededRandom,
+  dailyTwistForDate,
+  findDailyTwist,
+  dailyPerksForTwist,
+  dailyPatientVolume,
+  dailyConditionForRolls,
+  findCondition,
   vitalsForLevel,
   triageLevelForVitals,
   CONDITIONS,
@@ -168,6 +179,51 @@ describe('nurse career rank', () => {
   test('ranksGained lists only newly reached ranks', () => {
     assert.deepEqual(ranksGained(90, 95), []);
     assert.deepEqual(ranksGained(90, 320).map((r) => r.rank), [2, 3]);
+  });
+});
+
+describe('Daily Challenge', () => {
+  test('the date is the UTC day, even late in the evening elsewhere', () => {
+    assert.equal(hospitalDailyDate(new Date('2026-10-14T23:59:59Z')), '2026-10-14');
+    assert.equal(hospitalDailyDate(new Date('2026-10-15T00:00:00Z')), '2026-10-15');
+    assert.equal(hospitalDailyDate(new Date('2026-10-15T07:30:00+08:00')), '2026-10-14');
+    assert.equal(hospitalDailyDate(new Date(Number.NaN)), '1970-01-01');
+  });
+
+  test('the same date gives the same stream; different dates differ', () => {
+    const a = seededRandom(dailySeed('2026-10-14'));
+    const b = seededRandom(dailySeed('2026-10-14'));
+    const seqA = Array.from({ length: 8 }, () => a());
+    assert.deepEqual(seqA, Array.from({ length: 8 }, () => b()));
+    assert.ok(seqA.every((x) => x >= 0 && x < 1));
+    assert.notEqual(dailySeed('2026-10-14'), dailySeed('2026-10-15'));
+  });
+
+  test('every twist comes up over a couple of months, stable per date', () => {
+    const seen = new Set();
+    for (let i = 0; i < 90; i++) seen.add(dailyTwistForDate(hospitalDailyDate(new Date(Date.UTC(2026, 0, 1 + i)))).id);
+    assert.equal(seen.size, DAILY_TWISTS.length);
+    assert.equal(dailyTwistForDate('2026-10-14'), dailyTwistForDate('2026-10-14'));
+    assert.equal(findDailyTwist('nope'), null);
+  });
+
+  test('perks are neutral except for the twist adjustment', () => {
+    assert.deepEqual(dailyPerksForTwist(findDailyTwist('rush-hour')), { walk: 1, skillZone: 1, patience: 1, sanityDrain: 1, pay: 1 });
+    assert.equal(dailyPerksForTwist(findDailyTwist('broken-coffee')).sanityDrain, 0.75);
+    assert.equal(dailyPerksForTwist(null).pay, 1);
+  });
+
+  test('Rush Hour brings 40% more patients', () => {
+    const base = dailyPatientVolume(findDailyTwist('flu-season'));
+    assert.equal(dailyPatientVolume(findDailyTwist('rush-hour')), Math.round(base * 1.4));
+    assert.ok(DAILY_SHIFT_NUMBER >= 11 && DAILY_SHIFT_NUMBER <= 20);
+  });
+
+  test('Flu Season biases half the arrivals; other twists use the usual pool', () => {
+    const flu = findDailyTwist('flu-season');
+    assert.ok(['fever', 'pneumonia', 'dehydration'].includes(dailyConditionForRolls(flu, 0.2, 0.7).id));
+    assert.ok(findCondition(dailyConditionForRolls(flu, 0.8, 0.7).id));
+    assert.ok(findCondition(dailyConditionForRolls(findDailyTwist('karen-day'), 0.1, 0.3).id));
   });
 });
 

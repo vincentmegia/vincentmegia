@@ -91,7 +91,9 @@ touching that area rather than expecting this section to carry it:
   down); Karen, Coffee Pour, hallucinations; an easter egg — Mel in a
   dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
   the back-wall vase, or typing "mel"); a 10-rank nurse career (a perk
-  per rank, `rules.js` §3c); Postgres leaderboard; no saved progress —
+  per rank, `rules.js` §3c); a seeded Daily Challenge (one UTC-day shift
+  with a rotating twist, `rules.js` §3d) with its own leaderboard tab
+  (migration 012 adds `hospital_scores.daily_date`); Postgres leaderboard; no saved progress —
   leaving the page in any way, refresh included, resets everything to
   shift 1) — `docs/features/hospital-shift.md`. Rules live
   in `web/static/js/hospital/rules.js`. Everyone in it is drawn by its own

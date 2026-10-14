@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (124 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (130 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (31 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (34 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -287,6 +287,33 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   asked to "remove the shine" — both eyes and hair, as they had for
   Kimono Himura's eyes — so the crown shine and the eye highlights are
   gone.
+* **Daily Challenge** (the user: "i want to add daily chalenge", then —
+  asked — one seeded shift, a rotating twist and a separate daily board;
+  `rules.js` §3d). A "Play Daily Challenge" card on the start screen shows
+  today's UTC date, the twist and this visit's best. The challenge is
+  shift 12's clock and pace (`DAILY_SHIFT_NUMBER`) with every patient —
+  arrival time, condition, look, name/age and vitals — pre-rolled at shift
+  start from one stream seeded by the date (`seededRandom(dailySeed(date))`),
+  so everyone gets the same shift (the game's other randomness, like
+  minigame layouts, isn't seeded and doesn't disturb it). Ranks don't
+  apply: perks are `NEUTRAL_PERKS` plus the twist's own adjustment
+  (`dailyPerksForTwist`); XP still counts toward the career. Each day rolls
+  one of six twists (`DAILY_TWISTS`, `dailyTwistForDate`):
+
+  | Twist | Effect |
+  | ----- | ------ |
+  | Flu Season | half of the arrivals are fever, pneumonia or dehydration |
+  | Short Staffed | no Dr. Okafor (no rescues); patience +10% |
+  | Coffee Machine Broken | no coffee (caution tape, "OUT OF ORDER"); Sanity drains 25% slower |
+  | Night Shift | the ER is dimmed around a pool of light on the nurse; patience +15% |
+  | Karen Day | Karen shows up |
+  | Rush Hour | 40% more patients |
+
+  A "Daily Challenge · {twist}" chip sits at the bottom of the canvas and
+  the HUD's shift reads "Daily". The paycheck is the score: it shows the
+  twist, "Today's best", Try Again (the same patients again) and Back to
+  Start, and a submit form posting `daily_date` with `shifts_completed=1`.
+  A daily run never touches the month run's shift or Gard.
 * **Progress resets on leaving** (the user: "when you leave the website
   make it reset back to shift 1", then "ALL" — every way of leaving, and
   everything resets). Nothing is saved: shift, month Gard, best run total,
@@ -463,8 +490,13 @@ web/templates/components/hospital-leaderboard.html
 | Trigger                  | Method | Endpoint                       | Target                  | Swap        | Indicator |
 | ------------------------ | ------ | ------------------------------ | ----------------------- | ----------- | --------- |
 | Projects "Play now" card | GET    | `/hospital-shift`              | `#main-content`         | `outerHTML` | `#nav-loading` |
-| Leaderboard load         | GET    | `/hospital-shift/leaderboard`  | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
-| Final Paycheck submit    | POST   | `/hospital-shift/score`        | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| Leaderboard load / "All-time" tab | GET | `/hospital-shift/leaderboard` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| "Daily Challenge" tab    | GET    | `/hospital-shift/leaderboard?board=daily` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| Final Paycheck / daily submit | POST | `/hospital-shift/score`     | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+
+The tabs live inside the fragment (`data-board="all"|"daily"`,
+`aria-pressed`), so the server marks the active one; a daily submission
+answers with the daily board (the Bus Rush leaderboard's pattern).
 
 ---
 
@@ -473,8 +505,8 @@ web/templates/components/hospital-leaderboard.html
 | Method | Path                          | Handler                          | Auth | Notes |
 | ------ | ----------------------------- | -------------------------------- | ---- | ----- |
 | GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. |
-| GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment. |
-| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Own per-IP `scoreSubmitLimiter` (5/min). |
+| GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
+| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift). Own per-IP `scoreSubmitLimiter` (5/min). |
 
 ---
 
@@ -489,8 +521,13 @@ web/templates/components/hospital-leaderboard.html
 | total_earnings   | INT         | NOT NULL, 0–300000 (30 clean shifts with bonuses can pass Library Shift's 100000 cap) |
 | shifts_completed | INT         | NOT NULL, 1–30 |
 | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now() |
+| daily_date       | DATE        | nullable — the Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/012_add_hospital_daily_date.sql`. |
 
-Index `idx_hospital_scores_earnings (total_earnings DESC)`. Leaderboard-only,
+Index `idx_hospital_scores_earnings (total_earnings DESC)`, plus
+`idx_hospital_scores_daily (daily_date, total_earnings DESC) WHERE
+daily_date IS NOT NULL` for the daily board. Unlike Bus Rush, the
+all-time board ranks only ordinary runs (`WHERE daily_date IS NULL`): a
+one-shift daily paycheck isn't comparable to a month's earnings. Leaderboard-only,
 like every other game; run state isn't stored anywhere — it lasts one
 visit to the page.
 
@@ -543,7 +580,10 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
 * `player_name`/`total_earnings`/`shifts_completed` validated server-side
   against the same bounds as the CHECK constraints
   (`internal/service/hospital_validation.go`); player names are rendered
-  through html/template auto-escaping.
+  through html/template auto-escaping. `daily_date` must be YYYY-MM-DD
+  within a day of today's UTC date (`ValidateHospitalDailyDate`, Bus
+  Rush's window — a run finished across midnight still counts, old days
+  can't be back-filled), and a daily run must report exactly 1 shift.
 * Same documented no-CSRF gap as the other games' score routes.
 * No new secrets/config.
 
@@ -552,8 +592,12 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
 ## Testing Plan
 
 * [x] Go: handler tests (index, leaderboard, score happy/validation/
-      rate-limit/DB-error), validation + service tests, real-Postgres
-      round trip in `cmd/server/e2e_test.go`.
+      rate-limit/DB-error, the daily board and a daily submit answering
+      with it, a stale daily date → 400), validation + service tests
+      (daily date window/format, a daily run must be 1 shift, daily rows
+      kept off the all-time board), real-Postgres round trips in
+      `cmd/server/e2e_test.go` (including a daily run landing on
+      `?board=daily` and not the all-time board).
 * [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
       triage agreement, condition gating, skill-check zones, bandage
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
@@ -561,7 +605,9 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       payout), Mel's arrival roll / secret code / card lines, patient name
       pools (one per design, no name shared, ages in range), career rank
       (thresholds, progress, stacking perks, XP from each source, perks on
-      patience/Sanity drain/pay), floor-plan geometry.
+      patience/Sanity drain/pay), the Daily Challenge (UTC date, seeded
+      stream determinism, every twist reachable, neutral perks + twist,
+      Rush Hour volume, Flu Season bias), floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
       coffee → Karen → Mel (typing "mel" → card → gift → badge, gone after
@@ -571,7 +617,13 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       Nurse starts with every top perk) → handover → paycheck →
       final-shift leaderboard submit; leaving resets (a refresh goes back
       to shift 1 with rank/badge reset and the old save cleared; an HTMX
-      revisit after finishing shift 1 starts at 1/30 again). Uses
+      revisit after finishing shift 1 starts at 1/30 again); Daily
+      Challenge (the start card shows today and its twist, the daily plays
+      shift 12 with neutral perks, Try Again replays identical patients,
+      the paycheck carries daily_date/1 shift, Back to Start leaves the
+      month run untouched; a daily submit lands on the daily board and the
+      tabs switch boards; Short Staffed has no Dr. Okafor and Coffee
+      Machine Broken refuses to pour). Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

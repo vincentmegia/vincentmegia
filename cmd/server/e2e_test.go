@@ -556,6 +556,40 @@ func TestEndToEnd(t *testing.T) {
 				t.Errorf("error body looks like a raw DB error: %s", body)
 			}
 		})
+
+		t.Run("a Daily Challenge run lands on today's daily board, not the all-time one", func(t *testing.T) {
+			dailyName := fmt.Sprintf("e2e-d%d", time.Now().UnixNano()%1_000_000)
+			t.Cleanup(func() {
+				if _, err := conn.Exec(`DELETE FROM hospital_scores WHERE player_name = $1`, dailyName); err != nil {
+					t.Errorf("cleanup: delete test daily hospital_scores row: %v", err)
+				}
+			})
+			today := time.Now().UTC().Format("2006-01-02")
+			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}}
+			resp, err := client.PostForm(srv.URL+"/hospital-shift/score", dailyForm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("daily POST status = %d, body: %s", resp.StatusCode, b)
+			}
+			if body := string(b); !strings.Contains(body, `data-board="daily"`) || !strings.Contains(body, dailyName) {
+				t.Errorf("daily POST should answer with the daily board including the run: %s", body)
+			}
+			_, allTime := get(t, client, srv.URL+"/hospital-shift/leaderboard")
+			if strings.Contains(allTime, dailyName) {
+				t.Errorf("daily run shows on the all-time board: %s", allTime)
+			}
+			_, daily := get(t, client, srv.URL+"/hospital-shift/leaderboard?board=daily")
+			if !strings.Contains(daily, dailyName) {
+				t.Errorf("daily run missing from ?board=daily: %s", daily)
+			}
+		})
 	})
 
 	t.Run("placeholder routes are unaffected by the resume feature", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/model"
 )
@@ -32,24 +33,27 @@ func NewHospitalRepository(db, readDB *sql.DB) *HospitalRepository {
 // playerName/totalEarnings/shiftsCompleted before calling this — the
 // table's own CHECK constraints are a backstop, not the primary validation
 // layer (docs/features/hospital-shift.md's Security Considerations).
-func (repo *HospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int) error {
+// dailyDate is the Daily Challenge's day, or nil for an ordinary run.
+func (repo *HospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
 	const query = `
-		INSERT INTO hospital_scores (player_name, total_earnings, shifts_completed)
-		VALUES ($1, $2, $3)`
+		INSERT INTO hospital_scores (player_name, total_earnings, shifts_completed, daily_date)
+		VALUES ($1, $2, $3, $4)`
 
-	if _, err := repo.DB.ExecContext(ctx, query, playerName, totalEarnings, shiftsCompleted); err != nil {
+	if _, err := repo.DB.ExecContext(ctx, query, playerName, totalEarnings, shiftsCompleted, dailyDate); err != nil {
 		return fmt.Errorf("insert hospital_scores: %w", err)
 	}
 	return nil
 }
 
-// TopScores fetches the top `limit` rows by total_earnings, descending —
-// the same ordering idx_hospital_scores_earnings exists to serve.
-// Read-only — uses ReadDB.
+// TopScores fetches the top `limit` ordinary runs by total_earnings,
+// descending. Daily Challenge rows are left out: a one-shift paycheck
+// isn't comparable to a month's earnings (they have their own board, see
+// TopDailyScores). Read-only — uses ReadDB.
 func (repo *HospitalRepository) TopScores(ctx context.Context, limit int) ([]model.HospitalScore, error) {
 	const query = `
 		SELECT player_name, total_earnings, shifts_completed, created_at
 		FROM hospital_scores
+		WHERE daily_date IS NULL
 		ORDER BY total_earnings DESC
 		LIMIT $1`
 
@@ -57,6 +61,28 @@ func (repo *HospitalRepository) TopScores(ctx context.Context, limit int) ([]mod
 	if err != nil {
 		return nil, fmt.Errorf("query hospital_scores: %w", err)
 	}
+	return scanHospitalScores(rows)
+}
+
+// TopDailyScores fetches the top `limit` Daily Challenge rows for one day,
+// by total_earnings descending (idx_hospital_scores_daily). Read-only —
+// uses ReadDB.
+func (repo *HospitalRepository) TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.HospitalScore, error) {
+	const query = `
+		SELECT player_name, total_earnings, shifts_completed, created_at
+		FROM hospital_scores
+		WHERE daily_date = $1
+		ORDER BY total_earnings DESC
+		LIMIT $2`
+
+	rows, err := repo.ReadDB.QueryContext(ctx, query, day, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query daily hospital_scores: %w", err)
+	}
+	return scanHospitalScores(rows)
+}
+
+func scanHospitalScores(rows *sql.Rows) ([]model.HospitalScore, error) {
 	defer rows.Close()
 
 	var scores []model.HospitalScore

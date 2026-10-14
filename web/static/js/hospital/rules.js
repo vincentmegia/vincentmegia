@@ -212,6 +212,85 @@ export function typeSecretCodeKey(buffer, key, code = MEL_SECRET_CODE) {
 }
 
 // ---------------------------------------------------------------------------
+// 3d. Daily Challenge (the user: "i want to add daily chalenge", then — asked
+//     — one seeded shift, a rotating twist and a separate daily board). One
+//     shift per UTC day, the same for everyone: its patients (arrival times,
+//     conditions, vitals, looks, names) all come from one stream seeded by
+//     the date, and each day rolls one twist. Ranks don't apply — everyone
+//     plays with NEUTRAL_PERKS (plus the twist's own adjustment) so scores
+//     compare. The score is that shift's paycheck.
+// ---------------------------------------------------------------------------
+
+/** The tier-2 shift the challenge plays as (16 patients, surgery possible). */
+export const DAILY_SHIFT_NUMBER = 12;
+
+/**
+ * Each twist's `effect`: `volume` multiplies the patient count,
+ * `conditionBias` (ids) gets half of all arrivals, `noDoctor` keeps
+ * Dr. Okafor off shift, `noCoffee` breaks the coffee machine, `night` dims
+ * the ER, `karen` brings Karen in, and `perks` adjusts the neutral perks
+ * (a small compensation where a twist is mostly a handicap).
+ */
+export const DAILY_TWISTS = [
+  { id: 'flu-season', name: 'Flu Season', blurb: 'Half of today\'s patients have fevers, pneumonia or dehydration.', effect: { conditionBias: ['fever', 'pneumonia', 'dehydration'] } },
+  { id: 'short-staffed', name: 'Short Staffed', blurb: 'Dr. Okafor called in sick — no rescues today. Patients are a bit more patient.', effect: { noDoctor: true, perks: { patience: 1.1 } } },
+  { id: 'broken-coffee', name: 'Coffee Machine Broken', blurb: 'No coffee all shift! Pace yourself — Sanity drains a little slower.', effect: { noCoffee: true, perks: { sanityDrain: 0.75 } } },
+  { id: 'night-shift', name: 'Night Shift', blurb: 'The ER is dim and quiet. Sleepy patients wait longer.', effect: { night: true, perks: { patience: 1.15 } } },
+  { id: 'karen-day', name: 'Karen Day', blurb: 'Karen is back, and she wants the manager.', effect: { karen: true } },
+  { id: 'rush-hour', name: 'Rush Hour', blurb: 'A pile-up downtown: 40% more patients.', effect: { volume: 1.4 } },
+];
+
+/** A Date's UTC calendar day as YYYY-MM-DD (the server's daily_date). */
+export function hospitalDailyDate(now = new Date()) {
+  const d = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date(0);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A 32-bit seed from a date string (FNV-1a), stable across browsers. */
+export function dailySeed(date) {
+  let h = 0x811c9dc5;
+  for (const ch of String(date)) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** A deterministic 0..1 random stream for a seed (Library Shift's mulberry32). */
+export function seededRandom(seed) {
+  return mulberry32(seed);
+}
+
+/** The day's twist: the same for everyone on that date. */
+export function dailyTwistForDate(date) {
+  return DAILY_TWISTS[seededRandom(dailySeed(`twist:${date}`))() * DAILY_TWISTS.length | 0];
+}
+
+export function findDailyTwist(id) {
+  return DAILY_TWISTS.find((t) => t.id === id) ?? null;
+}
+
+/** The challenge's perks: everyone neutral, then the twist's adjustment. */
+export function dailyPerksForTwist(twist) {
+  return { ...NEUTRAL_PERKS, ...(twist?.effect?.perks ?? {}) };
+}
+
+/** How many patients the challenge brings in. */
+export function dailyPatientVolume(twist) {
+  return Math.round(patientVolumeForShift(DAILY_SHIFT_NUMBER) * (twist?.effect?.volume ?? 1));
+}
+
+/**
+ * The condition for a daily arrival: with a `conditionBias` twist, `biasRoll`
+ * under 0.5 picks from the biased list (by `roll`); otherwise the usual pool.
+ */
+export function dailyConditionForRolls(twist, biasRoll, roll) {
+  const bias = (twist?.effect?.conditionBias ?? []).map(findCondition).filter(Boolean);
+  if (bias.length && clampRoll(biasRoll) < 0.5) return bias[Math.floor(clampRoll(roll) * bias.length)];
+  return conditionForRoll(DAILY_SHIFT_NUMBER, roll);
+}
+
+// ---------------------------------------------------------------------------
 // 3c. Nurse career rank (the user: "add levels", then picked a career rank
 //     over hospital stages/severity levels/level select). XP is earned in
 //     every shift — correct triage calls, finished treatment steps,

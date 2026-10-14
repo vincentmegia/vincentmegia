@@ -667,6 +667,107 @@ test.describe('handover and paycheck', () => {
 	});
 });
 
+test.describe('Daily Challenge', () => {
+	/** Finishes the running shift: jump to handover and walk into the office. */
+	async function finishShift(page) {
+		await hooks(page, 'skipToClosing');
+		await walkTo(page, 'office');
+		await expect(page.locator('#hospital-paycheck-screen')).toBeVisible();
+	}
+
+	test('the start card shows today; the daily plays the seeded shift with neutral perks, and Try Again replays the same patients', async ({ page }) => {
+		await seedProgress(page, { currentShift: 9, careerXp: 6200 });
+		await page.goto('/hospital-shift');
+		const today = new Date().toISOString().slice(0, 10);
+		await expect(page.locator('#hospital-daily-date')).toHaveText(today);
+		await expect(page.locator('#hospital-daily-twist')).not.toHaveText('—');
+		const twistName = await page.locator('#hospital-daily-twist').textContent();
+
+		await page.locator('#hospital-daily-button').click();
+		await page.waitForFunction(() => window.__hospitalShiftTestHooks?.getShiftState()?.phase === 'playing');
+		const daily = await hooks(page, 'getDaily');
+		expect(daily.date).toBe(today);
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('Daily');
+		const s = await shiftState(page);
+		expect(s.shiftNumber).toBe(12);
+		// A Charge Nurse's perks don't carry into the daily (only the twist's own).
+		expect(s.perks.pay).toBe(1);
+		expect(s.perks.walk).toBe(1);
+		const first = (await hooks(page, 'getScheduledPatients')).map((x) => `${x.conditionId}/${x.designKey}/${x.at.toFixed(2)}`);
+		expect(first.length).toBeGreaterThan(10);
+
+		await finishShift(page);
+		await expect(page.locator('#hospital-paycheck-title')).toHaveText('Daily Challenge');
+		await expect(page.locator('#hospital-paycheck-outcome')).toContainText(twistName);
+		await expect(page.locator('#hospital-paycheck-daily-input')).toHaveValue(today);
+		await expect(page.locator('#hospital-paycheck-shifts-input')).toHaveValue('1');
+		await expect(page.locator('#hospital-final-paycheck-heading')).toContainText('Daily Challenge');
+		await expect(page.locator('#hospital-paycheck-month-label')).toHaveText("Today's best");
+
+		await page.locator('#hospital-paycheck-next-shift-button').click();
+		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getShiftState()?.phase === 'playing');
+		const again = (await hooks(page, 'getScheduledPatients')).map((x) => `${x.conditionId}/${x.designKey}/${x.at.toFixed(2)}`);
+		expect(again).toEqual(first);
+
+		// The month run is untouched: back to the start screen, it's still shift 9.
+		await finishShift(page);
+		await page.locator('#hospital-paycheck-back-button').click();
+		await expect(page.locator('#hospital-start-screen')).toBeVisible();
+		await expect(page.locator('#hospital-daily-best')).toContainText('Your best today');
+		await startShift(page);
+		expect((await shiftState(page)).shiftNumber).toBe(9);
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('9/30');
+	});
+
+	test("a daily run submits to today's board, and the tabs switch boards", async ({ page }) => {
+		const playerName = testPlayerName();
+		try {
+			await page.goto('/hospital-shift');
+			await page.locator('#hospital-daily-button').click();
+			await page.waitForFunction(() => window.__hospitalShiftTestHooks?.getShiftState()?.phase === 'playing');
+			await finishShift(page);
+			await expect(page.locator('#hospital-final-paycheck-block')).toBeVisible();
+			await page.locator('#hospital-paycheck-name-input').fill(playerName);
+			const [response] = await Promise.all([
+				page.waitForResponse((r) => r.url().includes('/hospital-shift/score') && r.request().method() === 'POST'),
+				page.locator('#hospital-paycheck-submit-button').click(),
+			]);
+			expect(response.ok()).toBeTruthy();
+			const board = page.locator('#hospital-leaderboard');
+			await expect(board).toHaveAttribute('data-board', 'daily');
+			await expect(board).toContainText(playerName);
+
+			// The daily runs fullscreen; leave it to reach the leaderboard beside the game.
+			await page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
+			await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
+			await board.getByRole('button', { name: 'All-time' }).click();
+			await expect(page.locator('#hospital-leaderboard')).toHaveAttribute('data-board', 'all');
+			await expect(page.locator('#hospital-leaderboard')).not.toContainText(playerName);
+			await page.locator('#hospital-leaderboard').getByRole('button', { name: 'Daily Challenge' }).click();
+			await expect(page.locator('#hospital-leaderboard')).toHaveAttribute('data-board', 'daily');
+			await expect(page.locator('#hospital-leaderboard')).toContainText(playerName);
+		} finally {
+			await deleteTestScore(playerName);
+		}
+	});
+
+	test('twists: Short Staffed has no Dr. Okafor; a broken coffee machine refuses to pour', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		// Dates whose twist is fixed by the date seed (rules.js dailyTwistForDate).
+		await hooks(page, 'startDailyFor', '2026-10-04');
+		expect((await hooks(page, 'getDaily')).twist).toBe('short-staffed');
+		expect((await hooks(page, 'getStaff')).some((m) => m.key === 'doctor')).toBe(false);
+
+		await hooks(page, 'startDailyFor', '2026-10-09');
+		expect((await hooks(page, 'getDaily')).twist).toBe('broken-coffee');
+		expect((await shiftState(page)).perks.sanityDrain).toBe(0.75);
+		await walkTo(page, 'coffee-machine');
+		await expect(page.locator('#hospital-toast')).toContainText('out of order');
+		expect(await hooks(page, 'getOverlay')).toBeNull();
+	});
+});
+
 test.describe('leaving resets the game', () => {
 	test('a refresh starts over at shift 1 with everything reset, and the old save is cleared', async ({ page }) => {
 		await page.addInitScript(() => {
