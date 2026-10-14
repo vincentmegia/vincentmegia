@@ -598,8 +598,11 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   A testing switch on the page URL (the user: "just for me to test can the
   first patient be a surgery one", kept afterwards): `?first=surgery` makes
   each shift's first arrival a random surgery case, `?first=<condition id>`
-  (e.g. `kidney-failure`) that exact case. Ignored in the Daily Challenge;
-  without it the first patient is random as usual.
+  (e.g. `kidney-failure`) that exact case, and once triaged that patient
+  skips straight to the surgery step (the user, testing, picked "skip to
+  surgery") so the OR can be tried without doing vitals and IV first.
+  Ignored in the Daily Challenge; without it the first patient is random
+  as usual.
 * **Triage vitals**: `vitalsForLevel(level, rolls)` generates vitals that
   `triageLevelForVitals` classifies back to that same level — Red: SpO₂ <
   90, HR > 130 or systolic BP < 90; Yellow: temp ≥ 38.5 °C or HR 101–130;
