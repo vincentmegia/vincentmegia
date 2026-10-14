@@ -51,6 +51,7 @@ import {
   vitalsForLevel,
   findCondition,
   conditionForRoll,
+  conditionsForShift,
   TREATMENT_LABELS,
   BED_MINIGAME_TREATMENTS,
   MEDICATIONS,
@@ -777,6 +778,23 @@ export function init(canvas, elements) {
    * Daily Challenge's patients are identical for everyone, however the
    * shift is played.
    */
+  /**
+   * A testing switch (the user: "just for me to test can the first patient
+   * be a surgery one"): `?first=surgery` makes each shift's first arrival a
+   * random surgery case, `?first=<condition id>` (e.g. kidney-failure) that
+   * exact case. Ignored in the Daily Challenge so its shift stays the same
+   * for everyone, and absent from normal visits.
+   */
+  function firstPatientOverride() {
+    const wanted = new URLSearchParams(window.location.search).get('first');
+    if (!wanted || daily) return null;
+    if (wanted === 'surgery') {
+      const surgeries = conditionsForShift(currentShiftNumber).filter((c) => c.plan.includes('surgery'));
+      return surgeries.length ? surgeries[Math.floor(random() * surgeries.length)].id : null;
+    }
+    return findCondition(wanted)?.id ?? null;
+  }
+
   function scheduleShiftEvents() {
     const total = shiftState.totalClockSeconds;
     const events = [];
@@ -796,6 +814,9 @@ export function init(canvas, elements) {
         },
       });
     }
+    const firstOverride = firstPatientOverride();
+    const firstPatient = events.filter((e) => e.type === 'patient').sort((a, b) => a.at - b.at)[0];
+    if (firstOverride && firstPatient) firstPatient.spec.conditionId = firstOverride;
     if (currentShiftNumber === karenShiftNumber) events.push({ type: 'karen', at: total * 0.3 });
     if (currentShiftNumber === MEL_FIXED_SHIFT) events.push({ type: 'mel', at: total * MEL_FIXED_SHIFT_AT });
     return events.sort((a, b) => a.at - b.at);
