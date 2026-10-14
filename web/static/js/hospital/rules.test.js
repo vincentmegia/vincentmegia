@@ -320,10 +320,10 @@ describe('conditions and meds', () => {
     }
   });
 
-  test('surgery cases are held back until SURGERY_START_SHIFT', () => {
-    const hasSurgery = (shift) => conditionsForShift(shift).some((c) => c.plan.includes('surgery'));
-    assert.equal(hasSurgery(SURGERY_START_SHIFT - 1), false);
-    assert.equal(hasSurgery(SURGERY_START_SHIFT), true);
+  test('surgery cases, transplants included, arrive from shift 1', () => {
+    assert.equal(SURGERY_START_SHIFT, 1);
+    const surgeries = conditionsForShift(1).filter((c) => c.plan.includes('surgery')).map((c) => c.id);
+    assert.deepEqual(surgeries.sort(), ['appendicitis', 'crash', 'heart-failure', 'kidney-failure', 'liver-failure']);
   });
 
   test('conditionForRoll picks from the shift pool across the whole roll range', () => {

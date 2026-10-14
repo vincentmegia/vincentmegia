@@ -100,7 +100,7 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     **scalpel** (Instrument Tray) plus one item (`rules.js`
     `SURGERY_ITEMS`, `surgeryItemFor`): the matching **organ** for the new
     transplant cases (kidney, liver, heart failure; from
-    `TRANSPLANT_START_SHIFT` 4) from the Organ Cooler, or an **implant**
+    `TRANSPLANT_START_SHIFT`, now shift 1) from the Organ Cooler, or an **implant**
     from the Supply Room's new **Implant Shelf** upstairs (a mesh patch for
     appendicitis, a bone plate for car-crash injuries). Each source opens a
     close-up of item cards — its real items plus look-alike decoys
@@ -591,9 +591,10 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   per shift 12/16/22; two arrive in the first 4–20 s, the rest spread evenly.
 * **Conditions** (`CONDITIONS`): each has a triage level, a complaint, an
   ordered treatment plan and (when it has a Meds step) a drug + dose.
-  Surgery cases (appendicitis, crash injuries) arrive from shift 2
-  (`SURGERY_START_SHIFT`; was 4 until the user asked for surgeries on
-  shift 2), so shift 1 teaches the basic steps.
+  Surgery cases (appendicitis, crash injuries, and the kidney/liver/heart
+  transplants) arrive from shift 1 (`SURGERY_START_SHIFT` and
+  `TRANSPLANT_START_SHIFT`; surgery was gated to shift 4, then shift 2,
+  until the user asked to "make it so that surgeries start on shift 1").
 * **Triage vitals**: `vitalsForLevel(level, rolls)` generates vitals that
   `triageLevelForVitals` classifies back to that same level — Red: SpO₂ <
   90, HR > 130 or systolic BP < 90; Yellow: temp ≥ 38.5 °C or HR 101–130;
