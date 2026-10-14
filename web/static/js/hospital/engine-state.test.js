@@ -625,6 +625,9 @@ describe('hunger and thirst', () => {
     assert.equal(s.zeroThirstSeconds, 0);
     assert.equal(s.bonusGard, -water.price);
     assert.equal(buyVendingItem(s, 'nope'), s);
+    const broke = playing(5, { thirst: 10 });
+    assert.equal(buyVendingItem(broke, 'water', water.price - 1), broke, 'not enough Gard: nothing bought');
+    assert.equal(buyVendingItem(broke, 'water', water.price).thirst, 10 + water.thirst);
     assert.ok(VENDING_ITEMS.some((i) => i.kind === 'snack') && VENDING_ITEMS.some((i) => i.kind === 'drink'));
   });
 

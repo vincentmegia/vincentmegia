@@ -3966,8 +3966,10 @@ export function init(canvas, elements) {
   function buyFromVending(id) {
     const item = VENDING_ITEMS.find((i) => i.id === id);
     if (!item) return;
-    shiftState = buyVendingItem(shiftState, id);
-    flash(`${item.name}! −${item.price}g`, true);
+    const before = shiftState;
+    shiftState = buyVendingItem(shiftState, id, spendableGard());
+    if (shiftState !== before) flash(`${item.name}! −${item.price}g`, true);
+    else flash(`Not enough Gard — ${item.name} is ${item.price}g.`, false);
   }
 
   function cafeButtonRect() {
@@ -3993,9 +3995,12 @@ export function init(canvas, elements) {
   }
 
   function drawVendingOverlay() {
-    drawPanel('Vending Machine', 'Snacks and drinks — paid from this shift\'s Gard.');
+    drawPanel('Vending Machine', `Snacks and drinks — you have ${Math.max(0, spendableGard())}g to spend.`);
     for (const r of vendingCardRects()) {
       const item = VENDING_ITEMS.find((i) => i.id === r.id);
+      const affordable = spendableGard() >= item.price;
+      ctx.save();
+      if (!affordable) ctx.globalAlpha = 0.45;
       animeTile(ctx, r.x, r.y, r.w, r.h, 16, item.kind === 'snack' ? '#fff2dc' : '#e6f4ff');
       ctx.strokeStyle = ANIME.ink;
       ctx.lineWidth = 2;
@@ -4011,7 +4016,8 @@ export function init(canvas, elements) {
       ctx.font = '10px sans-serif';
       ctx.fillStyle = ANIME.inkSoft;
       ctx.fillText(effectText(item), r.x + r.w / 2, r.y + 104, r.w - 12);
-      drawLabelChip(ctx, r.x + r.w / 2, r.y + r.h - 12, `${item.price}g`, 'bold 11px sans-serif', ANIME.goldDeep, '#ffffff');
+      drawLabelChip(ctx, r.x + r.w / 2, r.y + r.h - 12, affordable ? `${item.price}g` : `${item.price}g · not enough`, 'bold 11px sans-serif', affordable ? ANIME.goldDeep : '#a8a0b8', '#ffffff');
+      ctx.restore();
     }
     const b = vendingBatteryRect();
     const affordable = spendableGard() >= BATTERY_PRICE;

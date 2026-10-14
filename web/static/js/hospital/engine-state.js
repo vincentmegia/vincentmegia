@@ -783,13 +783,15 @@ function feed(state, { hunger = 0, thirst = 0, sanity = 0 }) {
 
 /**
  * Buys one vending-machine item (rules.js VENDING_ITEMS): its price comes
- * off the shift's pay (bonusGard, which may go below 0 — the paycheck
- * still floors at 0) and its effects apply. Unknown items do nothing.
+ * off the shift's pay and its effects apply — only if you can afford it
+ * (`availableGard`, which the game passes as the month's Gard plus this
+ * shift's earnings so far; the user asked for "not enough Gard" to block
+ * snacks and drinks too, like batteries). Unknown items do nothing.
  */
-export function buyVendingItem(state, itemId) {
+export function buyVendingItem(state, itemId, availableGard = Infinity) {
   if (state.phase !== 'playing') return state;
   const item = findVendingItem(itemId);
-  if (!item) return state;
+  if (!item || !(availableGard >= item.price)) return state;
   return { ...feed(state, item), bonusGard: state.bonusGard - item.price };
 }
 

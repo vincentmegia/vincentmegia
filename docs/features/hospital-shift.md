@@ -356,8 +356,10 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   countdown chip like 0% Sanity's. The ER's vending machine
   is now a station: a shop close-up of six snacks and drinks
   (`VENDING_ITEMS`: onigiri, chips, candy bar, water, juice, green tea)
-  whose prices come off the shift's pay (`bonusGard` can dip below 0; the
-  paycheck still floors at 0). A door at the bottom of the ER leads to the
+  whose prices come off the shift's pay — but only if you can afford them
+  (the user, after the battery rule: "apply it too"): spendable Gard is the
+  month's total plus this shift's earnings so far, the shop's subtitle
+  shows it, and cards you can't afford grey out with "not enough". A door at the bottom of the ER leads to the
   walk-in **Cafeteria** (`FLOOR_CAFE`; "Leave the Cafeteria" on the HUD
   button): peach tiles, a chalk menu board, four tables, plants, and the
   counter where **Auntie Yumi** (`STAFF_DESIGNS.cafeLady`, apron and

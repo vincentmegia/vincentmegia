@@ -700,7 +700,8 @@ test.describe('hallucinations', () => {
 });
 
 test.describe('hunger, thirst and the Cafeteria', () => {
-	test('the vending machine sells snacks and drinks off the shift pay', async ({ page }) => {
+	test('the vending machine sells snacks and drinks off the shift pay, only if you can afford them', async ({ page }) => {
+		await seedSave(page, 1, 100);
 		await page.goto('/hospital-shift');
 		await startShift(page);
 		await hooks(page, 'setThirst', 10);
@@ -720,6 +721,18 @@ test.describe('hunger, thirst and the Cafeteria', () => {
 		const close = await hooks(page, 'getCloseRect');
 		await clickCanvasPoint(page, { x: close.x + 14, y: close.y + 14 });
 		await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+
+		// A fresh visit with no Gard: nothing can be bought.
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'setThirst', 10);
+		await walkTo(page, 'vending-machine');
+		await waitForOverlay(page, 'vending');
+		await clickCanvasPoint(page, { x: water.x + water.w / 2, y: water.y + 20 });
+		const broke = await shiftState(page);
+		expect(broke.bonusGard).toBe(0);
+		expect(broke.thirst).toBeLessThan(11);
+		expect((await hooks(page, 'getOverlay')).flash.text).toContain('Not enough Gard');
 	});
 
 	test("the Cafeteria: walk in, Auntie Yumi's free meal fills both bars, then leave", async ({ page }) => {
