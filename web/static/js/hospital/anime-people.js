@@ -1323,17 +1323,8 @@ function drawEyes(ctx, d) {
     ctx.quadraticCurveTo(ex, ey - h - 0.1, ex - dir * w * 1.05, ey - h * 0.05);
     ctx.closePath();
     ctx.fill();
-    // Soft anime highlights on every open eye: a big catchlight up top and
-    // a small one low on the other side (sized to the eye), plus a faint
-    // lower lash line.
-    const glint = Math.min(1, h * 0.32);
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.beginPath();
-    ctx.arc(ex - dir * 0.9 - 0.4, ey - h * 0.35, glint, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(ex + dir * 0.9 + 0.3, ey + h * 0.4, glint * 0.5, 0, Math.PI * 2);
-    ctx.fill();
+    // No highlight sparkles (the user asked to remove the shine, as they
+    // did for Kimono Himura) — just a faint lower lash line.
     ctx.strokeStyle = 'rgba(42,26,46,0.45)';
     ctx.lineWidth = 0.35;
     ctx.beginPath();
@@ -1503,7 +1494,6 @@ function drawFrontHair(ctx, d) {
   }
   ctx.closePath();
   fillPath(ctx, hairFill(ctx, c), 0.45);
-  drawHairGloss(ctx, c);
   if (d.hair.streaks) {
     // Chunky highlights.
     ctx.strokeStyle = d.hair.streaks;
@@ -1535,31 +1525,6 @@ function hairFill(ctx, c) {
   g.addColorStop(0, shade(c, 0.1));
   g.addColorStop(1, shade(c, -0.12));
   return g;
-}
-
-/**
- * The anime "angel ring": a glossy band across the crown, broken into
- * strands. Clipped to the hair path that's current when it's called.
- */
-function drawHairGloss(ctx, c) {
-  ctx.save();
-  ctx.clip();
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = shade(c, 0.5);
-  ctx.globalAlpha = 0.38;
-  ctx.lineWidth = 1.15;
-  for (const [a0, a1] of [[1.22, 1.34], [1.4, 1.52], [1.58, 1.7], [1.76, 1.84]]) {
-    ctx.beginPath();
-    ctx.arc(0, -1.5, 9.2, Math.PI * a0, Math.PI * a1);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 0.8;
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 0.5;
-  ctx.beginPath();
-  ctx.arc(0, -1.5, 9.2, Math.PI * 1.43, Math.PI * 1.5);
-  ctx.stroke();
-  ctx.restore();
 }
 
 /**

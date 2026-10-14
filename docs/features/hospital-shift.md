@@ -278,13 +278,15 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   Hospital Shift no longer draws anyone with people.js. A polish pass
   followed ("make the characters look a little bit better"), applied in
   `anime-people.js` so every patient, staff member, Karen and Mel got it
-  (Kimono Himura's own renderer was left as is): catchlights and a soft
-  lower lash line on every open eye; the bangs' shadow across the
-  forehead and a soft radial shade under the jaw; anime blush hatch
-  strokes; hair filled with a crown-to-bangs gradient plus a glossy
-  "angel ring" of broken strands (`hairFill`/`drawHairGloss`); and clothes
-  cel-shaded light-left to shadow-right (`softShade`) instead of a hard
-  dark strip.
+  (Kimono Himura's own renderer was left as is): a soft lower lash line on
+  every open eye; the bangs' shadow across the forehead and a soft radial
+  shade under the jaw; anime blush hatch strokes; hair filled with a
+  crown-to-bangs gradient (`hairFill`); and clothes cel-shaded light-left
+  to shadow-right (`softShade`) instead of a hard dark strip. That pass
+  also added eye catchlights and a glossy hair band, but the user then
+  asked to "remove the shine" — both eyes and hair, as they had for
+  Kimono Himura's eyes — so the crown shine and the eye highlights are
+  gone.
 * **Progress resets on leaving** (the user: "when you leave the website
   make it reset back to shift 1", then "ALL" — every way of leaving, and
   everything resets). Nothing is saved: shift, month Gard, best run total,
