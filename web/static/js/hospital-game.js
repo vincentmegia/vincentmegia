@@ -51,7 +51,6 @@ import {
   vitalsForLevel,
   findCondition,
   conditionForRoll,
-  conditionsForShift,
   TREATMENT_LABELS,
   BED_MINIGAME_TREATMENTS,
   MEDICATIONS,
@@ -778,24 +777,6 @@ export function init(canvas, elements) {
    * Daily Challenge's patients are identical for everyone, however the
    * shift is played.
    */
-  /**
-   * A testing switch (the user: "just for me to test can the first patient
-   * be a surgery one"): `?first=surgery` makes each shift's first arrival a
-   * random surgery case, `?first=<condition id>` (e.g. kidney-failure) that
-   * exact case — and a surgery case skips straight to its surgery step once
-   * bedded (skipToSurgeryIfTesting). Ignored in the Daily Challenge so its
-   * shift stays the same for everyone, and absent from normal visits.
-   */
-  function firstPatientOverride() {
-    const wanted = new URLSearchParams(window.location.search).get('first');
-    if (!wanted || daily) return null;
-    if (wanted === 'surgery') {
-      const surgeries = conditionsForShift(currentShiftNumber).filter((c) => c.plan.includes('surgery'));
-      return surgeries.length ? surgeries[Math.floor(random() * surgeries.length)].id : null;
-    }
-    return findCondition(wanted)?.id ?? null;
-  }
-
   function scheduleShiftEvents() {
     const total = shiftState.totalClockSeconds;
     const events = [];
@@ -814,12 +795,6 @@ export function init(canvas, elements) {
           vitalsRolls: [r(), r(), r(), r(), r()],
         },
       });
-    }
-    const firstOverride = firstPatientOverride();
-    const firstPatient = events.filter((e) => e.type === 'patient').sort((a, b) => a.at - b.at)[0];
-    if (firstOverride && firstPatient) {
-      firstPatient.spec.conditionId = firstOverride;
-      firstPatient.spec.skipToSurgery = findCondition(firstOverride)?.plan.includes('surgery') ?? false;
     }
     if (currentShiftNumber === karenShiftNumber) events.push({ type: 'karen', at: total * 0.3 });
     if (currentShiftNumber === MEL_FIXED_SHIFT) events.push({ type: 'mel', at: total * MEL_FIXED_SHIFT_AT });
@@ -855,7 +830,6 @@ export function init(canvas, elements) {
     const designKey = spec?.designKey ?? nextPatientDesignKey();
     const usedNames = new Set([...patientInfo.values()].map((info) => info.name));
     patientInfo.set(id, {
-      skipToSurgery: Boolean(spec?.skipToSurgery),
       ...patientProfileFor(designKey, spec?.nameRoll ?? random(), spec?.ageRoll ?? random(), usedNames),
       vitals: vitalsForLevel(condition.level, spec?.vitalsRolls ?? [random(), random(), random(), random(), random()]),
       designKey,
@@ -1391,24 +1365,10 @@ export function init(canvas, elements) {
     const bedIndex = freeBedIndex(shiftState);
     shiftState = resolveTriage(shiftState, patientId, levelId);
     overlay = null;
-    skipToSurgeryIfTesting(patientId, bedIndex);
     const actual = findTriageLevel(queued.level);
     const name = patientInfo.get(patientId)?.name ?? 'Patient';
     if (levelId === queued.level) showToast(`${name} → ${bedLabel(bedIndex)} (${actual.name}). Good call.`);
     else showToast(`Not quite — ${name} is ${actual.name}. The charge nurse corrected it. ${name} → ${bedLabel(bedIndex)}.`, 3.6);
-  }
-
-  /**
-   * The ?first= testing switch's patient goes straight to their surgery
-   * step once bedded (the user picked "skip to surgery"), so the OR can be
-   * tested without doing vitals and IV first.
-   */
-  function skipToSurgeryIfTesting(patientId, bedIndex) {
-    const bed = shiftState.beds[bedIndex];
-    if (!patientInfo.get(patientId)?.skipToSurgery || bed?.id !== patientId) return;
-    const surgeryStep = bed.plan.indexOf('surgery');
-    if (surgeryStep <= bed.step) return;
-    shiftState = { ...shiftState, beds: shiftState.beds.map((b, i) => (i === bedIndex ? { ...b, step: surgeryStep } : b)) };
   }
 
   /** The table's stage names for the patient in surgery (SURGERY_STAGES for other tasks). */
