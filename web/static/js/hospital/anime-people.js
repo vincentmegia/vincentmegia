@@ -460,6 +460,8 @@ PATIENT_DESIGNS.push(
 // kimono renderer.
 PATIENT_DESIGNS.push({
   key: 'maiko', label: 'Maiko', age: 'adult', skin: '#fbf3ee',
+  // Drawn bigger than everyone else (the user: "make her bigger").
+  sizeScale: 1.35,
   hair: { color: '#14101a', back: 'maiko', fringe: 'parted' },
   eyes: { color: '#8a4a3a', style: 'round', lashes: true }, brows: 'thin', mouth: 'beni',
   outfit: {
@@ -470,7 +472,7 @@ PATIENT_DESIGNS.push({
     obi: '#d9a63a', obiWeave: '#8a5a1a', obiage: '#e8485f', obijime: ['#f2c94c', '#e0485f'],
     okobo: '#2a1a14', hanao: '#d8283a',
   },
-  extras: { maikoHair: true, beni: true, kinchaku: '#c8283a' },
+  extras: { maikoHair: true, beni: true, kinchaku: '#c8283a', petals: true },
 });
 
 // Even more (the user: "now i want to add EVEN more characters"): a
@@ -799,7 +801,8 @@ function softShade(ctx, x, y, w, h) {
  */
 export function drawAnimePatient(ctx, x, y, design, opts = {}) {
   const d = design ?? PATIENT_DESIGNS[0];
-  const k = opts.scale ?? 1;
+  // A design can stand taller than everyone else (Hiko Maiko's sizeScale).
+  const k = (opts.scale ?? 1) * (d.sizeScale ?? 1);
   const t = opts.t ?? 0;
   const a = AGES[d.age] ?? AGES.adult;
   const headCY = animeHeadCenterY(d);
@@ -832,7 +835,34 @@ export function drawAnimePatient(ctx, x, y, design, opts = {}) {
   ctx.scale(a.head, a.head);
   drawHead(ctx, d, Boolean(opts.angryTint));
   ctx.restore();
+  if (d.extras?.petals) drawPetalDrift(ctx, t);
   ctx.restore();
+}
+
+/**
+ * A few sakura petals drifting down around a character (Hiko Maiko),
+ * each swaying as it falls and fading in at the top and out at her feet.
+ */
+function drawPetalDrift(ctx, t) {
+  for (let i = 0; i < 6; i++) {
+    const cycle = 5 + i * 0.7;
+    const f = ((t / cycle) + i * 0.37) % 1;
+    const x = (i % 2 ? 1 : -1) * (14 + (i % 3) * 5) + Math.sin(t * 1.3 + i * 2) * 4;
+    const y = -78 + f * 82;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, f * 5, (1 - f) * 4) * 0.9;
+    ctx.translate(x, y);
+    ctx.rotate(t * 1.5 + i);
+    ctx.fillStyle = i % 3 === 0 ? '#ffffff' : '#ffc2d8';
+    ctx.beginPath();
+    ctx.moveTo(0, -1.8);
+    ctx.quadraticCurveTo(1.6, -0.8, 0.5, 1.6);
+    ctx.lineTo(0, 1.1);
+    ctx.lineTo(-0.5, 1.6);
+    ctx.quadraticCurveTo(-1.6, -0.8, 0, -1.8);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 /** Same renderer, for the staff and Karen (reads better at call sites). */
@@ -1581,6 +1611,209 @@ function drawKimono(ctx, d) {
   }
 }
 
+/**
+ * Hiko Maiko's open folding fan, pivot at (px, py), spreading up and to
+ * the left. Back to front: bamboo inner sticks; the pleated paper leaf
+ * (gold leaf shading to crimson at the edge, alternate pleats lit and
+ * shaded) painted with a winding stream, a flowering sakura branch,
+ * falling petals and gold flecks; gold borders along both edges of the
+ * leaf; black-lacquered outer guard ribs inlaid with gold; a
+ * mother-of-pearl rivet. Its swaying tassel is drawSensuTassel.
+ */
+function drawOpenSensu(ctx, px, py) {
+  const R = 11;
+  const r0 = 3.8;
+  const a0 = -Math.PI * 0.93;
+  const a1 = -Math.PI * 0.07;
+  const pleats = 20;
+  const at = (i) => a0 + ((a1 - a0) * i) / pleats;
+  ctx.save();
+  ctx.translate(px, py);
+
+  // Bamboo sticks, fanned out between the pivot and the leaf.
+  ctx.strokeStyle = '#d9b77a';
+  ctx.lineWidth = 0.45;
+  for (let i = 1; i < pleats; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(at(i)) * (r0 + 0.6), Math.sin(at(i)) * (r0 + 0.6));
+    ctx.stroke();
+  }
+
+  // The leaf: one sweep of gold-to-crimson, then pleat light and shade.
+  const leaf = () => {
+    ctx.beginPath();
+    ctx.arc(0, 0, R, a0, a1);
+    ctx.arc(0, 0, r0, a1, a0, true);
+    ctx.closePath();
+  };
+  const paper = ctx.createRadialGradient(0, 0, r0, 0, 0, R);
+  paper.addColorStop(0, '#fff3c4');
+  paper.addColorStop(0.55, '#f2c94c');
+  paper.addColorStop(0.85, '#e0603a');
+  paper.addColorStop(1, '#b8202e');
+  leaf();
+  ctx.fillStyle = paper;
+  ctx.fill();
+  for (let i = 0; i < pleats; i++) {
+    ctx.beginPath();
+    ctx.arc(0, 0, R, at(i), at(i + 1));
+    ctx.arc(0, 0, r0, at(i + 1), at(i), true);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 ? 'rgba(90,40,20,0.12)' : 'rgba(255,255,255,0.12)';
+    ctx.fill();
+  }
+
+  // The painting, kept on the paper.
+  ctx.save();
+  leaf();
+  ctx.clip();
+  // A winding stream across the lower leaf.
+  for (const [w, color] of [[1.4, 'rgba(120,180,230,0.75)'], [0.45, 'rgba(255,255,255,0.9)']]) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(-11.5, -2.2);
+    ctx.bezierCurveTo(-7, -7.5, -3, -3, 1, -6.5);
+    ctx.bezierCurveTo(4, -9, 7, -5, 11.5, -3.4);
+    ctx.stroke();
+  }
+  // A sakura branch reaching across the top.
+  ctx.strokeStyle = '#4a2e22';
+  ctx.lineWidth = 0.55;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-9.5, -6.5);
+  ctx.quadraticCurveTo(-4, -11.2, 4.5, -9.4);
+  ctx.moveTo(-3.6, -9.8);
+  ctx.lineTo(-2.8, -7.4);
+  ctx.moveTo(1, -10);
+  ctx.lineTo(2, -8);
+  ctx.moveTo(-6.4, -8.6);
+  ctx.lineTo(-6.8, -10.2);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  for (const [bx, by, r, c] of [[-8.2, -7.6, 0.95, '#ffffff'], [-6.8, -10.4, 0.8, '#ffc2d8'], [-4.6, -9.9, 1, '#ffffff'], [-2.7, -7.1, 0.8, '#ffc2d8'], [-0.6, -10.6, 0.95, '#ffffff'], [2.1, -7.7, 0.8, '#ffffff'], [3.4, -10, 0.9, '#ffc2d8'], [5, -9.1, 0.6, '#ffffff']]) {
+    blossom(ctx, bx, by, r, c, '#d8283a');
+  }
+  // Petals falling across the leaf.
+  ctx.fillStyle = 'rgba(255,214,228,0.95)';
+  for (const [fx, fy, rot] of [[-9.6, -3.4, 0.4], [-5.4, -5.2, 1.2], [6.2, -7.4, 2.1], [8.6, -4.6, 0.8], [0.4, -4.4, 1.6]]) {
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.55, 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  // Gold-leaf flecks.
+  ctx.fillStyle = 'rgba(255,240,170,0.95)';
+  for (let i = 0; i < 18; i++) {
+    const ang = a0 + (a1 - a0) * hash01(i * 7 + 3);
+    const rad = r0 + 0.6 + (R - r0 - 1.2) * hash01(i * 11 + 5);
+    const sz = 0.18 + hash01(i * 13 + 1) * 0.3;
+    ctx.fillRect(Math.cos(ang) * rad, Math.sin(ang) * rad, sz, sz);
+  }
+  ctx.restore();
+
+  // Pleat folds and the leaf's gold borders.
+  ctx.strokeStyle = 'rgba(120,60,30,0.3)';
+  ctx.lineWidth = 0.15;
+  for (let i = 1; i < pleats; i++) {
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(at(i)) * r0, Math.sin(at(i)) * r0);
+    ctx.lineTo(Math.cos(at(i)) * R, Math.sin(at(i)) * R);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.55;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, a0, a1);
+  ctx.stroke();
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.arc(0, 0, r0, a0, a1);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(40,20,20,0.45)';
+  ctx.lineWidth = 0.2;
+  ctx.beginPath();
+  ctx.arc(0, 0, R + 0.3, a0, a1);
+  ctx.stroke();
+
+  // Black-lacquered guard ribs, inlaid with a gold line.
+  for (const ang of [a0, a1]) {
+    ctx.strokeStyle = '#1e1418';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(ang) * (R + 0.2), Math.sin(ang) * (R + 0.2));
+    ctx.stroke();
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.22;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang) * 1.2, Math.sin(ang) * 1.2);
+    ctx.lineTo(Math.cos(ang) * (R - 0.6), Math.sin(ang) * (R - 0.6));
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+
+  // Kaname: the mother-of-pearl rivet.
+  const pearl = ctx.createRadialGradient(-0.2, -0.2, 0, 0, 0, 0.75);
+  pearl.addColorStop(0, '#ffffff');
+  pearl.addColorStop(0.6, '#e8eef8');
+  pearl.addColorStop(1, '#b8c4d8');
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.75, 0, Math.PI * 2);
+  ctx.fillStyle = pearl;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(60,50,70,0.6)';
+  ctx.lineWidth = 0.15;
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** The open sensu's tassel, drawn after her hands so it hangs in view. */
+function drawSensuTassel(ctx, px, py) {
+  const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+  ctx.save();
+  ctx.translate(px, py);
+  // The tassel: a gold knot and red silk strands, swaying from the pivot.
+  ctx.rotate(Math.sin(t * 1.8) * 0.12);
+  ctx.strokeStyle = '#d8283a';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.moveTo(0, 0.6);
+  ctx.quadraticCurveTo(0.8, 2.6, 0.4, 4.2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0.4, 4.5, 0.6, 0, Math.PI * 2);
+  fillPath(ctx, GOLD, 0.15);
+  ctx.strokeStyle = '#d8283a';
+  ctx.lineWidth = 0.22;
+  for (let k = -2; k <= 2; k++) {
+    ctx.beginPath();
+    ctx.moveTo(0.4 + k * 0.15, 5);
+    ctx.lineTo(0.4 + k * 0.35, 7.6);
+    ctx.stroke();
+  }
+  rr(ctx, -0.25, 5, 1.3, 0.45, 0.2, GOLD, 0);
+  ctx.restore();
+}
+
+/** Dashed gold embroidery along whatever path `trace` lays down. */
+function goldStitches(ctx, trace) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,214,102,0.9)';
+  ctx.lineWidth = 0.35;
+  ctx.setLineDash([0.9, 0.7]);
+  ctx.beginPath();
+  trace();
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** A repeatable 0..1 "random" for scattering pattern details. */
 function hash01(n) {
   const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -1753,6 +1986,12 @@ function drawMaikoKimono(ctx, d) {
     ctx.lineTo(fx + 2.8, 4.4);
     ctx.stroke();
     rr(ctx, fx - 2.4, 1.6, 4.8, 2, 1, o.hanao, 0.3);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(fx - 2.9, 6.6);
+    ctx.lineTo(fx + 2.9, 6.6);
+    ctx.stroke();
     ctx.beginPath();
     ctx.arc(fx + dir * 2.6, 6, 0.75, 0, Math.PI * 2);
     fillPath(ctx, GOLD, 0.25);
@@ -1848,7 +2087,18 @@ function drawMaikoKimono(ctx, d) {
     ctx.moveTo(dir * 8.6, -4);
     ctx.quadraticCurveTo(dir * 6.8, -7, dir * 6.3, -15);
     ctx.stroke();
+    // Gold embroidery stitched just inside the padded edge.
+    goldStitches(ctx, () => {
+      ctx.moveTo(dir * 16.5, -9);
+      ctx.quadraticCurveTo(dir * 16.3, -4.4, dir * 12.8, -4.4);
+      ctx.lineTo(dir * 9, -4.4);
+    });
   }
+  // Gold stitching down the kimono's front edge, too.
+  goldStitches(ctx, () => {
+    ctx.moveTo(1.4, -18.5);
+    ctx.quadraticCurveTo(2.9, -6, 4.8, 2.6);
+  });
   // Hands folded in front.
   for (const [hx, rot] of [[-1.8, 0.25], [1.6, -0.2]]) {
     ctx.beginPath();
@@ -1901,6 +2151,19 @@ function drawMaikoKimono(ctx, d) {
     blossom(ctx, mx, my, 1.35, '#ffffff', '#e0485f');
   }
   ctx.restore();
+  // Gold piping along the obi's top and bottom edges.
+  for (const py of [-29.9, -20.1]) {
+    ctx.strokeStyle = '#fff0b8';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-11.6, py);
+    ctx.lineTo(11.6, py);
+    ctx.stroke();
+    goldStitches(ctx, () => {
+      ctx.moveTo(-11.4, py + (py < -25 ? 0.8 : -0.8));
+      ctx.lineTo(11.4, py + (py < -25 ? 0.8 : -0.8));
+    });
+  }
   // Obijime: a two-tone braided cord across the obi…
   const [cordA, cordB] = o.obijime;
   for (let i = 0; i < 2; i++) {
@@ -1940,6 +2203,24 @@ function drawMaikoKimono(ctx, d) {
   ctx.beginPath();
   ctx.arc(-0.5, -24.7, 0.4, 0, Math.PI * 2);
   ctx.fill();
+  // An open sensu held up in front of her (the user: "make her holding a
+  // very detailed fan"), then her hands over its sticks.
+  drawOpenSensu(ctx, 1.2, -15.6);
+  for (const [hx, hy, rot] of [[-0.6, -16.4, 0.5], [2.4, -15.6, -0.3]]) {
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, 2.3, 1.35, rot, 0, Math.PI * 2);
+    fillPath(ctx, d.skin, 0.4);
+  }
+  // Fingertips curled over the near rib.
+  ctx.strokeStyle = 'rgba(160,110,100,0.5)';
+  ctx.lineWidth = 0.2;
+  for (const fx of [-1.6, -0.6, 0.4]) {
+    ctx.beginPath();
+    ctx.moveTo(fx, -17.2);
+    ctx.lineTo(fx + 0.3, -16.2);
+    ctx.stroke();
+  }
+  drawSensuTassel(ctx, 1.2, -14.4);
   // Kinchaku: a red brocade drawstring pouch hanging from the wrist.
   if (d.extras?.kinchaku) {
     ctx.strokeStyle = GOLD;
@@ -2331,6 +2612,7 @@ function drawHead(ctx, d, angryTint = false) {
       ctx.ellipse(dir * 7, -1.6, 3.8, 2.4, dir * -0.3, 0, Math.PI * 2);
       ctx.fill();
     }
+    drawMaikoEyeDetails(ctx);
   }
   drawBrows(ctx, d);
   // Blush with a few anime hatch strokes, and a hint of nose.
@@ -2350,12 +2632,22 @@ function drawHead(ctx, d, angryTint = false) {
       ctx.stroke();
     }
   }
-  ctx.strokeStyle = 'rgba(160,90,80,0.6)';
-  ctx.lineWidth = 0.5;
-  ctx.beginPath();
-  ctx.moveTo(0.3, 2.2);
-  ctx.lineTo(-0.4, 3.6);
-  ctx.stroke();
+  if (d.extras?.beni) {
+    // A gentler nose on the white oshiroi: a small soft curve.
+    ctx.strokeStyle = 'rgba(200,140,140,0.6)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-0.5, 3.4);
+    ctx.quadraticCurveTo(0.2, 3.9, 0.7, 3.3);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = 'rgba(160,90,80,0.6)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0.3, 2.2);
+    ctx.lineTo(-0.4, 3.6);
+    ctx.stroke();
+  }
   if (angryTint) {
     ctx.save();
     facePath(ctx);
@@ -2390,8 +2682,51 @@ function drawHead(ctx, d, angryTint = false) {
   drawHeadExtras(ctx, d);
 }
 
+/**
+ * The rest of a maiko's eye makeup: a soft pink lid shadow, the red
+ * underlay painted beneath her brows before the black, and fine lower
+ * lashes.
+ */
+function drawMaikoEyeDetails(ctx) {
+  for (const dir of [-1, 1]) {
+    const lid = ctx.createRadialGradient(dir * 4.8, -2.4, 0, dir * 4.8, -2.4, 3.4);
+    lid.addColorStop(0, 'rgba(255,150,180,0.38)');
+    lid.addColorStop(1, 'rgba(255,150,180,0)');
+    ctx.fillStyle = lid;
+    ctx.beginPath();
+    ctx.ellipse(dir * 4.8, -2.4, 3.6, 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(214,40,58,0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(dir * 2.6, -3.7);
+    ctx.quadraticCurveTo(dir * 5, -5, dir * 7.4, -3.9);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(42,26,46,0.55)';
+    ctx.lineWidth = 0.25;
+    for (const k of [0.3, 0.6, 0.9]) {
+      const lx = dir * (4.6 + k * 2.6);
+      ctx.beginPath();
+      ctx.moveTo(lx, 3.9 - k * 0.6);
+      ctx.lineTo(lx + dir * 0.5, 4.8 - k * 0.6);
+      ctx.stroke();
+    }
+  }
+}
+
 /** Fine red liner tapering out from each eye's outer corner. */
 function drawBeniLines(ctx) {
+  // Under the outer half of each eye, a whisper of red.
+  ctx.strokeStyle = 'rgba(214,40,58,0.55)';
+  ctx.lineWidth = 0.35;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 4.6, 4.5);
+    ctx.quadraticCurveTo(dir * 6.6, 4.3, dir * 7.9, 3.1);
+    ctx.stroke();
+  }
   ctx.fillStyle = 'rgba(200,30,50,0.8)';
   for (const dir of [-1, 1]) {
     ctx.beginPath();
@@ -2796,37 +3131,40 @@ function drawMaikoHair(ctx, d) {
   ctx.beginPath();
   ctx.arc(-10.4, -25.4, 1.4, 0, Math.PI * 2);
   fillPath(ctx, '#e8604a', 0.3);
-  // Bira-bira: a silver fan kanzashi on the right, with swinging dangles.
-  ctx.beginPath();
-  ctx.moveTo(8.5, -17);
-  ctx.arc(8.5, -17, 4.2, -0.7 * Math.PI, -0.15 * Math.PI);
-  ctx.closePath();
-  fillPath(ctx, '#e4e8f0', 0.3);
-  ctx.strokeStyle = '#a8aebc';
-  ctx.lineWidth = 0.2;
-  for (let i = 0; i < 5; i++) {
-    const a = -0.7 * Math.PI + i * 0.14 * Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(8.5, -17);
-    ctx.lineTo(8.5 + Math.cos(a) * 4.2, -17 + Math.sin(a) * 4.2);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = '#c8ccd4';
-  ctx.lineWidth = 0.3;
-  for (let i = 0; i < 6; i++) {
-    const sx = 10.5 + i * 0.75;
-    ctx.beginPath();
-    ctx.moveTo(sx, -15.6);
-    ctx.lineTo(sx + 0.3, -9 + (i % 2) * 1.5);
-    ctx.stroke();
-    ctx.fillStyle = '#e4e8f0';
-    ctx.fillRect(sx - 0.15, -9.4 + (i % 2) * 1.5, 0.9, 1.1);
-  }
+  // The showpiece kanzashi on the right (the user: "add a very detailed
+  // hair pin"): drawTsumamiKanzashi.
+  drawTsumamiKanzashi(ctx, 9.6, -19.2);
   // Hana-kanzashi: a cluster of silk flowers on the left…
   const petals = ['#ff8fb8', '#ffffff', '#e0485f', '#ffd1e3', '#f2c94c'];
   for (const [fx, fy, r, i] of [[-9, -21, 2.6, 0], [-12, -18, 2.2, 1], [-7, -24.5, 2, 2], [-12.5, -22.5, 1.8, 3], [-9.6, -16.5, 1.7, 4], [-6, -20.4, 1.5, 1]]) {
     blossom(ctx, fx, fy, r, petals[i], i === 4 ? '#e0485f' : GOLD);
   }
+  // A little butterfly kanzashi perched on the cluster, wings gold-edged.
+  ctx.save();
+  ctx.translate(-14.6, -24.6);
+  ctx.rotate(-0.35);
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(dir * 1.5, -0.9, 1.7, 1.25, dir * 0.5, 0, Math.PI * 2);
+    fillPath(ctx, '#c9b8ff', 0.25);
+    ctx.beginPath();
+    ctx.ellipse(dir * 1.1, 1, 1.1, 0.85, dir * -0.4, 0, Math.PI * 2);
+    fillPath(ctx, '#ff8fb8', 0.25);
+    ctx.fillStyle = GOLD;
+    ctx.beginPath();
+    ctx.arc(dir * 1.7, -1.1, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  rr(ctx, -0.3, -1.6, 0.6, 3.4, 0.3, '#2a1a2e', 0);
+  ctx.strokeStyle = '#2a1a2e';
+  ctx.lineWidth = 0.18;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(0, -1.5);
+    ctx.quadraticCurveTo(dir * 0.6, -2.8, dir * 1.2, -3.1);
+    ctx.stroke();
+  }
+  ctx.restore();
   // Green silk leaves among them.
   ctx.fillStyle = '#5fb89a';
   for (const [lx, ly, rot] of [[-13.6, -20, 0.6], [-6, -26.4, -0.4], [-11, -15, 1.2]]) {
@@ -2849,6 +3187,164 @@ function drawMaikoHair(ctx, d) {
       blossom(ctx, sx - (k % 2) * 0.3, by, 0.7, petals[(k + strand) % petals.length], GOLD);
     }
   }
+}
+
+/**
+ * Hiko Maiko's showpiece hairpin, a tsumami kanzashi (folded-silk flowers)
+ * centered at (cx, cy) in head coordinates. Back to front: a
+ * tortoiseshell double-pronged pin, two silver leaves with veins, two
+ * plum-blossom buds, the main chrysanthemum (three rings of pointed folded
+ * petals, white through pink to deep rose, each with a fold crease) round
+ * a gold-leaf center studded with tiny pearls, and three silver chains of
+ * links ending in a blossom, a pearl and a little bell, swaying gently.
+ */
+function drawTsumamiKanzashi(ctx, cx, cy) {
+  const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // The pin: two tortoiseshell prongs slipping into the hair.
+  const shell = ctx.createLinearGradient(-6, 0, 0, 3);
+  shell.addColorStop(0, '#5a2e14');
+  shell.addColorStop(0.5, '#b8742a');
+  shell.addColorStop(1, '#6a3a1a');
+  ctx.strokeStyle = shell;
+  ctx.lineWidth = 0.75;
+  ctx.lineCap = 'round';
+  for (const off of [-0.8, 0.8]) {
+    ctx.beginPath();
+    ctx.moveTo(0, off);
+    ctx.lineTo(-7.5, 2.4 + off);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+
+  // Silver leaves with a center vein and side veins.
+  for (const [lx, ly, rot] of [[3.6, 2.6, 0.7], [-2.2, -4.2, -2.3]]) {
+    ctx.save();
+    ctx.translate(lx, ly);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(-2.8, 0);
+    ctx.quadraticCurveTo(0, -1.7, 2.8, 0);
+    ctx.quadraticCurveTo(0, 1.7, -2.8, 0);
+    fillPath(ctx, '#dfe4ee', 0.25);
+    ctx.strokeStyle = '#9aa2b4';
+    ctx.lineWidth = 0.18;
+    ctx.beginPath();
+    ctx.moveTo(-2.4, 0);
+    ctx.lineTo(2.4, 0);
+    for (const vx of [-1.2, 0, 1.2]) {
+      ctx.moveTo(vx, 0);
+      ctx.lineTo(vx + 0.6, -0.8);
+      ctx.moveTo(vx, 0);
+      ctx.lineTo(vx + 0.6, 0.8);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Two plum-blossom buds: five rounded folded petals each.
+  for (const [bx, by, r, petal] of [[-4.3, 1.4, 1.5, '#ffffff'], [3.4, -4, 1.3, '#ff8fb8']]) {
+    for (let i = 0; i < 5; i++) {
+      const ang = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.ellipse(bx + Math.cos(ang) * r * 0.75, by + Math.sin(ang) * r * 0.75, r * 0.62, r * 0.5, ang, 0, Math.PI * 2);
+      fillPath(ctx, petal, 0.18);
+    }
+    ctx.beginPath();
+    ctx.arc(bx, by, r * 0.32, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.15);
+  }
+
+  // The chrysanthemum: three rings of pointed tsumami petals.
+  const rings = [
+    { n: 16, r: 4.3, len: 2.1, w: 0.95, color: '#ffffff', fold: '#f2c9d6' },
+    { n: 12, r: 3.0, len: 1.8, w: 0.9, color: '#ffb3cf', fold: '#e8558f' },
+    { n: 8, r: 1.8, len: 1.4, w: 0.8, color: '#e8558f', fold: '#a8284a' },
+  ];
+  rings.forEach((ring, k) => {
+    for (let i = 0; i < ring.n; i++) {
+      const ang = (i / ring.n) * Math.PI * 2 + k * 0.2;
+      ctx.save();
+      ctx.rotate(ang);
+      ctx.translate(ring.r - ring.len * 0.55, 0);
+      ctx.beginPath();
+      ctx.moveTo(-ring.len * 0.5, 0);
+      ctx.quadraticCurveTo(0, -ring.w, ring.len * 0.6, 0);
+      ctx.quadraticCurveTo(0, ring.w, -ring.len * 0.5, 0);
+      ctx.closePath();
+      ctx.fillStyle = ring.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(120,40,70,0.45)';
+      ctx.lineWidth = 0.15;
+      ctx.stroke();
+      // The fold crease down each petal.
+      ctx.strokeStyle = ring.fold;
+      ctx.lineWidth = 0.18;
+      ctx.beginPath();
+      ctx.moveTo(-ring.len * 0.35, 0);
+      ctx.lineTo(ring.len * 0.5, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+  // Gold-leaf center with a ring of tiny pearls.
+  const gold = ctx.createRadialGradient(-0.3, -0.3, 0, 0, 0, 1.2);
+  gold.addColorStop(0, '#fff2b0');
+  gold.addColorStop(1, '#c9921a');
+  ctx.beginPath();
+  ctx.arc(0, 0, 1.15, 0, Math.PI * 2);
+  ctx.fillStyle = gold;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(120,80,20,0.6)';
+  ctx.lineWidth = 0.15;
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 8; i++) {
+    const ang = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(ang) * 0.75, Math.sin(ang) * 0.75, 0.18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Bira: three silver chains swinging below, each of small oval links
+  // ending in a blossom, a pearl and a tiny bell.
+  for (let c = 0; c < 3; c++) {
+    const startX = 1.8 + c * 1.6;
+    const startY = 3.4;
+    const swing = Math.sin(t * 1.6 + c * 0.9) * 0.08;
+    const len = 9 + c * 1.6;
+    ctx.save();
+    ctx.translate(startX, startY);
+    ctx.rotate(swing);
+    ctx.strokeStyle = '#c8ccd8';
+    ctx.lineWidth = 0.22;
+    for (let y = 0; y < len; y += 1.1) {
+      ctx.beginPath();
+      ctx.ellipse(0, y + 0.5, 0.32, 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    blossom(ctx, 0, len + 0.6, 0.9, c === 1 ? '#ffb3cf' : '#ffffff', GOLD);
+    ctx.beginPath();
+    ctx.arc(0, len + 2.2, 0.45, 0, Math.PI * 2);
+    fillPath(ctx, '#fbf6f0', 0.15);
+    // A tiny bell with its slit.
+    ctx.beginPath();
+    ctx.arc(0, len + 3.6, 0.75, Math.PI, 0);
+    ctx.lineTo(0.8, len + 4.1);
+    ctx.lineTo(-0.8, len + 4.1);
+    ctx.closePath();
+    fillPath(ctx, GOLD, 0.2);
+    ctx.strokeStyle = 'rgba(90,60,10,0.7)';
+    ctx.lineWidth = 0.15;
+    ctx.beginPath();
+    ctx.moveTo(0, len + 3.6);
+    ctx.lineTo(0, len + 4.1);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function drawHeadExtras(ctx, d) {

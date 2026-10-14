@@ -378,7 +378,35 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     behind the head (`hair.back: 'maiko'`, `drawMaikoMage`) so the front
     hair laps over it, a warm pink bang shadow on the oshiroi instead of
     grey, and a finer obi brocade with a soft sheen. Her lips sit lower
-    than other mouths ("make the mouth lower": `MAIKO_MOUTH_DROP`). She's always named Hiko Maiko ("Hiko M." on
+    than other mouths ("make the mouth lower": `MAIKO_MOUTH_DROP`). A little more detail ("make hiko have a little
+    more detail"): a gold-and-red folded sensu with a tassel held in her
+    hands, a butterfly kanzashi among her hair flowers, gold embroidery
+    stitched along her sleeve edges and the kimono's front edge
+    (`goldStitches`), and a fine red line under each eye. Then "even
+    prettier and detailed": a soft pink lid shadow, the red underlay
+    painted beneath her black brows, fine lower lashes and a gentler nose
+    on the oshiroi (`drawMaikoEyeDetails`); gold piping and stitching along
+    the obi's edges; gold lacquer bands on her okobo; and a few sakura
+    petals drifting down around her wherever she is (`extras.petals`,
+    `drawPetalDrift`). Her right-side silver fan pin became a showpiece
+    tsumami kanzashi ("add a very detailed hair pin",
+    `drawTsumamiKanzashi`): a chrysanthemum of three rings of folded-silk
+    petals (white, pink, deep rose, each with a fold crease) round a
+    gold-leaf center ringed with tiny pearls, two plum-blossom buds,
+    veined silver leaves, a tortoiseshell double-pronged pin, and three
+    swaying silver chains of links ending in a blossom, a pearl and a
+    little gold bell. Her small folded fan became a large open sensu held
+    up at its pivot in front of her obi ("make her holding a very detailed
+    fan", `drawOpenSensu`/`drawSensuTassel`): a 20-pleat paper leaf
+    shading from gold leaf to crimson, alternate pleats lit and shaded,
+    painted with a winding stream, a flowering sakura branch, falling
+    petals and gold flecks; bamboo inner sticks; gold borders;
+    black-lacquered guard ribs inlaid with gold; a mother-of-pearl rivet;
+    and a red silk tassel with a gold knot swaying below her hands. She's drawn 35% bigger than everyone else
+    wherever she appears — in line, in bed, on the triage card ("make her
+    bigger": the design's `sizeScale`, applied in `drawAnimePatient`); the
+    Triage Desk's label is redrawn over the queue so her taller hair
+    doesn't hide it. She's always named Hiko Maiko ("Hiko M." on
     her chip; "i want it to be hiko maiko").
   * *Ten more again* ("now i want to add EVEN more characters"): a cyclist
     in a vented helmet, a pageant queen in a tiara, a pirate cosplayer

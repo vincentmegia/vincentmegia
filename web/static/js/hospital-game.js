@@ -3776,7 +3776,8 @@ export function init(canvas, elements) {
     // The patient, head on the pillow; the blanket rises with each breath.
     const scale = 1.7;
     const bodyY = bay.y + 232;
-    const headY = bodyY + animeHeadCenterY(findPatientDesign(info?.designKey)) * scale;
+    const portrait = findPatientDesign(info?.designKey);
+    const headY = bodyY + animeHeadCenterY(portrait) * scale * (portrait.sizeScale ?? 1);
     if (info) drawPatient(cx, bodyY, info, scale);
     const breath = 3 * squeeze + 1.2 * Math.sin(t * 2.4);
     const level = findTriageLevel(shiftState.beds[shiftState.activeTask?.bedIndex]?.level ?? 'yellow');
@@ -4856,7 +4857,13 @@ export function init(canvas, elements) {
     drawCrowds();
     drawHospitalCat();
     drawSecurityIncident();
-    if (currentFloor === FLOOR_1) drawTriageQueue();
+    if (currentFloor === FLOOR_1) {
+      drawTriageQueue();
+      // The desk's label again on top: a tall patient at the front of the
+      // line (Hiko Maiko's sizeScale) would otherwise cover it.
+      const desk = stationOfKind('triage-desk');
+      if (desk) drawLabelChip(ctx, desk.x, desk.y + desk.h / 2 + 13, labelForStation(desk), 'bold 11px sans-serif');
+    }
     drawAmbient();
     drawPlayer();
     drawHallucinations();
@@ -5107,7 +5114,8 @@ export function init(canvas, elements) {
     getMelVaseRect: () => ({ ...MEL_VASE_RECT }),
     getCloseRect: () => ({ ...CLOSE_RECT }),
     getPatientInfo: (id) => patientInfo.get(id) ?? null,
-    spawnPatientNow: (conditionId) => (shiftState?.phase === 'playing' ? spawnPatient(conditionId) : null),
+    /** Optionally with a given look (`designKey`, e.g. 'maiko'). */
+    spawnPatientNow: (conditionId, designKey) => (shiftState?.phase === 'playing' ? spawnPatient(conditionId, designKey ? { designKey } : null) : null),
     setSkillGauge(pos) { if (overlay?.kind === 'skill') { overlay.gauge = pos; overlay.direction = 0; } },
     setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
     setSanity(value) { if (shiftState) shiftState = { ...shiftState, sanity: value }; },
