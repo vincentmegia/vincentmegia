@@ -849,6 +849,55 @@ test.describe('night shifts and the flashlight', () => {
 	});
 });
 
+test.describe('security', () => {
+	async function clickGuard(page, key = 'guard') {
+		await expect(async () => {
+			const g = (await hooks(page, 'getStaff')).find((a) => a.key === key);
+			await clickCanvasPoint(page, { x: g.x, y: g.y - 20 });
+			expect((await hooks(page, 'getSecurityIncident')).dispatched).toBe(true);
+		}).toPass({ timeout: 10_000 });
+	}
+
+	test('sending Security walks a rowdy visitor out and calms the ward', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'startSecurityIncidentNow', 'rowdy');
+		await expect(page.locator('#hospital-toast')).toContainText('rowdy visitor');
+		await expect.poll(async () => (await shiftState(page)).wardMood).toBeLessThan(100);
+		await clickGuard(page);
+		await expect.poll(async () => (await hooks(page, 'getSecurityIncident'))?.outcome, { timeout: 25_000 }).toBe('caught');
+		await expect(page.locator('#hospital-toast')).toContainText('sigh of relief');
+	});
+
+	test('a thief caught in time pays a reward; one that escapes breaks the vending machine', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'startSecurityIncidentNow', 'thief');
+		await clickGuard(page);
+		await expect.poll(async () => (await hooks(page, 'getSecurityIncident'))?.outcome, { timeout: 30_000 }).toBe('caught');
+		expect((await shiftState(page)).bonusGard).toBeGreaterThanOrEqual(20);
+
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'startSecurityIncidentNow', 'thief');
+		await hooks(page, 'expireSecurityIncidentNow');
+		await expect.poll(async () => (await shiftState(page)).security.vendingBroken).toBe(true);
+		await walkTo(page, 'vending-machine');
+		await expect(page.locator('#hospital-toast')).toContainText('out of order');
+		expect(await hooks(page, 'getOverlay')).toBeNull();
+	});
+
+	test('night shifts bring a second guard with a flashlight', async ({ page }) => {
+		await seedSave(page, 5);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		expect((await hooks(page, 'getStaff')).map((a) => a.key)).toContain('nightGuard');
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		expect((await hooks(page, 'getStaff')).map((a) => a.key)).not.toContain('nightGuard');
+	});
+});
+
 test.describe('more characters', () => {
 	test('Security can escort Karen out: no mistake, no tip', async ({ page }) => {
 		await page.goto('/hospital-shift');
@@ -963,6 +1012,33 @@ test.describe('handover and paycheck', () => {
 		} finally {
 			await deleteTestScore(playerName);
 		}
+	});
+
+	test('the score carries the run ticket from the shift start, and a rejection says why', async ({ page }) => {
+		// The run's signed ticket (leaderboard anti-cheat) is fetched when the
+		// run starts and sent with the score.
+		await seedSave(page, 30, 140000);
+		await page.goto('/hospital-shift');
+		const [run] = await Promise.all([
+			page.waitForResponse((r) => r.url().endsWith('/hospital-shift/run') && r.request().method() === 'POST'),
+			startShift(page),
+		]);
+		const ticket = await run.text();
+		expect(ticket).toMatch(/^v1\./);
+		await hooks(page, 'skipToClosing');
+		await walkTo(page, 'office');
+		await expect(page.locator('#hospital-paycheck-ticket-input')).toHaveValue(ticket);
+		// This test server skips the time check, so stand in for a
+		// production server rejecting an instant run.
+		await page.route('**/hospital-shift/score', (route) => route.fulfill({
+			status: 400,
+			contentType: 'text/plain',
+			body: 'that score came in faster than those shifts can be played',
+		}));
+		await page.locator('#hospital-paycheck-name-input').fill('cheater');
+		await page.locator('#hospital-paycheck-submit-button').click();
+		await expect(page.locator('#hospital-paycheck-submit-error')).toContainText('faster than those shifts');
+		await expect(page.locator('#hospital-paycheck-submit-button')).toBeEnabled();
 	});
 });
 

@@ -303,3 +303,52 @@ func TestHospitalShiftHandler_DailyBoard(t *testing.T) {
 		t.Errorf("stale daily date status = %d, want 400", rec.Code)
 	}
 }
+
+// TestHospitalShiftHandler_RunTickets covers the leaderboard anti-cheat end
+// to end at the handler: POST /hospital-shift/run hands out a ticket, a
+// score without one is a 400 with the reason, an instant 30-shift score is
+// a 400 (too fast for the shift clock), and minting tickets is rate-limited.
+func TestHospitalShiftHandler_RunTickets(t *testing.T) {
+	h := newTestHospitalHandler(t, &fakeHospitalRepository{})
+	tickets, err := service.NewHospitalRunTickets("test-secret", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Service.Tickets = tickets
+	h.runLimiter = newScoreSubmitLimiter(2, time.Minute)
+
+	start := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.StartRun(rec, httptest.NewRequest(http.MethodPost, "/hospital-shift/run", nil))
+		return rec
+	}
+	rec := start()
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "v1.") {
+		t.Fatalf("StartRun: status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	ticket := rec.Body.String()
+
+	submit := func(form url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/hospital-shift/score", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		h.SubmitScore(rec, req)
+		return rec
+	}
+	base := url.Values{"player_name": {"Vince"}, "total_earnings": {"80000"}, "shifts_completed": {"30"}}
+	if rec := submit(base); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "no ticket") {
+		t.Errorf("no ticket: status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+	base.Set("run_ticket", ticket)
+	if rec := submit(base); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "faster than") {
+		t.Errorf("instant run: status = %d, body = %q", rec.Code, rec.Body.String())
+	}
+
+	start()
+	if rec := start(); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("third run in a minute: status = %d, want 429", rec.Code)
+	}
+}

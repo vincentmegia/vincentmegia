@@ -89,6 +89,13 @@ import {
   BATTERY_PRICE,
   LOST_CHILD_GARD,
   LOST_CHILD_MOOD,
+  ROWDY_MOOD_DRAIN_PER_SECOND,
+  ROWDY_SANITY_DRAIN_PER_SECOND,
+  ROWDY_ESCORTED_MOOD,
+  ROWDY_STORMED_OUT_MOOD,
+  THIEF_CAUGHT_GARD,
+  SECURITY_INCIDENT_KINDS,
+  securityIncidentSeconds,
   CAT_PET_SANITY,
   CELEBRITY_DISCHARGE_MULTIPLIER,
   surgeryItemFor,
@@ -147,6 +154,11 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     },
     mel: { waiting: false, visited: false },
     lostChild: { waiting: false, helped: false },
+    // One security incident per shift at most (rules.js "Security"):
+    // incident is 'rowdy' | 'thief' while it's on; outcome 'caught' |
+    // 'escaped' once it's over; a thief who got away leaves the vending
+    // machine out of order.
+    security: { incident: null, secondsLeft: 0, dispatched: false, outcome: null, vendingBroken: false },
     xp: 0,
     perks: { ...NEUTRAL_PERKS },
 
@@ -734,6 +746,29 @@ export function tick(state, deltaSeconds) {
     };
   });
 
+  // A security incident: until a guard is on his way, the clock runs — and
+  // a rowdy visitor wears on the ward and on you.
+  const sec = next.security;
+  if (sec?.incident && !sec.dispatched) {
+    if (sec.incident === 'rowdy') {
+      next = {
+        ...next,
+        wardMood: clampWardMood(next.wardMood - ROWDY_MOOD_DRAIN_PER_SECOND * delta),
+        sanity: clampSanity(next.sanity - ROWDY_SANITY_DRAIN_PER_SECOND * delta),
+      };
+    }
+    const left = sec.secondsLeft - delta;
+    if (left <= 0) {
+      next = {
+        ...next,
+        security: { ...sec, incident: null, secondsLeft: 0, outcome: 'escaped', vendingBroken: sec.incident === 'thief' || sec.vendingBroken },
+        wardMood: sec.incident === 'rowdy' ? clampWardMood(next.wardMood + ROWDY_STORMED_OUT_MOOD) : next.wardMood,
+      };
+    } else {
+      next = { ...next, security: { ...sec, secondsLeft: left } };
+    }
+  }
+
   if (next.karen.active) {
     const remaining = next.karen.timerSecondsRemaining - delta;
     next = remaining <= 0
@@ -799,7 +834,7 @@ function feed(state, { hunger = 0, thirst = 0, sanity = 0 }) {
  * snacks and drinks too, like batteries). Unknown items do nothing.
  */
 export function buyVendingItem(state, itemId, availableGard = Infinity) {
-  if (state.phase !== 'playing') return state;
+  if (state.phase !== 'playing' || state.security?.vendingBroken) return state;
   const item = findVendingItem(itemId);
   if (!item || !(availableGard >= item.price)) return state;
   return { ...feed(state, item), bonusGard: state.bonusGard - item.price };
@@ -832,10 +867,38 @@ export function pickUpBattery(state) {
  * cannot buy battery".
  */
 export function buyBattery(state, availableGard = Infinity) {
-  if (!(availableGard >= BATTERY_PRICE)) return state;
+  if (!(availableGard >= BATTERY_PRICE) || state.security?.vendingBroken) return state;
   const after = pickUpBattery(state);
   if (after === state) return state;
   return { ...after, bonusGard: after.bonusGard - BATTERY_PRICE };
+}
+
+/** A security incident begins (once per shift): a rowdy visitor or a thief. */
+export function securityIncidentStarts(state, kind) {
+  if (state.phase !== 'playing' || !SECURITY_INCIDENT_KINDS.includes(kind)) return state;
+  if (state.security.incident || state.security.outcome) return state;
+  return { ...state, security: { ...state.security, incident: kind, secondsLeft: securityIncidentSeconds(kind), dispatched: false } };
+}
+
+/** You sent a guard: the incident's clock stops while he deals with it. */
+export function dispatchSecurity(state) {
+  if (state.phase !== 'playing' || !state.security.incident || state.security.dispatched) return state;
+  return { ...state, security: { ...state.security, dispatched: true } };
+}
+
+/**
+ * The guard walked the culprit out: a rowdy visitor's exit calms the ward;
+ * a caught thief earns the vending company's reward.
+ */
+export function resolveSecurityIncident(state) {
+  const { incident } = state.security;
+  if ((state.phase !== 'playing' && state.phase !== 'closing-wait') || !incident) return state;
+  return {
+    ...state,
+    security: { ...state.security, incident: null, secondsLeft: 0, outcome: 'caught' },
+    wardMood: incident === 'rowdy' ? clampWardMood(state.wardMood + ROWDY_ESCORTED_MOOD) : state.wardMood,
+    bonusGard: incident === 'thief' ? state.bonusGard + THIEF_CAUGHT_GARD : state.bonusGard,
+  };
 }
 
 /** The lost child joins the triage line (once per shift). */

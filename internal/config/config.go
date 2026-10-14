@@ -96,6 +96,16 @@ type Config struct {
 	// service; the Playwright suite points it at cmd/fakelta. Same scheme
 	// rule as LTABaseURL.
 	OneMapBaseURL string
+	// HospitalRunSecret signs Hospital Shift's run tickets (leaderboard
+	// anti-cheat, docs/features/hospital-shift.md's Security
+	// Considerations). Optional: unset, the server makes a random one at
+	// startup, so runs in progress across a restart can't submit. Real
+	// env or .env only, like the other secrets.
+	HospitalRunSecret string
+	// HospitalRunTimeCheck is the anti-cheat's minimum-run-time check: on
+	// unless HOSPITAL_RUN_TIME_CHECK=off, which only `make run-e2e` sets
+	// (the Playwright suite seeds a run straight to shift 30).
+	HospitalRunTimeCheck bool
 }
 
 // defaultLTABaseURL is the real LTA DataMall origin
@@ -270,6 +280,8 @@ func Load() (Config, error) {
 	cfg.LTABaseURL = e.get("LTA_BASE_URL", defaultLTABaseURL)
 	cfg.GoogleMapsAPIKey, _ = e.lookup("GOOGLE_MAPS_API_KEY")
 	cfg.OneMapBaseURL = e.get("ONEMAP_BASE_URL", defaultOneMapBaseURL)
+	cfg.HospitalRunSecret, _ = e.lookup("HOSPITAL_RUN_SECRET")
+	cfg.HospitalRunTimeCheck = e.get("HOSPITAL_RUN_TIME_CHECK", "on") != "off"
 
 	if _, err := strconv.Atoi(cfg.Port); err != nil {
 		return Config{}, fmt.Errorf("parse port %q: %w", cfg.Port, err)

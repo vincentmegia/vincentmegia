@@ -112,6 +112,9 @@ export function buildDecor(bedCount = 4) {
     { kind: 'waiting-chairs', floor: FLOOR_1, x: 600, y: 206, w: 96, h: 34 },
     // A water cooler between the Med Cabinet and the Stairs.
     { kind: 'water-cooler', floor: FLOOR_1, x: 772, y: 196, w: 28, h: 52 },
+    // The Security Desk by the entrance, its guard posted beside it (rules.js
+    // "Security").
+    { kind: 'security-desk', floor: FLOOR_1, x: 42, y: 234, w: 62, h: 52 },
     // Potted plants along the left wall, by the first bed's curtain (off
     // the staff's walking routes).
     { kind: 'plant', floor: FLOOR_1, x: 36, y: 372, w: 30, h: 46 },

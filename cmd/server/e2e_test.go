@@ -86,7 +86,7 @@ func TestEndToEnd(t *testing.T) {
 	// LANDING_API_TOKEN set locally, and using a known value lets the
 	// subtests below assert both the authenticated and rejected paths.
 	// It never leaves this process — httptest binds to loopback.
-	mux, err := newMux(conn, conn, testLandingAPIToken, busStopsDeps{})
+	mux, err := newMux(conn, conn, testLandingAPIToken, busStopsDeps{}, hospitalRunDeps{SkipTimeCheck: true})
 	if err != nil {
 		t.Fatalf("newMux: %v", err)
 	}
@@ -517,8 +517,8 @@ func TestEndToEnd(t *testing.T) {
 			}
 		})
 
-		form := url.Values{"player_name": {playerName}, "total_earnings": {"152000"}, "shifts_completed": {"30"}}
-		resp, err := client.PostForm(srv.URL+"/hospital-shift/score", form)
+		form := url.Values{"player_name": {playerName}, "total_earnings": {"152000"}, "shifts_completed": {"30"}, "run_ticket": {startHospitalRun(t, client, srv.URL)}}
+		resp, err = client.PostForm(srv.URL+"/hospital-shift/score", form)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -565,7 +565,7 @@ func TestEndToEnd(t *testing.T) {
 				}
 			})
 			today := time.Now().UTC().Format("2006-01-02")
-			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}}
+			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}, "run_ticket": {startHospitalRun(t, client, srv.URL)}}
 			resp, err := client.PostForm(srv.URL+"/hospital-shift/score", dailyForm)
 			if err != nil {
 				t.Fatal(err)
@@ -830,4 +830,22 @@ func get(t *testing.T, client *http.Client, url string) (*http.Response, string)
 		t.Fatal(err)
 	}
 	return resp, string(b)
+}
+
+// startHospitalRun starts a Hospital Shift run (POST /hospital-shift/run)
+// and returns its signed ticket, which a score submission must carry
+// (leaderboard anti-cheat). This test server's time check is off, as for
+// the Playwright suite, so the score can follow straight away.
+func startHospitalRun(t *testing.T, client *http.Client, baseURL string) string {
+	t.Helper()
+	resp, err := client.Post(baseURL+"/hospital-shift/run", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	ticket, err := io.ReadAll(resp.Body)
+	if err != nil || resp.StatusCode != http.StatusOK || len(ticket) == 0 {
+		t.Fatalf("POST /hospital-shift/run: status = %d, ticket = %q, err = %v", resp.StatusCode, ticket, err)
+	}
+	return string(ticket)
 }

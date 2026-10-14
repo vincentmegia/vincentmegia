@@ -66,7 +66,7 @@ func TestHospitalService_SubmitScore_Valid(t *testing.T) {
 	repo := &fakeHospitalRepository{}
 	svc := &HospitalService{Repo: repo}
 
-	if err := svc.SubmitScore(context.Background(), "  Vince  ", 80000, 30, ""); err != nil {
+	if err := svc.SubmitScore(context.Background(), "  Vince  ", 80000, 30, "", ""); err != nil {
 		t.Fatalf("SubmitScore: unexpected error: %v", err)
 	}
 
@@ -106,7 +106,7 @@ func TestHospitalService_SubmitScore_ValidationRejected(t *testing.T) {
 			repo := &fakeHospitalRepository{}
 			svc := &HospitalService{Repo: repo}
 
-			err := svc.SubmitScore(context.Background(), tt.playerName, tt.totalEarnings, tt.shiftsCompleted, "")
+			err := svc.SubmitScore(context.Background(), tt.playerName, tt.totalEarnings, tt.shiftsCompleted, "", "")
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
@@ -125,7 +125,7 @@ func TestHospitalService_SubmitScore_RepositoryError(t *testing.T) {
 	repo := &fakeHospitalRepository{insertErr: repoErr}
 	svc := &HospitalService{Repo: repo}
 
-	err := svc.SubmitScore(context.Background(), "Vince", 1000, 5, "")
+	err := svc.SubmitScore(context.Background(), "Vince", 1000, 5, "", "")
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -187,10 +187,10 @@ func TestHospitalService_DailyChallenge(t *testing.T) {
 	if got, want := svc.Today(), "2026-10-14"; got != want {
 		t.Fatalf("Today() = %q, want %q", got, want)
 	}
-	if err := svc.SubmitScore(context.Background(), "Vince", 4200, 1, "2026-10-14"); err != nil {
+	if err := svc.SubmitScore(context.Background(), "Vince", 4200, 1, "2026-10-14", ""); err != nil {
 		t.Fatalf("daily submit: %v", err)
 	}
-	if err := svc.SubmitScore(context.Background(), "Ana", 3900, 1, "2026-10-15"); err != nil {
+	if err := svc.SubmitScore(context.Background(), "Ana", 3900, 1, "2026-10-15", ""); err != nil {
 		t.Fatalf("daily submit for tomorrow (clock skew) should be allowed: %v", err)
 	}
 	if repo.days[0] == nil || repo.days[0].Format("2006-01-02") != "2026-10-14" {
@@ -208,7 +208,7 @@ func TestHospitalService_DailyChallenge(t *testing.T) {
 		{"more than one shift", "2026-10-14", 3, ErrHospitalDailyShiftsInvalid},
 	} {
 		before := repo.insertCalls
-		err := svc.SubmitScore(context.Background(), "Vince", 4000, tt.shifts, tt.daily)
+		err := svc.SubmitScore(context.Background(), "Vince", 4000, tt.shifts, tt.daily, "")
 		if !errors.Is(err, tt.want) {
 			t.Errorf("%s: err = %v, want %v", tt.name, err, tt.want)
 		}

@@ -38,15 +38,18 @@ type HospitalShiftHandler struct {
 	// a dedicated scoreSubmitLimiter instance (own limit/window, not
 	// shared with the other two games' limiters)".
 	limiter *scoreSubmitLimiter
+	// runLimiter bounds POST /hospital-shift/run (run tickets) per IP.
+	runLimiter *scoreSubmitLimiter
 }
 
 // NewHospitalShiftHandler constructs a HospitalShiftHandler.
 func NewHospitalShiftHandler(renderer *Renderer, hospitalService *service.HospitalService, version string) *HospitalShiftHandler {
 	return &HospitalShiftHandler{
-		Renderer: renderer,
-		Service:  hospitalService,
-		Version:  version,
-		limiter:  newScoreSubmitLimiter(hospitalScoreSubmitLimit, hospitalScoreSubmitWindow),
+		Renderer:   renderer,
+		Service:    hospitalService,
+		Version:    version,
+		limiter:    newScoreSubmitLimiter(hospitalScoreSubmitLimit, hospitalScoreSubmitWindow),
+		runLimiter: newScoreSubmitLimiter(hospitalRunStartLimit, hospitalRunStartWindow),
 	}
 }
 
@@ -125,7 +128,8 @@ func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Reques
 	}
 
 	daily := r.FormValue("daily_date")
-	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted, daily); err != nil {
+	ticket := r.FormValue("run_ticket")
+	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted, daily, ticket); err != nil {
 		if isHospitalValidationError(err) {
 			// A curated, user-facing sentinel from
 			// service.ValidateHospitalScoreSubmission — safe to surface
@@ -142,6 +146,27 @@ func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Reques
 	h.renderBoard(w, r, daily)
 }
 
+// StartRun handles POST /hospital-shift/run: the page calls it when a run
+// (shift 1, or a Daily Challenge) starts and keeps the signed ticket it
+// returns for the Final Paycheck's score submission — see
+// service.HospitalRunTickets. Plain text, not HTML: it's read by fetch, not
+// swapped in by HTMX.
+func (h *HospitalShiftHandler) StartRun(w http.ResponseWriter, r *http.Request) {
+	if !h.runLimiter.Allow(middleware.ClientKey(r)) {
+		http.Error(w, "Too many runs started — please slow down.", http.StatusTooManyRequests)
+		return
+	}
+	ticket, err := h.Service.IssueRunTicket()
+	if err != nil {
+		slog.Error("issue hospital run ticket", "error", err)
+		http.Error(w, "Couldn't start a run.", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write([]byte(ticket))
+}
+
 // isHospitalValidationError reports whether err is one of
 // service.ValidateHospitalScoreSubmission's sentinel errors, as opposed to
 // an unexpected/internal failure (e.g. a DB error) that must not be shown
@@ -155,6 +180,12 @@ func isHospitalValidationError(err error) bool {
 		service.ErrHospitalDailyDateInvalid,
 		service.ErrHospitalDailyDateStale,
 		service.ErrHospitalDailyShiftsInvalid,
+		service.ErrHospitalEarningsImplausible,
+		service.ErrHospitalRunTicketMissing,
+		service.ErrHospitalRunTicketInvalid,
+		service.ErrHospitalRunTicketExpired,
+		service.ErrHospitalRunTicketUsed,
+		service.ErrHospitalRunTooFast,
 	} {
 		if errors.Is(err, sentinel) {
 			return true
@@ -184,4 +215,12 @@ func writeHospitalLeaderboardError(w http.ResponseWriter) {
 const (
 	hospitalScoreSubmitLimit  = 5
 	hospitalScoreSubmitWindow = time.Minute
+)
+
+// hospitalRunStartLimit/hospitalRunStartWindow bound POST /hospital-shift/run:
+// a page starts one run per page load or Daily, so this is generous for
+// real play while stopping a script from minting tickets in bulk.
+const (
+	hospitalRunStartLimit  = 20
+	hospitalRunStartWindow = time.Minute
 )

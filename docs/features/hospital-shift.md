@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (148 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (151 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (45 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (49 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -316,6 +316,27 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   asked to "remove the shine" — both eyes and hair, as they had for
   Kimono Himura's eyes — so the crown shine and the eye highlights are
   gone.
+* **Security** (the user: "add security", choosing a bigger in-game role
+  for the guard plus leaderboard anti-cheat — see Security
+  Considerations; `rules.js` "Security").
+  * A **Security Desk** by the ER entrance (left wall): CCTV monitors with
+    a blinking REC light, a radio on its charger and a gold nameplate
+    (`drawSecurityDesk`, decor `security-desk`). The guard is posted beside it.
+  * **Incidents**, one per shift at most from shift 2 (50% of day shifts,
+    80% of nights; never in the Daily): a **rowdy visitor** shouting at the
+    waiting chairs drains Ward Mood (0.6/s) and your Sanity (0.12/s) for
+    up to 45 s; a **thief** jimmies the vending machine for 30 s. Click a
+    guard ("click: send!") and the incident's clock stops while he walks
+    over and escorts the culprit out the entrance: the ward relaxes
+    (+10 Mood) or the vending company pays +20g. Ignored, the rowdy
+    visitor storms out (−12 Mood) and the thief escapes with the cash:
+    the vending machine is taped OUT OF ORDER for the rest of the shift
+    (no snacks, drinks or batteries). Clicking a culprit hints to send
+    Security. Engine: `securityIncidentStarts`, `dispatchSecurity`,
+    `resolveSecurityIncident`, `tick`'s countdown and drain.
+  * **Night Security**: night shifts add a second guard who patrols with a
+    flashlight that lights the dark ER (`STAFF_DESIGNS.nightGuard`); either
+    guard can be sent.
 * **More characters** (the user: "i want there to be more characters",
   then all four kinds offered; `rules.js` "More characters").
   * *Patients:* eight more designs — a builder in a hard hat, a chef in
@@ -672,7 +693,8 @@ answers with the daily board (the Bus Rush leaderboard's pattern).
 | ------ | ----------------------------- | -------------------------------- | ---- | ----- |
 | GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. |
 | GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
-| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift). Own per-IP `scoreSubmitLimiter` (5/min). |
+| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
+| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed, single-use run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (20/min). |
 
 ---
 
@@ -751,8 +773,41 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   within a day of today's UTC date (`ValidateHospitalDailyDate`, Bus
   Rush's window — a run finished across midnight still counts, old days
   can't be back-filled), and a daily run must report exactly 1 shift.
+* **Leaderboard anti-cheat** (the user: "add security", choosing it;
+  `internal/service/hospital_run.go`). The game runs client-side, so a
+  score can't be proven — but faking one now takes about as long as
+  playing:
+  * *Run tickets.* When a run starts, the page asks
+    `POST /hospital-shift/run` for a ticket, `v1.<issued unix>.<nonce>.<HMAC-SHA256>`,
+    and the Final Paycheck submits it as `run_ticket`. No ticket, a
+    tampered or foreign-signed one, or one older than 12 h is a 400.
+  * *Minimum time.* Shifts run a fixed real-time clock (10/8/6 minutes by
+    tier, `ROUND_TIER_CLOCK_SECONDS`) that can't end early, and progress
+    never survives leaving the page, so a 30-shift run is one ~4-hour page
+    session. A score is rejected ("faster than those shifts can be
+    played") unless 90% of its shifts' clock time has really passed since
+    the ticket was issued: 3.6 h for a month, 7.2 min for a Daily (shift
+    12's clock). The Go side mirrors the clock table
+    (`hospitalShiftClockSeconds`) — change both together.
+  * *Single use.* A ticket redeems once (remembered in memory for its
+    12 h life; given back if the insert fails), so one honest run can't be
+    replayed into many rows.
+  * *Plausible earnings.* At most 10,000 Gard per claimed shift
+    (`hospitalMaxEarningsPerShift`, above a perfect shift at the +25% rank
+    perk), so a 1-shift Daily can't claim a month's pay.
+  * Limits: a determined cheater can still play in real time and edit the
+    final number within the cap, or script the page. It stops instant fake
+    submissions and replays.
+  * Config: `HOSPITAL_RUN_SECRET` signs tickets; unset, a random secret is
+    made per process, so a run in progress across a deploy can't submit —
+    **set it in production**. `HOSPITAL_RUN_TIME_CHECK=off` (only
+    `make run-e2e`) skips the time check for the Playwright suite, which
+    seeds a run straight to shift 30.
+* A rejected score's reason shows under the Final Paycheck form. The form
+  stops the `htmx:responseError` from reaching `nav-menu.js`'s page-wide
+  handler, which would otherwise replace the whole game with "Couldn't
+  load this page" (the other games' score forms still have that problem).
 * Same documented no-CSRF gap as the other games' score routes.
-* No new secrets/config.
 
 ---
 
@@ -764,7 +819,14 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       (daily date window/format, a daily run must be 1 shift, daily rows
       kept off the all-time board), real-Postgres round trips in
       `cmd/server/e2e_test.go` (including a daily run landing on
-      `?board=daily` and not the all-time board).
+      `?board=daily` and not the all-time board). Anti-cheat
+      (`hospital_run_test.go`, `TestHospitalShiftHandler_RunTickets`): the
+      month/Daily minimum durations; an honest run accepted once, then
+      replay rejected, and released after a failed insert; missing,
+      garbage, tampered, foreign-signed, too-fast and expired tickets
+      rejected; the time check's off switch; the per-shift earnings cap; the
+      handler's ticket route (no-store, rate-limited) and its 400 reasons.
+      The real-Postgres round trips start a run first.
 * [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
       triage agreement, condition gating, skill-check zones, bandage
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
@@ -813,7 +875,11 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       Security ends Karen's scene with no mistake, the lost child's scene
       pays +25g, petting the cat restores Sanity then needs a break). The
       deep-cut and gurney-surgery flows, the suite's longest, have a 60 s
-      timeout. Clicking a staff member wins over the cat at their feet.
+      timeout. Security: sending a guard walks a rowdy visitor out; a
+      thief caught pays, one that escapes leaves the vending machine out
+      of order; night shifts add the night guard; the score carries the
+      run ticket fetched at the shift start, and a rejected score shows its
+      reason under the form. Clicking a staff member wins over the cat at their feet.
       Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,

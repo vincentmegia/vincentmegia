@@ -765,6 +765,93 @@ export function drawVendingStation(ctx, st) {
   drawVendingMachine(ctx, { x: 0, y: 0, w: st.w - 10, h: st.h - 6 });
 }
 
+/**
+ * Taped across the vending machine after a thief got away with its cash
+ * (rules.js "Security"): yellow-and-black tape and a hand-written sign.
+ * Drawn in the station's own frame, like drawVendingStation.
+ */
+export function drawOutOfOrder(ctx, st) {
+  const hw = st.w / 2;
+  ctx.save();
+  for (const [y, rot] of [[-12, -0.32], [10, 0.28]]) {
+    ctx.save();
+    ctx.translate(0, y);
+    ctx.rotate(rot);
+    flat(ctx, -hw - 4, -4, st.w + 8, 8, 1, '#f2c230', 0.8);
+    ctx.fillStyle = '#2a2622';
+    for (let x = -hw - 2; x < hw + 4; x += 8) {
+      ctx.beginPath();
+      ctx.moveTo(x, -4);
+      ctx.lineTo(x + 4, -4);
+      ctx.lineTo(x + 1, 4);
+      ctx.lineTo(x - 3, 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.rotate(-0.05);
+  block(ctx, -24, -6, 48, 16, 2, '#fffdf6', 1.1);
+  ctx.fillStyle = '#c0304a';
+  ctx.font = 'bold 7px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('OUT OF', 0, -1);
+  ctx.fillText('ORDER', 0, 6);
+  ctx.restore();
+}
+
+/**
+ * The Security Desk by the ER's entrance (rules.js "Security"): a navy
+ * podium with two CCTV monitors (grainy feeds of the ER, a blinking REC
+ * light), a radio on its charger and a gold SECURITY plate.
+ */
+function drawSecurityDesk(ctx, d) {
+  const x = d.x - d.w / 2;
+  const top = d.y - d.h / 2;
+  const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+  // Monitors on the desk's back edge.
+  for (let i = 0; i < 2; i++) {
+    const mx = x + 4 + i * (d.w / 2 - 2);
+    const mw = d.w / 2 - 6;
+    block(ctx, mx, top, mw, 20, 3, '#2a2e3a', 1.2);
+    flat(ctx, mx + 2.5, top + 2.5, mw - 5, 15, 1.5, '#4a5a66', 0);
+    // A grainy feed: a bed outline or a corridor, with scanlines.
+    ctx.strokeStyle = 'rgba(200,230,220,0.55)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    if (i === 0) ctx.rect(mx + 6, top + 7, mw - 12, 7);
+    else {
+      ctx.moveTo(mx + 4, top + 16);
+      ctx.lineTo(mx + mw / 2, top + 6);
+      ctx.lineTo(mx + mw - 4, top + 16);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    for (let ly = top + 3; ly < top + 17; ly += 2) ctx.fillRect(mx + 2.5, ly, mw - 5, 0.7);
+    if (Math.sin(t * 3 + i) > 0) circle(ctx, mx + mw - 5, top + 5, 1.4, '#ff4a5a', 0);
+    flat(ctx, mx + mw / 2 - 2, top + 20, 4, 4, 1, '#2a2e3a', 0.8);
+  }
+  // The desk itself, with a gold nameplate.
+  block(ctx, x, top + 22, d.w, d.h - 22, 5, '#3a4a6e', 1.5);
+  block(ctx, x - 2, top + 20, d.w + 4, 6, 3, '#5a6a8e', 1.3);
+  flat(ctx, x + 8, top + 31, d.w - 16, 10, 2, '#e8c25a', 1);
+  ctx.fillStyle = '#3a2a12';
+  ctx.font = 'bold 7px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('SECURITY', d.x, top + 36.5);
+  // A walkie-talkie on its charger, its light blinking green.
+  flat(ctx, x + d.w - 10, top + 12, 6, 10, 1.5, '#2a2622', 0.8);
+  ctx.strokeStyle = '#2a2622';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + d.w - 8, top + 12);
+  ctx.lineTo(x + d.w - 8, top + 7);
+  ctx.stroke();
+  if (Math.sin(t * 2) > -0.3) circle(ctx, x + d.w - 7, top + 15, 0.9, '#5fe08a', 0);
+}
+
 /** The ER's door down to the Cafeteria: warm wood doors and a little cup sign. */
 export function drawCafeteriaDoor(ctx, st) {
   drawOrDoor(ctx, st, { sign: '☕ CAFETERIA', color: '#ffe0c2', signColor: ANIME.goldDeep });
@@ -1127,6 +1214,7 @@ const DECOR_DRAWERS = {
   'vending-machine': drawVendingMachine,
   'iv-pole': drawIvPole,
   ladder: drawLadder,
+  'security-desk': drawSecurityDesk,
 };
 
 /** Draws one decor prop from buildDecor(); unknown kinds draw nothing. */

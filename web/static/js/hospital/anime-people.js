@@ -533,6 +533,15 @@ export const STAFF_DESIGNS = {
     outfit: { kind: 'blazer', top: '#2e3a5a', inner: '#c9e4ff', bottom: '#242c38', shoes: '#14181f' },
     extras: { cap: '#242c38', sunglasses: false },
   },
+  // The night guard (night shifts, rules.js "Security"): a darker uniform
+  // and a flashlight the game draws.
+  nightGuard: {
+    key: 'nightGuard', label: 'Night Security', age: 'adult', skin: SKIN.deep,
+    hair: { color: '#141012', back: 'short', fringe: 'textured' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#1e2638', inner: '#8fa8c8', bottom: '#161c28', shoes: '#0e1016' },
+    extras: { cap: '#161c28' },
+  },
   pharmacist: {
     key: 'pharmacist', label: 'Pharmacist', age: 'elder', skin: SKIN.light,
     hair: { color: '#c9c6cf', back: 'bob', fringe: 'parted' },

@@ -96,7 +96,12 @@ touching that area rather than expecting this section to carry it:
   (every 5th) with a dark ER and a battery flashlight (F); 54 patient
   designs (incl. a highly detailed maiko); extra staff
   (janitor's wet floor, receptionist, Security for Karen, pharmacist) and
-  visitors (a lost child, the hospital cat, celebrity patients); an easter egg — Mel in a
+  visitors (a lost child, the hospital cat, celebrity patients); Security
+  (a CCTV desk, a night guard, rowdy-visitor/thief incidents you send a
+  guard to); leaderboard anti-cheat (signed single-use run tickets from
+  `POST /hospital-shift/run`, a minimum real-time check against the shift
+  clock and a per-shift earnings cap; set `HOSPITAL_RUN_SECRET` in
+  production); an easter egg — Mel in a
   dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
   the back-wall vase, or typing "mel"); a 10-rank nurse career (a perk
   per rank, `rules.js` §3c); a seeded Daily Challenge (one UTC-day shift

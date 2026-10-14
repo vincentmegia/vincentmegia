@@ -167,6 +167,7 @@
 								<div id="hospital-final-paycheck-block" class="hidden space-y-2 border-t border-line pt-4">
 									<p id="hospital-final-paycheck-heading" class="ha-ink text-sm font-bold">Final Paycheck</p>
 									<form
+										id="hospital-paycheck-form"
 										hx-post="/hospital-shift/score"
 										hx-target="#hospital-leaderboard"
 										hx-swap="outerHTML"
@@ -195,6 +196,9 @@
 										<input type="hidden" id="hospital-paycheck-earnings-input" name="total_earnings" value="0">
 										<input type="hidden" id="hospital-paycheck-shifts-input" name="shifts_completed" value="30">
 											<input type="hidden" id="hospital-paycheck-daily-input" name="daily_date" value="">
+										{{/* The run's signed ticket from POST /hospital-shift/run (leaderboard anti-cheat). */}}
+										<input type="hidden" id="hospital-paycheck-ticket-input" name="run_ticket" value="">
+										<p id="hospital-paycheck-submit-error" class="hidden ha-panel px-3 py-2 text-xs font-semibold" role="alert"></p>
 									</form>
 								</div>
 

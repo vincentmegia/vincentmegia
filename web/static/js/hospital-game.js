@@ -123,6 +123,12 @@ import {
   LOST_CHILD_GARD,
   LOST_CHILD_LINE,
   CAT_CHANCE,
+  SECURITY_INCIDENT_CHANCE,
+  SECURITY_INCIDENT_CHANCE_NIGHT,
+  SECURITY_FROM_SHIFT,
+  SECURITY_INCIDENT_WINDOW,
+  SECURITY_INCIDENT_KINDS,
+  THIEF_CAUGHT_GARD,
   CAT_PET_COOLDOWN_SECONDS,
   CELEBRITY_CHANCE,
 } from './hospital/rules.js';
@@ -164,6 +170,7 @@ import {
   drawOrDoor,
   drawImplantShelf,
   drawVendingStation,
+  drawOutOfOrder,
   drawCafeteriaDoor,
   drawCafeDoor,
   drawCafeCounter,
@@ -220,6 +227,9 @@ import {
   lostChildArrives,
   helpLostChild,
   petCat,
+  securityIncidentStarts,
+  dispatchSecurity,
+  resolveSecurityIncident,
   doctorAssistTarget,
   doctorAssist,
 } from './hospital/engine-state.js';
@@ -328,7 +338,10 @@ const AMBIENT_STAFF = [
   // janitor mops (a wet floor slows you), Security keeps watch by the
   // entrance side, the pharmacist potters by the Med Cabinet.
   { key: 'janitor', name: 'Janitor', floor: 1, waypoints: [[260, 470], [440, 478], [640, 262], [700, 470]] },
-  { key: 'guard', name: 'Security', floor: 1, waypoints: [[70, 250], [130, 254], [70, 302]] },
+  { key: 'guard', name: 'Security', floor: 1, waypoints: [[96, 262], [150, 258], [96, 300]] },
+  // Security (the user: "add security"): a second guard with a flashlight
+  // walks the ER on night shifts.
+  { key: 'nightGuard', name: 'Night Security', floor: 1, nightOnly: true, waypoints: [[300, 525], [520, 532], [700, 470], [220, 470]] },
   { key: 'pharmacist', name: 'Pharmacist', floor: 1, waypoints: [[580, 252], [700, 258], [640, 250]] },
 ];
 const AMBIENT_SPEED = 70;
@@ -384,6 +397,19 @@ export function init(canvas, elements) {
   // month run. dailyBest is this visit's best paycheck on today's date —
   // nothing outlasts a visit (see "Progress: this visit only").
   let daily = null; // { date, twist }
+  // Leaderboard anti-cheat: each run (a month from shift 1, or one Daily)
+  // gets a signed ticket from the server when it starts; the Final
+  // Paycheck submits it with the score, and the server rejects a score that
+  // comes back faster than the shift clock allows (docs/features/
+  // hospital-shift.md's Security Considerations). Promises of the ticket
+  // text, or null if the request failed.
+  let monthTicket = null;
+  let dailyTicket = null;
+  function requestRunTicket() {
+    return fetch('/hospital-shift/run', { method: 'POST', credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.text() : null))
+      .catch(() => null);
+  }
   let dailyBest = null; // { date, payout }
   /** The stream a shift's patients are rolled from: seeded by the date in a Daily Challenge. */
   let shiftRandom = random;
@@ -405,7 +431,7 @@ export function init(canvas, elements) {
   let pendingStaffPickup = false; // walking up to the Stock tech for a roll
 
   function resetAmbient() {
-    ambient = AMBIENT_STAFF.filter((def) => !(def.key === 'doctor' && dailyEffect('noDoctor'))).map((def, i) => {
+    ambient = AMBIENT_STAFF.filter((def) => !(def.key === 'doctor' && dailyEffect('noDoctor')) && !(def.nightOnly && !shiftState?.night)).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
       return {
         ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2,
@@ -551,6 +577,7 @@ export function init(canvas, elements) {
 
   function updateExtras(dt) {
     updateCat(dt);
+    updateSecurity(dt);
     if (wetFloor) {
       wetFloor.seconds -= dt;
       if (wetFloor.seconds <= 0) wetFloor = null;
@@ -563,6 +590,7 @@ export function init(canvas, elements) {
       else if (a.key === 'orderly') updateOrderly(a, dt);
       else if (a.key === 'stockTech') updateStockTech(a, dt);
       else if (a.key === 'janitor') updateJanitor(a, dt);
+      else if (a.key === 'guard' || a.key === 'nightGuard') updateGuard(a, dt);
       else wander(a, dt);
     }
   }
@@ -586,8 +614,8 @@ export function init(canvas, elements) {
       moveTarget = { x: a.x - 36, y: a.y, station: null };
     } else if (a.key === 'janitor') {
       showToast('Janitor: "Mind the wet floor — it\'s slippery! You\'ll walk slower across it."');
-    } else if (a.key === 'guard') {
-      showToast('Security keeps watch — if Karen shows up, you can call him to escort her out.');
+    } else if (a.key === 'guard' || a.key === 'nightGuard') {
+      sendSecurity(a);
     } else if (a.key === 'pharmacist') {
       showToast('Pharmacist: "Read every label twice, dear — the look-alikes are sneaky!"');
     } else {
@@ -633,6 +661,11 @@ export function init(canvas, elements) {
     if (a.key === 'stockTech' && a.floor === FLOOR_1) return 'Stock tech · rolls (click)';
     if (a.key === 'doctor' && a.errand) return 'Dr. Okafor (helping)';
     if (a.key === 'janitor' && wetFloor) return 'Janitor (mopping)';
+    if (a.key === 'guard' || a.key === 'nightGuard') {
+      if (a.errand?.kind === 'respond') return `${a.name} → on his way`;
+      if (a.errand?.kind === 'escort') return `${a.name} (escorting)`;
+      if (incident?.phase === 'active' && !securityBusy()) return `${a.name} (click: send!)`;
+    }
     return a.name;
   }
 
@@ -642,6 +675,23 @@ export function init(canvas, elements) {
       if (a.key === 'orderly' && a.errand?.kind === 'deliver') drawGurney(a.x + 34, a.y - 6, a.errand.patientId);
       drawAnimePerson(ctx, a.x, a.y, STAFF_DESIGNS[a.key], { scale: 0.8, t: performance.now() / 1000 });
       if (a.key === 'stockTech' && a.floor === FLOOR_1) drawBandageRoll(a.x + 16, a.y - 58, 1);
+      if (a.key === 'nightGuard') {
+        // His flashlight, held out ahead of him.
+        const dir = guardFacing(a);
+        ctx.save();
+        const beam = ctx.createRadialGradient(a.x + dir * 12, a.y - 26, 2, a.x + dir * 12, a.y - 26, 60);
+        beam.addColorStop(0, 'rgba(255,244,190,0.45)');
+        beam.addColorStop(1, 'rgba(255,244,190,0)');
+        ctx.fillStyle = beam;
+        ctx.beginPath();
+        ctx.moveTo(a.x + dir * 12, a.y - 26);
+        ctx.arc(a.x + dir * 12, a.y - 26, 60, dir > 0 ? -0.35 : Math.PI - 0.35, dir > 0 ? 0.55 : Math.PI + 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#2a2622';
+        ctx.fillRect(a.x + dir * 8 - 3, a.y - 29, 7, 4);
+        ctx.restore();
+      }
       const label = staffLabel(a);
       const actionable = label !== a.name;
       drawLabelChip(ctx, a.x, a.y + 20, label, actionable ? 'bold 9px sans-serif' : '9px sans-serif',
@@ -1391,6 +1441,10 @@ export function init(canvas, elements) {
       return;
     }
     if (station.kind === 'vending-machine') {
+      if (shiftState.security?.vendingBroken) {
+        showToast("The vending machine is out of order — the thief cleaned it out. Try the Cafeteria (or tomorrow's shift).", 3.4);
+        return;
+      }
       overlay = { kind: 'vending', flash: null };
       return;
     }
@@ -1915,6 +1969,12 @@ export function init(canvas, elements) {
       onStaffClick(member);
       return;
     }
+    if (incidentAtPoint(x, y) && shiftState?.phase === 'playing') {
+      showToast(incident.phase === 'active'
+        ? 'Better leave this to Security — click a guard to send him over.'
+        : 'Security has it handled.');
+      return;
+    }
     if (catAtPoint(x, y) && shiftState?.phase === 'playing') {
       petTheCat();
       return;
@@ -2018,6 +2078,8 @@ export function init(canvas, elements) {
   // -- Shift lifecycle ------------------------------------------------------------------
 
   function beginShift() {
+    if (daily) dailyTicket = requestRunTicket();
+    else if (!monthTicket || save.currentShift === 1) monthTicket = requestRunTicket();
     waitingAtOffice = false;
     coffeeSplashSeconds = 0;
     resetHallucinations();
@@ -2045,6 +2107,7 @@ export function init(canvas, elements) {
     player = { ...PLAYER_START };
     resetAmbient();
     resetCat();
+    resetSecurity();
     wetFloor = null;
     mopTimer = JANITOR_MOP_EVERY_SECONDS;
     currentFloor = FLOOR_1;
@@ -2120,6 +2183,11 @@ export function init(canvas, elements) {
       if (screen.earningsInput) screen.earningsInput.value = String(daily ? payout : earnings);
       if (screen.shiftsInput) screen.shiftsInput.value = String(daily ? 1 : SHIFTS_PER_MONTH);
       if (screen.submitButton) screen.submitButton.disabled = false;
+      screen.submitError?.classList.add('hidden');
+      const ticket = daily ? dailyTicket : monthTicket;
+      Promise.resolve(ticket).then((t) => {
+        if (screen.ticketInput) screen.ticketInput.value = t ?? '';
+      });
     }
   }
 
@@ -2414,6 +2482,9 @@ export function init(canvas, elements) {
       if (st.kind === 'cafeteria-door') cutGlow(dctx, st.x, st.y + 6, 48, 0.65); // its CLOSED sign
     }
     cutGlow(dctx, 839, 28, 90, 0.55);
+    // The night guard's flashlight, pointed where he's walking.
+    const nightGuard = currentFloor === FLOOR_1 ? staff('nightGuard') : null;
+    if (nightGuard) cutGlow(dctx, nightGuard.x + guardFacing(nightGuard) * 44, nightGuard.y - 12, 46, 0.75);
     const f = shiftState.flashlight;
     if (f.on) {
       const tx = aim?.x ?? px + 100;
@@ -2863,7 +2934,10 @@ export function init(canvas, elements) {
     'organ-cooler': (st) => drawOrganCooler(ctx, st, { organs: ['kidney', 'liver', 'heart'].filter((id) => shiftState?.surgeryKit.item !== id) }),
     'or-door': (st) => drawOrDoor(ctx, st),
     'implant-shelf': (st) => drawImplantShelf(ctx, st),
-    'vending-machine': (st) => drawVendingStation(ctx, st),
+    'vending-machine': (st) => {
+      drawVendingStation(ctx, st);
+      if (shiftState?.security?.vendingBroken) drawOutOfOrder(ctx, st);
+    },
     'cafeteria-door': (st) => {
       drawCafeteriaDoor(ctx, st);
       if (shiftState?.night) drawLabelChip(ctx, 0, 6, 'CLOSED', 'bold 11px sans-serif', ANIME.coralDeep, '#ffffff');
@@ -4290,6 +4364,168 @@ export function init(canvas, elements) {
     { x: 160, y: 468, design: () => STAFF_DESIGNS.pharmacist },
     { x: 802, y: 468, design: () => STAFF_DESIGNS.janitor },
   ];
+  // -- Security (rules.js "Security"; the user: "add security") ------------
+  // One incident per shift at most, from shift 2: a rowdy visitor shouting
+  // by the waiting chairs (Ward Mood and Sanity drain), or a thief
+  // jimmying the vending machine (if he gets away it's out of order all
+  // shift). Click a guard to send him: he walks over and escorts the
+  // culprit out the entrance on the left. The engine keeps the clock and
+  // the rewards; this keeps the positions.
+  const ROWDY_SPOT = [506, 242];
+  const THIEF_SPOT = [706, 548];
+  const ENTRANCE = [-40, 300];
+  let incident = null; // { kind, x, y, phase: 'active'|'escorted'|'fleeing', guardKey }
+  let plannedIncident = null; // { kind, atElapsed } — this shift's roll
+
+  function resetSecurity() {
+    incident = null;
+    plannedIncident = null;
+    if (daily || currentShiftNumber < SECURITY_FROM_SHIFT) return;
+    if (random() >= (shiftState.night ? SECURITY_INCIDENT_CHANCE_NIGHT : SECURITY_INCIDENT_CHANCE)) return;
+    const [lo, hi] = SECURITY_INCIDENT_WINDOW;
+    plannedIncident = {
+      kind: SECURITY_INCIDENT_KINDS[Math.floor(random() * SECURITY_INCIDENT_KINDS.length)],
+      atElapsed: shiftState.totalClockSeconds * (lo + random() * (hi - lo)),
+    };
+  }
+
+  function startIncident(kind) {
+    const before = shiftState;
+    shiftState = securityIncidentStarts(shiftState, kind);
+    if (shiftState === before) return false;
+    const [x, y] = kind === 'thief' ? THIEF_SPOT : ROWDY_SPOT;
+    incident = { kind, x, y, phase: 'active', guardKey: null };
+    showToast(kind === 'thief'
+      ? 'A thief is breaking into the vending machine! Click a Security guard to send him.'
+      : 'A rowdy visitor is shouting at the waiting chairs and upsetting everyone! Click Security to have him walked out.', 4);
+    return true;
+  }
+
+  const securityBusy = () => ambient.some((g) => g.errand?.kind === 'respond' || g.errand?.kind === 'escort');
+
+  /** Clicking a guard: send him to the incident, or a word about his job. */
+  function sendSecurity(a) {
+    if (incident?.phase === 'active' && shiftState.security.incident) {
+      if (securityBusy()) {
+        showToast('Security is already on it.');
+        return;
+      }
+      shiftState = dispatchSecurity(shiftState);
+      a.errand = { kind: 'respond' };
+      a.pause = 0;
+      incident.guardKey = a.key;
+      showToast(`${a.name} is on his way!`);
+      return;
+    }
+    showToast(a.key === 'nightGuard'
+      ? 'Night Security: "Quiet night so far. I\'ll keep my light on things."'
+      : 'Security keeps watch from his desk — send him to deal with trouble, or call him on Karen.');
+  }
+
+  function updateGuard(a, dt) {
+    const kind = a.errand?.kind;
+    if (kind === 'respond') {
+      if (!incident || incident.phase !== 'active') { a.errand = { kind: 'return' }; return; }
+      if (walkToward(a, [incident.x + 26, incident.y], ERRAND_SPEED, dt)) {
+        incident.phase = 'escorted';
+        a.errand = { kind: 'escort' };
+        showToast(incident.kind === 'thief'
+          ? `${a.name} caught the thief red-handed and is walking him out.`
+          : `${a.name} is walking the rowdy visitor out. "Let's take this outside, sir."`, 3);
+      }
+      return;
+    }
+    if (kind === 'escort') return; // walked out beside the culprit (updateSecurity)
+    if (kind === 'return') {
+      if (walkToward(a, a.waypoints[0], AMBIENT_SPEED, dt)) { a.errand = null; a.pause = 1.5; }
+      return;
+    }
+    wander(a, dt);
+  }
+
+  function updateSecurity(dt) {
+    if (!shiftState) return;
+    if (plannedIncident && shiftState.phase === 'playing'
+      && shiftState.totalClockSeconds - shiftState.clockSeconds >= plannedIncident.atElapsed) {
+      startIncident(plannedIncident.kind);
+      plannedIncident = null;
+    }
+    if (!incident) return;
+    if (incident.phase === 'active' && shiftState.security.outcome === 'escaped') {
+      incident.phase = 'fleeing';
+      showToast(incident.kind === 'thief'
+        ? "The thief got away with the vending machine's cash — it's out of order for the rest of the shift."
+        : 'The rowdy visitor stormed out on his own, leaving the whole ward rattled.', 3.6);
+    }
+    if (incident.phase === 'fleeing') {
+      if (walkToward(incident, ENTRANCE, 150, dt)) incident = null;
+      return;
+    }
+    if (incident.phase !== 'escorted') return;
+    const guard = staff(incident.guardKey);
+    const out = walkToward(incident, ENTRANCE, 80, dt);
+    if (guard) walkToward(guard, [incident.x + 24, incident.y], 120, dt);
+    if (!out) return;
+    shiftState = resolveSecurityIncident(shiftState);
+    showToast(incident.kind === 'thief'
+      ? `The thief is out — the vending company sends a reward: +${THIEF_CAUGHT_GARD}g`
+      : 'The rowdy visitor is gone. The waiting area breathes a sigh of relief. +Mood', 3.2);
+    if (guard) guard.errand = { kind: 'return' };
+    incident = null;
+  }
+
+  function incidentAtPoint(x, y) {
+    return Boolean(incident) && currentFloor === FLOOR_1 && Math.abs(x - incident.x) <= 20 && y >= incident.y - 46 && y <= incident.y + 14;
+  }
+
+  /** Which way a guard faces: toward where he's heading. */
+  function guardFacing(a) {
+    let tx = a.waypoints[a.target][0];
+    if (a.errand?.kind === 'return') tx = a.waypoints[0][0];
+    else if (a.errand) tx = incident ? incident.x : ENTRANCE[0];
+    return tx < a.x ? -1 : 1;
+  }
+
+  const ROWDY_DESIGN = { ...findPatientDesign('delinquent'), mood: 'angry' };
+  const thiefBase = findPatientDesign('hoodieTeen');
+  const THIEF_DESIGN = {
+    ...thiefBase,
+    hair: { ...thiefBase.hair, color: '#1a161e' },
+    outfit: { ...thiefBase.outfit, top: '#2a2a33', bottom: '#1e1e24', shoes: '#14141a' },
+    extras: { ...thiefBase.extras, mask: true, cap: '#1e1e24' },
+  };
+
+  function drawSecurityIncident() {
+    if (!incident || currentFloor !== FLOOR_1) return;
+    const t = performance.now() / 1000;
+    const shaking = incident.phase === 'active';
+    const jx = shaking ? Math.sin(t * (incident.kind === 'thief' ? 30 : 18)) * 1.4 : 0;
+    const design = incident.kind === 'thief' ? THIEF_DESIGN : ROWDY_DESIGN;
+    drawAnimePerson(ctx, incident.x + jx, incident.y, design, { scale: 0.8, t, angryTint: incident.kind === 'rowdy' && shaking });
+    if (incident.kind === 'thief' && incident.phase !== 'active') {
+      // The loot bag he's carrying out.
+      ctx.fillStyle = '#c9b6a4';
+      ctx.beginPath();
+      ctx.ellipse(incident.x - 14, incident.y - 22, 7, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#5a3a22';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$', incident.x - 14, incident.y - 19);
+    }
+    if (shaking) {
+      // Shouting, or the rattle of a crowbar on the machine.
+      const words = incident.kind === 'thief' ? ['*clank*', '*rattle*'] : ['!!', '#@%!', 'MANAGER!'];
+      const word = words[Math.floor(t * 1.5) % words.length];
+      drawLabelChip(ctx, incident.x + 4, incident.y - 70 - Math.abs(Math.sin(t * 4)) * 3, word, 'bold 10px sans-serif', incident.kind === 'thief' ? '#ffe9a8' : '#ffd1d1', '#8a1a2a');
+      const left = Math.ceil(shiftState?.security?.secondsLeft ?? 0);
+      const label = incident.kind === 'thief' ? `Thief! ${left}s` : `Rowdy visitor! ${left}s`;
+      drawLabelChip(ctx, incident.x, incident.y + 22, label, 'bold 9px sans-serif', '#c0304a', CREAM);
+    } else if (incident.phase === 'escorted') {
+      drawLabelChip(ctx, incident.x, incident.y + 22, 'escorted out', '9px sans-serif', 'rgba(255,251,246,0.75)', LABEL_TEXT_COLOR);
+    }
+  }
+
   function drawCrowds() {
     const t = performance.now() / 1000;
     if (currentFloor === FLOOR_1) {
@@ -4619,6 +4855,7 @@ export function init(canvas, elements) {
     if (wetFloor && currentFloor === FLOOR_1) drawWetFloor(ctx, wetFloor.x, wetFloor.y, WET_FLOOR_RADIUS, Math.min(1, wetFloor.seconds / 3));
     drawCrowds();
     drawHospitalCat();
+    drawSecurityIncident();
     if (currentFloor === FLOOR_1) drawTriageQueue();
     drawAmbient();
     drawPlayer();
@@ -4785,6 +5022,20 @@ export function init(canvas, elements) {
     // suppresses the form submit (the same bug the other games fixed).
     window.setTimeout(() => { elements.paycheckScreen.submitButton.disabled = true; }, 0);
   });
+  // A rejected score (a 4xx — HTMX doesn't swap those) says why, under
+  // the form, instead of failing silently: e.g. the anti-cheat's "that
+  // score came in faster than those shifts can be played".
+  elements.paycheckScreen.form?.addEventListener('htmx:responseError', (e) => {
+    // Handled here: without this, nav-menu.js's page-wide error state
+    // replaces all of #main-content (the game included) with "Couldn't
+    // load this page".
+    e.stopPropagation();
+    const box = elements.paycheckScreen.submitError;
+    if (!box) return;
+    box.textContent = (e.detail?.xhr?.responseText || "Couldn't submit that score.").trim();
+    box.classList.remove('hidden');
+    if (elements.paycheckScreen.submitButton) elements.paycheckScreen.submitButton.disabled = false;
+  });
 
   function teardown() {
     running = false;
@@ -4878,6 +5129,14 @@ export function init(canvas, elements) {
       beginShift();
     },
     getCareerXp: () => save.careerXp,
+    /** Security: start an incident now ('rowdy'|'thief'), read it, or run its clock out. */
+    startSecurityIncidentNow: (kind) => startIncident(kind),
+    getSecurityIncident: () => (incident || shiftState?.security?.outcome
+      ? { ...(incident ? { kind: incident.kind, x: incident.x, y: incident.y, phase: incident.phase } : {}), ...shiftState.security }
+      : null),
+    expireSecurityIncidentNow() {
+      if (shiftState?.security?.incident) shiftState = { ...shiftState, security: { ...shiftState.security, secondsLeft: 0.01 } };
+    },
     addShiftXp(amount) { if (shiftState) shiftState = { ...shiftState, xp: shiftState.xp + amount }; },
     spawnGhostNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
     getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.length }),
@@ -4942,6 +5201,9 @@ function bootstrap() {
       monthLabel: byId('hospital-paycheck-month-label'),
       finalHeading: byId('hospital-final-paycheck-heading'),
       dailyInput: byId('hospital-paycheck-daily-input'),
+      ticketInput: byId('hospital-paycheck-ticket-input'),
+      submitError: byId('hospital-paycheck-submit-error'),
+      form: byId('hospital-paycheck-form'),
       backButton: byId('hospital-paycheck-back-button'),
       finalBlock: byId('hospital-final-paycheck-block'),
       earningsInput: byId('hospital-paycheck-earnings-input'),

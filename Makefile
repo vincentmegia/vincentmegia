@@ -31,7 +31,7 @@ E2E_DB_URL = $$(u="$${DATABASE_URL:-$$(sed -nE 's/^DATABASE_URL=//p' .env)}"; ca
 
 run-e2e: ## Run the server Playwright expects: fake LTA + isolated bus_e2e schema (start `make fakelta` first).
 	@psql "$${DATABASE_URL:-$$(sed -nE 's/^DATABASE_URL=//p' .env)}" -qc 'CREATE SCHEMA IF NOT EXISTS bus_e2e'
-	DATABASE_URL="$(E2E_DB_URL)" LTA_BASE_URL=http://127.0.0.1:8099 ONEMAP_BASE_URL=http://127.0.0.1:8099 LTA_ACCOUNT_KEY=fake-key go run ./cmd/server
+	DATABASE_URL="$(E2E_DB_URL)" LTA_BASE_URL=http://127.0.0.1:8099 ONEMAP_BASE_URL=http://127.0.0.1:8099 LTA_ACCOUNT_KEY=fake-key HOSPITAL_RUN_TIME_CHECK=off go run ./cmd/server
 
 dev: css run ## Build CSS once, then run the server — the everyday local-dev entrypoint.
 

@@ -51,6 +51,9 @@ import {
   pickUpBattery,
   buyBattery,
   cafeteriaMeal,
+  securityIncidentStarts,
+  dispatchSecurity,
+  resolveSecurityIncident,
 } from './engine-state.js';
 import {
   findCondition,
@@ -67,6 +70,11 @@ import {
   HUNGER_DRAIN_PER_SECOND,
   FLASHLIGHT_DRAIN_PER_SECOND,
   LOST_CHILD_GARD,
+  ROWDY_SECONDS,
+  ROWDY_ESCORTED_MOOD,
+  ROWDY_STORMED_OUT_MOOD,
+  THIEF_SECONDS,
+  THIEF_CAUGHT_GARD,
   LOST_CHILD_MOOD,
   CAT_PET_SANITY,
   CELEBRITY_DISCHARGE_MULTIPLIER,
@@ -693,6 +701,44 @@ describe('night shifts and the flashlight', () => {
     assert.equal(bought.bonusGard, -BATTERY_PRICE);
     const dead = playing(5, { flashlight: { on: false, battery: 0, spares: 1 } });
     assert.deepEqual(toggleFlashlight(dead).flashlight, { on: true, battery: 100, spares: 0 }, 'a flat battery loads a spare');
+  });
+});
+
+describe('security incidents', () => {
+  test('a rowdy visitor drains the ward until a guard is sent; walking him out calms it', () => {
+    let s = securityIncidentStarts(playing(5, { wardMood: 80, sanity: 80 }), 'rowdy');
+    assert.equal(s.security.incident, 'rowdy');
+    assert.equal(s.security.secondsLeft, ROWDY_SECONDS);
+    assert.equal(securityIncidentStarts(s, 'thief'), s, 'one at a time');
+    const ticked = tick(s, 10);
+    assert.ok(ticked.wardMood < 80 - 5, 'Ward Mood drains while he shouts');
+    assert.ok(ticked.security.secondsLeft < ROWDY_SECONDS);
+    s = dispatchSecurity(ticked);
+    const held = tick(s, 10);
+    assert.equal(held.security.secondsLeft, ticked.security.secondsLeft, 'the clock stops once a guard is on his way');
+    assert.equal(held.wardMood, s.wardMood, 'and so does the drain');
+    s = resolveSecurityIncident(held);
+    assert.equal(s.security.outcome, 'caught');
+    assert.equal(s.wardMood, held.wardMood + ROWDY_ESCORTED_MOOD);
+    assert.equal(securityIncidentStarts(s, 'thief'), s, 'once per shift');
+  });
+
+  test('a rowdy visitor left alone storms out, souring the ward', () => {
+    const s = tick(securityIncidentStarts(playing(5, { wardMood: 90 }), 'rowdy'), ROWDY_SECONDS + 1);
+    assert.equal(s.security.outcome, 'escaped');
+    assert.equal(s.security.incident, null);
+    assert.ok(s.wardMood < 90 - ROWDY_SECONDS * 0.5 + ROWDY_STORMED_OUT_MOOD + 1);
+  });
+
+  test('a caught thief pays a reward; one that gets away breaks the vending machine', () => {
+    const caught = resolveSecurityIncident(dispatchSecurity(securityIncidentStarts(playing(), 'thief')));
+    assert.equal(caught.bonusGard, THIEF_CAUGHT_GARD);
+    assert.equal(caught.security.vendingBroken, false);
+    const escaped = tick(securityIncidentStarts(playing(), 'thief'), THIEF_SECONDS + 1);
+    assert.equal(escaped.security.outcome, 'escaped');
+    assert.equal(escaped.security.vendingBroken, true);
+    assert.equal(buyVendingItem(escaped, 'water'), escaped, 'out of order: no snacks');
+    assert.equal(buyBattery(escaped), escaped, 'and no batteries');
   });
 });
 

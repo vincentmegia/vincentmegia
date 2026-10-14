@@ -1146,3 +1146,35 @@ export const CAT_PET_COOLDOWN_SECONDS = 30;
 /** A celebrity patient: chance a shift has one, and their discharge pays this many times over. */
 export const CELEBRITY_CHANCE = 0.3;
 export const CELEBRITY_DISCHARGE_MULTIPLIER = 2;
+
+// ---------------------------------------------------------------------------
+// Security (the user: "add security", choosing a bigger role for the guard):
+// a Security Desk with CCTV by the entrance, a second night guard with a
+// flashlight on night shifts, and incidents you send a guard to — a rowdy
+// visitor upsetting the ward, or a thief jimmying the vending machine.
+// ---------------------------------------------------------------------------
+
+/** Chance a shift has an incident (from SECURITY_FROM_SHIFT), higher at night. */
+export const SECURITY_INCIDENT_CHANCE = 0.5;
+export const SECURITY_INCIDENT_CHANCE_NIGHT = 0.8;
+export const SECURITY_FROM_SHIFT = 2;
+/** The incident starts somewhere in this fraction of the shift clock. */
+export const SECURITY_INCIDENT_WINDOW = [0.15, 0.6];
+
+/** A rowdy visitor shouts by the waiting chairs: Ward Mood and your Sanity drain until Security walks him out. */
+export const ROWDY_SECONDS = 45;
+export const ROWDY_MOOD_DRAIN_PER_SECOND = 0.6;
+export const ROWDY_SANITY_DRAIN_PER_SECOND = 0.12;
+/** Escorted out: the ward relaxes. Left to storm out on his own: it doesn't. */
+export const ROWDY_ESCORTED_MOOD = 10;
+export const ROWDY_STORMED_OUT_MOOD = -12;
+
+/** A thief at the vending machine: stop him in time for the vending company's reward, or it's out of order all shift. */
+export const THIEF_SECONDS = 30;
+export const THIEF_CAUGHT_GARD = 20;
+
+export const SECURITY_INCIDENT_KINDS = ['rowdy', 'thief'];
+
+export function securityIncidentSeconds(kind) {
+  return kind === 'thief' ? THIEF_SECONDS : ROWDY_SECONDS;
+}

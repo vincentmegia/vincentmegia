@@ -24,14 +24,25 @@ type hospitalRepository interface {
 // leaderboard's business logic: validating a submission before it ever
 // reaches Postgres. See docs/features/hospital-shift.md. Now is the clock
 // the Daily Challenge's date checks use (time.Now when nil; tests pin it).
+//
+// Tickets checks each submission's run ticket (hospital_run.go). nil skips
+// that check — only the service's unit tests leave it unset;
+// NewHospitalService always sets it.
 type HospitalService struct {
-	Repo hospitalRepository
-	Now  func() time.Time
+	Repo    hospitalRepository
+	Now     func() time.Time
+	Tickets *HospitalRunTickets
 }
 
-// NewHospitalService wraps a HospitalRepository.
-func NewHospitalService(repo *repository.HospitalRepository) *HospitalService {
-	return &HospitalService{Repo: repo}
+// NewHospitalService wraps a HospitalRepository, checking scores' run
+// tickets with tickets.
+func NewHospitalService(repo *repository.HospitalRepository, tickets *HospitalRunTickets) *HospitalService {
+	return &HospitalService{Repo: repo, Tickets: tickets}
+}
+
+// IssueRunTicket starts a run: the ticket its score must be submitted with.
+func (s *HospitalService) IssueRunTicket() (string, error) {
+	return s.Tickets.Issue()
 }
 
 func (s *HospitalService) now() time.Time {
@@ -53,8 +64,10 @@ func (s *HospitalService) Today() string {
 // failure so the handler can render a clear 4xx rather than a raw DB
 // constraint-violation error. daily is the Daily Challenge's date ("" for
 // an ordinary run) — see ValidateHospitalDailyDate; a daily run is always
-// exactly one shift.
-func (s *HospitalService) SubmitScore(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, daily string) error {
+// exactly one shift. ticket is the run's ticket from IssueRunTicket: the
+// anti-cheat checks (hospital_run.go) run last, so a ticket is only spent
+// on an otherwise-valid score, and given back if the insert fails.
+func (s *HospitalService) SubmitScore(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, daily, ticket string) error {
 	trimmed, err := ValidateHospitalScoreSubmission(playerName, totalEarnings, shiftsCompleted)
 	if err != nil {
 		return err
@@ -66,7 +79,18 @@ func (s *HospitalService) SubmitScore(ctx context.Context, playerName string, to
 	if day != nil && shiftsCompleted != 1 {
 		return ErrHospitalDailyShiftsInvalid
 	}
+	if err := ValidateHospitalEarningsPlausible(totalEarnings, shiftsCompleted); err != nil {
+		return err
+	}
+	if s.Tickets != nil {
+		if err := s.Tickets.Redeem(ticket, shiftsCompleted, day != nil); err != nil {
+			return err
+		}
+	}
 	if err := s.Repo.Insert(ctx, trimmed, totalEarnings, shiftsCompleted, day); err != nil {
+		if s.Tickets != nil {
+			s.Tickets.Release(ticket)
+		}
 		return fmt.Errorf("insert hospital score: %w", err)
 	}
 	return nil

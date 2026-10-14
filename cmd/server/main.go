@@ -83,7 +83,7 @@ func run() error {
 	mux, err := newMux(conn, readConn, cfg.LandingAPIToken, busStopsDeps{
 		Service:    busService,
 		MapsAPIKey: cfg.GoogleMapsAPIKey,
-	})
+	}, hospitalRunDeps{Secret: cfg.HospitalRunSecret, SkipTimeCheck: !cfg.HospitalRunTimeCheck})
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func runMigrations(conn *sql.DB) error {
 // bus carries the Bus Stop Finder's dependencies; a zero value (as the
 // route tests pass) gets a BusService with no LTA client, which is enough
 // for the routes to register and the page to render.
-func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps) (*http.ServeMux, error) {
+func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps, hospitalRun hospitalRunDeps) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	health := handler.NewHealthHandler(conn)
@@ -194,7 +194,11 @@ func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps) (*
 	libraryService := service.NewLibraryService(repository.NewLibraryRepository(conn, readConn))
 	libraryGame := handler.NewLibraryGameHandler(renderer, libraryService, Version)
 
-	hospitalService := service.NewHospitalService(repository.NewHospitalRepository(conn, readConn))
+	hospitalTickets, err := service.NewHospitalRunTickets(hospitalRun.Secret, hospitalRun.SkipTimeCheck)
+	if err != nil {
+		return nil, err
+	}
+	hospitalService := service.NewHospitalService(repository.NewHospitalRepository(conn, readConn), hospitalTickets)
 	hospitalShift := handler.NewHospitalShiftHandler(renderer, hospitalService, Version)
 
 	busRushService := service.NewBusRushService(repository.NewBusRushRepository(conn, readConn))
@@ -230,6 +234,7 @@ func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps) (*
 	mux.HandleFunc("GET /hospital-shift", hospitalShift.Index)
 	mux.HandleFunc("GET /hospital-shift/leaderboard", hospitalShift.Leaderboard)
 	mux.HandleFunc("POST /hospital-shift/score", hospitalShift.SubmitScore)
+	mux.HandleFunc("POST /hospital-shift/run", hospitalShift.StartRun)
 	// See docs/features/bus-rush.md's Routes/Handlers table.
 	mux.HandleFunc("GET /bus-rush", busRush.Index)
 	mux.HandleFunc("GET /bus-rush/leaderboard", busRush.Leaderboard)
@@ -286,6 +291,14 @@ func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps) (*
 // busStopsDeps is what newMux needs to mount the Bus Stop Finder
 // (docs/features/bus-stop-finder.md). Service nil means "build one with no
 // LTA client"; MapsAPIKey empty means list-only mode.
+// hospitalRunDeps configures Hospital Shift's run tickets (leaderboard
+// anti-cheat): the signing secret ("" = random per process) and whether
+// the minimum-run-time check is off (Playwright only).
+type hospitalRunDeps struct {
+	Secret        string
+	SkipTimeCheck bool
+}
+
 type busStopsDeps struct {
 	Service    *service.BusService
 	MapsAPIKey string
