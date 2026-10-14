@@ -1704,33 +1704,16 @@ function drawLoaderTop(ctx, x, y, w, l) {
   for (let tx = x + 6; tx < x + w - 6; tx += 8) ctx.fillRect(tx, y + l - 3, 4, 3); // teeth
 }
 
-/** A road roller from above: big steel drums front and back, a canopied seat between. */
-function drawRoller(ctx, v, x, y, w, l, t) {
-  const drum = l * 0.26;
-  const roll = (t * 3) % 1;
-  for (const dy of [y, y + l - drum]) {
-    const g = ctx.createLinearGradient(0, dy, 0, dy + drum);
-    g.addColorStop(0, '#6e767c');
-    g.addColorStop(0.5, '#cfd5d8');
-    g.addColorStop(1, '#6e767c');
-    fillRoundRect(ctx, g, x, dy, w, drum, 6);
-    ctx.fillStyle = 'rgba(40,44,48,0.35)';
-    for (let k = 0; k < 3; k++) ctx.fillRect(x + 2, dy + ((k / 3 + roll) % 1) * drum, w - 4, 1.5);
-  }
-  drawBody(ctx, MACHINE_YELLOW, x + 6, y + drum - 4, w - 12, l - drum * 2 + 8, 6);
-  fillRoundRect(ctx, shade(MACHINE_YELLOW, -0.3), x + 10, y + drum + 2, w - 20, 14, 3); // engine hood
-  fillRoundRect(ctx, '#2b2724', x + 12, y + l * 0.46, w - 24, l * 0.18, 4); // canopy roof
-  fillRoundRect(ctx, '#3a3734', x + 16, y + l * 0.49, w - 32, l * 0.12, 3);
-  drawChevrons(ctx, x + 4, y - 4, w - 8);
-}
-
-function drawExcavator(ctx, v, x, y, w, l) {
-  drawExcavatorTop(ctx, x, y, w, l);
-  drawChevrons(ctx, x + 10, y - 2, w - 20);
-}
-
+/** A wheel loader out clearing snow: its bucket heaped with it. */
 function drawLoader(ctx, v, x, y, w, l) {
   drawLoaderTop(ctx, x, y, w, l);
+  const bucket = Math.max(12, l * 0.15);
+  ctx.fillStyle = '#f5f8fc';
+  for (const [dx, r] of [[0.22, 6], [0.4, 7], [0.6, 7], [0.78, 6], [0.5, 5]]) {
+    ctx.beginPath();
+    ctx.arc(x + w * dx, y + l - bucket / 2 - 1, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   drawChevrons(ctx, x + 10, y - 2, w - 20);
 }
 
@@ -2011,8 +1994,6 @@ function drawVehicle(ctx, v, t) {
   else if (v.kind === 'heavyhaul') drawHeavyHaul(ctx, v, x, v.y, v.width, v.length, t);
   else if (v.kind === 'carcarrier') drawCarCarrier(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'livestock') drawLivestockTruck(ctx, v, x, v.y, v.width, v.length);
-  else if (v.kind === 'roller') drawRoller(ctx, v, x, v.y, v.width, v.length, t);
-  else if (v.kind === 'excavator') drawExcavator(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'loader') drawLoader(ctx, v, x, v.y, v.width, v.length);
   else if (v.kind === 'snowplow') drawSnowplow(ctx, v, x, v.y, v.width, v.length, t);
   else drawCar(ctx, v, x, v.y, v.width, v.length);
@@ -2771,16 +2752,6 @@ function drawZone(ctx, z, t) {
   const my = z.y + z.length * 0.47;
   drawShadow(ctx, tx, my, 62, 128, 6);
   drawMixer(ctx, {}, tx, my, 62, 128, t);
-  // Earthmoving at the head of the dig: an excavator or a wheel loader,
-  // and a road roller flattening fresh asphalt past the sand pile.
-  const head = z.y + 80;
-  drawShadow(ctx, tx, head, 62, 116, 6);
-  if (z.seed % 2) drawExcavatorTop(ctx, tx, head, 62, 116);
-  else drawLoaderTop(ctx, tx, head + 6, 62, 104);
-  const rx = left + (LANE_WIDTH - 60) / 2;
-  const ry = z.y + z.length * 0.76;
-  drawShadow(ctx, rx, ry, 60, 92, 6);
-  drawRoller(ctx, {}, rx, ry, 60, 92, t);
   // Blinking amber lamp on the first barrier.
   if (Math.floor(t * 3) % 2) {
     const g = ctx.createRadialGradient(inner + 4, bottom - 72, 1, inner + 4, bottom - 72, 18);

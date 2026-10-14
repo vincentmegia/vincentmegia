@@ -319,23 +319,25 @@ describe('traffic', () => {
     assert.equal(late.size, VEHICLES.filter((v) => !v.construction && !v.snow).length);
   });
 
-  test('construction machines only turn up while a construction zone is on the road', () => {
+  test('dump trucks only turn up while a construction zone is on the road; no rollers or excavators', () => {
     const rng = seeded(5);
-    const machines = ['dump', 'roller', 'excavator', 'loader'];
-    assert.deepEqual(VEHICLES.filter((v) => v.construction).map((v) => v.kind).sort(), [...machines].sort());
+    assert.deepEqual(VEHICLES.filter((v) => v.construction).map((v) => v.kind), ['dump']);
+    assert.ok(!VEHICLES.some((v) => v.kind === 'roller' || v.kind === 'excavator'));
     const plain = Array.from({ length: 2000 }, () => pickVehicle(rng, 5000).kind);
-    for (const kind of machines) assert.ok(!plain.includes(kind), kind);
-    const zoned = Array.from({ length: 4000 }, () => pickVehicle(rng, 5000, { construction: true }).kind);
-    for (const kind of machines) assert.ok(zoned.includes(kind), kind);
+    assert.ok(!plain.includes('dump'));
+    const zoned = Array.from({ length: 2000 }, () => pickVehicle(rng, 5000, { construction: true }).kind);
+    assert.ok(zoned.includes('dump'));
+    assert.ok(!zoned.includes('loader'), 'loaders are for the snow, not roadworks');
   });
 
-  test('snowplows only turn up while it is SNOWED', () => {
+  test('snowplows and wheel loaders only turn up while it is SNOWED', () => {
     const rng = seeded(9);
-    assert.deepEqual(VEHICLES.filter((v) => v.snow).map((v) => v.kind), ['snowplow']);
+    assert.deepEqual(VEHICLES.filter((v) => v.snow).map((v) => v.kind).sort(), ['loader', 'snowplow']);
     const clear = Array.from({ length: 2000 }, () => pickVehicle(rng, 5000).kind);
-    assert.ok(!clear.includes('snowplow'));
+    assert.ok(!clear.includes('snowplow') && !clear.includes('loader'));
     const snowy = Array.from({ length: 2000 }, () => pickVehicle(rng, 700, { snow: true }).kind);
     assert.ok(snowy.filter((k) => k === 'snowplow').length / snowy.length > 0.15, 'plenty of plows in the snow');
+    assert.ok(snowy.includes('loader'));
   });
 
   test('oncoming public buses kill, the school bus costs one life, and buses never crowd out trucks', () => {
@@ -362,7 +364,7 @@ describe('traffic', () => {
 
   test('trucks, lorries, public buses and cement mixers are lethal; cars, vans, school buses and tankers are not', () => {
     const lethal = VEHICLES.filter((v) => v.lethal).map((v) => v.kind).sort();
-    assert.deepEqual(lethal, ['bendy', 'carcarrier', 'citybus', 'coach', 'container', 'crane', 'doubledecker', 'dump', 'excavator', 'fire', 'flatbed', 'garbage', 'heavyhaul', 'ladder', 'livestock', 'loader', 'lorry', 'mixer', 'reefer', 'roller', 'semi', 'snowplow', 'tow', 'truck']);
+    assert.deepEqual(lethal, ['bendy', 'carcarrier', 'citybus', 'coach', 'container', 'crane', 'doubledecker', 'dump', 'fire', 'flatbed', 'garbage', 'heavyhaul', 'ladder', 'livestock', 'loader', 'lorry', 'mixer', 'reefer', 'semi', 'snowplow', 'tow', 'truck']);
     const tanker = VEHICLES.find((v) => v.kind === 'fuel');
     assert.ok(tanker.fuel && !tanker.lethal);
   });
@@ -807,7 +809,7 @@ describe('new missions and achievements', () => {
 
 describe('container, flatbed and refrigerated trucks, and lorries', () => {
   test('the new trucks kill on contact and fit the row spacing', () => {
-    for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'coach', 'livestock', 'carcarrier', 'roller', 'excavator', 'loader', 'snowplow']) {
+    for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'coach', 'livestock', 'carcarrier', 'loader', 'snowplow']) {
       const v = VEHICLES.find((x) => x.kind === kind);
       assert.equal(livesAfterHit(5, v, 0), 0, kind);
       assert.equal(livesAfterHit(5, v, 1), 0, `${kind} ignores grace`);

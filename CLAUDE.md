@@ -71,9 +71,8 @@ touching that area rather than expecting this section to carry it:
   trucks/semis that stun you then explode (a WASTED cutscene to Alcatraz
   if you don't get clear), cement mixers you drift into (mouse drag) to tip onto the
   police (or get flattened by), ramp trucks that launch you onto an MRT
-  viaduct with trains for 50 s, storms with puddles, a SNOWED event (icy roads, lethal snowplows), Sentosa sand drifts,
-  construction zones with dump trucks, mixers, road rollers, excavators and
-  wheel loaders, potholes, jaywalkers (not on the
+  viaduct with trains for 50 s, storms with puddles, a SNOWED event (icy roads, lethal snowplows and wheel loaders), Sentosa sand drifts,
+  construction zones with dump trucks and mixers, potholes, jaywalkers (not on the
   Expressway), a dark Changi, power-ups (Nitro/Shield/Magnet/EMP), a
   SWAT van at 4★ and a spike-dropping helicopter at 5★, missions and
   achievements, dodge oncoming traffic, collect fares, buy

@@ -521,6 +521,9 @@ test('an MRT train hitting the bus on the track ends the run', async ({ page }) 
 
 // Drags the mouse across the canvas by `dx` canvas px from the bus's lane.
 async function dragOnCanvas(page, dx) {
+	// Centre the canvas first: starting a run can leave its top scrolled
+	// above the viewport, putting the drag point under the sticky header.
+	await page.evaluate(() => document.getElementById('bus-rush-canvas').scrollIntoView({ block: 'center' }));
 	const box = await page.locator('#bus-rush-canvas').boundingBox();
 	const k = box.width / 480;
 	const x = box.x + 150 * k;
@@ -654,7 +657,7 @@ test('the Daily Challenge drives the stock bus and submits to its own leaderboar
 	}
 });
 
-for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'lorry', 'citybus', 'doubledecker', 'bendy', 'coach', 'carcarrier', 'livestock', 'roller', 'excavator', 'loader', 'snowplow']) {
+for (const kind of ['container', 'flatbed', 'reefer', 'fire', 'ladder', 'crane', 'heavyhaul', 'lorry', 'citybus', 'doubledecker', 'bendy', 'coach', 'carcarrier', 'livestock', 'loader', 'snowplow']) {
 	test(`hitting a ${kind} is instant game over, whatever lives are left`, async ({ page }) => {
 		await startQuietRun(page);
 		await page.evaluate((k) => window.__busRushTestHooks.spawn(k), kind);

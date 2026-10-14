@@ -211,13 +211,12 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   lost); jaywalkers (from 100 m; one life; they dodge oncoming traffic;
   **never on the Expressway**, `pedestriansAllowed`); **construction
   zones** (from 300 m) close an edge lane for `CONSTRUCTION_LENGTH` px
-  with cones, barriers, a sand pile, a parked dump truck, a parked
-  cement mixer, an excavator or wheel loader at the head of the dig and a
-  road roller past the sand pile — touching
+  with cones, barriers, a sand pile, a parked dump truck and a parked
+  cement mixer — touching
   them costs a life and shoves the bus a lane inward, police that touch
   them wreck, and while one is on the road its lane gets no traffic and
-  lethal **dump trucks, road rollers, excavators and wheel loaders** join
-  the traffic (`construction` vehicles);
+  lethal **dump trucks** join the traffic (`construction` vehicles; there
+  are deliberately no road rollers or excavators on the road);
   **night in Changi** — the last district is dark apart from headlights,
   police lights and street-lamp pools.
 * **Weather**: from `STORM_MIN_DISTANCE` (400 m) a storm can roll in on
@@ -234,9 +233,10 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   road and snow banks up along both kerbs; icy roads make accelerating
   and braking work at `ICY_GRIP` (45%, worse than wet — `weatherGrip`);
   and lethal **snowplows** (orange, a wide angled blade throwing snow, a
-  salt spreader at the rear, amber beacons) join the traffic — they're
-  `snow` vehicles, only in the pool while it's SNOWED, and weighted heavily
-  (`weight` 2.5) so the event is unmistakable. The Snowed In achievement
+  salt spreader at the rear, amber beacons) and **wheel loaders** (bucket
+  heaped with snow) join the traffic — both are `snow` vehicles, only in
+  the pool while it's SNOWED and gone in normal weather; plows are
+  weighted heavily (`weight` 2.5) so the event is unmistakable. The Snowed In achievement
   pays for driving through one.
 * **Daily Challenge** (start screen button): today's road (UTC date,
   `dailyDate`) — every traffic row, zone, ramp, storm and hazard comes from
@@ -582,9 +582,9 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       fire, ladder, crane, heavy haul) are lethal and fit the row
       spacing; lorries, coaches and public buses are lethal, the school
       bus costs one life; coaches, car carriers, animal transporters,
-      rollers, excavators, loaders and snowplows are lethal and fit the
-      row spacing; construction machines only with a zone, snowplows only
-      while SNOWED; SNOWED's minimum distance, no stacking and icy grip;
+      wheel loaders and snowplows are lethal and fit the row spacing; dump
+      trucks only with a zone (no rollers or excavators at all), snowplows
+      and wheel loaders only while SNOWED; SNOWED's minimum distance, no stacking and icy grip;
       lowboy odds and loads (semis only); flatbed load
       odds; only coil flatbeds past the minimum distance run away; a
       runaway swerves one lane toward the bus, never off the road or into a
@@ -627,8 +627,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       Daily Challenge drives the stock bus, submits to the daily board, the
       tabs switch boards, and Drive Again stays daily; container, flatbed,
       refrigerated, fire, ladder, crane, heavy haul, car carrier and animal
-      transporter trucks, lorries, coaches, road rollers, excavators, wheel
-      loaders, snowplows and city, double-decker and bendy buses are
+      transporter trucks, lorries, coaches, wheel loaders, snowplows and city, double-decker and bendy buses are
       instant game over; a lowboy semi is too; SNOWED counts and unlocks
       Snowed In; a runaway coil truck can be
       dodged by steering clear, and staying in its path is game over.

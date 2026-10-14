@@ -54,9 +54,9 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * out the trucks. Public buses (city, double-decker, bendy) are lethal; the
  * school bus only costs a life. A `fuel` tanker isn't lethal on contact: it
  * stuns the bus and then explodes (FUEL_STUN_SECONDS, FUEL_FUSE_SECONDS). A
- * `construction` vehicle (dump truck, road roller, excavator, wheel
- * loader) only turns up while a construction zone is on the road, and a
- * `snow` one (the snowplow) only while it's SNOWED — see pickVehicle.
+ * `construction` vehicle (the dump truck) only turns up while a
+ * construction zone is on the road, and a `snow` one (snowplow, wheel
+ * loader) only while it's SNOWED — see pickVehicle.
  * `lowboyChance` is the chance a semi hauls an excavator or wheel loader on
  * a lowboy trailer instead of its box (lowboyLoad). `hazmatChance` is the
  * chance a box truck or semi carries gasoline (isHazmat): contact then
@@ -91,9 +91,7 @@ export const VEHICLES = [
   { kind: 'coach', label: 'coach', length: 128, width: 58, minDistance: 500, bus: true, lethal: true, weight: 0.4 },
   { kind: 'livestock', label: 'animal transporter', length: 146, width: 62, minDistance: 700, lethal: true, weight: 0.5 },
   { kind: 'carcarrier', label: 'car carrier', length: 170, width: 64, minDistance: 1200, lethal: true, weight: 0.5 },
-  { kind: 'roller', label: 'road roller', length: 92, width: 60, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 0.8 },
-  { kind: 'excavator', label: 'excavator', length: 116, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 0.8 },
-  { kind: 'loader', label: 'wheel loader', length: 104, width: 62, minDistance: CONSTRUCTION_MIN_DISTANCE_M, lethal: true, construction: true, weight: 0.8 },
+  { kind: 'loader', label: 'wheel loader', length: 104, width: 62, minDistance: 0, lethal: true, snow: true, weight: 0.8 },
   { kind: 'snowplow', label: 'snowplow', length: 112, width: 64, minDistance: 0, lethal: true, snow: true, weight: 2.5 },
 ];
 
@@ -479,9 +477,9 @@ export function openLanes(blocked, closed = []) {
 
 /**
  * Picks a vehicle kind by `weight`, unlocking bigger ones as distance grows.
- * Construction machines (`construction`) are only in the pool while a
- * construction zone is on the road, snowplows (`snow`) only while it's
- * SNOWED.
+ * Dump trucks (`construction`) are only in the pool while a construction
+ * zone is on the road, snowplows and wheel loaders (`snow`) only while
+ * it's SNOWED.
  */
 export function pickVehicle(rng, distanceMeters, { construction = false, snow = false } = {}) {
   const pool = VEHICLES.filter((v) => distanceMeters >= v.minDistance
@@ -709,7 +707,7 @@ export function stormStarts(rng, distanceMeters, raining) {
 /**
  * SNOWED: from SNOW_MIN_DISTANCE, with SNOW_CHANCE per row while no other
  * weather is on, snow falls for SNOW_SECONDS. Roads ice over (ICY_GRIP,
- * worse than WET_GRIP) and snowplows join the traffic (pickVehicle's
+ * worse than WET_GRIP) and snowplows and wheel loaders join the traffic (pickVehicle's
  * `snow`). Like a storm, steering is untouched.
  */
 export const SNOW_MIN_DISTANCE = 600;
