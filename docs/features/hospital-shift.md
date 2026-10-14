@@ -379,9 +379,17 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     hair laps over it, a warm pink bang shadow on the oshiroi instead of
     grey, and a finer obi brocade with a soft sheen. Her lips sit lower
     than other mouths ("make the mouth lower": `MAIKO_MOUTH_DROP`). She's always named Hiko Maiko ("Hiko M." on
-    her chip; "i want it to be hiko maiko"). New head pieces
-    (`hardhat`, `chefHat`, `catEars`, `beret`, `sunhat`, `flowerCrown`,
-    `veil`, and a `beard`), each design with its own name pool.
+    her chip; "i want it to be hiko maiko").
+  * *Ten more again* ("now i want to add EVEN more characters"): a cyclist
+    in a vented helmet, a pageant queen in a tiara, a pirate cosplayer
+    with a polka-dot bandana and an eyepatch, a red-haired rock star, a
+    wizard cosplayer in a starry pointed hat, a yoga teacher with a
+    sweatband, a mail carrier with a satchel, a ramen chef in a hachimaki,
+    a little ballerina and a gardening grandma; 64 designs in all.
+  * New head pieces across these batches: `hardhat`, `chefHat`,
+    `catEars`, `beret`, `sunhat`, `flowerCrown`, `veil`, a `beard`,
+    `bikeHelmet`, `tiara`, `bandana`, `eyepatch`, `witchHat`,
+    `hachimaki` and `sweatband`; each design has its own name pool.
   * *Staff:* a **janitor** wanders and every ~45 s
     (`JANITOR_MOP_EVERY_SECONDS`) mops: a puddle with a yellow sign that
     slows you to 60% while you cross it for ~22 s; a **receptionist** sits
@@ -695,7 +703,7 @@ answers with the daily board (the Bus Rush leaderboard's pattern).
 | GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. |
 | GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
 | POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
-| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed, single-use run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (20/min). |
+| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed, single-use run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min — tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test). |
 
 ---
 

@@ -62,6 +62,16 @@ export const PATIENT_PROFILES = {
   momijiLady: { names: ['Kaede Akiyama', 'Momiji Tachibana', 'Ayame Saionji', 'Shizuka Hino'], ages: [30, 50] },
   goldfishKid: { names: ['Kintaro Yoshino', 'Haruki Mochizuki', 'Sota Kaneko', 'Tomo Ichinose'], ages: [5, 9] },
   kikkoGrandpa: { names: ['Kamejiro Ueno', 'Tsurukichi Hata', 'Bunzo Okada', 'Heihachi Mishima'], ages: [72, 90] },
+  cyclist: { names: ['Kenji Shimano', 'Lukas Vogel', 'Takumi Kawaguchi', 'Ana Rocha'], ages: [24, 45] },
+  pageantQueen: { names: ['Valentina Cruz', 'Reika Hoshizora', 'Celeste Moreau', 'Mina Takarada'], ages: [21, 28] },
+  pirate: { names: ['Kaizoku Taro', 'Jack Morrow', 'Umi Sasaki', 'Anne Bonnet'], ages: [20, 35] },
+  rockStar: { names: ['Ruby Kurenai', 'Axel Storm', 'Yoshiki Hayama', 'Raven Black'], ages: [22, 38] },
+  wizard: { names: ['Merlina Tsukino', 'Elara Moonwell', 'Mahou Shiori', 'Luna Starling'], ages: [15, 19] },
+  yogaTeacher: { names: ['Ananya Rao', 'Shanti Mendes', 'Keiko Asahina', 'Zara Okafor'], ages: [26, 44] },
+  mailCarrier: { names: ['Kofi Boateng', 'Yubin Takeda', 'Pat Hollis', 'Norio Sugawara'], ages: [28, 55] },
+  ramenChef: { names: ['Taishō Menma', 'Hiroki Tonkotsu', 'Goemon Ishida', 'Shoyu Kanemoto'], ages: [35, 62] },
+  ballerina: { names: ['Clara Shirotori', 'Odette Minami', 'Yume Kanzaki', 'Aurora Ishii'], ages: [5, 9] },
+  gardenGrandma: { names: ['Kiku Nagano', 'Rose Whitfield', 'Botan Ueshima', 'Sumire Hattori'], ages: [68, 86] },
   // The showpiece maiko always has the one name (the user: "i want it to
   // be hiko maiko").
   maiko: { names: ['Hiko Maiko'], ages: [16, 20] },

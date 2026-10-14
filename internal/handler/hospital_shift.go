@@ -217,10 +217,12 @@ const (
 	hospitalScoreSubmitWindow = time.Minute
 )
 
-// hospitalRunStartLimit/hospitalRunStartWindow bound POST /hospital-shift/run:
-// a page starts one run per page load or Daily, so this is generous for
-// real play while stopping a script from minting tickets in bulk.
+// hospitalRunStartLimit/hospitalRunStartWindow bound POST /hospital-shift/run.
+// Generous on purpose: a ticket is a cheap HMAC (no database), the real
+// protection is the time check and single use, and the Playwright suite
+// starts a run for nearly every test from one IP (at 20/min its 429s
+// showed up as console errors). It still stops bulk minting.
 const (
-	hospitalRunStartLimit  = 20
+	hospitalRunStartLimit  = 120
 	hospitalRunStartWindow = time.Minute
 )

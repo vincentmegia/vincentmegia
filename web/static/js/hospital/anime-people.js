@@ -473,6 +473,83 @@ PATIENT_DESIGNS.push({
   extras: { maikoHair: true, beni: true, kinchaku: '#c8283a' },
 });
 
+// Even more (the user: "now i want to add EVEN more characters"): a
+// cyclist, a pageant queen, a pirate cosplayer, a rock star, a wizard
+// cosplayer, a yoga teacher, a mail carrier, a ramen chef, a little
+// ballerina and a gardening grandma.
+PATIENT_DESIGNS.push(
+  {
+    key: 'cyclist', label: 'Cyclist', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#3a2218', back: 'short', fringe: 'side' },
+    eyes: { color: '#3a2a1a', style: 'round' }, brows: 'thick', mouth: 'open',
+    outfit: { kind: 'track', top: '#ffd166', stripe: '#2a2a3a', bottom: '#2a2a3a', shoes: '#ff6a4a' },
+    extras: { bikeHelmet: '#3fb58f', sunglasses: true },
+  },
+  {
+    key: 'pageantQueen', label: 'Pageant queen', age: 'adult', skin: SKIN.warm,
+    hair: { color: '#6a3a1a', back: 'long', fringe: 'side' },
+    eyes: { color: '#5a3a2a', style: 'big', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'dress', top: '#e8558f', skirt: '#e8558f', trim: '#ffd1e3', legs: '#f2d6c2', shoes: '#e8c25a' },
+    extras: { tiara: true, earrings: GOLD, pearls: true },
+  },
+  {
+    key: 'pirate', label: 'Pirate cosplayer', age: 'adult', skin: SKIN.light,
+    hair: { color: '#2a1810', back: 'medium', fringe: 'messy' },
+    eyes: { color: '#3a2a1a', style: 'sharp' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#7a2a2a', inner: '#f2ead8', bottom: '#2a2a3a', shoes: '#3a2418' },
+    extras: { bandana: '#d23a4a', eyepatch: true, earrings: GOLD },
+  },
+  {
+    key: 'rockStar', label: 'Rock star', age: 'adult', skin: SKIN.porcelain,
+    hair: { color: '#c0304a', back: 'medium', fringe: 'messy' },
+    eyes: { color: '#2a2a3a', style: 'sharp', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'jacket', top: '#1e1e24', inner: '#e8e8ee', bottom: '#2a2a33', shoes: '#14141a' },
+    extras: { earrings: '#d8dce4', sunglasses: true },
+  },
+  {
+    key: 'wizard', label: 'Wizard cosplayer', age: 'teen', skin: SKIN.light,
+    hair: { color: '#d9d4c6', back: 'long', fringe: 'blunt' },
+    eyes: { color: '#5a3a8a', style: 'big', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'dress', top: '#3a2a6a', skirt: '#3a2a6a', trim: GOLD, legs: '#2a2238', shoes: '#5a3a22' },
+    extras: { witchHat: '#3a2a6a' },
+  },
+  {
+    key: 'yogaTeacher', label: 'Yoga teacher', age: 'adult', skin: SKIN.brown,
+    hair: { color: '#1e1412', back: 'ponytail', fringe: 'parted' },
+    eyes: { color: '#3a2a1a', style: 'calm', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'track', top: '#bfeedd', stripe: '#ffffff', bottom: '#8f7ae0', shoes: '#f2f2f2' },
+    extras: { sweatband: '#ff8fb8', earrings: GOLD },
+  },
+  {
+    key: 'mailCarrier', label: 'Mail carrier', age: 'adult', skin: SKIN.deep,
+    hair: { color: '#141012', back: 'short', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'round' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#d23a4a', inner: '#ffffff', bottom: '#2e3a5a', shoes: '#14181f' },
+    extras: { cap: '#d23a4a', handbag: '#8a5a32' },
+  },
+  {
+    key: 'ramenChef', label: 'Ramen chef', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#1e1418', back: 'short', fringe: 'textured' },
+    eyes: { color: '#2a1a12', style: 'sharp' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#2a2a3a', apron: '#3a4a6e', skirt: '#2a2a3a', legs: '#2a2a3a', shoes: '#14141a' },
+    extras: { hachimaki: '#ffffff' },
+  },
+  {
+    key: 'ballerina', label: 'Kid', age: 'kid', skin: SKIN.porcelain,
+    hair: { color: '#c9a26a', back: 'bun', fringe: 'parted' },
+    eyes: { color: '#4a6a8a', style: 'big', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'dress', top: '#ffd1e3', skirt: '#ffe6f0', trim: '#ff8fb8', legs: '#ffe6f0', shoes: '#ff8fb8' },
+    extras: { tiara: true },
+  },
+  {
+    key: 'gardenGrandma', label: 'Grandma', age: 'elder', skin: SKIN.warm,
+    hair: { color: '#d8d6dc', back: 'bob', fringe: 'parted' },
+    eyes: { color: '#4a3a2e', style: 'smile' }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#f2c94c', apron: '#6a9a5a', skirt: '#8a6a4a', legs: '#c9b6a4', shoes: '#5a4a3a' },
+    extras: { sunhat: '#e8c48e', flowerCrown: '#ffffff' },
+  },
+);
+
 export const PATIENT_DESIGN_KEYS = PATIENT_DESIGNS.map((d) => d.key);
 
 export function findPatientDesign(key) {
@@ -2776,6 +2853,72 @@ function drawMaikoHair(ctx, d) {
 
 function drawHeadExtras(ctx, d) {
   const x = d.extras ?? {};
+  if (x.eyepatch) {
+    // A black patch over the left eye, its strap across the forehead.
+    ctx.strokeStyle = '#1e1a22';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-11, -4.5);
+    ctx.lineTo(11, -7.5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(-4.6, 0.8, 3.6, 3.1, 0, 0, Math.PI * 2);
+    fillPath(ctx, '#1e1a22', 0.3);
+  }
+  if (x.sweatband) {
+    // A terry sweatband across the forehead.
+    rr(ctx, -11.4, -9.8, 22.8, 3, 1.4, x.sweatband, 0.4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.3;
+    for (let px = -10; px < 11; px += 1.6) {
+      ctx.beginPath();
+      ctx.moveTo(px, -9.4);
+      ctx.lineTo(px, -7.2);
+      ctx.stroke();
+    }
+  }
+  if (x.hachimaki) {
+    // A twisted hachimaki tied round the head, its ends flying at the side.
+    rr(ctx, -11.8, -10.6, 23.6, 3.2, 1.4, x.hachimaki, 0.45);
+    ctx.strokeStyle = 'rgba(40,30,50,0.3)';
+    ctx.lineWidth = 0.35;
+    for (let px = -10.5; px < 11; px += 2.2) {
+      ctx.beginPath();
+      ctx.moveTo(px, -10.4);
+      ctx.lineTo(px + 1.4, -7.6);
+      ctx.stroke();
+    }
+    for (const [ex, ey, rot] of [[13.6, -8.6, 0.5], [13.8, -6, 0.9]]) {
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.rotate(rot);
+      rr(ctx, -1, -1, 5.5, 2, 0.8, x.hachimaki, 0.35);
+      ctx.restore();
+    }
+  }
+  if (x.bandana) {
+    // A pirate's bandana: a cap of cloth with white polka dots, knotted
+    // at the side with two tails.
+    ctx.beginPath();
+    ctx.moveTo(-11.6, -5.5);
+    ctx.bezierCurveTo(-12, -18.5, 12, -18.5, 11.6, -5.5);
+    ctx.quadraticCurveTo(0, -9.5, -11.6, -5.5);
+    ctx.closePath();
+    fillPath(ctx, x.bandana, 0.5);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (const [px, py] of [[-6, -12], [0, -14.5], [6, -12], [-3, -9], [3.5, -9.5], [9, -8]]) {
+      ctx.beginPath();
+      ctx.arc(px, py, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const rot of [0.3, 0.9]) {
+      ctx.save();
+      ctx.translate(11.6, -6.5);
+      ctx.rotate(rot);
+      rr(ctx, 0, -1.2, 6, 2.4, 1, x.bandana, 0.35);
+      ctx.restore();
+    }
+  }
   if (x.sunglasses) {
     // Pushed up on top of her head.
     for (const dir of [-1, 1]) {
@@ -2913,6 +3056,75 @@ function drawHeadExtras(ctx, d) {
     }
     ctx.restore();
     for (const px of [-5, 0, 5]) blossom(ctx, px, -13.5, 1.5, '#ffffff', GOLD);
+  }
+  if (x.bikeHelmet) {
+    // A vented cycling helmet with a short visor and a chin strap.
+    ctx.beginPath();
+    ctx.moveTo(-12.2, -5);
+    ctx.bezierCurveTo(-13, -21, 13, -21, 12.2, -5);
+    ctx.quadraticCurveTo(0, -8.2, -12.2, -5);
+    ctx.closePath();
+    fillPath(ctx, x.bikeHelmet, 0.5);
+    ctx.fillStyle = 'rgba(30,26,34,0.75)';
+    for (const [vx, vy, rot] of [[-5.5, -13.5, -0.5], [0, -15.5, 0], [5.5, -13.5, 0.5]]) {
+      ctx.beginPath();
+      ctx.ellipse(vx, vy, 1.1, 2.6, rot, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    rr(ctx, -10, -7.4, 20, 2.2, 1, shade(x.bikeHelmet, -0.25), 0.35);
+    ctx.strokeStyle = '#2a2a33';
+    ctx.lineWidth = 0.6;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 11.5, -5);
+      ctx.quadraticCurveTo(dir * 10.5, 6, dir * 3, 11.5);
+      ctx.stroke();
+    }
+  }
+  if (x.tiara) {
+    // A little jeweled tiara: gold points with a pink gem in the middle.
+    ctx.beginPath();
+    ctx.moveTo(-7, -12.2);
+    for (const [px, py] of [[-5.5, -15.5], [-3.5, -13.2], [0, -18], [3.5, -13.2], [5.5, -15.5], [7, -12.2]]) ctx.lineTo(px, py);
+    ctx.quadraticCurveTo(0, -11.2, -7, -12.2);
+    ctx.closePath();
+    fillPath(ctx, GOLD, 0.4);
+    ctx.beginPath();
+    ctx.arc(0, -14.2, 1.3, 0, Math.PI * 2);
+    fillPath(ctx, '#ff6aa8', 0.3);
+    ctx.fillStyle = '#ffffff';
+    for (const px of [-5.5, 5.5]) {
+      ctx.beginPath();
+      ctx.arc(px, -15.3, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (x.witchHat) {
+    // A tall pointed wizard hat with a gold band and stars, its tip bent.
+    ctx.beginPath();
+    ctx.ellipse(0, -9.5, 16, 3.8, 0, 0, Math.PI * 2);
+    fillPath(ctx, x.witchHat, 0.5);
+    ctx.beginPath();
+    ctx.moveTo(-9, -10.5);
+    ctx.quadraticCurveTo(-4, -22, 2, -30);
+    ctx.quadraticCurveTo(7, -31, 10, -27.5);
+    ctx.quadraticCurveTo(5, -26, 4, -22);
+    ctx.quadraticCurveTo(7, -16, 9, -10.5);
+    ctx.closePath();
+    fillPath(ctx, x.witchHat, 0.5);
+    rr(ctx, -8.6, -13.6, 17.2, 2.6, 0.8, GOLD, 0.35);
+    ctx.fillStyle = GOLD;
+    for (const [sx, sy, r] of [[-1.5, -19, 1.4], [3, -24, 1], [-4, -16.5, 0.8]]) {
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const rad = i % 2 ? r * 0.45 : r;
+        if (i === 0) ctx.moveTo(sx + Math.cos(a) * rad, sy + Math.sin(a) * rad);
+        else ctx.lineTo(sx + Math.cos(a) * rad, sy + Math.sin(a) * rad);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
   }
   if (x.beret) {
     // A floppy painter's beret tipped to one side, with a little stalk.
