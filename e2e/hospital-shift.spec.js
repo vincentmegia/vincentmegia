@@ -218,6 +218,9 @@ test.describe('triage', () => {
 
 test.describe('treatments', () => {
 	test('vitals, bandage and meds: a deep cut is treated and discharged', async ({ page }) => {
+		// The longest flow in the suite (a trip upstairs and a traced
+		// bandage): ~20 s alone, so allow headroom under parallel workers.
+		test.setTimeout(60_000);
 		await seedSave(page);
 		await page.goto('/hospital-shift');
 		await startShift(page);
@@ -301,6 +304,7 @@ test.describe('treatments', () => {
 	});
 
 	test('surgery: wheel the gurney to the OR and pass three stages', async ({ page }) => {
+		test.setTimeout(60_000); // long flow, like the deep cut above
 		await seedSave(page);
 		await page.goto('/hospital-shift');
 		await startShift(page);
@@ -517,8 +521,12 @@ test.describe('helping staff', () => {
 			await passSkillCheck(page);
 			await expect.poll(async () => (await shiftState(page)).beds[bed]?.step).toBe(step + 1);
 		}
-		await clickStaff(page, 'orderly');
-		await expect(page.locator('#hospital-toast')).toContainText('Orderly is on his way');
+		// He walks his rounds, so on a busy machine he can step away between
+		// reading his position and the click: retry until he answers.
+		await expect(async () => {
+			await clickStaff(page, 'orderly');
+			await expect(page.locator('#hospital-toast')).toContainText('Orderly is on his way', { timeout: 500 });
+		}).toPass({ timeout: 10_000 });
 		await expect.poll(async () => (await shiftState(page)).orPatient?.patientId, { timeout: 20000 }).toBe(id);
 		await hooks(page, 'giveSurgeryKit', 'mesh');
 		await walkTo(page, 'operating-room');
@@ -838,6 +846,54 @@ test.describe('night shifts and the flashlight', () => {
 		await expect(page.locator('#hospital-flashlight-button')).toBeHidden();
 		await page.keyboard.press('f');
 		expect((await shiftState(page)).flashlight.on).toBe(false);
+	});
+});
+
+test.describe('more characters', () => {
+	test('Security can escort Karen out: no mistake, no tip', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'forceKarenShiftNow');
+		await walkTo(page, 'triage-desk');
+		await waitForOverlay(page, 'karen');
+		const buttons = await hooks(page, 'getKarenButtonRects');
+		await clickCanvasPoint(page, { x: buttons.security.x + 20, y: buttons.security.y + 20 });
+		const s = await shiftState(page);
+		expect(s.karen.outcome).toBe('security');
+		expect(s.mistakeCount).toBe(0);
+		expect(s.bonusGard).toBe(0);
+		await expect(page.locator('#hospital-toast')).toContainText('Security');
+	});
+
+	test('the lost child: walk them to the chairs for their mom\'s thanks', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'bringLostChildNow');
+		const slot = (await hooks(page, 'getTriageSlots')).find((x) => x.kind === 'lost-child');
+		expect(slot).toBeTruthy();
+		await clickCanvasPoint(page, { x: slot.x, y: slot.y - 20 });
+		await waitUntilArrived(page);
+		await waitForOverlay(page, 'lost-child');
+		const button = await hooks(page, 'getLostChildButtonRect');
+		await clickCanvasPoint(page, { x: button.x + 30, y: button.y + 20 });
+		const s = await shiftState(page);
+		expect(s.lostChild).toEqual({ waiting: false, helped: true });
+		expect(s.bonusGard).toBe(25);
+		expect((await hooks(page, 'getTriageSlots')).some((x) => x.kind === 'lost-child')).toBe(false);
+	});
+
+	test('petting the hospital cat restores Sanity, then it needs a break', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'spawnCatNow');
+		await hooks(page, 'setSanity', 50);
+		const cat = await hooks(page, 'getCat');
+		await clickCanvasPoint(page, { x: cat.x, y: cat.y - 10 });
+		const first = (await shiftState(page)).sanity;
+		expect(first).toBeGreaterThan(54);
+		await clickCanvasPoint(page, { x: cat.x, y: cat.y - 10 });
+		expect((await shiftState(page)).sanity).toBeLessThan(first + 1);
+		await expect(page.locator('#hospital-toast')).toContainText('grooming');
 	});
 });
 

@@ -45,6 +45,9 @@ import {
   hungerThirstCollapse,
   buyVendingItem,
   toggleFlashlight,
+  lostChildArrives,
+  helpLostChild,
+  petCat,
   pickUpBattery,
   buyBattery,
   cafeteriaMeal,
@@ -63,6 +66,10 @@ import {
   MEL_GIFT_GARD,
   HUNGER_DRAIN_PER_SECOND,
   FLASHLIGHT_DRAIN_PER_SECOND,
+  LOST_CHILD_GARD,
+  LOST_CHILD_MOOD,
+  CAT_PET_SANITY,
+  CELEBRITY_DISCHARGE_MULTIPLIER,
   FLASHLIGHT_MAX_SPARES,
   BATTERY_PRICE,
   isNightShift,
@@ -527,6 +534,14 @@ describe('Karen', () => {
     assert.equal(bad.wardMood, 100 - KAREN_MOOD_PENALTY);
   });
 
+  test('calling Security ends it with no mistake and no tip', () => {
+    const s = resolveKarenEvent(startKarenEvent(playing(12)), 'security');
+    assert.equal(s.karen.outcome, 'security');
+    assert.equal(s.mistakeCount, 0);
+    assert.equal(s.bonusGard, 0);
+    assert.equal(s.wardMood, 100);
+  });
+
   test('ignoring her lets her cut in', () => {
     const s = tick(startKarenEvent(playing(12)), KAREN_EVENT_TIMER_SECONDS + 1);
     assert.equal(s.karen.outcome, 'letCut');
@@ -678,6 +693,39 @@ describe('night shifts and the flashlight', () => {
     assert.equal(bought.bonusGard, -BATTERY_PRICE);
     const dead = playing(5, { flashlight: { on: false, battery: 0, spares: 1 } });
     assert.deepEqual(toggleFlashlight(dead).flashlight, { on: true, battery: 100, spares: 0 }, 'a flat battery loads a spare');
+  });
+});
+
+describe('special visitors', () => {
+  test('the lost child joins the line once; helping them pays and lifts the ward', () => {
+    let s = lostChildArrives(playing(5, { wardMood: 60 }));
+    assert.equal(s.lostChild.waiting, true);
+    assert.equal(lostChildArrives(s), s);
+    s = helpLostChild(s);
+    assert.deepEqual(s.lostChild, { waiting: false, helped: true });
+    assert.equal(s.bonusGard, LOST_CHILD_GARD);
+    assert.equal(s.wardMood, 60 + LOST_CHILD_MOOD);
+    assert.equal(lostChildArrives(s), s, 'once per shift');
+    const nobody = playing();
+    assert.equal(helpLostChild(nobody), nobody, 'nobody waiting');
+  });
+
+  test('petting the cat restores a little Sanity', () => {
+    assert.equal(petCat(playing(5, { sanity: 50 })).sanity, 50 + CAT_PET_SANITY);
+  });
+
+  test("a celebrity's discharge pays double; an ordinary one doesn't", () => {
+    const dischargeFor = (vip) => {
+      let s = addPatientToTriage(playing(), { id: 'p1', conditionId: 'dehydration', vip });
+      s = resolveTriage(s, 'p1', 'green');
+      const bed = s.beds.findIndex(Boolean);
+      assert.equal(s.beds[bed].vip, vip);
+      while (s.beds[bed]) s = resolveBedTask(startBedTask(s, bed), true);
+      return s.bonusGard;
+    };
+    const plain = dischargeFor(false);
+    const vip = dischargeFor(true);
+    assert.equal(vip - plain, DISCHARGE_GARD.green * (CELEBRITY_DISCHARGE_MULTIPLIER - 1));
   });
 });
 

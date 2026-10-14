@@ -114,6 +114,17 @@ import {
   BATTERY_PRICE,
   FLASHLIGHT_BATTERY_MAX,
   FLASHLIGHT_MAX_SPARES,
+  RECEPTIONIST_WAIT_BONUS,
+  WET_FLOOR_WALK_MULTIPLIER,
+  WET_FLOOR_RADIUS,
+  WET_FLOOR_SECONDS,
+  JANITOR_MOP_EVERY_SECONDS,
+  LOST_CHILD_CHANCE,
+  LOST_CHILD_GARD,
+  LOST_CHILD_LINE,
+  CAT_CHANCE,
+  CAT_PET_COOLDOWN_SECONDS,
+  CELEBRITY_CHANCE,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { patientProfileFor } from './hospital/patient-names.js';
@@ -159,6 +170,8 @@ import {
   drawFoodIcon,
   drawBatteryShelf,
   drawBatteryIcon,
+  drawCat,
+  drawWetFloor,
 } from './hospital/anime-furniture.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
@@ -204,6 +217,9 @@ import {
   toggleFlashlight,
   pickUpBattery,
   buyBattery,
+  lostChildArrives,
+  helpLostChild,
+  petCat,
   doctorAssistTarget,
   doctorAssist,
 } from './hospital/engine-state.js';
@@ -308,6 +324,12 @@ const AMBIENT_STAFF = [
   { key: 'doctor', name: 'Dr. Okafor', floor: 1, waypoints: [[220, 462], [420, 470], [600, 462], [700, 470], [736, 262]] },
   { key: 'orderly', name: 'Orderly', floor: 1, waypoints: [[512, 472], [300, 525], [170, 520], [730, 266], [480, 520]] },
   { key: 'stockTech', name: 'Stock tech', floor: 2, waypoints: [[160, 250], [600, 330], [240, 430], [560, 440], [700, 200]] },
+  // More staff (the user: "i want there to be more characters"): the
+  // janitor mops (a wet floor slows you), Security keeps watch by the
+  // entrance side, the pharmacist potters by the Med Cabinet.
+  { key: 'janitor', name: 'Janitor', floor: 1, waypoints: [[260, 470], [440, 478], [640, 262], [700, 470]] },
+  { key: 'guard', name: 'Security', floor: 1, waypoints: [[70, 250], [130, 254], [70, 302]] },
+  { key: 'pharmacist', name: 'Pharmacist', floor: 1, waypoints: [[580, 252], [700, 258], [640, 250]] },
 ];
 const AMBIENT_SPEED = 70;
 /** Staff on an errand walk faster than when they're idling. */
@@ -527,11 +549,20 @@ export function init(canvas, elements) {
     wander(a, dt);
   }
 
+  function updateExtras(dt) {
+    updateCat(dt);
+    if (wetFloor) {
+      wetFloor.seconds -= dt;
+      if (wetFloor.seconds <= 0) wetFloor = null;
+    }
+  }
+
   function updateAmbient(dt) {
     for (const a of ambient) {
       if (a.key === 'doctor') updateDoctor(a, dt);
       else if (a.key === 'orderly') updateOrderly(a, dt);
       else if (a.key === 'stockTech') updateStockTech(a, dt);
+      else if (a.key === 'janitor') updateJanitor(a, dt);
       else wander(a, dt);
     }
   }
@@ -553,9 +584,33 @@ export function init(canvas, elements) {
       a.pause = 5;
       pendingStaffPickup = true;
       moveTarget = { x: a.x - 36, y: a.y, station: null };
+    } else if (a.key === 'janitor') {
+      showToast('Janitor: "Mind the wet floor — it\'s slippery! You\'ll walk slower across it."');
+    } else if (a.key === 'guard') {
+      showToast('Security keeps watch — if Karen shows up, you can call him to escort her out.');
+    } else if (a.key === 'pharmacist') {
+      showToast('Pharmacist: "Read every label twice, dear — the look-alikes are sneaky!"');
     } else {
       showToast('Dr. Okafor steps in by himself when a patient is about to be transferred.');
     }
+  }
+
+  /** The janitor wanders, and every so often stops to mop: a wet floor appears where he stood. */
+  let wetFloor = null; // { x, y, seconds }
+  let mopTimer = JANITOR_MOP_EVERY_SECONDS;
+  function updateJanitor(a, dt) {
+    wander(a, dt);
+    if (shiftState?.phase !== 'playing') return;
+    mopTimer -= dt;
+    if (mopTimer <= 0 && a.pause <= 0) {
+      mopTimer = JANITOR_MOP_EVERY_SECONDS;
+      a.pause = 3;
+      wetFloor = { x: a.x + 6, y: a.y + 4, seconds: WET_FLOOR_SECONDS };
+    }
+  }
+
+  function isOnWetFloor() {
+    return Boolean(wetFloor) && currentFloor === FLOOR_1 && Math.hypot(player.x - wetFloor.x, (player.y - wetFloor.y) * 2) <= WET_FLOOR_RADIUS;
   }
 
   function arriveAtStockTech() {
@@ -577,6 +632,7 @@ export function init(canvas, elements) {
     }
     if (a.key === 'stockTech' && a.floor === FLOOR_1) return 'Stock tech · rolls (click)';
     if (a.key === 'doctor' && a.errand) return 'Dr. Okafor (helping)';
+    if (a.key === 'janitor' && wetFloor) return 'Janitor (mopping)';
     return a.name;
   }
 
@@ -729,7 +785,8 @@ export function init(canvas, elements) {
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
     const gurney = shiftState?.carried?.kind === 'gurney' ? GURNEY_WALK_MULTIPLIER : 1;
-    const rankWalk = (shiftState?.perks?.walk ?? 1) * (shiftState ? walkMultiplierForHungerThirst(shiftState.hunger, shiftState.thirst) : 1);
+    const rankWalk = (shiftState?.perks?.walk ?? 1) * (shiftState ? walkMultiplierForHungerThirst(shiftState.hunger, shiftState.thirst) : 1)
+      * (isOnWetFloor() ? WET_FLOOR_WALK_MULTIPLIER : 1);
     const step = 240 * walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX) * gurney * rankWalk * deltaSeconds;
     const dx = moveTarget.x - player.x;
     const dy = moveTarget.y - player.y;
@@ -787,6 +844,7 @@ export function init(canvas, elements) {
     const slots = [];
     if (karenAvailable && !shiftState.karen.triggered && shiftState.phase === 'playing') slots.push({ kind: 'karen', id: 'karen' });
     if (shiftState.mel.waiting && shiftState.phase === 'playing') slots.push({ kind: 'mel', id: 'mel' });
+    if (shiftState.lostChild.waiting && shiftState.phase === 'playing') slots.push({ kind: 'lost-child', id: 'lost-child' });
     shiftState.triageQueue.slice(0, QUEUE_VISIBLE_MAX).forEach((p) => slots.push({
       kind: 'patient', id: p.id, waitFraction: p.waitMaxSeconds ? p.waitRemainingSeconds / p.waitMaxSeconds : null,
     }));
@@ -833,6 +891,13 @@ export function init(canvas, elements) {
         },
       });
     }
+    // One patient may be a celebrity (seeded in the Daily, so it's the same for everyone).
+    if (shiftRandom() < CELEBRITY_CHANCE) {
+      const patients = events.filter((e) => e.type === 'patient');
+      const pick = patients[Math.min(patients.length - 1, 2 + Math.floor(shiftRandom() * Math.max(1, patients.length - 2)))];
+      if (pick) pick.spec.vip = true;
+    }
+    if (random() < LOST_CHILD_CHANCE) events.push({ type: 'lost-child', at: total * (0.2 + random() * 0.5) });
     if (currentShiftNumber === karenShiftNumber) events.push({ type: 'karen', at: total * 0.3 });
     if (currentShiftNumber === MEL_FIXED_SHIFT) events.push({ type: 'mel', at: total * MEL_FIXED_SHIFT_AT });
     return events.sort((a, b) => a.at - b.at);
@@ -871,7 +936,17 @@ export function init(canvas, elements) {
       vitals: vitalsForLevel(condition.level, spec?.vitalsRolls ?? [random(), random(), random(), random(), random()]),
       designKey,
     });
-    shiftState = addPatientToTriage(shiftState, { id, conditionId: condition.id, waitSeconds: queueWaitSecondsForShift(currentShiftNumber) });
+    // The receptionist keeps the line calm: waits last RECEPTIONIST_WAIT_BONUS longer.
+    shiftState = addPatientToTriage(shiftState, {
+      id, conditionId: condition.id, vip: Boolean(spec?.vip),
+      waitSeconds: queueWaitSecondsForShift(currentShiftNumber) * RECEPTIONIST_WAIT_BONUS,
+    });
+    if (spec?.vip) {
+      patientInfo.get(id).name = CELEBRITY_NAMES[hashString(id) % CELEBRITY_NAMES.length];
+      patientInfo.get(id).shortName = `★ ${patientInfo.get(id).name.split(' ')[0]}`;
+      patientInfo.get(id).vip = true;
+      showToast('A celebrity just walked in — cameras flashing at the door! Treat them well: their discharge pays double.', 4);
+    }
     return id;
   }
 
@@ -884,6 +959,11 @@ export function init(canvas, elements) {
         if (melArrivesWithPatient(random())) bringMelIn('arrival');
       } else if (event.type === 'karen') karenAvailable = true;
       else if (event.type === 'mel') bringMelIn('arrival');
+      else if (event.type === 'lost-child') {
+        const before = shiftState;
+        shiftState = lostChildArrives(shiftState);
+        if (shiftState !== before) showToast('A little kid is standing in the triage line, looking lost…', 3.6);
+      }
     }
   }
 
@@ -1219,6 +1299,7 @@ export function init(canvas, elements) {
       const action = pendingTriageAction
         ?? (karenAvailable && !shiftState.karen.triggered ? { kind: 'karen' } : null)
         ?? (shiftState.mel.waiting ? { kind: 'mel' } : null)
+        ?? (shiftState.lostChild.waiting ? { kind: 'lost-child' } : null)
         ?? (shiftState.triageQueue[0] ? { kind: 'patient', id: shiftState.triageQueue[0].id } : null);
       pendingTriageAction = null;
       if (!action) {
@@ -1229,6 +1310,8 @@ export function init(canvas, elements) {
         showToast("…the chair is empty. There was nobody there.");
       } else if (action.kind === 'mel') {
         if (shiftState.mel.waiting) openMelOverlay();
+      } else if (action.kind === 'lost-child') {
+        if (shiftState.lostChild.waiting) overlay = { kind: 'lost-child', flash: null };
       } else if (action.kind === 'karen') {
         const before = shiftState;
         shiftState = startKarenEvent(shiftState);
@@ -1574,11 +1657,14 @@ export function init(canvas, elements) {
   }
 
   function karenButtonRects() {
-    const w = 170;
+    const w = 160;
     const h = 42;
+    const gap = 14;
+    const x0 = CANVAS_WIDTH / 2 - (w * 3 + gap * 2) / 2;
     return {
-      explain: { x: CANVAS_WIDTH / 2 - w - 12, y: 470, w, h },
-      letCut: { x: CANVAS_WIDTH / 2 + 12, y: 470, w, h },
+      explain: { x: x0, y: 470, w, h },
+      security: { x: x0 + w + gap, y: 470, w, h },
+      letCut: { x: x0 + (w + gap) * 2, y: 470, w, h },
     };
   }
 
@@ -1589,9 +1675,10 @@ export function init(canvas, elements) {
   function answerKaren(outcome) {
     shiftState = resolveKarenEvent(shiftState, outcome);
     overlay = null;
-    showToast(outcome === 'explain'
-      ? `She calms down and waits her turn. (Later: a thank-you card, +${KAREN_CALMED_TIP_GARD}g)`
-      : 'She barges ahead — the whole waiting room is furious.');
+    showToast({
+      explain: `She calms down and waits her turn. (Later: a thank-you card, +${KAREN_CALMED_TIP_GARD}g)`,
+      security: 'Security politely escorts her out. Crisis over — no thank-you card, though.',
+    }[outcome] ?? 'She barges ahead — the whole waiting room is furious.');
   }
 
   function onOverlayClick(x, y) {
@@ -1615,6 +1702,7 @@ export function init(canvas, elements) {
     } else if (overlay.kind === 'karen') {
       const b = karenButtonRects();
       if (insideRect(b.explain, x, y)) answerKaren('explain');
+      else if (insideRect(b.security, x, y)) answerKaren('security');
       else if (insideRect(b.letCut, x, y)) answerKaren('letCut');
     } else if (overlay.kind === 'mel') {
       if (insideRect(melButtonRect(), x, y)) thankMel();
@@ -1630,6 +1718,8 @@ export function init(canvas, elements) {
       }
     } else if (overlay.kind === 'cafe') {
       if (insideRect(cafeButtonRect(), x, y)) eatCafeMeal();
+    } else if (overlay.kind === 'lost-child') {
+      if (insideRect(lostChildButtonRect(), x, y)) walkLostChild();
     } else if (overlay.kind === 'pick') {
       if (overlay.chosen) { samplePickGrab(); return; }
       const card = pickCardRects().find((r) => insideRect(r, x, y));
@@ -1818,9 +1908,15 @@ export function init(canvas, elements) {
       onOverlayClick(x, y);
       return;
     }
+    // People before the cat: clicking a nurse with the cat at their feet
+    // should reach the nurse.
     const member = staffAtPoint(x, y);
     if (member && shiftState?.phase === 'playing') {
       onStaffClick(member);
+      return;
+    }
+    if (catAtPoint(x, y) && shiftState?.phase === 'playing') {
+      petTheCat();
       return;
     }
     if (shiftState?.phase === 'playing' && currentFloor === FLOOR_1 && insideRect(MEL_VASE_RECT, x, y)) {
@@ -1895,6 +1991,7 @@ export function init(canvas, elements) {
         else if (overlay.kind === 'mel') thankMel();
         else if (overlay.kind === 'pick') samplePickGrab();
         else if (overlay.kind === 'cafe') eatCafeMeal();
+        else if (overlay.kind === 'lost-child') walkLostChild();
       }
       return;
     }
@@ -1947,6 +2044,9 @@ export function init(canvas, elements) {
     shiftXpAwarded = false;
     player = { ...PLAYER_START };
     resetAmbient();
+    resetCat();
+    wetFloor = null;
+    mopTimer = JANITOR_MOP_EVERY_SECONDS;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -2633,7 +2733,9 @@ export function init(canvas, elements) {
 
   // Station furniture, redrawn in the anime style (hospital/anime-furniture.js).
   const drawOfficeDetail = (st) => drawOffice(ctx, st);
-  const drawTriageDeskDetail = (st) => drawTriageDesk(ctx, st);
+  const drawTriageDeskDetail = (st) => drawTriageDesk(ctx, st, {
+    drawClerk: (x, y) => drawAnimePerson(ctx, x, y, STAFF_DESIGNS.receptionist, { scale: 1, t: performance.now() / 1000 }),
+  });
   const drawMedCabinetDetail = (st) => drawMedCabinet(ctx, st, { colors: MEDICATIONS.map((m) => m.color) });
   const drawStairsDetail = (st) => drawStairs(ctx, st);
   const drawElevatorDetail = (st) => drawElevator(ctx, st, { t: performance.now() / 1000 });
@@ -2936,7 +3038,7 @@ export function init(canvas, elements) {
           const item = SURGERY_ITEMS[surgeryItemFor(patient.conditionId)];
           text = item ? `${isTransplant(patient.conditionId) ? 'Transplant' : 'Surgery'}: ${item.name}` : 'Surgery';
         }
-        drawLabelChip(ctx, 0, -hh - 16, `${patient.step + 1}/${patient.plan.length} ${text}`, 'bold 10px sans-serif', '#2f5f6f', CREAM);
+        drawLabelChip(ctx, 0, -hh - 16, `${patient.vip ? '★ VIP · ' : ''}${patient.step + 1}/${patient.plan.length} ${text}`, 'bold 10px sans-serif', patient.vip ? ANIME.goldDeep : '#2f5f6f', CREAM);
       }
     }
     ctx.restore();
@@ -2957,6 +3059,11 @@ export function init(canvas, elements) {
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
         continue;
       }
+      if (slot.kind === 'lost-child') {
+        drawPatient(slot.x, slot.y, null, 0.62, findPatientDesign(LOST_CHILD_DESIGN));
+        drawLabelChip(ctx, slot.x, slot.y + 20, 'Lost kid ?', 'bold 10px sans-serif', ANIME.sky, ANIME.ink);
+        continue;
+      }
       if (slot.kind === 'mel') {
         drawAnimePerson(ctx, slot.x, slot.y, STAFF_DESIGNS.mel, { scale: 0.62, t: performance.now() / 1000 });
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Mel ✿', 'bold 10px sans-serif', '#f6dc8a');
@@ -2964,7 +3071,17 @@ export function init(canvas, elements) {
       }
       const info = patientInfo.get(slot.id);
       drawPatient(slot.x, slot.y, info, 0.62);
-      drawLabelChip(ctx, slot.x, slot.y + 20, info?.shortName ?? '', 'bold 9px sans-serif');
+      if (info?.vip) {
+        // Paparazzi flashes around the celebrity.
+        const t = performance.now() / 1000;
+        for (let i = 0; i < 3; i++) {
+          const phase = (t * 1.7 + i * 0.37) % 1;
+          if (phase < 0.12) sparkle(ctx, slot.x - 20 + i * 20, slot.y - 52 + (i % 2) * 10, 7, '#ffffff');
+        }
+        drawLabelChip(ctx, slot.x, slot.y + 20, info.shortName, 'bold 9px sans-serif', ANIME.gold, ANIME.ink);
+      } else {
+        drawLabelChip(ctx, slot.x, slot.y + 20, info?.shortName ?? '', 'bold 9px sans-serif');
+      }
       if (slot.waitFraction != null) {
         const f = Math.max(0, Math.min(1, slot.waitFraction));
         const [wTop, wDeep] = f > 0.5 ? [ANIME.mint, ANIME.mintDeep] : (f > 0.25 ? [ANIME.gold, ANIME.goldDeep] : [ANIME.coral, ANIME.coralDeep]);
@@ -3179,6 +3296,7 @@ export function init(canvas, elements) {
     mel: [ANIME.gold, ANIME.goldDeep],
     pick: [ANIME.mint, ANIME.mintDeep],
     vending: [ANIME.lavender, ANIME.lavenderDeep],
+    'lost-child': [ANIME.sky, ANIME.skyDeep],
     cafe: [ANIME.gold, ANIME.goldDeep],
   };
 
@@ -3934,6 +4052,7 @@ export function init(canvas, elements) {
     drawLabelChip(ctx, CANVAS_WIDTH / 2, 194, `${Math.max(0, Math.ceil(shiftState.karen.timerSecondsRemaining))}s to respond`, 'bold 11px sans-serif', ANIME.coralDeep, '#ffffff');
     const b = karenButtonRects();
     animeButton(ctx, b.explain, 'Explain Triage', ANIME.mint, ANIME.mintDeep, 'bold 14px sans-serif');
+    animeButton(ctx, b.security, 'Call Security', ANIME.sky, ANIME.skyDeep, 'bold 14px sans-serif');
     animeButton(ctx, b.letCut, 'Let Her Cut In', ANIME.gold, ANIME.goldDeep, 'bold 14px sans-serif');
   }
 
@@ -4069,6 +4188,116 @@ export function init(canvas, elements) {
     ctx.fillText(`Hunger and Thirst to full · +${CAFE_MEAL.sanity} Sanity`, 645, 408);
     animeButton(ctx, cafeButtonRect(), overlay.served ? 'Itadakimasu! ♥' : 'Eat & Drink (free)', ANIME.gold, ANIME.goldDeep);
     drawFlash(118);
+  }
+
+  // -- Special visitors: the lost child, the hospital cat, celebrities -------
+
+  const LOST_CHILD_DESIGN = 'kimonoKidGirl';
+  const CELEBRITY_NAMES = ['Rina Starlight', 'Kaito Blaze', 'Mimi Moonbeam', 'Haru Sparkle'];
+
+  function lostChildButtonRect() {
+    return { x: 520, y: 430, w: 260, h: 50 };
+  }
+
+  function walkLostChild() {
+    if (overlay?.kind !== 'lost-child') return;
+    shiftState = helpLostChild(shiftState);
+    overlay = null;
+    showToast(`You sit the kid on the waiting chairs. Their mom rushes in: "Thank you!" +${LOST_CHILD_GARD}g, the ward cheers up.`, 4);
+  }
+
+  function drawLostChildOverlay() {
+    const t = performance.now() / 1000;
+    drawPanel('A lost child', 'A little one wandered in on their own.');
+    drawAnimePatient(ctx, 290, 470, findPatientDesign(LOST_CHILD_DESIGN), { scale: 3.6, t });
+    speechBubble(ctx, { x: 440, y: 150, w: 360, h: 100 }, { tailX: 380, tailY: 300 });
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    wrapText(LOST_CHILD_LINE, 620, 186, 320, 20);
+    ctx.fillStyle = ANIME.inkSoft;
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`Their mom's thanks: +${LOST_CHILD_GARD}g and a happier ward`, 650, 408);
+    animeButton(ctx, lostChildButtonRect(), 'Walk them to the chairs', ANIME.sky, ANIME.skyDeep);
+  }
+
+  /** The hospital cat (on some shifts): wanders the ER; clicking it pets it. */
+  let cat = null; // { x, y, target, pause, dir, cooldown }
+  const CAT_WAYPOINTS = [[230, 470], [460, 492], [690, 466], [160, 250], [520, 250], [380, 470]];
+  function resetCat() {
+    cat = random() < CAT_CHANCE
+      ? { x: 380, y: 476, target: 0, pause: 2, dir: 1, cooldown: 0, hearts: 0 }
+      : null;
+  }
+  function updateCat(dt) {
+    if (!cat) return;
+    cat.cooldown = Math.max(0, cat.cooldown - dt);
+    cat.hearts = Math.max(0, cat.hearts - dt);
+    if (cat.pause > 0) { cat.pause -= dt; return; }
+    const [tx, ty] = CAT_WAYPOINTS[cat.target];
+    const dx = tx - cat.x;
+    const dy = ty - cat.y;
+    const dist = Math.hypot(dx, dy);
+    const step = 45 * dt;
+    if (Math.abs(dx) > 1) cat.dir = dx > 0 ? 1 : -1;
+    if (dist <= step) {
+      cat.x = tx;
+      cat.y = ty;
+      cat.pause = 2 + random() * 4;
+      cat.target = Math.floor(random() * CAT_WAYPOINTS.length);
+    } else {
+      cat.x += (dx / dist) * step;
+      cat.y += (dy / dist) * step;
+    }
+  }
+  function catAtPoint(x, y) {
+    return cat && currentFloor === FLOOR_1 && Math.abs(x - cat.x) <= 22 && y >= cat.y - 30 && y <= cat.y + 8;
+  }
+  function petTheCat() {
+    if (!cat) return;
+    if (cat.cooldown > 0) {
+      showToast('The cat is happily grooming itself. Try again in a little while.');
+      return;
+    }
+    shiftState = petCat(shiftState);
+    cat.cooldown = CAT_PET_COOLDOWN_SECONDS;
+    cat.hearts = 1.6;
+    cat.pause = 3;
+    showToast('Purrr… petting the hospital cat calms you down. +Sanity');
+  }
+  function drawHospitalCat() {
+    if (!cat || currentFloor !== FLOOR_1) return;
+    const t = performance.now() / 1000;
+    drawCat(ctx, cat.x, cat.y, 1, cat.dir, t);
+    if (cat.hearts > 0) {
+      for (let i = 0; i < 3; i++) {
+        const rise = (1.6 - cat.hearts) * 18 + i * 8;
+        drawHeart(cat.x - 10 + i * 10, cat.y - 30 - rise, 5, ANIME.pinkDeep);
+      }
+    }
+    drawLabelChip(ctx, cat.x, cat.y + 14, 'Cat ♥', 'bold 9px sans-serif', 'rgba(255,250,246,0.85)', ANIME.ink);
+  }
+
+  /** Visitors in the waiting chairs and off-duty staff in the Cafeteria (set dressing). */
+  const WAITING_VISITORS = [
+    { x: 568, design: () => findPatientDesign('grandmaCardigan') },
+    { x: 632, design: () => findPatientDesign('salaryman') },
+  ];
+  const CAFE_DINERS = [
+    { x: 160, y: 318, design: () => STAFF_DESIGNS.orderly },
+    { x: 802, y: 318, design: () => STAFF_DESIGNS.receptionist },
+    { x: 160, y: 468, design: () => STAFF_DESIGNS.pharmacist },
+    { x: 802, y: 468, design: () => STAFF_DESIGNS.janitor },
+  ];
+  function drawCrowds() {
+    const t = performance.now() / 1000;
+    if (currentFloor === FLOOR_1) {
+      WAITING_VISITORS.forEach((v, i) => drawAnimePerson(ctx, v.x, 214 + Math.sin(t * 1.2 + i) * 0.4, v.design(), { scale: 0.5, t }));
+      if (shiftState?.lostChild.helped) drawAnimePatient(ctx, 600, 214, findPatientDesign(LOST_CHILD_DESIGN), { scale: 0.5, t });
+    } else if (currentFloor === FLOOR_CAFE) {
+      CAFE_DINERS.forEach((d, i) => drawAnimePerson(ctx, d.x, d.y + Math.sin(t * 1.4 + i) * 0.5, d.design(), { scale: 0.62, t }));
+    }
   }
 
   /** A tray/cooler/shelf close-up: item cards, then the grab check for the chosen one. */
@@ -4353,6 +4582,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'mel') drawMelOverlay();
     else if (overlay.kind === 'pick') drawPickOverlay();
     else if (overlay.kind === 'vending') drawVendingOverlay();
+    else if (overlay.kind === 'lost-child') drawLostChildOverlay();
     else if (overlay.kind === 'cafe') drawCafeOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     ctx.restore();
@@ -4386,6 +4616,9 @@ export function init(canvas, elements) {
     drawFloor();
     visibleStations().forEach(drawStation);
     drawDecorOnFloor();
+    if (wetFloor && currentFloor === FLOOR_1) drawWetFloor(ctx, wetFloor.x, wetFloor.y, WET_FLOOR_RADIUS, Math.min(1, wetFloor.seconds / 3));
+    drawCrowds();
+    drawHospitalCat();
     if (currentFloor === FLOOR_1) drawTriageQueue();
     drawAmbient();
     drawPlayer();
@@ -4446,7 +4679,7 @@ export function init(canvas, elements) {
       overlay = null;
       if (shiftState.phase === 'playing') showToast('Too late — the patient was transferred to another hospital.');
     }
-    if (overlay && ['triage', 'coffee-pour', 'mel', 'pick', 'vending', 'cafe'].includes(overlay.kind) && shiftState.phase !== 'playing') overlay = null;
+    if (overlay && ['triage', 'coffee-pour', 'mel', 'pick', 'vending', 'cafe', 'lost-child'].includes(overlay.kind) && shiftState.phase !== 'playing') overlay = null;
     if (overlay?.kind === 'triage' && !shiftState.triageQueue.some((p) => p.id === overlay.patientId)) {
       overlay = null;
       showToast('They got tired of waiting and left.');
@@ -4482,6 +4715,7 @@ export function init(canvas, elements) {
 
     trackGardPops(dt);
     updateAmbient(dt);
+    updateExtras(dt);
     coffeeSplashSeconds = Math.max(0, coffeeSplashSeconds - dt);
     updateHallucinations(dt);
 
@@ -4611,6 +4845,12 @@ export function init(canvas, elements) {
     setAim(x, y) { aim = { x, y }; },
     setFlashlightBattery(value) { if (shiftState) shiftState = { ...shiftState, flashlight: { ...shiftState.flashlight, battery: value } }; },
     getVendingBatteryRect: () => vendingBatteryRect(),
+    bringLostChildNow() { if (shiftState) shiftState = lostChildArrives(shiftState); },
+    getLostChildButtonRect: () => lostChildButtonRect(),
+    getCat: () => (cat ? { ...cat } : null),
+    spawnCatNow() { cat = { x: 380, y: 476, target: 0, pause: 999, dir: 1, cooldown: 0, hearts: 0 }; },
+    getWetFloor: () => (wetFloor ? { ...wetFloor } : null),
+    mopNow(x, y) { wetFloor = { x, y, seconds: WET_FLOOR_SECONDS }; },
     setPickGauge(pos) { if (overlay?.kind === 'pick') { overlay.gauge = pos; overlay.direction = 0; } },
     giveSurgeryKit(item) { if (shiftState) shiftState = { ...shiftState, surgeryKit: { scalpel: true, item } }; },
     getMelVaseRect: () => ({ ...MEL_VASE_RECT }),

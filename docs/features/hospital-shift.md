@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (144 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (148 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (41 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (45 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -316,6 +316,70 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   asked to "remove the shine" — both eyes and hair, as they had for
   Kimono Himura's eyes — so the crown shine and the eye highlights are
   gone.
+* **More characters** (the user: "i want there to be more characters",
+  then all four kinds offered; `rules.js` "More characters").
+  * *Patients:* eight more designs — a builder in a hard hat, a chef in
+    a toque, a cat-ear cosplayer, a monk in saffron robes, a grandpa in a
+    cap, a manager, a fisherman in a beanie and a punk teen with
+    headphones — then ten more ("add more like 10 more"): an idol, a
+    courier, a kendo student, a painter in a beret, a grandma in a sun hat,
+    a surfer, an off-duty officer, a baker, a tourist and a bookish
+    student — and ten more again ("add 10 more characters"): a flower
+    girl, a gothic-lolita teen, a street dancer, a scientist, a bearded
+    grandpa in a kimono, a farmer, a gamer girl, an off-duty firefighter, a
+    moustached executive and a bride straight from her wedding — then three
+    more in kimono ("now add 3 more characters with kimonos"), each with a
+    new robe pattern, then polished ("could you improve it more please?"):
+    a lady in maple leaves drifting on a stream (`momiji`) with a
+    kanzashi, an obiage and an obijime cord with a jade obidome; a kid in
+    a goldfish yukata (`goldfish`) with a heko-obi bow, holding a festival
+    goldfish in a bag of water; and a grandpa in tortoiseshell hexagons
+    with little flowers (`kikko`) under an open haori tied with a white
+    himo, a fan tucked in his obi. The kimono outfit gained optional
+    `obiage`, `obijime`, `heko`, `haori` and `sensu` fields.
+  * *The maiko* ("add one more character add tons of details on it and
+    add an rlly detailed kimono"): a showpiece with its own renderers
+    (`drawMaikoKimono`, `drawMaikoHair`), 54 designs in all. A
+    bokashi-dyed hikizuri (dusk purple into vermilion) painted with gold
+    kasumi mist bands, flying cranes, sakura and ume branches, pine
+    sprigs, a winding stream and gold-leaf flecks; a padded fuki hem and
+    pink juban edges; long furisode sleeves; a gold brocade obi with a
+    key-fret weave and medallions, red shibori obiage, a braided obijime
+    and a jeweled pocchiri clasp; a red embroidered eri over a white
+    under-collar; a hakoseko purse with chain and tassel; a kinchaku pouch
+    on her wrist; tall okobo clogs with bells. Her wareshinobu updo has
+    red kanoko silk, a tortoiseshell kushi, a coral tama pin, a silver
+    fan kanzashi with dangles, and hana-kanzashi silk flowers with
+    cascading strands; white oshiroi makeup with red beni at the eyes and
+    on the lower lip. Then made prettier ("make her lok even prettier"):
+    warm brown lashed eyes, beni blended softly up from the eye corners
+    with a fine red liner, rosebud lips, a low, wide two-lobed mage drawn
+    behind the head (`hair.back: 'maiko'`, `drawMaikoMage`) so the front
+    hair laps over it, a warm pink bang shadow on the oshiroi instead of
+    grey, and a finer obi brocade with a soft sheen. Maiko go by single professional names
+    (Mameharu, Ichifumi…). New head pieces
+    (`hardhat`, `chefHat`, `catEars`, `beret`, `sunhat`, `flowerCrown`,
+    `veil`, and a `beard`), each design with its own name pool.
+  * *Staff:* a **janitor** wanders and every ~45 s
+    (`JANITOR_MOP_EVERY_SECONDS`) mops: a puddle with a yellow sign that
+    slows you to 60% while you cross it for ~22 s; a **receptionist** sits
+    behind the triage counter and keeps the line calm (triage waits ×1.1,
+    `RECEPTIONIST_WAIT_BONUS`); a **security guard** patrols by the office
+    and adds a third button to Karen's scene, "Call Security", which ends
+    it with no mistake but no tip (engine `resolveKarenEvent(…,
+    'security')`); a **pharmacist** potters by the Med Cabinet with advice.
+    Their designs are `STAFF_DESIGNS.janitor/receptionist/guard/pharmacist`.
+  * *Visitors:* on ~40% of shifts a **lost child** stands in the triage
+    line; walking them to the waiting chairs (their own scene) earns their
+    mom's thanks, +25g and +15 Ward Mood (`lostChildArrives`/
+    `helpLostChild`), and they sit on the chairs for the rest of the shift.
+    On ~55% of shifts the **hospital cat** wanders the ER; clicking it pets
+    it for +6 Sanity, then it needs 30 s to itself (`petCat`). On ~30% of
+    shifts one patient is a **celebrity** (seeded in the Daily) with a
+    stage name, a gold ★ chip, paparazzi flashes in line and a "★ VIP" bed
+    tag; their discharge pays double (`CELEBRITY_DISCHARGE_MULTIPLIER`).
+  * *Crowds:* two visitors sit on the ER's waiting chairs and four
+    off-duty staff eat at the Cafeteria tables (set dressing).
 * **Night shifts and the flashlight** (the user: "i want to add a
   flashlight for night shifts", then — asked — night shifts in the month
   and a toggled flashlight with a battery; `rules.js` "Night shifts and the
@@ -715,7 +779,9 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       waits for the full kit, a finished operation uses it up), floor-plan
       geometry (the OR room and Implant Shelf, the Cafeteria, floor-aware
       entry points), hunger/thirst (drain, low effects, extra Sanity drain
-      and collapse at 0, vending prices, the free meal) (decor clear
+      and collapse at 0, vending prices, the free meal), visitors (the lost
+      child once per shift, petting the cat, a celebrity's double discharge,
+      Security ending Karen's event) (decor clear
       of stations, the triage line and the player start), anime-furniture
       smoke tests (every station and decor drawer runs; every decor kind
       has one).
@@ -743,7 +809,12 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       5 s at 0% Thirst is a collapse); night shifts (shift 5 is a night
       with a PM clock, F toggles the light, the shelf's spare swaps in when
       the battery runs flat, then it dies; the vending machine sells a
-      battery; day shifts have no flashlight). Uses
+      battery; day shifts have no flashlight); more characters (Call
+      Security ends Karen's scene with no mistake, the lost child's scene
+      pays +25g, petting the cat restores Sanity then needs a break). The
+      deep-cut and gurney-surgery flows, the suite's longest, have a 60 s
+      timeout. Clicking a staff member wins over the cat at their feet.
+      Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

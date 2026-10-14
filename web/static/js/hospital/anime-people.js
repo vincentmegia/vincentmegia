@@ -213,6 +213,266 @@ PATIENT_DESIGNS.push(
   },
 );
 
+// Eight more (the user: "i want there to be more characters") — work
+// clothes, a cosplayer, a monk and a few grown-ups, with new head pieces
+// (a hard hat, a chef's toque, cat ears).
+PATIENT_DESIGNS.push(
+  {
+    key: 'constructionWorker', label: 'Builder', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#2a1c14', back: 'short', fringe: 'messy' },
+    eyes: { color: '#3a2a1a', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#f28c28', inner: '#f2f2f2', bottom: '#3a4a6a', shoes: '#5a3a22' },
+    extras: { hardhat: '#ffd166' },
+  },
+  {
+    key: 'chef', label: 'Chef', age: 'adult', skin: SKIN.light,
+    hair: { color: '#3a2620', back: 'bun', fringe: 'side' },
+    eyes: { color: '#4a2e26', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#ffffff', apron: '#f2f2f2', skirt: '#2e2a30', legs: '#2e2a30', shoes: '#1e1e22' },
+    extras: { chefHat: '#ffffff' },
+  },
+  {
+    key: 'cosplayer', label: 'Cosplayer', age: 'teen', skin: SKIN.porcelain,
+    hair: { color: '#ff8fb8', back: 'twintails', fringe: 'blunt' },
+    eyes: { color: '#8f7ae0', style: 'big', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'dress', top: '#ffb3cf', skirt: '#ffb3cf', trim: '#ffffff', legs: '#ffffff', shoes: '#8f7ae0' },
+    extras: { catEars: '#ff8fb8' },
+  },
+  {
+    key: 'monk', label: 'Monk', age: 'elder', skin: SKIN.warm,
+    hair: { color: '#d8c8b8', back: 'none', fringe: 'bald' },
+    eyes: { color: '#3a2e26', style: 'smile' }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#e8892a', robeHem: '#c06a1a', pattern: 'none', patternColor: '#f2a65a', obi: '#7a3a1a', obiAccent: '#e8c25a', mens: true },
+    extras: {},
+  },
+  {
+    key: 'grandpaCap', label: 'Grandpa', age: 'elder', skin: SKIN.light,
+    hair: { color: '#e6e3dc', back: 'short', fringe: 'side' },
+    eyes: { color: '#3a2e26', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#8a6a4a', inner: '#f2ead8', bottom: '#5a5a6a', shoes: '#3a2a22' },
+    extras: { cap: '#3a62a8', mustache: '#e6e3dc' },
+  },
+  {
+    key: 'businesswoman', label: 'Manager', age: 'adult', skin: SKIN.brown,
+    hair: { color: '#1e1412', back: 'bob', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'sharp', lashes: true }, brows: 'thin', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#2e3a5a', inner: '#ffffff', bottom: '#2e3a5a', shoes: '#1e1e22' },
+    extras: { earrings: GOLD },
+  },
+  {
+    key: 'fisherman', label: 'Fisherman', age: 'adult', skin: SKIN.deep,
+    hair: { color: '#141012', back: 'short', fringe: 'messy' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'hoodie', top: '#3f7a6a', bottom: '#5a4a3a', shoes: '#2a2a2a' },
+    extras: { beanie: '#e0503e' },
+  },
+  {
+    key: 'punkTeen', label: 'Punk', age: 'teen', skin: SKIN.light,
+    hair: { color: '#8f7ae0', back: 'short', fringe: 'messy' },
+    eyes: { color: '#3a2a4a', style: 'sharp' }, brows: 'thin', mouth: 'flat',
+    outfit: { kind: 'jacket', top: '#2a2a3a', inner: '#e8558f', bottom: '#2a2a3a', shoes: '#1e1e22' },
+    extras: { headphones: '#e8558f', earrings: '#c8ccd4' },
+  },
+);
+
+// Ten more (the user: "add more like 10 more") — an idol, a delivery rider,
+// a kendo student, a painter in a beret, a grandma in a sun hat, a surfer,
+// an off-duty officer, a baker, a tourist and a bookish student.
+PATIENT_DESIGNS.push(
+  {
+    key: 'idol', label: 'Idol', age: 'teen', skin: SKIN.porcelain,
+    hair: { color: '#ffd166', back: 'twintails', fringe: 'blunt' },
+    eyes: { color: '#e8558f', style: 'big', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'dress', top: '#c9b8ff', skirt: '#c9b8ff', trim: '#ffd1e3', legs: '#ffffff', shoes: '#e8558f' },
+    extras: { clip: '#ff8fb8', ribbon: '#ff8fb8' },
+  },
+  {
+    key: 'deliveryRider', label: 'Courier', age: 'adult', skin: SKIN.warm,
+    hair: { color: '#2a1c14', back: 'short', fringe: 'side' },
+    eyes: { color: '#3a2a1a', style: 'round' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#3fb58f', inner: '#ffd166', bottom: '#2e3a5a', shoes: '#f2f2f2' },
+    extras: { cap: '#3fb58f' },
+  },
+  {
+    key: 'kendoStudent', label: 'Kendo student', age: 'teen', skin: SKIN.light,
+    hair: { color: '#1e1a22', back: 'ponytail', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'sharp' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'kimono', robe: '#22305a', robeHem: '#1a2444', pattern: 'none', patternColor: '#3e5290', obi: '#f2f2f2', obiAccent: '#c8ccd4', mens: true },
+    extras: {},
+  },
+  {
+    key: 'painter', label: 'Painter', age: 'adult', skin: SKIN.light,
+    hair: { color: '#7a3a2a', back: 'medium', fringe: 'side' },
+    eyes: { color: '#3a6a4a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'cardigan', top: '#ffd166', inner: '#ffffff', skirt: '#3f7a6a', legs: '#f2e6d0', shoes: '#7a3a2a' },
+    extras: { beret: '#e0503e', earrings: GOLD },
+  },
+  {
+    key: 'grandmaSunhat', label: 'Grandma', age: 'elder', skin: SKIN.tan,
+    hair: { color: '#e6e3dc', back: 'bun', fringe: 'parted' },
+    eyes: { color: '#4a3a2e', style: 'smile' }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'dress', top: '#bfeedd', skirt: '#8fd6a4', trim: '#ffffff', legs: '#c9b6a4', shoes: '#5a4a3a' },
+    extras: { sunhat: '#f2d9a0', pearls: true },
+  },
+  {
+    key: 'surfer', label: 'Surfer', age: 'adult', skin: SKIN.brown,
+    hair: { color: '#e8c85a', back: 'medium', fringe: 'messy' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'tee', top: '#4fa8e0', print: '#ffffff', bottom: '#f28c28', legs: null, shoes: '#ffd166' },
+    extras: { sunglasses: true },
+  },
+  {
+    key: 'officer', label: 'Off-duty officer', age: 'adult', skin: SKIN.deep,
+    hair: { color: '#141012', back: 'short', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'suit', top: '#3a4a6a', shirt: '#c9e4ff', tie: '#22305a', bottom: '#3a4a6a', shoes: '#14181f' },
+    extras: { cap: '#22305a' },
+  },
+  {
+    key: 'baker', label: 'Baker', age: 'adult', skin: SKIN.warm,
+    hair: { color: '#5a3a26', back: 'bob', fringe: 'blunt' },
+    eyes: { color: '#5a3a2a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#ffe0c2', apron: '#ffffff', skirt: '#c8865a', legs: '#f2e6d0', shoes: '#5a3a22' },
+    extras: { kerchief: '#ffd1e3' },
+  },
+  {
+    key: 'tourist', label: 'Tourist', age: 'adult', skin: SKIN.porcelain,
+    hair: { color: '#c9a26a', back: 'short', fringe: 'side' },
+    eyes: { color: '#4a6a8a', style: 'round' }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'tee', top: '#ff8a7a', print: '#ffd166', bottom: '#c9b6a4', legs: null, shoes: '#5a5a6a' },
+    extras: { sunhat: '#ffffff', glasses: 'square' },
+  },
+  {
+    key: 'bookworm', label: 'Student', age: 'teen', skin: SKIN.light,
+    hair: { color: '#3a2620', back: 'long', fringe: 'blunt' },
+    eyes: { color: '#4a2e26', style: 'calm', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'sailor', top: '#ffffff', collar: '#3f7a6a', scarf: '#ffd166', skirt: '#3f7a6a', legs: '#2a2a3a', shoes: '#4a3a32' },
+    extras: { glasses: 'round' },
+  },
+);
+
+// And ten more ("add 10 more characters"): a flower girl, a gothic-lolita
+// teen, a street dancer, a scientist, a bearded grandpa in a kimono, a
+// farmer, a gamer girl, an off-duty firefighter, a moustached executive and
+// a bride who came straight from her wedding.
+PATIENT_DESIGNS.push(
+  {
+    key: 'flowerGirl', label: 'Kid', age: 'kid', skin: SKIN.tan,
+    hair: { color: '#3a2218', back: 'long', fringe: 'blunt' },
+    eyes: { color: '#3a2a1a', style: 'big', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'dress', top: '#ffffff', skirt: '#ffd1e3', trim: '#ff8fb8', legs: '#ffffff', shoes: '#ff8fb8' },
+    extras: { flowerCrown: '#ffd166' },
+  },
+  {
+    key: 'gothTeen', label: 'Gothic Lolita', age: 'teen', skin: SKIN.porcelain,
+    hair: { color: '#1b1828', back: 'twintails', fringe: 'blunt' },
+    eyes: { color: '#c0304a', style: 'big', lashes: true }, brows: 'thin', mouth: 'flat',
+    outfit: { kind: 'dress', top: '#2a2230', skirt: '#2a2230', trim: '#ffffff', legs: '#2a2230', shoes: '#1e1e22' },
+    extras: { ribbon: '#c0304a' },
+  },
+  {
+    key: 'streetDancer', label: 'Dancer', age: 'teen', skin: SKIN.brown,
+    hair: { color: '#1e1412', back: 'short', fringe: 'messy' },
+    eyes: { color: '#2a1a12', style: 'round' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'hoodie', top: '#ffd166', bottom: '#2e2a30', shoes: '#ff8a7a' },
+    extras: { cap: '#e0503e', earrings: GOLD },
+  },
+  {
+    key: 'scientist', label: 'Scientist', age: 'adult', skin: SKIN.light,
+    hair: { color: '#c9c6cf', back: 'medium', fringe: 'messy' },
+    eyes: { color: '#3a6a8a', style: 'calm' }, brows: 'thick', mouth: 'open',
+    outfit: { kind: 'labcoat', top: '#ffffff', shirt: '#bfeedd', tie: '#3fb58f', bottom: '#5a5a6a', shoes: '#2a2a2a' },
+    extras: { glasses: 'square' },
+  },
+  {
+    key: 'beardedGrandpa', label: 'Grandpa', age: 'elder', skin: SKIN.warm,
+    hair: { color: '#f2f0ec', back: 'none', fringe: 'bald' },
+    eyes: { color: '#3a2e26', style: 'smile' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#6a4a3a', robeHem: '#4a3428', pattern: 'checks', patternColor: '#7a5a48', obi: '#2a2622', obiAccent: '#c9a26a', mens: true },
+    extras: { beard: '#f2f0ec', mustache: '#f2f0ec' },
+  },
+  {
+    key: 'farmer', label: 'Farmer', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#2a1c14', back: 'short', fringe: 'side' },
+    eyes: { color: '#3a2a1a', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#6a8a4a', inner: '#f2ead8', bottom: '#4a5a8a', shoes: '#5a3a22' },
+    extras: { sunhat: '#e8c48e' },
+  },
+  {
+    key: 'gamerGirl', label: 'Gamer', age: 'teen', skin: SKIN.light,
+    hair: { color: '#5a3a26', back: 'ponytail', fringe: 'blunt' },
+    eyes: { color: '#5a3a8a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'hoodie', top: '#ffb3cf', bottom: '#3a3a48', shoes: '#ffffff' },
+    extras: { headphones: '#8f7ae0', catEars: '#ffb3cf' },
+  },
+  {
+    key: 'firefighter', label: 'Firefighter', age: 'adult', skin: SKIN.light,
+    hair: { color: '#3a2218', back: 'short', fringe: 'messy' },
+    eyes: { color: '#3a2a1a', style: 'sharp' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'jacket', top: '#d23a4a', inner: '#ffd166', bottom: '#2e2a30', shoes: '#1e1e22' },
+    extras: { hardhat: '#d23a4a' },
+  },
+  {
+    key: 'executive', label: 'Executive', age: 'elder', skin: SKIN.light,
+    hair: { color: '#9a9aa4', back: 'short', fringe: 'side' },
+    eyes: { color: '#2a2a3a', style: 'sharp' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'suit', top: '#5a5a66', shirt: '#ffffff', tie: '#c0304a', bottom: '#5a5a66', shoes: '#1e1e22' },
+    extras: { glasses: 'square', mustache: '#9a9aa4' },
+  },
+  {
+    key: 'bride', label: 'Bride', age: 'adult', skin: SKIN.warm,
+    hair: { color: '#2a1810', back: 'bun', fringe: 'side' },
+    eyes: { color: '#4a2e26', style: 'round', lashes: true }, brows: 'thin', mouth: 'open',
+    outfit: { kind: 'dress', top: '#ffffff', skirt: '#ffffff', trim: '#ffd1e3', legs: '#ffffff', shoes: '#ffffff' },
+    extras: { veil: '#ffffff', pearls: true },
+  },
+);
+
+// Three more in kimono ("now add 3 more characters with kimonos"), each
+// with a new pattern: autumn maple leaves, goldfish, tortoiseshell hexagons.
+PATIENT_DESIGNS.push(
+  {
+    key: 'momijiLady', label: 'Autumn guest', age: 'adult', skin: SKIN.light,
+    hair: { color: '#2a1810', back: 'bun', fringe: 'side' },
+    eyes: { color: '#6a3a1a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#a8432a', robeHem: '#7a2a1a', pattern: 'momiji', patternColor: '#ffb347', obi: '#2a3a2a', obiAccent: GOLD, obiage: '#f2c94c', obijime: '#e8572a' },
+    extras: { kanzashi: '#ffb347' },
+  },
+  {
+    key: 'goldfishKid', label: 'Kid', age: 'kid', skin: SKIN.warm,
+    hair: { color: '#1e1418', back: 'short', fringe: 'messy' },
+    eyes: { color: '#3a2a2a', style: 'big' }, brows: 'thick', mouth: 'open',
+    outfit: { kind: 'kimono', robe: '#f4f8ff', robeHem: '#cfe6ff', pattern: 'goldfish', patternColor: '#ff6a4a', obi: '#ff8fb8', obiAccent: '#ffffff', yukata: true, mens: true, heko: '#ff8fb8' },
+    extras: { goldfishBag: '#ff6a4a' },
+  },
+  {
+    key: 'kikkoGrandpa', label: 'Grandpa', age: 'elder', skin: SKIN.light,
+    hair: { color: '#d8d6dc', back: 'short', fringe: 'parted' },
+    eyes: { color: '#3a2e26', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'kimono', robe: '#4a3a6a', robeHem: '#3a2c56', pattern: 'kikko', patternColor: '#8a7ab8', obi: '#c9a26a', obiAccent: '#8a6a3a', mens: true, haori: '#2a2433', sensu: '#e8d29a' },
+    extras: { glasses: 'round' },
+  },
+);
+
+// One showpiece ("add one more character add tons of details on it and add
+// an rlly detailed kimono"): a maiko, an apprentice geiko, in full dress —
+// drawn by its own drawMaikoKimono/drawMaikoHair rather than the shared
+// kimono renderer.
+PATIENT_DESIGNS.push({
+  key: 'maiko', label: 'Maiko', age: 'adult', skin: '#fbf3ee',
+  hair: { color: '#14101a', back: 'maiko', fringe: 'parted' },
+  eyes: { color: '#8a4a3a', style: 'round', lashes: true }, brows: 'thin', mouth: 'beni',
+  outfit: {
+    kind: 'maiko',
+    // Bokashi-dyed silk: dusk purple at the shoulders into vermilion.
+    robe: '#3c2a6e', robeMid: '#8a2f6a', robeHem: '#c8283a',
+    fuki: '#e0485f', juban: '#ff8fa8', eri: '#d8283a',
+    obi: '#d9a63a', obiWeave: '#8a5a1a', obiage: '#e8485f', obijime: ['#f2c94c', '#e0485f'],
+    okobo: '#2a1a14', hanao: '#d8283a',
+  },
+  extras: { maikoHair: true, beni: true, kinchaku: '#c8283a' },
+});
+
 export const PATIENT_DESIGN_KEYS = PATIENT_DESIGNS.map((d) => d.key);
 
 export function findPatientDesign(key) {
@@ -249,6 +509,36 @@ export const STAFF_DESIGNS = {
     eyes: { color: '#4a6a8a', style: 'sharp', lashes: true }, brows: 'thin', mouth: 'flat', mood: 'angry',
     outfit: { kind: 'blazer', top: '#d23a4a', inner: '#f2ead8', bottom: '#2e2a30', shoes: '#2a2020' },
     extras: { sunglasses: true, earrings: GOLD, handbag: '#8a5a3a' },
+  },
+  // More staff (the user: "i want there to be more characters"): a janitor
+  // with a cap, the triage receptionist, a security guard and a pharmacist.
+  janitor: {
+    key: 'janitor', label: 'Janitor', age: 'adult', skin: SKIN.brown,
+    hair: { color: '#2a1810', back: 'short', fringe: 'messy' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'scrubs', top: '#7a9a8a', bottom: '#4a5a52', shoes: '#2a2a2a', vest: true },
+    extras: { cap: '#4a5a52' },
+  },
+  receptionist: {
+    key: 'receptionist', label: 'Receptionist', age: 'adult', skin: SKIN.porcelain,
+    hair: { color: '#5a3a26', back: 'ponytail', fringe: 'side' },
+    eyes: { color: '#5a3a2a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'blouse', top: '#c9e4ff', skirt: '#2e3a5a', legs: '#e8d2c2', shoes: '#2a2226' },
+    extras: { headphones: '#8f7ae0' },
+  },
+  guard: {
+    key: 'guard', label: 'Security', age: 'adult', skin: SKIN.tan,
+    hair: { color: '#141012', back: 'short', fringe: 'side' },
+    eyes: { color: '#2a1a12', style: 'sharp' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#2e3a5a', inner: '#c9e4ff', bottom: '#242c38', shoes: '#14181f' },
+    extras: { cap: '#242c38', sunglasses: false },
+  },
+  pharmacist: {
+    key: 'pharmacist', label: 'Pharmacist', age: 'elder', skin: SKIN.light,
+    hair: { color: '#c9c6cf', back: 'bob', fringe: 'parted' },
+    eyes: { color: '#4a3a2e', style: 'calm', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'labcoat', top: '#ffffff', shirt: '#d8c9ff', tie: '#8f7ae0', bottom: '#5a4a6a', shoes: '#3a2a32' },
+    extras: { glasses: 'round' },
   },
   // The Cafeteria Lady (the user: "add an cafetria lady which she gives food
   // and water"): Auntie Yumi, a smiley grandmother in a pink apron and a
@@ -312,6 +602,73 @@ function rr(ctx, x, y, w, h, r, color, line = 0.5) {
   ctx.fillStyle = color;
   ctx.fill();
   if (line) outline(ctx, line);
+}
+
+/** A maple leaf: five pointed lobes with small side teeth and a stem. */
+function mapleLeaf(ctx, cx, cy, r, rot, color) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  // Lobe tips at -90° ±50° ±100°, notches between, teeth on each lobe.
+  const tips = [-90, -40, 10, -140, -190].map((deg) => (deg * Math.PI) / 180).sort((p, q) => p - q);
+  const pts = [];
+  for (let i = 0; i < tips.length; i++) {
+    const t = tips[i];
+    const next = tips[(i + 1) % tips.length] + (i === tips.length - 1 ? Math.PI * 2 : 0);
+    pts.push([t - 0.22, r * 0.62], [t, r], [t + 0.22, r * 0.62]);
+    if (i < tips.length - 1) pts.push([(t + next) / 2, r * 0.32]);
+  }
+  pts.push([Math.PI / 2, r * 0.25]);
+  pts.forEach(([a, d], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, Math.cos(a) * d, Math.sin(a) * d));
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shade(color, -0.3);
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, r * 0.9);
+  for (const t of tips) {
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(t) * r * 0.7, Math.sin(t) * r * 0.7);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A goldfish facing `dir` (±1): round body, fan tail, fins and an eye. */
+function goldfish(ctx, cx, cy, dir, body, spots) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(dir, 1);
+  ctx.fillStyle = shade(spots, 0.15);
+  ctx.beginPath();
+  ctx.moveTo(-1.3, 0);
+  ctx.quadraticCurveTo(-3.6, -2.4, -3.8, -1.2);
+  ctx.quadraticCurveTo(-3, 0, -3.8, 1.2);
+  ctx.quadraticCurveTo(-3.6, 2.4, -1.3, 0);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-0.6, -0.9);
+  ctx.quadraticCurveTo(0.2, -2.2, 0.8, -0.9);
+  ctx.fill();
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 1.9, 1.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (body !== spots) {
+    ctx.fillStyle = spots;
+    ctx.beginPath();
+    ctx.arc(-0.5, -0.3, 0.55, 0, Math.PI * 2);
+    ctx.arc(0.6, 0.4, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#1e1a22';
+  ctx.beginPath();
+  ctx.arc(1.1, -0.25, 0.28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function blossom(ctx, cx, cy, r, petal, core) {
@@ -403,6 +760,10 @@ function drawBody(ctx, d) {
   const o = d.outfit;
   if (o.kind === 'kimono') {
     drawKimono(ctx, d);
+    return;
+  }
+  if (o.kind === 'maiko') {
+    drawMaikoKimono(ctx, d);
     return;
   }
   drawLegs(ctx, d);
@@ -984,14 +1345,16 @@ function drawKimono(ctx, d) {
       ctx.closePath();
     };
     sleeve();
-    ctx.fillStyle = o.robe;
+    ctx.fillStyle = o.haori ?? o.robe;
     ctx.fill();
     outline(ctx);
-    ctx.save();
-    sleeve();
-    ctx.clip();
-    drawPattern(ctx, o, dir < 0 ? -17 : 3, -40, 14, 26);
-    ctx.restore();
+    if (!o.haori) {
+      ctx.save();
+      sleeve();
+      ctx.clip();
+      drawPattern(ctx, o, dir < 0 ? -17 : 3, -40, 14, 26);
+      ctx.restore();
+    }
   }
   // Hands folded in front.
   for (const [hx, rot] of [[-1.8, 0.25], [1.6, -0.2]]) {
@@ -1009,6 +1372,7 @@ function drawKimono(ctx, d) {
     ctx.lineTo(11.8, -20.7);
     ctx.stroke();
   } else {
+    if (o.obiage) rr(ctx, -11.6, -29.4, 23.2, 2.2, 1, o.obiage, 0.35);
     rr(ctx, -12, -28, 24, o.yukata ? 6.5 : 8.5, 1, o.obi, 0.5);
     ctx.strokeStyle = o.obiAccent;
     ctx.lineWidth = 0.5;
@@ -1016,6 +1380,106 @@ function drawKimono(ctx, d) {
     ctx.moveTo(-11.8, -24.2);
     ctx.lineTo(11.8, -24.2);
     ctx.stroke();
+    if (o.obijime) {
+      // The obijime cord tied across the obi, with a jade obidome.
+      ctx.strokeStyle = o.obijime;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-11.8, -23.6);
+      ctx.lineTo(11.8, -23.6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, -23.6, 1.9, 1.3, 0, 0, Math.PI * 2);
+      fillPath(ctx, '#5fb89a', 0.35);
+    }
+  }
+  if (o.heko) {
+    // A child's soft heko-obi tied in a big bow at the side.
+    for (const [lx, ly, rot] of [[7.2, -23.5, -0.5], [11.2, -22, 0.4]]) {
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, 3.2, 2.2, rot, 0, Math.PI * 2);
+      fillPath(ctx, o.heko, 0.35);
+    }
+    for (const [tx, rot] of [[8.4, 0.2], [10.4, -0.25]]) {
+      ctx.save();
+      ctx.translate(tx, -21);
+      ctx.rotate(rot);
+      rr(ctx, -1, 0, 2, 6, 1, o.heko, 0.35);
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.arc(9.2, -22.6, 1.3, 0, Math.PI * 2);
+    fillPath(ctx, shade(o.heko, -0.12), 0.35);
+  }
+  if (o.sensu) {
+    // A folded fan tucked into the obi.
+    ctx.save();
+    ctx.translate(-7.5, -22);
+    ctx.rotate(-0.35);
+    rr(ctx, -0.8, -5.5, 1.6, 7, 0.6, o.sensu, 0.35);
+    ctx.restore();
+  }
+  if (o.haori) {
+    // A haori jacket hanging open over the kimono, tied with a white himo.
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 5, -40.5);
+      ctx.quadraticCurveTo(dir * 12.6, -39.5, dir * 12.6, -33);
+      ctx.lineTo(dir * 12.2, -7);
+      ctx.lineTo(dir * 6.4, -7);
+      ctx.lineTo(dir * 4.6, -30);
+      ctx.closePath();
+      fillPath(ctx, o.haori, 0.5);
+      ctx.strokeStyle = shade(o.haori, -0.3);
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(dir * 5, -40);
+      ctx.lineTo(dir * 5.4, -30);
+      ctx.lineTo(dir * 7, -7.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(dir * 9.5, -35, 1.1, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 0.35;
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#f4f2ec';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-5.2, -29);
+    ctx.quadraticCurveTo(0, -27.5, 5.2, -29);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -27.9, 1.1, 0, Math.PI * 2);
+    fillPath(ctx, '#f4f2ec', 0.3);
+  }
+  if (d.extras?.goldfishBag) {
+    // A goldfish from the festival scoop, in a knotted bag of water.
+    ctx.strokeStyle = 'rgba(30,26,34,0.5)';
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(0, -16);
+    ctx.lineTo(0, -13.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-1, -13.4);
+    ctx.quadraticCurveTo(-4.4, -10, -3.4, -6.6);
+    ctx.quadraticCurveTo(0, -5, 3.4, -6.6);
+    ctx.quadraticCurveTo(4.4, -10, 1, -13.4);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(200,232,255,0.7)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(79,140,200,0.8)';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(120,190,240,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(-3.9, -9.4);
+    ctx.quadraticCurveTo(0, -8.6, 3.9, -9.4);
+    ctx.quadraticCurveTo(4.2, -6.6, 0, -5.8);
+    ctx.quadraticCurveTo(-4.2, -6.6, -3.9, -9.4);
+    ctx.fill();
+    goldfish(ctx, 0.4, -7.8, 1, d.extras.goldfishBag, d.extras.goldfishBag);
+    rr(ctx, -1.2, -14.2, 2.4, 1.2, 0.5, '#e0485f', 0.3);
   }
   drawNeck(ctx, d);
   // Crossed collar: wearer's left over right.
@@ -1029,6 +1493,427 @@ function drawKimono(ctx, d) {
     ctx.stroke();
     ctx.lineCap = 'butt';
   }
+}
+
+/** A repeatable 0..1 "random" for scattering pattern details. */
+function hash01(n) {
+  const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+}
+
+/** A crane in flight: white wings, black flight feathers and neck, red crown. */
+function crane(ctx, cx, cy, r, dir) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(dir * r, r);
+  ctx.fillStyle = '#fbfaf6';
+  ctx.strokeStyle = 'rgba(40,30,50,0.55)';
+  ctx.lineWidth = 0.08;
+  for (const wing of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-0.3, 0);
+    ctx.quadraticCurveTo(-0.4, wing * -1.4, -1.6, wing * -1.9);
+    ctx.quadraticCurveTo(-0.6, wing * -0.9, 0.4, wing * -0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#1e1a22';
+    ctx.beginPath();
+    ctx.moveTo(-1.6, wing * -1.9);
+    ctx.quadraticCurveTo(-1.1, wing * -1.4, -0.9, wing * -1.05);
+    ctx.lineTo(-1.25, wing * -1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fbfaf6';
+  }
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 1, 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#1e1a22';
+  ctx.lineWidth = 0.22;
+  ctx.beginPath();
+  ctx.moveTo(0.9, 0);
+  ctx.quadraticCurveTo(1.5, -0.1, 1.9, -0.45);
+  ctx.stroke();
+  ctx.fillStyle = '#e0283a';
+  ctx.beginPath();
+  ctx.arc(1.95, -0.5, 0.17, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1e1a22';
+  ctx.lineWidth = 0.1;
+  ctx.beginPath();
+  ctx.moveTo(-0.9, 0.05);
+  ctx.lineTo(-1.8, 0.3);
+  ctx.moveTo(-0.9, -0.05);
+  ctx.lineTo(-1.8, 0.1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A kasumi (mist) band: a long rounded cloud strip outlined in gold. */
+function kasumi(ctx, x, y, w, h) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fillStyle = 'rgba(255,240,200,0.28)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(240,200,90,0.9)';
+  ctx.lineWidth = 0.4;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,220,120,0.55)';
+  for (let i = 0; i < w / 3; i++) {
+    ctx.beginPath();
+    ctx.arc(x + 1.5 + i * 3, y + h / 2 + (i % 2 ? 0.5 : -0.5), 0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** A flowering branch: a brown twig with blossoms (sakura or ume) and buds. */
+function blossomBranch(ctx, x, y, len, rot, petal, seed) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.strokeStyle = '#5a3a2a';
+  ctx.lineWidth = 0.55;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(len * 0.5, -1.5, len, 0.5);
+  ctx.moveTo(len * 0.45, -0.8);
+  ctx.lineTo(len * 0.6, -2.6);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  for (let i = 0; i < 4; i++) {
+    const bx = len * (0.25 + i * 0.25) - 0.5;
+    const by = (hash01(seed + i) - 0.5) * 2.4 - 0.3;
+    if (i === 3) {
+      ctx.fillStyle = shade(petal, -0.15);
+      ctx.beginPath();
+      ctx.ellipse(bx, by, 0.6, 0.85, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else blossom(ctx, bx, by, 1.15 + hash01(seed + i + 9) * 0.5, petal, GOLD);
+  }
+  blossom(ctx, len * 0.6, -2.8, 0.9, petal, GOLD);
+  ctx.restore();
+}
+
+/** A pine sprig: fans of green needles. */
+function pineSprig(ctx, x, y, r) {
+  ctx.strokeStyle = '#2e7a4a';
+  ctx.lineWidth = 0.28;
+  for (const [ox, oy] of [[0, 0], [r * 1.3, -r * 0.35], [r * 0.6, r * 0.7]]) {
+    for (let i = 0; i < 7; i++) {
+      const a = Math.PI * (1.15 + i * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y + oy);
+      ctx.lineTo(x + ox + Math.cos(a) * r, y + oy + Math.sin(a) * r);
+      ctx.stroke();
+    }
+  }
+}
+
+/** All of the maiko kimono's painted scene, inside a clip. */
+function maikoScene(ctx, x, y, w, h, seed) {
+  // Ryūsui: a winding stream across the lower part.
+  ctx.strokeStyle = 'rgba(190,226,255,0.6)';
+  ctx.lineWidth = 0.5;
+  for (const off of [0, 1.6, 3.2]) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + h * 0.78 + off);
+    ctx.bezierCurveTo(x + w * 0.3, y + h * 0.66 + off, x + w * 0.6, y + h * 0.95 + off, x + w, y + h * 0.8 + off);
+    ctx.stroke();
+  }
+  kasumi(ctx, x - 3, y + h * 0.12, w * 0.55, 3.4);
+  kasumi(ctx, x + w * 0.5, y + h * 0.42, w * 0.6, 3);
+  kasumi(ctx, x + w * 0.05, y + h * 0.62, w * 0.45, 2.6);
+  pineSprig(ctx, x + w * 0.78, y + h * 0.2, 2.2);
+  pineSprig(ctx, x + w * 0.15, y + h * 0.9, 2);
+  blossomBranch(ctx, x + w * 0.05, y + h * 0.32, w * 0.5, -0.25, '#ffd1e3', seed);
+  blossomBranch(ctx, x + w * 0.45, y + h * 0.74, w * 0.45, 0.2, '#ffffff', seed + 20);
+  blossomBranch(ctx, x + w * 0.62, y + h * 0.9, w * 0.4, -0.5, '#ff9ab8', seed + 40);
+  // Kinpaku: flecks of gold leaf.
+  ctx.fillStyle = 'rgba(255,214,102,0.85)';
+  for (let i = 0; i < Math.round((w * h) / 40); i++) {
+    const fx = x + hash01(seed + i * 3) * w;
+    const fy = y + hash01(seed + i * 3 + 1) * h;
+    const fr = 0.25 + hash01(seed + i * 3 + 2) * 0.5;
+    ctx.fillRect(fx, fy, fr, fr);
+  }
+}
+
+/**
+ * The maiko's full dress, back to front: okobo clogs, the trailing
+ * susohiki robe with its padded fuki hem, the painted scene, long
+ * furisode sleeves with pink juban lining, the brocade obi with obiage,
+ * obijime and a jeweled pocchiri, the red embroidered eri collar, a
+ * hakoseko purse at the breast and a kinchaku pouch from the wrist.
+ */
+function drawMaikoKimono(ctx, d) {
+  const o = d.outfit;
+  // Okobo: tall lacquered clogs with red straps and a little bell.
+  for (const dir of [-1, 1]) {
+    const fx = dir * 4.2;
+    ctx.beginPath();
+    ctx.moveTo(fx - 3.4, 3);
+    ctx.lineTo(fx + 3.4, 3);
+    ctx.lineTo(fx + 2.6, 8.6);
+    ctx.lineTo(fx - 2.6, 8.6);
+    ctx.closePath();
+    fillPath(ctx, o.okobo, 0.4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(fx - 2.8, 4.4);
+    ctx.lineTo(fx + 2.8, 4.4);
+    ctx.stroke();
+    rr(ctx, fx - 2.4, 1.6, 4.8, 2, 1, o.hanao, 0.3);
+    ctx.beginPath();
+    ctx.arc(fx + dir * 2.6, 6, 0.75, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.25);
+  }
+  // Robe: a hikizuri that flares and trails at the hem.
+  const robe = () => {
+    ctx.beginPath();
+    ctx.moveTo(-6, -40);
+    ctx.quadraticCurveTo(-12.5, -39, -12.5, -33);
+    ctx.quadraticCurveTo(-12.4, -12, -14.6, 1.4);
+    ctx.quadraticCurveTo(0, 4.4, 14.6, 1.4);
+    ctx.quadraticCurveTo(12.4, -12, 12.5, -33);
+    ctx.quadraticCurveTo(12.5, -39, 6, -40);
+    ctx.closePath();
+  };
+  const grad = ctx.createLinearGradient(0, -40, 0, 5);
+  grad.addColorStop(0, o.robe);
+  grad.addColorStop(0.45, o.robeMid);
+  grad.addColorStop(1, o.robeHem);
+  robe();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  outline(ctx);
+  ctx.save();
+  robe();
+  ctx.clip();
+  maikoScene(ctx, -15, -40, 30, 46, 7);
+  crane(ctx, -5, -6, 2.4, 1);
+  crane(ctx, 7, -12, 1.8, -1);
+  softShade(ctx, -15, -42, 30, 50);
+  // The overlap seam where the left panel crosses the right.
+  ctx.strokeStyle = 'rgba(20,10,30,0.45)';
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(2.4, -19);
+  ctx.quadraticCurveTo(3.8, -6, 6, 3.2);
+  ctx.stroke();
+  ctx.restore();
+  // Fuki: the padded hem roll, with the pink juban edge beneath.
+  ctx.strokeStyle = o.juban;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-14.2, 2.6);
+  ctx.quadraticCurveTo(0, 5.6, 14.2, 2.6);
+  ctx.stroke();
+  ctx.strokeStyle = o.fuki;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-14.6, 1.4);
+  ctx.quadraticCurveTo(0, 4.4, 14.6, 1.4);
+  ctx.moveTo(6, 3.2);
+  ctx.quadraticCurveTo(4.4, -6, 2.6, -19);
+  ctx.stroke();
+  // Furisode sleeves swinging nearly to the knee.
+  for (const dir of [-1, 1]) {
+    const sleeve = () => {
+      ctx.beginPath();
+      ctx.moveTo(dir * 9, -39);
+      ctx.quadraticCurveTo(dir * 16.5, -38.5, dir * 17.2, -30);
+      ctx.lineTo(dir * 17.6, -7);
+      ctx.quadraticCurveTo(dir * 17.4, -3, dir * 13, -3);
+      ctx.lineTo(dir * 8.5, -3);
+      ctx.quadraticCurveTo(dir * 6.5, -6, dir * 6, -15.5);
+      ctx.lineTo(dir * 4, -15.5);
+      ctx.lineTo(dir * 8, -33);
+      ctx.closePath();
+    };
+    const sg = ctx.createLinearGradient(0, -40, 0, -3);
+    sg.addColorStop(0, o.robe);
+    sg.addColorStop(0.5, o.robeMid);
+    sg.addColorStop(1, o.robeHem);
+    sleeve();
+    ctx.fillStyle = sg;
+    ctx.fill();
+    outline(ctx);
+    ctx.save();
+    sleeve();
+    ctx.clip();
+    maikoScene(ctx, dir < 0 ? -18 : 4, -40, 14, 38, dir < 0 ? 51 : 83);
+    crane(ctx, dir * 12.5, -24, 1.6, dir);
+    ctx.restore();
+    // Padded sleeve edge with the juban lining peeking at the opening.
+    ctx.strokeStyle = o.fuki;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(dir * 17.6, -7);
+    ctx.quadraticCurveTo(dir * 17.4, -3, dir * 13, -3);
+    ctx.lineTo(dir * 8.5, -3);
+    ctx.stroke();
+    ctx.strokeStyle = o.juban;
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(dir * 8.6, -4);
+    ctx.quadraticCurveTo(dir * 6.8, -7, dir * 6.3, -15);
+    ctx.stroke();
+  }
+  // Hands folded in front.
+  for (const [hx, rot] of [[-1.8, 0.25], [1.6, -0.2]]) {
+    ctx.beginPath();
+    ctx.ellipse(hx, -16.2, 2.3, 1.35, rot, 0, Math.PI * 2);
+    fillPath(ctx, d.skin, 0.4);
+  }
+  // Obiage: red shibori silk peeking above the obi, dotted with white.
+  rr(ctx, -11.8, -32.6, 23.6, 2.6, 1.2, o.obiage, 0.35);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let px = -10.6; px < 11; px += 1.5) {
+    ctx.beginPath();
+    ctx.arc(px, -31.3 + ((px * 2) % 2 ? 0.4 : -0.4), 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // The obi: gold brocade woven with a sayagata key-fret and medallions.
+  rr(ctx, -12.2, -30.5, 24.4, 11, 1, o.obi, 0.55);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-12.2, -30.5, 24.4, 11);
+  ctx.clip();
+  ctx.strokeStyle = o.obiWeave;
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = 0.25;
+  for (let gy = -30; gy < -19; gy += 2) {
+    for (let gx = -12 + ((gy / 2) % 2 ? 1 : 0); gx < 12.5; gx += 2) {
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx + 1, gy);
+      ctx.lineTo(gx + 1, gy + 1);
+      ctx.lineTo(gx + 2, gy + 1);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  const sheen = ctx.createLinearGradient(0, -30.5, 0, -19.5);
+  sheen.addColorStop(0, 'rgba(255,248,220,0.4)');
+  sheen.addColorStop(0.5, 'rgba(255,248,220,0)');
+  sheen.addColorStop(1, 'rgba(90,50,10,0.18)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(-12.2, -30.5, 24.4, 11);
+  for (const [mx, my] of [[-7.5, -25.5], [7.5, -25.5]]) {
+    ctx.beginPath();
+    ctx.arc(mx, my, 2.5, 0, Math.PI * 2);
+    fillPath(ctx, '#2a3a6a', 0.3);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.arc(mx, my, 1.95, 0, Math.PI * 2);
+    ctx.stroke();
+    blossom(ctx, mx, my, 1.35, '#ffffff', '#e0485f');
+  }
+  ctx.restore();
+  // Obijime: a two-tone braided cord across the obi…
+  const [cordA, cordB] = o.obijime;
+  for (let i = 0; i < 2; i++) {
+    ctx.strokeStyle = i ? cordB : cordA;
+    ctx.lineWidth = 0.75;
+    ctx.beginPath();
+    ctx.moveTo(-12.2, -24.6 + i * 0.7);
+    ctx.lineTo(12.2, -24.6 + i * 0.7);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(40,20,20,0.45)';
+  ctx.lineWidth = 0.2;
+  for (let px = -11.8; px < 12; px += 0.9) {
+    ctx.beginPath();
+    ctx.moveTo(px, -24.9);
+    ctx.lineTo(px + 0.5, -23.6);
+    ctx.stroke();
+  }
+  // …fastened with a pocchiri: a jeweled clasp of coral, jade and pearls.
+  rr(ctx, -3.6, -26.6, 7.2, 4.6, 1.6, GOLD, 0.45);
+  rr(ctx, -2.9, -26, 5.8, 3.4, 1.2, '#f2d27a', 0.2);
+  ctx.beginPath();
+  ctx.ellipse(0, -24.3, 1.5, 1.1, 0, 0, Math.PI * 2);
+  fillPath(ctx, '#e8604a', 0.3);
+  for (const px of [-2.2, 2.2]) {
+    ctx.beginPath();
+    ctx.arc(px, -24.3, 0.65, 0, Math.PI * 2);
+    fillPath(ctx, '#5fb89a', 0.25);
+  }
+  ctx.fillStyle = '#ffffff';
+  for (const [px, py] of [[-2.8, -26], [2.8, -26], [-2.8, -22.6], [2.8, -22.6]]) {
+    ctx.beginPath();
+    ctx.arc(px, py, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath();
+  ctx.arc(-0.5, -24.7, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  // Kinchaku: a red brocade drawstring pouch hanging from the wrist.
+  if (d.extras?.kinchaku) {
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(1.8, -15.4);
+    ctx.lineTo(3.4, -12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(1.4, -11.6);
+    ctx.quadraticCurveTo(0.4, -7, 3.6, -6.4);
+    ctx.quadraticCurveTo(6.8, -7, 5.8, -11.6);
+    ctx.quadraticCurveTo(3.6, -12.4, 1.4, -11.6);
+    fillPath(ctx, d.extras.kinchaku, 0.35);
+    blossom(ctx, 3.6, -8.8, 1.1, '#ffd1e3', GOLD);
+    for (const tx of [2.4, 4.8]) {
+      ctx.beginPath();
+      ctx.arc(tx, -11.8, 0.45, 0, Math.PI * 2);
+      fillPath(ctx, GOLD, 0.2);
+    }
+  }
+  drawNeck(ctx, d);
+  // Layered collars: white under-collar, the maiko's red embroidered eri,
+  // then the kimono's own collar, wearer's left over right.
+  for (const [color, width, inset] of [['#ffffff', 3.4, 0], [o.eri, 2.4, 0.5], [o.robe, 1.1, 1.8]]) {
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * (4.6 + inset), -41);
+      ctx.quadraticCurveTo(dir * (3.6 + inset), -35, dir * -1.2, -31.4 + inset * 0.6);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+  }
+  // Gold and white embroidery dots on the red eri.
+  for (const dir of [-1, 1]) {
+    for (let i = 0; i < 5; i++) {
+      const tt = i / 5;
+      ctx.fillStyle = i % 2 ? '#ffffff' : GOLD;
+      ctx.beginPath();
+      ctx.arc(dir * (5 - tt * 4.6), -40.4 + tt * 8.2, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Hakoseko: a brocade purse tucked into the collar, its silver chain and
+  // tassel hanging out.
+  rr(ctx, -9.8, -36.6, 5.2, 3.2, 0.8, '#2a3a6a', 0.35);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.3;
+  ctx.strokeRect(-9.3, -36.1, 4.2, 2.2);
+  blossom(ctx, -7.2, -35, 0.8, '#ffffff', GOLD);
+  ctx.strokeStyle = '#c8ccd4';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.moveTo(-9.6, -33.6);
+  ctx.quadraticCurveTo(-11, -31, -10.2, -29.6);
+  ctx.stroke();
+  rr(ctx, -10.8, -29.8, 1.2, 2.4, 0.5, '#e0485f', 0.2);
 }
 
 function drawPattern(ctx, o, x, y, w, h) {
@@ -1091,6 +1976,67 @@ function drawPattern(ctx, o, x, y, w, h) {
     for (let iy = 0; iy * cell < h; iy++) {
       for (let ix = 0; ix * cell < w; ix++) {
         if ((ix + iy) % 2) ctx.fillRect(x + ix * cell, y + iy * cell, cell, cell);
+      }
+    }
+  } else if (o.pattern === 'momiji') {
+    // Tatsuta-gawa: maple leaves in three autumn colors drifting on pale
+    // stream lines.
+    ctx.strokeStyle = 'rgba(255,240,220,0.35)';
+    ctx.lineWidth = 0.6;
+    for (let py = y + 9; py < y + h; py += 14) {
+      ctx.beginPath();
+      ctx.moveTo(x, py);
+      for (let px = x; px <= x + w; px += 4) ctx.quadraticCurveTo(px + 1, py - 1.6, px + 2, py), ctx.quadraticCurveTo(px + 3, py + 1.6, px + 4, py);
+      ctx.stroke();
+    }
+    const colors = [c, '#e8572a', '#f2c230'];
+    for (let row = 0, py = y + 4; py < y + h; row++, py += 8) {
+      for (let col = 0, px = x + (row % 2 ? 3 : 7); px < x + w; col++, px += 8) {
+        mapleLeaf(ctx, px, py, 2.6, ((row * 3 + col) % 7) * 0.5 - 1.2, colors[(row + col * 2) % 3]);
+      }
+    }
+  } else if (o.pattern === 'goldfish') {
+    // Kingyo: goldfish with fan tails, red and the odd calico, among
+    // blue ripples.
+    ctx.strokeStyle = 'rgba(79,168,224,0.45)';
+    ctx.lineWidth = 0.4;
+    for (let py = y + 9; py < y + h; py += 9) {
+      for (let px = x + ((py / 9) % 2 ? 1 : 5); px < x + w; px += 9) {
+        ctx.beginPath();
+        ctx.ellipse(px, py, 1.6, 0.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    for (let row = 0, py = y + 5; py < y + h; row++, py += 9) {
+      for (let col = 0, px = x + (row % 2 ? 2 : 6); px < x + w; col++, px += 9) {
+        goldfish(ctx, px, py, row % 2 ? -1 : 1, (row + col) % 4 === 3 ? '#ffffff' : c, c);
+      }
+    }
+  } else if (o.pattern === 'kikko') {
+    // Kikkō-hanabishi: a tortoiseshell honeycomb, every other cell
+    // holding a little four-petal flower.
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 0.45;
+    const r = 2.6;
+    for (let row = 0, py = y + 2; py < y + h + r; row++, py += r * 1.5) {
+      for (let col = 0, px = x + (row % 2 ? r * 0.87 : 0); px < x + w + r; col++, px += r * 1.74) {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+          if (i === 0) ctx.moveTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
+          else ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        if ((row + col) % 2 === 0) {
+          ctx.fillStyle = shade(c, 0.35);
+          for (let i = 0; i < 4; i++) {
+            const a = (i * Math.PI) / 2;
+            ctx.beginPath();
+            ctx.ellipse(px + Math.cos(a) * 0.8, py + Math.sin(a) * 0.8, 0.75, 0.4, a, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
     }
   } else if (o.pattern === 'dandelion') {
@@ -1212,7 +2158,49 @@ function drawBackHairAccents(ctx, d) {
     ctx.beginPath();
     ctx.arc(0, -15, 5.4, 0, Math.PI * 2);
     fillPath(ctx, c, 0.5);
+  } else if (back === 'maiko') {
+    drawMaikoMage(ctx, c);
   }
+}
+
+/**
+ * The maiko's wareshinobu mage, behind the head so the front hair laps
+ * over it with no seam: two rounded lobes split by red kanoko silk, with
+ * combed sheen lines and a silver kanokodome.
+ */
+function drawMaikoMage(ctx, c) {
+  const g = ctx.createLinearGradient(0, -28, 0, -10);
+  g.addColorStop(0, shade(c, 0.14));
+  g.addColorStop(1, c);
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 0.6, -13);
+    ctx.bezierCurveTo(dir * 1.2, -23.5, dir * 12.5, -25, dir * 14, -17.5);
+    ctx.bezierCurveTo(dir * 14.6, -12.5, dir * 11.5, -9, dir * 6, -9);
+    ctx.closePath();
+    ctx.fillStyle = g;
+    ctx.fill();
+    outline(ctx, 0.5);
+    ctx.strokeStyle = 'rgba(150,150,200,0.32)';
+    ctx.lineWidth = 0.35;
+    for (const k of [0.35, 0.6, 0.85]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 1.8, -14);
+      ctx.quadraticCurveTo(dir * (3 + 9 * k), -23.2 + k * 2, dir * (4 + 9.4 * k), -12.5);
+      ctx.stroke();
+    }
+  }
+  // Kanoko: red tie-dyed silk in the split, dotted white.
+  ctx.beginPath();
+  ctx.ellipse(0, -18.6, 2.3, 4, 0, 0, Math.PI * 2);
+  fillPath(ctx, '#d8283a', 0.4);
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 7; i++) {
+    ctx.beginPath();
+    ctx.arc(i % 2 ? 0.9 : -0.9, -21.4 + i * 0.9, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  rr(ctx, -3, -18.4, 6, 0.9, 0.45, '#e4e8f0', 0.25);
 }
 
 function drawHead(ctx, d, angryTint = false) {
@@ -1232,7 +2220,8 @@ function drawHead(ctx, d, angryTint = false) {
   facePath(ctx);
   ctx.clip();
   const shadow = ctx.createLinearGradient(0, -9, 0, -3);
-  shadow.addColorStop(0, shade(skin, -0.16));
+  // On white oshiroi a grey shadow looks ashen; warm it to a soft pink.
+  shadow.addColorStop(0, d.extras?.beni ? 'rgba(226,170,176,0.55)' : shade(skin, -0.16));
   shadow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = shadow;
   ctx.fillRect(-12, -14, 24, 11);
@@ -1242,7 +2231,21 @@ function drawHead(ctx, d, angryTint = false) {
   ctx.fillStyle = jaw;
   ctx.fillRect(0, -4, 12, 18);
   ctx.restore();
+  if (d.extras?.beni) drawBeniLines(ctx);
   drawEyes(ctx, d);
+  if (d.extras?.beni) {
+    // Maiko makeup: beni blended softly up from the outer corners of the
+    // eyes, with a fine red line at the very edge.
+    for (const dir of [-1, 1]) {
+      const wash = ctx.createRadialGradient(dir * 7, -1.6, 0, dir * 7, -1.6, 3.6);
+      wash.addColorStop(0, 'rgba(230,70,100,0.42)');
+      wash.addColorStop(1, 'rgba(230,70,100,0)');
+      ctx.fillStyle = wash;
+      ctx.beginPath();
+      ctx.ellipse(dir * 7, -1.6, 3.8, 2.4, dir * -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   drawBrows(ctx, d);
   // Blush with a few anime hatch strokes, and a hint of nose.
   ctx.fillStyle = 'rgba(240,120,140,0.3)';
@@ -1277,6 +2280,19 @@ function drawHead(ctx, d, angryTint = false) {
   }
   if (d.extras?.mask) drawFaceMask(ctx);
   else drawMouth(ctx, d);
+  if (d.extras?.beard) {
+    // A soft rounded beard under the chin.
+    ctx.fillStyle = d.extras.beard;
+    ctx.beginPath();
+    ctx.moveTo(-8.5, 3);
+    ctx.quadraticCurveTo(-9, 13, 0, 16);
+    ctx.quadraticCurveTo(9, 13, 8.5, 3);
+    ctx.quadraticCurveTo(0, 9, -8.5, 3);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(24,18,44,0.4)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
   if (d.extras?.mustache) {
     ctx.fillStyle = d.extras.mustache;
     ctx.beginPath();
@@ -1286,6 +2302,19 @@ function drawHead(ctx, d, angryTint = false) {
   }
   drawFrontHair(ctx, d);
   drawHeadExtras(ctx, d);
+}
+
+/** Fine red liner tapering out from each eye's outer corner. */
+function drawBeniLines(ctx) {
+  ctx.fillStyle = 'rgba(200,30,50,0.8)';
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 6.2, -0.9);
+    ctx.quadraticCurveTo(dir * 8.6, -2, dir * 9.6, -2.9);
+    ctx.quadraticCurveTo(dir * 8.4, -1.2, dir * 6.2, -0.3);
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 
 function drawEyes(ctx, d) {
@@ -1407,6 +2436,28 @@ function drawMouth(ctx, d) {
     ctx.quadraticCurveTo(0, 8.6, 1.8, 5.6);
     ctx.closePath();
     ctx.fill();
+  } else if (d.mouth === 'beni') {
+    // A first-year maiko paints only her lower lip: a small red rosebud
+    // under a barely-tinted upper lip.
+    ctx.fillStyle = 'rgba(230,140,150,0.55)';
+    ctx.moveTo(-1.8, 5.5);
+    ctx.quadraticCurveTo(-0.9, 4.6, 0, 5.1);
+    ctx.quadraticCurveTo(0.9, 4.6, 1.8, 5.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = '#d8283a';
+    ctx.moveTo(-1.3, 5.6);
+    ctx.quadraticCurveTo(0, 7.9, 1.3, 5.6);
+    ctx.quadraticCurveTo(0, 6, -1.3, 5.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120,40,50,0.45)';
+    ctx.lineWidth = 0.28;
+    ctx.beginPath();
+    ctx.moveTo(-1.7, 5.5);
+    ctx.quadraticCurveTo(0, 5.9, 1.7, 5.5);
+    ctx.stroke();
   } else if (d.mouth === 'flat') {
     ctx.moveTo(-1.4, 6.2);
     ctx.lineTo(1.4, 6.2);
@@ -1594,6 +2645,119 @@ function drawTexturedHair(ctx, d) {
   ctx.lineCap = 'butt';
 }
 
+/**
+ * A maiko's wareshinobu updo and its ornaments: swept-out side wings
+ * (bin), the split mage on top with red kanoko silk, a tortoiseshell kushi
+ * comb with gold maki-e, hana-kanzashi silk flowers with long cascading
+ * bira strands, a silver fan kanzashi with dangles, and a coral tama pin.
+ */
+function drawMaikoHair(ctx, d) {
+  const c = d.hair.color;
+  const hair = (path) => {
+    path();
+    const g = ctx.createLinearGradient(0, -30, 0, 0);
+    g.addColorStop(0, shade(c, 0.12));
+    g.addColorStop(1, c);
+    ctx.fillStyle = g;
+    ctx.fill();
+    outline(ctx, 0.5);
+  };
+  // Bin: the side wings swept out over the ears.
+  for (const dir of [-1, 1]) {
+    hair(() => {
+      ctx.beginPath();
+      ctx.moveTo(dir * 9, -12);
+      ctx.quadraticCurveTo(dir * 15.8, -10, dir * 14.4, -1);
+      ctx.quadraticCurveTo(dir * 13, 3.4, dir * 10.2, 2.6);
+      ctx.quadraticCurveTo(dir * 11.4, -4, dir * 8.6, -8);
+      ctx.closePath();
+    });
+  }
+  // Kushi: a tortoiseshell comb at the front with gold maki-e.
+  ctx.beginPath();
+  ctx.moveTo(-6.5, -15.5);
+  ctx.quadraticCurveTo(0, -19.5, 6.5, -15.5);
+  ctx.lineTo(6, -14);
+  ctx.quadraticCurveTo(0, -17.4, -6, -14);
+  ctx.closePath();
+  const kg = ctx.createLinearGradient(-6, 0, 6, 0);
+  kg.addColorStop(0, '#6a3a1a');
+  kg.addColorStop(0.5, '#b8742a');
+  kg.addColorStop(1, '#5a2e14');
+  ctx.fillStyle = kg;
+  ctx.fill();
+  outline(ctx, 0.35);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(-4, -16.2);
+  ctx.quadraticCurveTo(0, -18.2, 4, -16.2);
+  ctx.stroke();
+  // Tama kanzashi: a coral bead on a silver pin through the mage.
+  ctx.strokeStyle = '#d8dce4';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(-10, -25);
+  ctx.lineTo(-4, -19);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-10.4, -25.4, 1.4, 0, Math.PI * 2);
+  fillPath(ctx, '#e8604a', 0.3);
+  // Bira-bira: a silver fan kanzashi on the right, with swinging dangles.
+  ctx.beginPath();
+  ctx.moveTo(8.5, -17);
+  ctx.arc(8.5, -17, 4.2, -0.7 * Math.PI, -0.15 * Math.PI);
+  ctx.closePath();
+  fillPath(ctx, '#e4e8f0', 0.3);
+  ctx.strokeStyle = '#a8aebc';
+  ctx.lineWidth = 0.2;
+  for (let i = 0; i < 5; i++) {
+    const a = -0.7 * Math.PI + i * 0.14 * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(8.5, -17);
+    ctx.lineTo(8.5 + Math.cos(a) * 4.2, -17 + Math.sin(a) * 4.2);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#c8ccd4';
+  ctx.lineWidth = 0.3;
+  for (let i = 0; i < 6; i++) {
+    const sx = 10.5 + i * 0.75;
+    ctx.beginPath();
+    ctx.moveTo(sx, -15.6);
+    ctx.lineTo(sx + 0.3, -9 + (i % 2) * 1.5);
+    ctx.stroke();
+    ctx.fillStyle = '#e4e8f0';
+    ctx.fillRect(sx - 0.15, -9.4 + (i % 2) * 1.5, 0.9, 1.1);
+  }
+  // Hana-kanzashi: a cluster of silk flowers on the left…
+  const petals = ['#ff8fb8', '#ffffff', '#e0485f', '#ffd1e3', '#f2c94c'];
+  for (const [fx, fy, r, i] of [[-9, -21, 2.6, 0], [-12, -18, 2.2, 1], [-7, -24.5, 2, 2], [-12.5, -22.5, 1.8, 3], [-9.6, -16.5, 1.7, 4], [-6, -20.4, 1.5, 1]]) {
+    blossom(ctx, fx, fy, r, petals[i], i === 4 ? '#e0485f' : GOLD);
+  }
+  // Green silk leaves among them.
+  ctx.fillStyle = '#5fb89a';
+  for (const [lx, ly, rot] of [[-13.6, -20, 0.6], [-6, -26.4, -0.4], [-11, -15, 1.2]]) {
+    ctx.beginPath();
+    ctx.ellipse(lx, ly, 1.6, 0.7, rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // …with bira strands of tiny blossoms cascading past the cheek.
+  for (let strand = 0; strand < 4; strand++) {
+    const sx = -13.6 + strand * 1.5;
+    ctx.strokeStyle = 'rgba(180,140,60,0.6)';
+    ctx.lineWidth = 0.2;
+    ctx.beginPath();
+    ctx.moveTo(sx, -15.5);
+    ctx.lineTo(sx - 0.2, -2 + strand * 1.6);
+    ctx.stroke();
+    for (let k = 0; k < 6 + strand; k++) {
+      const by = -14 + k * 1.95;
+      if (by > -1 + strand * 1.6) break;
+      blossom(ctx, sx - (k % 2) * 0.3, by, 0.7, petals[(k + strand) % petals.length], GOLD);
+    }
+  }
+}
+
 function drawHeadExtras(ctx, d) {
   const x = d.extras ?? {};
   if (x.sunglasses) {
@@ -1638,6 +2802,7 @@ function drawHeadExtras(ctx, d) {
     ctx.arc(0, -19, 2.4, 0, Math.PI * 2);
     fillPath(ctx, shade(x.beanie, 0.3), 0.4);
   }
+  if (x.maikoHair) drawMaikoHair(ctx, d);
   if (x.kanzashi) {
     // A flower kanzashi pinned beside the bun, with a short dangle.
     blossom(ctx, 7.6, -12.2, 2.4, x.kanzashi, GOLD);
@@ -1707,6 +2872,104 @@ function drawHeadExtras(ctx, d) {
         ctx.closePath();
         ctx.fill();
       }
+    }
+  }
+  if (x.flowerCrown) {
+    // A daisy crown ringed round the head.
+    for (let i = 0; i < 7; i++) {
+      const a = Math.PI * (1.08 + i * 0.14);
+      blossom(ctx, Math.cos(a) * 11, -3 + Math.sin(a) * 11, 2.4, i % 2 ? '#ffffff' : '#ffd1e3', x.flowerCrown);
+    }
+  }
+  if (x.veil) {
+    // A bridal veil from the bun down past the shoulders, with a tiara.
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = x.veil;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 4, -16);
+      ctx.quadraticCurveTo(dir * 17, -6, dir * 15, 22);
+      ctx.lineTo(dir * 10, 20);
+      ctx.quadraticCurveTo(dir * 11, -4, dir * 3, -12);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    for (const px of [-5, 0, 5]) blossom(ctx, px, -13.5, 1.5, '#ffffff', GOLD);
+  }
+  if (x.beret) {
+    // A floppy painter's beret tipped to one side, with a little stalk.
+    ctx.beginPath();
+    ctx.ellipse(-1.5, -13, 12.5, 5.5, -0.12, 0, Math.PI * 2);
+    fillPath(ctx, x.beret, 0.5);
+    ctx.strokeStyle = shade(x.beret, -0.25);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-1, -18.5);
+    ctx.lineTo(-0.5, -21);
+    ctx.stroke();
+  }
+  if (x.sunhat) {
+    // A wide straw sun hat with a ribbon band.
+    ctx.beginPath();
+    ctx.ellipse(0, -9.5, 17, 4.2, 0, 0, Math.PI * 2);
+    fillPath(ctx, x.sunhat, 0.5);
+    ctx.beginPath();
+    ctx.moveTo(-9.5, -10);
+    ctx.bezierCurveTo(-10, -20, 10, -20, 9.5, -10);
+    ctx.closePath();
+    fillPath(ctx, x.sunhat, 0.5);
+    rr(ctx, -9.5, -12.5, 19, 2.6, 1, '#ff8fb8', 0.35);
+  }
+  if (x.hardhat) {
+    // A builder's hard hat with a brim and a center ridge.
+    ctx.beginPath();
+    ctx.moveTo(-11.4, -7);
+    ctx.bezierCurveTo(-12, -21, 12, -21, 11.4, -7);
+    ctx.closePath();
+    fillPath(ctx, x.hardhat, 0.5);
+    rr(ctx, -13.5, -8.4, 27, 3, 1.4, shade(x.hardhat, -0.12), 0.45);
+    ctx.strokeStyle = shade(x.hardhat, -0.25);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -18.5);
+    ctx.lineTo(0, -8.5);
+    ctx.stroke();
+  }
+  if (x.chefHat) {
+    // A tall pleated toque.
+    rr(ctx, -9.5, -15, 19, 6, 1.5, x.chefHat, 0.45);
+    for (const [cx, cy, r] of [[-6, -20, 5], [0, -23, 6], [6, -20, 5]]) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      fillPath(ctx, x.chefHat, 0.45);
+    }
+    ctx.strokeStyle = 'rgba(59,42,74,0.25)';
+    ctx.lineWidth = 0.4;
+    for (const px of [-4, 0, 4]) {
+      ctx.beginPath();
+      ctx.moveTo(px, -14);
+      ctx.lineTo(px, -10);
+      ctx.stroke();
+    }
+  }
+  if (x.catEars) {
+    // A cosplay headband with pointed cat ears (pink inside).
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 4, -13.5);
+      ctx.lineTo(dir * 9.5, -21);
+      ctx.lineTo(dir * 11, -10.5);
+      ctx.closePath();
+      fillPath(ctx, x.catEars, 0.45);
+      ctx.beginPath();
+      ctx.moveTo(dir * 6, -13.5);
+      ctx.lineTo(dir * 9.2, -18);
+      ctx.lineTo(dir * 9.8, -12);
+      ctx.closePath();
+      ctx.fillStyle = '#ffe3ee';
+      ctx.fill();
     }
   }
   if (x.kerchief) {

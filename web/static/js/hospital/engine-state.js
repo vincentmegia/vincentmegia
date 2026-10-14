@@ -87,6 +87,10 @@ import {
   FLASHLIGHT_DRAIN_PER_SECOND,
   FLASHLIGHT_MAX_SPARES,
   BATTERY_PRICE,
+  LOST_CHILD_GARD,
+  LOST_CHILD_MOOD,
+  CAT_PET_SANITY,
+  CELEBRITY_DISCHARGE_MULTIPLIER,
   surgeryItemFor,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
@@ -142,6 +146,7 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
       timerSecondsRemaining: 0,
     },
     mel: { waiting: false, visited: false },
+    lostChild: { waiting: false, helped: false },
     xp: 0,
     perks: { ...NEUTRAL_PERKS },
 
@@ -218,7 +223,8 @@ function advanceStep(state, bedIndex, { tip: earnsTip = true } = {}) {
     return {
       ...state,
       beds: setBed(state.beds, bedIndex, null),
-      bonusGard: tip + (DISCHARGE_GARD[patient.level] ?? 0),
+      // A celebrity's discharge pays CELEBRITY_DISCHARGE_MULTIPLIER times over.
+      bonusGard: tip + (DISCHARGE_GARD[patient.level] ?? 0) * (patient.vip ? CELEBRITY_DISCHARGE_MULTIPLIER : 1),
       xp: xp + (XP_DISCHARGE[patient.level] ?? 0),
       discharged: state.discharged + 1,
     };
@@ -250,6 +256,7 @@ export function addPatientToTriage(state, patient) {
       id: patient.id,
       conditionId: condition.id,
       level: condition.level,
+      vip: Boolean(patient.vip),
       waitRemainingSeconds: wait,
       waitMaxSeconds: wait,
     }],
@@ -292,6 +299,7 @@ export function resolveTriage(state, patientId, chosenLevel) {
       level: patient.level,
       plan: [...condition.plan],
       step: 0,
+      vip: Boolean(patient.vip),
       patienceRemainingSeconds: patience,
       patienceMaxSeconds: patience,
       inSurgery: false,
@@ -603,6 +611,8 @@ export function startKarenEvent(state) {
 
 function resolveKarenOutcome(state, outcome) {
   const karen = { ...state.karen, active: false, resolved: true, outcome };
+  // Security escorts her out: no mistake, but no thank-you tip either.
+  if (outcome === 'security') return { ...state, karen };
   if (outcome === 'explain') {
     return { ...state, karen, bonusGard: state.bonusGard + KAREN_CALMED_TIP_GARD, xp: state.xp + XP_KAREN_CALMED };
   }
@@ -615,10 +625,10 @@ function resolveKarenOutcome(state, outcome) {
   };
 }
 
-/** @param {'explain' | 'letCut'} outcome */
+/** @param {'explain' | 'security' | 'letCut'} outcome */
 export function resolveKarenEvent(state, outcome) {
   if (state.phase !== 'playing' || !state.karen.active) return state;
-  return resolveKarenOutcome(state, outcome === 'explain' ? 'explain' : 'letCut');
+  return resolveKarenOutcome(state, ['explain', 'security'].includes(outcome) ? outcome : 'letCut');
 }
 
 // ---------------------------------------------------------------------------
@@ -826,6 +836,29 @@ export function buyBattery(state, availableGard = Infinity) {
   const after = pickUpBattery(state);
   if (after === state) return state;
   return { ...after, bonusGard: after.bonusGard - BATTERY_PRICE };
+}
+
+/** The lost child joins the triage line (once per shift). */
+export function lostChildArrives(state) {
+  if (state.phase !== 'playing' || state.lostChild.waiting || state.lostChild.helped) return state;
+  return { ...state, lostChild: { ...state.lostChild, waiting: true } };
+}
+
+/** Walking the lost child to the waiting chairs: their parent's thanks (Gard) and a happier ward. */
+export function helpLostChild(state) {
+  if (state.phase !== 'playing' || !state.lostChild.waiting) return state;
+  return {
+    ...state,
+    lostChild: { waiting: false, helped: true },
+    bonusGard: state.bonusGard + LOST_CHILD_GARD,
+    wardMood: clampWardMood(state.wardMood + LOST_CHILD_MOOD),
+  };
+}
+
+/** Petting the hospital cat: a little Sanity (the game keeps the cooldown). */
+export function petCat(state) {
+  if (state.phase !== 'playing') return state;
+  return { ...state, sanity: clampSanity(state.sanity + CAT_PET_SANITY) };
 }
 
 /** The Cafeteria Lady's free meal and water (rules.js CAFE_MEAL). */

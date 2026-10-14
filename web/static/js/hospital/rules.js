@@ -1114,3 +1114,35 @@ export function patientVolumeFor(shiftNumber, night) {
   const base = patientVolumeForShift(shiftNumber);
   return night ? Math.max(1, Math.round(base * NIGHT_PATIENT_VOLUME)) : base;
 }
+
+// ---------------------------------------------------------------------------
+// More characters (the user: "i want there to be more characters", then all
+// of: patient looks, staff, special visitors, crowds). Staff: the janitor's
+// wet floor slows you, the receptionist keeps the triage line patient, the
+// security guard can escort Karen out, the pharmacist potters by the Med
+// Cabinet. Visitors: a lost child, the hospital cat, a celebrity patient.
+// ---------------------------------------------------------------------------
+
+/** The receptionist keeps people calm in line: triage waits last this much longer. */
+export const RECEPTIONIST_WAIT_BONUS = 1.1;
+/** Walking across the janitor's wet floor. */
+export const WET_FLOOR_WALK_MULTIPLIER = 0.6;
+export const WET_FLOOR_RADIUS = 40;
+export const WET_FLOOR_SECONDS = 22;
+/** Seconds between the janitor's mopping stops. */
+export const JANITOR_MOP_EVERY_SECONDS = 45;
+
+/** The lost child: chance per shift, and the thanks for walking them to the waiting chairs. */
+export const LOST_CHILD_CHANCE = 0.4;
+export const LOST_CHILD_GARD = 25;
+export const LOST_CHILD_MOOD = 15;
+export const LOST_CHILD_LINE = "I can't find my mama… she said to wait by the big desk. Can you help me?";
+
+/** The hospital cat: chance per shift it wanders in, and what petting does (once per cooldown). */
+export const CAT_CHANCE = 0.55;
+export const CAT_PET_SANITY = 6;
+export const CAT_PET_COOLDOWN_SECONDS = 30;
+
+/** A celebrity patient: chance a shift has one, and their discharge pays this many times over. */
+export const CELEBRITY_CHANCE = 0.3;
+export const CELEBRITY_DISCHARGE_MULTIPLIER = 2;

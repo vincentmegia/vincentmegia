@@ -180,9 +180,11 @@ export function drawOffice(ctx, st) {
 }
 
 /** The Triage Desk: a peach counter with a monitor, clipboard, bell and pen cup. */
-export function drawTriageDesk(ctx, st) {
+export function drawTriageDesk(ctx, st, opts = {}) {
   const hw = st.w / 2;
   const hh = st.h / 2;
+  // The receptionist sits behind the counter (feet hidden by its front).
+  if (opts.drawClerk) opts.drawClerk(2, 14);
   // Counter: a wooden top over a peach front with a soft stripe.
   block(ctx, -hw + 6, 2, st.w - 12, hh - 6, 8, '#ffcfa8', 1.5);
   flat(ctx, -hw + 6, 12, st.w - 12, 6, 0, 'rgba(255,255,255,0.35)', 0);
@@ -865,6 +867,106 @@ export function drawBatteryShelf(ctx, st) {
   ctx.lineTo(hw - 12, -hh + 11);
   ctx.closePath();
   ctx.fill();
+}
+
+/**
+ * The hospital cat, feet at (x, y), facing `dir` (1 right, −1 left): a
+ * round calico loaf with a swishing tail; `t` animates the tail and blink.
+ */
+export function drawCat(ctx, x, y, s = 1, dir = 1, t = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s * dir, s);
+  ctx.fillStyle = 'rgba(59,42,74,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(0, 1, 15, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Tail.
+  const swish = Math.sin(t * 3) * 0.35;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-11, -6);
+  ctx.quadraticCurveTo(-20, -10 + swish * 8, -18, -20 + swish * 10);
+  ctx.stroke();
+  ctx.strokeStyle = '#f2a65a';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // Body and head.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(0, -7, 13, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  ctx.fillStyle = '#f2a65a';
+  ctx.beginPath();
+  ctx.ellipse(-5, -10, 5, 3.5, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#4a3a3a';
+  ctx.beginPath();
+  ctx.ellipse(4, -6, 3.5, 2.5, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  circle(ctx, 11, -14, 7.5, '#ffffff', 1.3);
+  for (const ex of [6.5, 14.5]) {
+    ctx.fillStyle = ex < 10 ? '#f2a65a' : '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(ex - 3, -19);
+    ctx.lineTo(ex, -25);
+    ctx.lineTo(ex + 3, -19);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+  // Eyes (a slow blink), nose and blush.
+  const blink = (t % 4) < 0.15;
+  ctx.fillStyle = INK;
+  for (const ex of [8.5, 13.5]) {
+    if (blink) ctx.fillRect(ex - 1.2, -14.5, 2.4, 0.8);
+    else { ctx.beginPath(); ctx.arc(ex, -14.5, 1.1, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.fillStyle = ANIME.pinkDeep;
+  ctx.beginPath();
+  ctx.arc(11, -12, 0.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,143,184,0.55)';
+  for (const ex of [6.5, 15.5]) { ctx.beginPath(); ctx.ellipse(ex, -11.5, 1.6, 0.9, 0, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+
+/** The janitor's wet floor at (x, y): a glossy puddle and a yellow A-frame sign. */
+export function drawWetFloor(ctx, x, y, radius, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(143,211,255,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, radius, radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(x - radius * 0.35, y - radius * 0.1, radius * 0.25, radius * 0.08, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  // The sign.
+  ctx.fillStyle = ANIME.gold;
+  ctx.beginPath();
+  ctx.moveTo(x + 10, y - 2);
+  ctx.lineTo(x + 18, y - 30);
+  ctx.lineTo(x + 26, y - 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('!', x + 18, y - 12);
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
