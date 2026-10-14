@@ -1,5 +1,5 @@
 // Hospital Shift canvas engine: rendering, input, station interaction,
-// patient spawning, minigame overlays and localStorage progress
+// patient spawning, minigame overlays and per-visit progress
 // (docs/features/hospital-shift.md). Same architecture as Library Shift's
 // library-game.js — bootstrap()/init() split, one requestAnimationFrame
 // loop, letterbox-aware click mapping, the htmx-revisit bootstrap fix —
@@ -7,7 +7,7 @@
 // the numbers to ./hospital/rules.js and the geometry to
 // ./hospital/floor-plan.js. This file owns what those can't: drawing, input,
 // spawn pacing, the overlays' own transient state (gauge position, traced
-// points, picked bottle) and the single localStorage key.
+// points, picked bottle) and the visit's progress (nothing is saved).
 //
 // Every minigame is a full-canvas overlay drawn by render() and fed by the
 // same canvas listeners as movement, gated on `overlay`.
@@ -143,62 +143,40 @@ import {
 } from './hospital/floor-plan.js';
 
 // ---------------------------------------------------------------------------
-// localStorage progress
+// Progress: this visit only
 // ---------------------------------------------------------------------------
+//
+// The user asked for leaving to reset the game ("when you leave the website
+// make it reset back to shift 1", then "ALL" — every way of leaving, and
+// everything resets). So nothing is saved: progress — shift, month Gard,
+// best run, nurse rank/XP, the Mel badge — lives in memory for one visit
+// to the page. Closing the tab, going to another site or another page here,
+// or refreshing all start fresh at shift 1 as a Student Nurse. Only the
+// Postgres leaderboard outlasts a visit.
 
-const STORAGE_KEY = 'hospital-game:v1';
+/** Where progress used to be kept; cleared on load so no stale save lingers. */
+const LEGACY_STORAGE_KEY = 'hospital-game:v1';
+
+function clearLegacySave() {
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Storage blocked — there's nothing of ours in it to clear.
+  }
+}
 
 function defaultSave() {
   return { version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: Date.now(), foundMel: false, careerXp: 0 };
 }
 
-function probeStorageAvailable() {
-  try {
-    const probeKey = '\0hospital-game-probe';
-    window.localStorage.setItem(probeKey, '1');
-    window.localStorage.removeItem(probeKey);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isValidSaveShape(value) {
-  if (!value || typeof value !== 'object' || value.version !== 1) return false;
-  return ['monthToDateGard', 'currentShift', 'bestRunTotal', 'karenSeed']
-    .every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]));
-}
-
-export function loadSave(storageAvailable) {
-  if (!storageAvailable) return defaultSave();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultSave();
-    const parsed = JSON.parse(raw);
-    if (!isValidSaveShape(parsed)) return defaultSave();
-    return {
-      version: 1,
-      monthToDateGard: Math.max(0, parsed.monthToDateGard),
-      currentShift: Math.min(SHIFTS_PER_MONTH, Math.max(1, Math.round(parsed.currentShift))),
-      bestRunTotal: Math.max(0, parsed.bestRunTotal),
-      karenSeed: Math.round(parsed.karenSeed),
-      // The easter egg's badge — optional, so saves from before Mel still load.
-      foundMel: parsed.foundMel === true,
-      // Nurse career rank — optional, so older saves start as a Student Nurse.
-      careerXp: Number.isFinite(parsed.careerXp) ? Math.max(0, Math.round(parsed.careerXp)) : 0,
-    };
-  } catch {
-    return defaultSave();
-  }
-}
-
-function persistSave(storageAvailable, save) {
-  if (!storageAvailable) return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(save));
-  } catch {
-    // Storage went away mid-session — keep playing, just stop persisting.
-  }
+/**
+ * Playwright's starting progress (e2e/hospital-shift.spec.js's seedSave):
+ * read once, then deleted, so a refresh or HTMX revisit starts fresh.
+ */
+function takeTestSeed() {
+  const seed = window.__hospitalShiftTestSeed;
+  delete window.__hospitalShiftTestSeed;
+  return seed && typeof seed === 'object' ? seed : {};
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +284,8 @@ export function init(canvas, elements) {
   if (typeof teardownActiveInstance === 'function') teardownActiveInstance();
 
   const ctx = canvas.getContext('2d');
-  const storageAvailable = probeStorageAvailable();
-  const save = loadSave(storageAvailable);
+  clearLegacySave();
+  const save = { ...defaultSave(), ...takeTestSeed() };
   const random = Math.random;
 
   const stations = buildStations();
@@ -929,7 +907,6 @@ export function init(canvas, elements) {
     const firstTime = !save.foundMel;
     if (firstTime) {
       save.foundMel = true;
-      persistSave(storageAvailable, save);
       renderMelBadge();
     }
     const gift = `+${MEL_GIFT_GARD}g, +${MEL_SANITY_RESTORE} Sanity, +${MEL_MOOD_RESTORE} Mood`;
@@ -1713,7 +1690,6 @@ export function init(canvas, elements) {
     const isFinalShift = currentShiftNumber >= SHIFTS_PER_MONTH;
     if (isFinalShift) save.bestRunTotal = Math.max(save.bestRunTotal, save.monthToDateGard);
     else save.currentShift = currentShiftNumber + 1;
-    persistSave(storageAvailable, save);
 
     const screen = elements.paycheckScreen;
     screen.root.dataset.outcome = shiftState.mistakeCount > 0 ? 'upset' : 'ok';
@@ -1762,7 +1738,6 @@ export function init(canvas, elements) {
     render();
     // XP earned before the collapse still counts toward the career.
     const xpResult = awardShiftXp();
-    persistSave(storageAvailable, save);
     renderPaycheckXp(xpResult);
     renderRankCard();
     const screen = elements.paycheckScreen;
@@ -1786,7 +1761,6 @@ export function init(canvas, elements) {
     save.currentShift = 1;
     save.monthToDateGard = 0;
     save.karenSeed = Date.now();
-    persistSave(storageAvailable, save);
     startShift();
   }
 

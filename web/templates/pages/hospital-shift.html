@@ -23,7 +23,8 @@
          -name/-earnings/-shifts inputs, -submit/-next-shift/-new-month buttons
        #hospital-leaderboard          Leaderboard fragment root
 
-     No server-side state is read here: progress is localStorage-only. */}}
+     No server-side state is read here, and progress isn't saved at all: it
+     lasts one visit to the page (leaving in any way resets it to shift 1). */}}
 {{define "hospital-shift-content"}}
 <main id="main-content" class="mx-auto max-w-5xl px-4 py-8">
 	<div class="space-y-6">

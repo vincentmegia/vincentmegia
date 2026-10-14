@@ -37,13 +37,23 @@ async function deleteTestScore(playerName) {
 	}
 }
 
-/** Seeds the save at a given shift (5+ so surgery cases can arrive). */
+/**
+ * Starting progress for the first page load. Nothing is saved between
+ * visits, so this hands the game a one-time seed (`takeTestSeed` reads and
+ * deletes it); the sessionStorage guard stops a reload from reseeding, so a
+ * reload shows the real reset.
+ */
+async function seedProgress(page, fields) {
+	await page.addInitScript((seed) => {
+		if (window.sessionStorage.getItem('hospital-seeded')) return;
+		window.sessionStorage.setItem('hospital-seeded', '1');
+		window.__hospitalShiftTestSeed = seed;
+	}, { karenSeed: 1, ...fields });
+}
+
+/** Starts the visit at a given shift (5+ so surgery cases can arrive). */
 async function seedSave(page, currentShift = 5, monthToDateGard = 0) {
-	await page.addInitScript(({ shift, gard }) => {
-		window.localStorage.setItem('hospital-game:v1', JSON.stringify({
-			version: 1, monthToDateGard: gard, currentShift: shift, bestRunTotal: 0, karenSeed: 1,
-		}));
-	}, { shift: currentShift, gard: monthToDateGard });
+	await seedProgress(page, { currentShift, monthToDateGard });
 }
 
 async function startShift(page) {
@@ -473,17 +483,10 @@ test.describe('Karen', () => {
 
 test.describe('nurse career rank', () => {
 	async function seedCareer(page, careerXp) {
-		// Once per tab, so a reload reads what the game saved, not the seed again.
-		await page.addInitScript((xp) => {
-			if (window.sessionStorage.getItem('career-seeded')) return;
-			window.sessionStorage.setItem('career-seeded', '1');
-			window.localStorage.setItem('hospital-game:v1', JSON.stringify({
-				version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: 1, careerXp: xp,
-			}));
-		}, careerXp);
+		await seedProgress(page, { currentShift: 1, careerXp });
 	}
 
-	test('XP from a shift ranks you up, shows on the paycheck and is saved', async ({ page }) => {
+	test('XP from a shift ranks you up, shows on the paycheck and lasts the visit', async ({ page }) => {
 		await seedCareer(page, 90);
 		await page.goto('/hospital-shift');
 		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 1 · Student Nurse');
@@ -503,9 +506,10 @@ test.describe('nurse career rank', () => {
 		await page.locator('#hospital-paycheck-next-shift-button').click();
 		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getShiftState()?.phase === 'playing');
 		expect((await shiftState(page)).perks.walk).toBe(1.1);
+		// Leaving resets everything, the rank included.
 		await page.reload();
-		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 2 · Nursing Intern');
-		await expect(page.locator('#hospital-rank-perks')).toHaveText('Perks: Comfy Shoes');
+		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 1 · Student Nurse');
+		await expect(page.locator('#hospital-rank-perks')).toHaveText('Earn XP to unlock perks.');
 	});
 
 	test('after handover the HUD shows the banked rank, not the shift XP counted twice', async ({ page }) => {
@@ -531,7 +535,7 @@ test.describe('nurse career rank', () => {
 });
 
 test.describe('Mel (easter egg)', () => {
-	test('typing "mel" brings her to triage; her card is a gift and the badge sticks', async ({ page }) => {
+	test('typing "mel" brings her to triage; her card is a gift and the badge lasts the visit', async ({ page }) => {
 		await page.goto('/hospital-shift');
 		await expect(page.locator('#hospital-mel-badge')).toBeHidden();
 		await startShift(page);
@@ -557,8 +561,12 @@ test.describe('Mel (easter egg)', () => {
 		await page.keyboard.type('mel');
 		expect((await hooks(page, 'getTriageSlots')).some((slot) => slot.kind === 'mel')).toBe(false);
 
+		// The badge is set (it shows on the start screen, hidden behind play).
+		await expect(page.locator('#hospital-mel-badge')).not.toHaveClass(/\bhidden\b/);
+
+		// Leaving resets everything, the badge included.
 		await page.reload();
-		await expect(page.locator('#hospital-mel-badge')).toBeVisible();
+		await expect(page.locator('#hospital-mel-badge')).toBeHidden();
 	});
 
 	test('five clicks on the dandelion vase bring her in', async ({ page }) => {
@@ -659,6 +667,30 @@ test.describe('handover and paycheck', () => {
 	});
 });
 
+test.describe('leaving resets the game', () => {
+	test('a refresh starts over at shift 1 with everything reset, and the old save is cleared', async ({ page }) => {
+		await page.addInitScript(() => {
+			if (window.sessionStorage.getItem('legacy-seeded')) return;
+			window.sessionStorage.setItem('legacy-seeded', '1');
+			window.localStorage.setItem('hospital-game:v1', JSON.stringify({ version: 1, currentShift: 12 }));
+		});
+		await seedProgress(page, { currentShift: 12, monthToDateGard: 9000, bestRunTotal: 50000, careerXp: 2500, foundMel: true });
+		await page.goto('/hospital-shift');
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('12/30');
+		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 7 · Trauma Nurse');
+		await expect(page.locator('#hospital-mel-badge')).toBeVisible();
+		expect(await page.evaluate(() => window.localStorage.getItem('hospital-game:v1'))).toBeNull();
+
+		await page.reload();
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('1/30');
+		await expect(page.locator('#hospital-hud-rank')).toHaveText('Lv 1');
+		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 1 · Student Nurse');
+		await expect(page.locator('#hospital-mel-badge')).toBeHidden();
+		await startShift(page);
+		expect((await shiftState(page)).shiftNumber).toBe(1);
+	});
+});
+
 test.describe('revisiting via HTMX after navigating away', () => {
 	test('a second HTMX visit still starts a shift', async ({ page }) => {
 		await page.goto('/projects');
@@ -666,10 +698,18 @@ test.describe('revisiting via HTMX after navigating away', () => {
 		const projectsLink = () => page.locator('#primary-nav').getByRole('link', { name: 'Projects', exact: true });
 		await playNow().click();
 		await expect(page.locator('#hospital-canvas')).toBeVisible();
+		// Finish shift 1 so there's progress for leaving to wipe.
+		await startShift(page);
+		await hooks(page, 'skipToClosing');
+		await walkTo(page, 'office');
+		await page.locator('#hospital-paycheck-next-shift-button').click();
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('2/30');
+		await page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
 		await projectsLink().click();
 		await expect(page).toHaveURL(/\/projects$/);
 		await playNow().click();
 		await expect(page.locator('#hospital-start-screen')).toBeVisible();
+		await expect(page.locator('#hospital-hud-shift')).toHaveText('1/30');
 		await startShift(page);
 		await expect(page.locator('#hospital-hud-shift')).toHaveText('1/30');
 	});

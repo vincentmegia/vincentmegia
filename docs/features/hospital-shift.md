@@ -6,7 +6,7 @@
 `web/static/js/hospital/` (121 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (30 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (31 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -36,7 +36,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
 * **Structure:** mirror Library Shift — canvas top-down map, click-to-move,
   timed shift, minigame overlays, Sanity + Coffee Machine, hallucinations,
   a scripted difficult-visitor event, Postgres leaderboard, `localStorage`
-  progress, shared `people.js` art.
+  progress, shared `people.js` art. (Progress was later made per-visit —
+  see "Progress resets on leaving".)
 * **Minigames:** all four offered (Triage sort, Meds dispensing, Vitals
   check, Bandage/IV), plus, in their words: "for the vitals checks and the
   stuff that pumps oxygen and surgeries i want there to be skill checks
@@ -135,9 +136,9 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   `MEL_CARD_LINES`, cycling per shift). "Thank you, Mel!", Enter/Space,
   Escape or × all accept it: +`MEL_GIFT_GARD` (40) Gard, +30 Sanity,
   +20 Ward Mood (engine-state's `melArrives`/`visitMel`; never a mistake).
-  The first visit ever sets `foundMel` in the save, which shows a
+  Finding her sets `foundMel`, which shows a
   "✿ You found Mel in her kimono" badge (`#hospital-mel-badge`) on the
-  start screen. She doesn't time out; if the shift ends first she's gone.
+  start screen for the rest of the visit. She doesn't time out; if the shift ends first she's gone.
 * **Nurse career rank** (the user: "add levels", then chose a career rank
   over hospital stages, more severity levels or a level select). XP is
   earned every shift — +5 per correct triage call, +5 per treatment step
@@ -145,7 +146,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   Karen, +5 for Mel's visit (`rules.js` §3c `XP_*`; tracked as
   engine-state's `xp`) — and banked into `save.careerXp` at handover, and
   also on a game over (what you learned before collapsing still counts).
-  Career XP carries across months; Start New Month keeps it. Ten ranks
+  Career XP carries across months within a visit (Start New Month keeps
+  it), but leaving the page resets it with everything else. Ten ranks
   (`NURSE_RANKS`), each from 2 up unlocking a perk; a later perk of the
   same kind replaces the earlier one (`perksForRank`):
 
@@ -274,9 +276,17 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   under his beanie, at the user's request. Necks were shortened for the whole cast
   (head 12 units above the shoulders, was 15; Kimono Himura's `NECK_DROP`).
   Hospital Shift no longer draws anyone with people.js.
-* `localStorage` progress (`hospital-game:v1`; the optional `foundMel`
-  flag is the easter egg's badge and `careerXp` the nurse's career rank —
-  both optional, so older saves still load), Postgres leaderboard
+* **Progress resets on leaving** (the user: "when you leave the website
+  make it reset back to shift 1", then "ALL" — every way of leaving, and
+  everything resets). Nothing is saved: shift, month Gard, best run total,
+  nurse rank/XP and the Mel badge live in memory for one visit to the
+  page. Closing the tab, going to another site, visiting another page of
+  this site (an HTMX nav) or refreshing all start fresh at shift 1 as a
+  Student Nurse. The old `localStorage` save (`hospital-game:v1`) is
+  deleted on load so nothing stale lingers. Only the Postgres leaderboard
+  outlasts a visit. Playwright starts tests mid-run through a one-time
+  `window.__hospitalShiftTestSeed` that `takeTestSeed` reads and deletes.
+* Postgres leaderboard
   (`hospital_scores`), `/projects` card.
 
 * **Two floors + Supply Cart** (added after v1 — the user asked for a
@@ -424,7 +434,8 @@ web/templates/components/hospital-leaderboard.html
 | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 
 Index `idx_hospital_scores_earnings (total_earnings DESC)`. Leaderboard-only,
-like every other game; all run state lives in `localStorage`.
+like every other game; run state isn't stored anywhere — it lasts one
+visit to the page.
 
 ---
 
@@ -496,12 +507,14 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       patience/Sanity drain/pay), floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
-      coffee → Karen → Mel (typing "mel" → card → gift → badge survives a
-      reload; five vase clicks bring her in) → career rank (XP ranks you up
-      with a toast, the paycheck shows it, the perk applies next shift, the
-      start screen card after a reload; the HUD doesn't double-count banked
-      XP; a Charge Nurse starts with every top perk) → handover → paycheck →
-      final-shift leaderboard submit; HTMX revisit stays interactive. Uses
+      coffee → Karen → Mel (typing "mel" → card → gift → badge, gone after
+      a reload; five vase clicks bring her in) → career rank (XP ranks you
+      up with a toast, the paycheck shows it, the perk applies next shift,
+      a reload resets it; the HUD doesn't double-count banked XP; a Charge
+      Nurse starts with every top perk) → handover → paycheck →
+      final-shift leaderboard submit; leaving resets (a refresh goes back
+      to shift 1 with rank/badge reset and the old save cleared; an HTMX
+      revisit after finishing shift 1 starts at 1/30 again). Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).
