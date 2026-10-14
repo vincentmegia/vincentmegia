@@ -654,7 +654,7 @@ export function init(canvas, elements) {
       case 'implant-shelf': return 'Implant Shelf';
       case 'or-door': return 'Door → ER';
       case 'vending-machine': return 'Vending Machine';
-      case 'cafeteria-door': return 'Cafeteria ↓';
+      case 'cafeteria-door': return shiftState?.night ? 'Cafeteria (closed)' : 'Cafeteria ↓';
       case 'cafe-counter': return `${CAFE_LADY_NAME} · free meals`;
       case 'cafe-door': return 'Door → ER';
       case 'battery-shelf': return 'Batteries';
@@ -1285,6 +1285,12 @@ export function init(canvas, elements) {
       return;
     }
     if (station.kind === 'cafeteria-door') {
+      // Shut at night (the user: "make it so that the cafeteria is shut down
+      // in night shift") — the vending machine is the only food then.
+      if (shiftState.night) {
+        showToast("The Cafeteria is closed for the night — try the vending machine.", 3.6);
+        return;
+      }
       switchFloor(FLOOR_CAFE, 'cafe-enter');
       showToast(`The Cafeteria — ${CAFE_LADY_NAME} serves free meals and water at the counter.`);
       return;
@@ -2305,6 +2311,7 @@ export function init(canvas, elements) {
     for (const st of visibleStations()) {
       if (st.kind === 'vending-machine') cutGlow(dctx, st.x, st.y, 60, 0.7);
       if (st.kind === 'elevator') cutGlow(dctx, st.x + 35, st.y, 26, 0.6);
+      if (st.kind === 'cafeteria-door') cutGlow(dctx, st.x, st.y + 6, 48, 0.65); // its CLOSED sign
     }
     cutGlow(dctx, 839, 28, 90, 0.55);
     const f = shiftState.flashlight;
@@ -2755,7 +2762,10 @@ export function init(canvas, elements) {
     'or-door': (st) => drawOrDoor(ctx, st),
     'implant-shelf': (st) => drawImplantShelf(ctx, st),
     'vending-machine': (st) => drawVendingStation(ctx, st),
-    'cafeteria-door': (st) => drawCafeteriaDoor(ctx, st),
+    'cafeteria-door': (st) => {
+      drawCafeteriaDoor(ctx, st);
+      if (shiftState?.night) drawLabelChip(ctx, 0, 6, 'CLOSED', 'bold 11px sans-serif', ANIME.coralDeep, '#ffffff');
+    },
     'cafe-door': (st) => drawCafeDoor(ctx, st),
     'battery-shelf': (st) => drawBatteryShelf(ctx, st),
     'cafe-counter': (st) => drawCafeCounter(ctx, st, {
@@ -4456,7 +4466,8 @@ export function init(canvas, elements) {
     // Getting uncomfortable: a heads-up the moment Hunger or Thirst dips under the line.
     for (const [stat, fix] of [['hunger', 'grab a snack'], ['thirst', 'grab a drink']]) {
       if (before[stat] >= HUNGER_THIRST_LOW && shiftState[stat] < HUNGER_THIRST_LOW) {
-        showToast(`You're getting uncomfortable — ${stat === 'hunger' ? 'hungry' : 'thirsty'}! ${fix[0].toUpperCase()}${fix.slice(1)} or visit the Cafeteria.`, 3.6);
+        const where = shiftState.night ? 'from the vending machine (the Cafeteria is closed tonight)' : 'or visit the Cafeteria';
+        showToast(`You're getting uncomfortable — ${stat === 'hunger' ? 'hungry' : 'thirsty'}! ${fix[0].toUpperCase()}${fix.slice(1)} ${where}.`, 3.6);
       }
     }
 

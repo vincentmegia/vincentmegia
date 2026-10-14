@@ -336,7 +336,9 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   month's total plus this shift's earnings so far, and without 15g the
   button greys out and says "not enough Gard". A battery meter with spare dots sits left of the wall
   clock at night; the paycheck's button reads "Start Night Shift 🌙" before
-  one; the Daily twist's old soft shade was replaced by this darkness.
+  one; the Cafeteria is closed at night (the user: "make it so that the
+  cafeteria is shut down in night shift") — its door wears a CLOSED sign
+  and a toast points to the vending machine, which is then the only food; the Daily twist's old soft shade was replaced by this darkness.
 * **Hunger, Thirst and the Cafeteria** (the user: "add an hunger and
   thirst system you can get snacks from the vending machine and drinks add
   an cafetria for breaks and add an cafetria lady which she gives food and

@@ -802,6 +802,15 @@ test.describe('night shifts and the flashlight', () => {
 		await expect(page.locator('#hospital-toast')).toContainText('battery died');
 	});
 
+	test('the Cafeteria is closed on a night shift', async ({ page }) => {
+		await seedSave(page, 5);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await walkTo(page, 'cafeteria-door');
+		expect(await hooks(page, 'getCurrentFloor')).toBe(1);
+		await expect(page.locator('#hospital-toast')).toContainText('Cafeteria is closed');
+	});
+
 	test('the vending machine sells batteries only if you can afford one; day shifts have no flashlight', async ({ page }) => {
 		await seedSave(page, 10, 100);
 		await page.goto('/hospital-shift');
