@@ -789,8 +789,8 @@ test.describe('night shifts and the flashlight', () => {
 		await expect(page.locator('#hospital-toast')).toContainText('battery died');
 	});
 
-	test('the vending machine sells batteries; day shifts have no flashlight', async ({ page }) => {
-		await seedSave(page, 10);
+	test('the vending machine sells batteries only if you can afford one; day shifts have no flashlight', async ({ page }) => {
+		await seedSave(page, 10, 100);
 		await page.goto('/hospital-shift');
 		await startShift(page);
 		await walkTo(page, 'vending-machine');
@@ -801,9 +801,18 @@ test.describe('night shifts and the flashlight', () => {
 		expect(s.flashlight.spares).toBe(1);
 		expect(s.bonusGard).toBe(-15);
 
+		// A fresh visit: shift 1 with no Gard yet — no battery.
 		await page.goto('/hospital-shift');
 		await startShift(page);
 		expect((await shiftState(page)).night).toBe(false);
+		await walkTo(page, 'vending-machine');
+		await waitForOverlay(page, 'vending');
+		await clickCanvasPoint(page, { x: b.x + 30, y: b.y + 20 });
+		expect((await shiftState(page)).flashlight.spares).toBe(0);
+		expect((await shiftState(page)).bonusGard).toBe(0);
+		expect((await hooks(page, 'getOverlay')).flash.text).toContain('Not enough Gard');
+		const close = await hooks(page, 'getCloseRect');
+		await clickCanvasPoint(page, { x: close.x + 14, y: close.y + 14 });
 		await expect(page.locator('#hospital-flashlight-button')).toBeHidden();
 		await page.keyboard.press('f');
 		expect((await shiftState(page)).flashlight.on).toBe(false);

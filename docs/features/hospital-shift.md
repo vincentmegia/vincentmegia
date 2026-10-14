@@ -331,7 +331,10 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   automatically (engine-state's `flashlight`, `toggleFlashlight`). Spares
   (up to `FLASHLIGHT_MAX_SPARES` 2) come from the Supply Room's new battery
   shelf (`pickUpBattery`) or the vending machine for `BATTERY_PRICE` 15g
-  (`buyBattery`). A battery meter with spare dots sits left of the wall
+  (`buyBattery`) — only if you can afford it (the user: "if you do not
+  have enough gard you cannot buy battery"): your spendable Gard is the
+  month's total plus this shift's earnings so far, and without 15g the
+  button greys out and says "not enough Gard". A battery meter with spare dots sits left of the wall
   clock at night; the paycheck's button reads "Start Night Shift 🌙" before
   one; the Daily twist's old soft shade was replaced by this darkness.
 * **Hunger, Thirst and the Cafeteria** (the user: "add an hunger and

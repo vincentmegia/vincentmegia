@@ -666,8 +666,11 @@ describe('night shifts and the flashlight', () => {
     let s = playing();
     for (let i = 0; i < FLASHLIGHT_MAX_SPARES + 2; i++) s = pickUpBattery(s);
     assert.equal(s.flashlight.spares, FLASHLIGHT_MAX_SPARES);
-    assert.equal(buyBattery(s), s, 'full: nothing bought');
-    const bought = buyBattery(playing());
+    assert.equal(buyBattery(s, 1000), s, 'full: nothing bought');
+    const broke = playing();
+    assert.equal(buyBattery(broke, BATTERY_PRICE - 1), broke, 'not enough Gard: nothing bought');
+    assert.equal(buyBattery(broke, 0), broke);
+    const bought = buyBattery(playing(), BATTERY_PRICE);
     assert.equal(bought.flashlight.spares, 1);
     assert.equal(bought.bonusGard, -BATTERY_PRICE);
     const dead = playing(5, { flashlight: { on: false, battery: 0, spares: 1 } });

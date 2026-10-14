@@ -812,8 +812,15 @@ export function pickUpBattery(state) {
   return { ...state, flashlight: { ...state.flashlight, spares: state.flashlight.spares + 1 } };
 }
 
-/** Buys a spare battery at the vending machine (off the shift's pay); a no-op when full. */
-export function buyBattery(state) {
+/**
+ * Buys a spare battery at the vending machine, off the shift's pay. A no-op
+ * when your pockets are full or you can't afford it: `availableGard` is
+ * what you have to spend (the game passes the month's Gard plus this
+ * shift's earnings so far) — the user: "if you do not have enough gard you
+ * cannot buy battery".
+ */
+export function buyBattery(state, availableGard = Infinity) {
+  if (!(availableGard >= BATTERY_PRICE)) return state;
   const after = pickUpBattery(state);
   if (after === state) return state;
   return { ...after, bonusGard: after.bonusGard - BATTERY_PRICE };

@@ -1617,8 +1617,10 @@ export function init(canvas, elements) {
       if (card) buyFromVending(card.id);
       else if (insideRect(vendingBatteryRect(), x, y)) {
         const before = shiftState;
-        shiftState = buyBattery(shiftState);
-        flash(shiftState === before ? 'Your pockets are full of batteries!' : `Battery! −${BATTERY_PRICE}g`, shiftState !== before);
+        shiftState = buyBattery(shiftState, spendableGard());
+        if (shiftState !== before) flash(`Battery! −${BATTERY_PRICE}g`, true);
+        else if (spendableGard() < BATTERY_PRICE) flash(`Not enough Gard — a battery is ${BATTERY_PRICE}g.`, false);
+        else flash('Your pockets are full of batteries!', false);
       }
     } else if (overlay.kind === 'cafe') {
       if (insideRect(cafeButtonRect(), x, y)) eatCafeMeal();
@@ -4012,13 +4014,23 @@ export function init(canvas, elements) {
       drawLabelChip(ctx, r.x + r.w / 2, r.y + r.h - 12, `${item.price}g`, 'bold 11px sans-serif', ANIME.goldDeep, '#ffffff');
     }
     const b = vendingBatteryRect();
-    animeButton(ctx, b, '', ANIME.gold, ANIME.goldDeep);
-    drawBatteryIcon(ctx, b.x + 26, b.y + b.h / 2, 1.3, 1);
+    const affordable = spendableGard() >= BATTERY_PRICE;
+    const [top, deep] = affordable ? [ANIME.gold, ANIME.goldDeep] : ['#d8d2e2', '#a8a0b8'];
+    animeButton(ctx, b, '', top, deep);
+    drawBatteryIcon(ctx, b.x + 26, b.y + b.h / 2, 1.3, affordable ? 1 : 0);
     ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    outlinedText(ctx, `Flashlight battery · ${BATTERY_PRICE}g (${shiftState.flashlight.spares}/${FLASHLIGHT_MAX_SPARES})`, b.x + 46, b.y + b.h / 2 + 1, '#ffffff', tint(ANIME.goldDeep, -0.45), 3);
+    const label = affordable
+      ? `Flashlight battery · ${BATTERY_PRICE}g (${shiftState.flashlight.spares}/${FLASHLIGHT_MAX_SPARES})`
+      : `Battery ${BATTERY_PRICE}g — not enough Gard (${Math.max(0, spendableGard())}g)`;
+    outlinedText(ctx, label, b.x + 46, b.y + b.h / 2 + 1, '#ffffff', tint(deep, -0.45), 3);
     drawFlash(118);
+  }
+
+  /** Gard you can spend right now: the month's total plus this shift's earnings so far. */
+  function spendableGard() {
+    return save.monthToDateGard + (shiftState?.bonusGard ?? 0);
   }
 
   function vendingBatteryRect() {
