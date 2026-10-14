@@ -107,11 +107,13 @@ export const SHIFT_END_MINUTES = 19 * 60;
  * @param {number} totalClockSeconds
  * @returns {string} e.g. "7:00 AM", "1:30 PM", "7:00 PM".
  */
-export function inGameTimeLabel(clockSecondsRemaining, totalClockSeconds) {
+export function inGameTimeLabel(clockSecondsRemaining, totalClockSeconds, { night = false } = {}) {
   const total = Number.isFinite(totalClockSeconds) && totalClockSeconds > 0 ? totalClockSeconds : ROUND_TIER_CLOCK_SECONDS[0];
   const remaining = Number.isFinite(clockSecondsRemaining) ? clamp(clockSecondsRemaining, 0, total) : total;
   const elapsedFraction = 1 - remaining / total;
-  const totalMinutes = Math.round(SHIFT_START_MINUTES + elapsedFraction * (SHIFT_END_MINUTES - SHIFT_START_MINUTES));
+  // A night shift runs the same 12 hours from 7 PM (rules.js "Night shifts").
+  const start = SHIFT_START_MINUTES + (night ? 12 * 60 : 0);
+  const totalMinutes = Math.round(start + elapsedFraction * (SHIFT_END_MINUTES - SHIFT_START_MINUTES)) % (24 * 60);
   const hour24 = Math.floor(totalMinutes / 60) % 24;
   const minute = totalMinutes % 60;
   const period = hour24 >= 12 ? 'PM' : 'AM';
@@ -1078,3 +1080,37 @@ export function findVendingItem(id) {
 export const CAFE_MEAL = { name: 'Meal and water', hunger: HUNGER_MAX, thirst: THIRST_MAX, sanity: 10 };
 export const CAFE_LADY_NAME = 'Auntie Yumi';
 export const CAFE_LADY_LINE = "You look famished, dear! Sit, eat — and drink your water.";
+
+// ---------------------------------------------------------------------------
+// Night shifts and the flashlight (the user: "i want to add a flashlight for
+// night shifts", then — asked — night shifts in the month, every 5th shift,
+// and a toggled flashlight that runs on a battery). A night shift runs 7 PM
+// → 7 AM with the ER (and Supply Room) dark; the OR and the Cafeteria keep
+// their lights on. The Daily Challenge's Night Shift twist is a night too.
+// The flashlight (F or the HUD button) lights a cone toward the mouse and
+// drains its battery while on; an empty battery is swapped for a spare
+// automatically. Spares come from the Supply Room's battery shelf or the
+// vending machine.
+// ---------------------------------------------------------------------------
+
+/** Every Nth shift of the month is a night shift (5, 10, … 30). */
+export const NIGHT_SHIFT_EVERY = 5;
+/** A night shift brings this share of the usual patients (a quieter ER). */
+export const NIGHT_PATIENT_VOLUME = 0.8;
+export const FLASHLIGHT_BATTERY_MAX = 100;
+/** A full battery lasts 2½ minutes of light. */
+export const FLASHLIGHT_DRAIN_PER_SECOND = FLASHLIGHT_BATTERY_MAX / 150;
+/** Spare batteries you can carry. */
+export const FLASHLIGHT_MAX_SPARES = 2;
+/** Price of a battery at the vending machine. */
+export const BATTERY_PRICE = 15;
+
+export function isNightShift(shiftNumber) {
+  return Number.isFinite(shiftNumber) && shiftNumber >= 1 && Math.floor(shiftNumber) % NIGHT_SHIFT_EVERY === 0;
+}
+
+/** Patients on a shift, night shifts quieter. */
+export function patientVolumeFor(shiftNumber, night) {
+  const base = patientVolumeForShift(shiftNumber);
+  return night ? Math.max(1, Math.round(base * NIGHT_PATIENT_VOLUME)) : base;
+}

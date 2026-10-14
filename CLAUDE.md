@@ -92,7 +92,8 @@ touching that area rather than expecting this section to carry it:
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
   down); Karen, Coffee Pour, hallucinations; Hunger/Thirst (vending
   machine snacks for Gard, a walk-in Cafeteria where Auntie Yumi's meal is
-  free, uncomfortable under 25%, collapse after 5 s at 0%); an easter egg — Mel in a
+  free, uncomfortable under 25%, collapse after 5 s at 0%); night shifts
+  (every 5th) with a dark ER and a battery flashlight (F); an easter egg — Mel in a
   dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
   the back-wall vase, or typing "mel"); a 10-rank nurse career (a perk
   per rank, `rules.js` §3c); a seeded Daily Challenge (one UTC-day shift

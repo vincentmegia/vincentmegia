@@ -27,7 +27,7 @@ describe('floor plan', () => {
     const kinds = (floor) => new Set(stationsOnFloor(stations, floor).map((s) => s.kind));
     for (const kind of ['office', 'triage-desk', 'med-cabinet', 'operating-room', 'coffee-machine', 'bed', 'stairs', 'elevator', 'vending-machine', 'cafeteria-door']) assert.ok(kinds(FLOOR_1).has(kind), kind);
     assert.deepEqual([...kinds(FLOOR_CAFE)].sort(), ['cafe-counter', 'cafe-door']);
-    assert.deepEqual([...kinds(FLOOR_2)].sort(), ['elevator', 'implant-shelf', 'stairs', 'supply-cart']);
+    assert.deepEqual([...kinds(FLOOR_2)].sort(), ['battery-shelf', 'elevator', 'implant-shelf', 'stairs', 'supply-cart']);
     assert.deepEqual([...kinds(FLOOR_OR)].sort(), ['instrument-tray', 'or-door', 'or-table', 'organ-cooler']);
     assert.deepEqual(stations.filter((s) => s.kind === 'bed').map((s) => s.bedIndex), [0, 1, 2, 3]);
     assert.ok(stations.every((s) => [FLOOR_1, FLOOR_2, FLOOR_OR, FLOOR_CAFE].includes(s.floor)));

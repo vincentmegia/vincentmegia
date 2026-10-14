@@ -44,6 +44,9 @@ import {
   collapseSecondsRemaining,
   hungerThirstCollapse,
   buyVendingItem,
+  toggleFlashlight,
+  pickUpBattery,
+  buyBattery,
   cafeteriaMeal,
 } from './engine-state.js';
 import {
@@ -59,6 +62,13 @@ import {
   KAREN_EVENT_TIMER_SECONDS,
   MEL_GIFT_GARD,
   HUNGER_DRAIN_PER_SECOND,
+  FLASHLIGHT_DRAIN_PER_SECOND,
+  FLASHLIGHT_MAX_SPARES,
+  BATTERY_PRICE,
+  isNightShift,
+  patientVolumeFor,
+  patientVolumeForShift,
+  inGameTimeLabel,
   THIRST_DRAIN_PER_SECOND,
   EMPTY_STAT_SANITY_DRAIN,
   HUNGER_THIRST_COLLAPSE_SECONDS,
@@ -625,6 +635,43 @@ describe('hunger and thirst', () => {
     assert.equal(s.sanity, 60);
     assert.equal(s.bonusGard, 30);
     assert.equal(hungerThirstCollapse(s), null);
+  });
+});
+
+describe('night shifts and the flashlight', () => {
+  test('every 5th shift is a night, with a 7 PM clock and fewer patients', () => {
+    assert.deepEqual([1, 4, 5, 6, 10, 15, 30].map(isNightShift), [false, false, true, false, true, true, true]);
+    assert.equal(inGameTimeLabel(600, 600, { night: true }), '7:00 PM');
+    assert.equal(inGameTimeLabel(300, 600, { night: true }), '1:00 AM');
+    assert.equal(inGameTimeLabel(0, 600, { night: true }), '7:00 AM');
+    assert.ok(patientVolumeFor(5, true) < patientVolumeForShift(5));
+    assert.equal(patientVolumeFor(6, false), patientVolumeForShift(6));
+  });
+
+  test('the light drains only while on, and a spare swaps in when it runs out', () => {
+    let s = playing(5, { flashlight: { on: false, battery: 100, spares: 1 } });
+    assert.equal(tick(s, 30).flashlight.battery, 100, 'off: no drain');
+    s = toggleFlashlight(s);
+    assert.equal(s.flashlight.on, true);
+    s = tick(s, 30);
+    assert.ok(Math.abs(s.flashlight.battery - (100 - FLASHLIGHT_DRAIN_PER_SECOND * 30)) < 1e-9);
+    s = tick({ ...s, flashlight: { ...s.flashlight, battery: 0.1 } }, 1);
+    assert.deepEqual(s.flashlight, { on: true, battery: 100, spares: 0 });
+    s = tick({ ...s, flashlight: { ...s.flashlight, battery: 0.1 } }, 1);
+    assert.deepEqual(s.flashlight, { on: false, battery: 0, spares: 0 }, 'no spare: it goes dark');
+    assert.equal(toggleFlashlight(s), s, "can't switch on a dead light");
+  });
+
+  test('batteries: the shelf gives up to the cap; the vending machine charges for one', () => {
+    let s = playing();
+    for (let i = 0; i < FLASHLIGHT_MAX_SPARES + 2; i++) s = pickUpBattery(s);
+    assert.equal(s.flashlight.spares, FLASHLIGHT_MAX_SPARES);
+    assert.equal(buyBattery(s), s, 'full: nothing bought');
+    const bought = buyBattery(playing());
+    assert.equal(bought.flashlight.spares, 1);
+    assert.equal(bought.bonusGard, -BATTERY_PRICE);
+    const dead = playing(5, { flashlight: { on: false, battery: 0, spares: 1 } });
+    assert.deepEqual(toggleFlashlight(dead).flashlight, { on: true, battery: 100, spares: 0 }, 'a flat battery loads a spare');
   });
 });
 

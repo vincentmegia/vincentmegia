@@ -77,6 +77,8 @@ export function buildStations(bedCount = 4) {
     { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 530, w: s, h: s },
     // Implants (mesh patches, bone plates) for surgery live upstairs.
     { id: 'implant-shelf', kind: 'implant-shelf', floor: FLOOR_2, x: 210, y: 330, w: 110, h: s },
+    // Spare flashlight batteries for night shifts.
+    { id: 'battery-shelf', kind: 'battery-shelf', floor: FLOOR_2, x: 700, y: 430, w: 84, h: 70 },
     // Inside the Operating Room: the table in the middle under the lamp, the
     // Instrument Tray (scalpels) and the Organ Cooler at its sides, and the
     // door back out to the ER.

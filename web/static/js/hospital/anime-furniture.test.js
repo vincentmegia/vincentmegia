@@ -16,6 +16,8 @@ import {
   drawCafeDoor,
   drawCafeCounter,
   drawFoodIcon,
+  drawBatteryShelf,
+  drawBatteryIcon,
   DECOR_KINDS,
 } from './anime-furniture.js';
 import { buildStations, buildDecor } from './floor-plan.js';
@@ -60,6 +62,8 @@ describe('anime furniture', () => {
     drawCafeCounter(ctx, byKind['cafe-counter'], { drawLady: (x, y) => { ladyAt = [x, y]; } });
     assert.deepEqual(ladyAt, [0, 22]);
     for (const id of ['onigiri', 'chips', 'candy', 'water', 'juice', 'tea', 'meal']) drawFoodIcon(ctx, 0, 0, 1, id);
+    drawBatteryShelf(ctx, byKind['battery-shelf']);
+    for (const c of [0, 0.3, 1]) drawBatteryIcon(ctx, 0, 0, 1, c);
     assert.deepEqual(onTable, [0, 8]);
     assert.ok(ctx.calls.count > 200);
   });

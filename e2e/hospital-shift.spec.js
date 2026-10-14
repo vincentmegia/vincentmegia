@@ -759,6 +759,57 @@ test.describe('hunger, thirst and the Cafeteria', () => {
 	});
 });
 
+test.describe('night shifts and the flashlight', () => {
+	test('shift 5 is a night shift: 7 PM clock, F toggles the flashlight, a dead battery swaps in a spare', async ({ page }) => {
+		await seedSave(page, 5);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		expect((await shiftState(page)).night).toBe(true);
+		await expect(page.locator('#hospital-hud-clock')).toHaveText(/PM/);
+		const button = page.locator('#hospital-flashlight-button');
+		await expect(button).toBeVisible();
+		await expect(button).toContainText('Off');
+		await page.keyboard.press('f');
+		expect((await shiftState(page)).flashlight.on).toBe(true);
+		await expect(button).toContainText('On');
+
+		// A spare from the Supply Room shelf…
+		await walkTo(page, 'stairs');
+		await walkTo(page, 'battery-shelf');
+		expect((await shiftState(page)).flashlight.spares).toBe(1);
+		// …swaps in when the battery runs flat.
+		await hooks(page, 'setFlashlightBattery', 0.01);
+		await expect.poll(async () => (await shiftState(page)).flashlight.spares).toBe(0);
+		const f = (await shiftState(page)).flashlight;
+		expect(f.on).toBe(true);
+		expect(f.battery).toBeGreaterThan(90);
+		// With no spare left, it dies.
+		await hooks(page, 'setFlashlightBattery', 0.01);
+		await expect.poll(async () => (await shiftState(page)).flashlight.on).toBe(false);
+		await expect(page.locator('#hospital-toast')).toContainText('battery died');
+	});
+
+	test('the vending machine sells batteries; day shifts have no flashlight', async ({ page }) => {
+		await seedSave(page, 10);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await walkTo(page, 'vending-machine');
+		await waitForOverlay(page, 'vending');
+		const b = await hooks(page, 'getVendingBatteryRect');
+		await clickCanvasPoint(page, { x: b.x + 30, y: b.y + 20 });
+		const s = await shiftState(page);
+		expect(s.flashlight.spares).toBe(1);
+		expect(s.bonusGard).toBe(-15);
+
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		expect((await shiftState(page)).night).toBe(false);
+		await expect(page.locator('#hospital-flashlight-button')).toBeHidden();
+		await page.keyboard.press('f');
+		expect((await shiftState(page)).flashlight.on).toBe(false);
+	});
+});
+
 test.describe('game over', () => {
 	test('20 s at 0% Sanity is a game over; Retry replays the same shift with the month kept', async ({ page }) => {
 		await seedSave(page, 5, 1200);

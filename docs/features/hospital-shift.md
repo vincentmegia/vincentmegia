@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (141 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (144 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (39 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (41 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -316,6 +316,24 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   asked to "remove the shine" — both eyes and hair, as they had for
   Kimono Himura's eyes — so the crown shine and the eye highlights are
   gone.
+* **Night shifts and the flashlight** (the user: "i want to add a
+  flashlight for night shifts", then — asked — night shifts in the month
+  and a toggled flashlight with a battery; `rules.js` "Night shifts and the
+  flashlight"). Every 5th month shift (5, 10 … 30; `isNightShift`) and the
+  Daily's Night Shift twist run 7 PM → 7 AM (`inGameTimeLabel(…, { night })`)
+  with 20% fewer patients (`patientVolumeFor`), and the ER and Supply Room
+  are dark: an offscreen deep-blue layer with soft holes for a glow around
+  the nurse, the vending machine, the elevator button and the EMERGENCY
+  sign (the OR and Cafeteria keep their lights on). The flashlight (F, or
+  the "🔦 Light" HUD button shown only at night) cuts a warm cone toward the
+  mouse; its battery (`FLASHLIGHT_BATTERY_MAX`, ~2½ min of light) drains
+  only while on and flickers when low, and a flat battery swaps in a spare
+  automatically (engine-state's `flashlight`, `toggleFlashlight`). Spares
+  (up to `FLASHLIGHT_MAX_SPARES` 2) come from the Supply Room's new battery
+  shelf (`pickUpBattery`) or the vending machine for `BATTERY_PRICE` 15g
+  (`buyBattery`). A battery meter with spare dots sits left of the wall
+  clock at night; the paycheck's button reads "Start Night Shift 🌙" before
+  one; the Daily twist's old soft shade was replaced by this darkness.
 * **Hunger, Thirst and the Cafeteria** (the user: "add an hunger and
   thirst system you can get snacks from the vending machine and drinks add
   an cafetria for breaks and add an cafetria lady which she gives food and
@@ -715,7 +733,10 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       and a decoy are mistakes and a dropped grab isn't; the HUD button
       leaves the OR); hunger/thirst (the vending machine sells water and an
       onigiri off the shift pay; the Cafeteria's free meal fills both bars;
-      5 s at 0% Thirst is a collapse). Uses
+      5 s at 0% Thirst is a collapse); night shifts (shift 5 is a night
+      with a PM clock, F toggles the light, the shelf's spare swaps in when
+      the battery runs flat, then it dies; the vending machine sells a
+      battery; day shifts have no flashlight). Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

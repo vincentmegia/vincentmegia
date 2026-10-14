@@ -10,6 +10,7 @@
        #hospital-canvas               960x600 canvas
        #hospital-hud-shift / -clock / -status   HUD text nodes
        #hospital-fullscreen-button
+       #hospital-flashlight-button    Night shifts only: toggles the flashlight (F)
        #hospital-floor-button         1st Floor (ER) / 2nd Floor (Supply Room) shortcut;
                                       JS flips its label and aria-pressed
        #hospital-interact-hint        Hover hint (role="status")
@@ -71,6 +72,12 @@
 							aria-pressed="false"
 							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>Go Upstairs</button>
+						<button
+							type="button"
+							id="hospital-flashlight-button"
+							aria-pressed="false"
+							class="hidden ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
+						>🔦 Light: Off (F)</button>
 						<button
 							type="button"
 							id="hospital-fullscreen-button"

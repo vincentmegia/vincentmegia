@@ -833,6 +833,40 @@ export function drawImplantShelf(ctx, st) {
   });
 }
 
+/** A flashlight battery icon centered on (x, y), filled to `charge` (0..1). */
+export function drawBatteryIcon(ctx, x, y, s = 1, charge = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  flat(ctx, -9, -5, 17, 10, 2.5, '#ffffff', 1.1);
+  flat(ctx, 8, -2.5, 2.5, 5, 1, INK, 0);
+  const c = Math.max(0, Math.min(1, charge));
+  if (c > 0) flat(ctx, -7.5, -3.5, 14 * c, 7, 1.5, c > 0.5 ? ANIME.mintDeep : (c > 0.2 ? ANIME.goldDeep : ANIME.coralDeep), 0);
+  ctx.restore();
+}
+
+/** The Supply Room's battery shelf: a little rack of flashlight batteries with a bolt sign. */
+export function drawBatteryShelf(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  block(ctx, -hw + 6, -hh + 8, st.w - 12, st.h - 14, 8, '#fff6d6', 1.5);
+  for (let row = 0; row < 2; row++) {
+    for (let i = 0; i < 3; i++) drawBatteryIcon(ctx, -hw + 22 + i * 20, -hh + 26 + row * 18, 0.9, 1);
+  }
+  // A lightning-bolt badge.
+  circle(ctx, hw - 12, -hh + 12, 8, ANIME.gold, 1.2);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(hw - 11, -hh + 6);
+  ctx.lineTo(hw - 15, -hh + 13);
+  ctx.lineTo(hw - 12, -hh + 13);
+  ctx.lineTo(hw - 13, -hh + 18);
+  ctx.lineTo(hw - 9, -hh + 11);
+  ctx.lineTo(hw - 12, -hh + 11);
+  ctx.closePath();
+  ctx.fill();
+}
+
 // ---------------------------------------------------------------------------
 // Decor (world coordinates; floor-plan.js's buildDecor)
 // ---------------------------------------------------------------------------

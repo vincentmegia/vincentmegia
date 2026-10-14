@@ -29,6 +29,7 @@
 //     karen: { shiftNumber, active, triggered, resolved, outcome, timerSecondsRemaining },
 //     mel: { waiting, visited },  // the easter egg: in the triage line / already visited this shift
 //     hunger, thirst, zeroHungerSeconds, zeroThirstSeconds,  // rules.js "Hunger and Thirst"
+//     night, flashlight: { on, battery, spares },  // rules.js "Night shifts and the flashlight"
 //     surgeryKit: { scalpel, item },  // scrubbed-in items for the next operation (item = SURGERY_ITEMS id)
 //     xp,     // career XP earned this shift (rules.js's XP_*); the game adds it to the save
 //     perks,  // { walk, skillZone, patience, sanityDrain, pay } from the nurse's rank (rules.js's perksForRank)
@@ -82,6 +83,10 @@ import {
   clampThirst,
   findVendingItem,
   CAFE_MEAL,
+  FLASHLIGHT_BATTERY_MAX,
+  FLASHLIGHT_DRAIN_PER_SECOND,
+  FLASHLIGHT_MAX_SPARES,
+  BATTERY_PRICE,
   surgeryItemFor,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
@@ -120,6 +125,8 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     carried: null,
     hasBandage: false,
     surgeryKit: { scalpel: false, item: null },
+    night: false,
+    flashlight: { on: false, battery: FLASHLIGHT_BATTERY_MAX, spares: 0 },
     activeTask: null,
     orderlyGurney: null,
     orPatient: null,
@@ -675,6 +682,17 @@ export function tick(state, deltaSeconds) {
     next.zeroSanitySeconds = state.zeroSanitySeconds + Math.max(0, delta - secondsToZero);
   }
 
+  // The flashlight drains while on; an empty battery swaps in a spare.
+  if (next.flashlight.on) {
+    let battery = next.flashlight.battery - FLASHLIGHT_DRAIN_PER_SECOND * delta;
+    let { spares } = next.flashlight;
+    let on = true;
+    if (battery <= 0) {
+      if (spares > 0) { spares -= 1; battery = FLASHLIGHT_BATTERY_MAX; } else { battery = 0; on = false; }
+    }
+    next = { ...next, flashlight: { on, battery, spares } };
+  }
+
   // Triage queue walk-outs.
   let walkedOut = 0;
   const queue = [];
@@ -773,6 +791,32 @@ export function buyVendingItem(state, itemId) {
   const item = findVendingItem(itemId);
   if (!item) return state;
   return { ...feed(state, item), bonusGard: state.bonusGard - item.price };
+}
+
+/**
+ * F / the HUD button: switches the flashlight on (only with charge left —
+ * a spare is loaded if the battery is flat) or off.
+ */
+export function toggleFlashlight(state) {
+  if (state.phase !== 'playing') return state;
+  const f = state.flashlight;
+  if (f.on) return { ...state, flashlight: { ...f, on: false } };
+  if (f.battery > 0) return { ...state, flashlight: { ...f, on: true } };
+  if (f.spares > 0) return { ...state, flashlight: { on: true, battery: FLASHLIGHT_BATTERY_MAX, spares: f.spares - 1 } };
+  return state;
+}
+
+/** Takes a spare battery (the Supply Room shelf); a no-op at FLASHLIGHT_MAX_SPARES. */
+export function pickUpBattery(state) {
+  if (state.phase !== 'playing' || state.flashlight.spares >= FLASHLIGHT_MAX_SPARES) return state;
+  return { ...state, flashlight: { ...state.flashlight, spares: state.flashlight.spares + 1 } };
+}
+
+/** Buys a spare battery at the vending machine (off the shift's pay); a no-op when full. */
+export function buyBattery(state) {
+  const after = pickUpBattery(state);
+  if (after === state) return state;
+  return { ...after, bonusGard: after.bonusGard - BATTERY_PRICE };
 }
 
 /** The Cafeteria Lady's free meal and water (rules.js CAFE_MEAL). */

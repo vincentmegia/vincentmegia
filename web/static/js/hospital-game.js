@@ -109,6 +109,11 @@ import {
   CAFE_LADY_LINE,
   walkMultiplierForHungerThirst,
   skillZoneScaleForHungerThirst,
+  isNightShift,
+  patientVolumeFor,
+  BATTERY_PRICE,
+  FLASHLIGHT_BATTERY_MAX,
+  FLASHLIGHT_MAX_SPARES,
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { patientProfileFor } from './hospital/patient-names.js';
@@ -152,6 +157,8 @@ import {
   drawCafeDoor,
   drawCafeCounter,
   drawFoodIcon,
+  drawBatteryShelf,
+  drawBatteryIcon,
 } from './hospital/anime-furniture.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
@@ -194,6 +201,9 @@ import {
   buyVendingItem,
   cafeteriaMeal,
   hungerThirstCollapse,
+  toggleFlashlight,
+  pickUpBattery,
+  buyBattery,
   doctorAssistTarget,
   doctorAssist,
 } from './hospital/engine-state.js';
@@ -602,6 +612,7 @@ export function init(canvas, elements) {
   function showScreen(name) {
     elements.startScreen.root.classList.toggle('hidden', name !== 'start');
     elements.paycheckScreen.root.classList.toggle('hidden', name !== 'paycheck');
+    updateFlashlightButton();
   }
 
   function renderHud() {
@@ -616,7 +627,7 @@ export function init(canvas, elements) {
       elements.hud.status.textContent = 'Quiet';
       return;
     }
-    elements.hud.clock.textContent = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds);
+    elements.hud.clock.textContent = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds, { night: shiftState.night });
     let status;
     if (shiftState.phase === 'closing-wait') status = isOfficeReady(shiftState) ? 'Handover — go in' : 'Handover…';
     else if (shiftState.phase === 'paycheck') status = 'Shift over';
@@ -646,6 +657,7 @@ export function init(canvas, elements) {
       case 'cafeteria-door': return 'Cafeteria ↓';
       case 'cafe-counter': return `${CAFE_LADY_NAME} · free meals`;
       case 'cafe-door': return 'Door → ER';
+      case 'battery-shelf': return 'Batteries';
       case 'coffee-machine': return dailyEffect('noCoffee') ? 'Coffee (out of order)' : 'Coffee Machine';
       case 'supply-cart': return 'Supply Cart';
       case 'stairs': return station.targetFloor === FLOOR_2 ? 'Stairs ↑ Supply Room' : 'Stairs ↓ ER';
@@ -805,7 +817,7 @@ export function init(canvas, elements) {
   function scheduleShiftEvents() {
     const total = shiftState.totalClockSeconds;
     const events = [];
-    const count = daily ? dailyPatientVolume(daily.twist) : patientVolumeForShift(currentShiftNumber);
+    const count = daily ? dailyPatientVolume(daily.twist) : patientVolumeFor(currentShiftNumber, isNightShift(currentShiftNumber));
     const rolls = Array.from({ length: count }, () => shiftRandom());
     for (const at of patientArrivalTimes(count, total, rolls)) {
       const r = shiftRandom;
@@ -1281,6 +1293,14 @@ export function init(canvas, elements) {
       switchFloor(FLOOR_1, 'cafe-exit');
       return;
     }
+    if (station.kind === 'battery-shelf') {
+      const before = shiftState;
+      shiftState = pickUpBattery(shiftState);
+      showToast(shiftState === before
+        ? `Your pockets are full — ${FLASHLIGHT_MAX_SPARES} spare batteries is the most you can carry.`
+        : `Got a spare battery (${shiftState.flashlight.spares}/${FLASHLIGHT_MAX_SPARES}). It swaps in when the flashlight runs flat.`);
+      return;
+    }
     if (station.kind === 'vending-machine') {
       overlay = { kind: 'vending', flash: null };
       return;
@@ -1595,6 +1615,11 @@ export function init(canvas, elements) {
     } else if (overlay.kind === 'vending') {
       const card = vendingCardRects().find((r) => insideRect(r, x, y));
       if (card) buyFromVending(card.id);
+      else if (insideRect(vendingBatteryRect(), x, y)) {
+        const before = shiftState;
+        shiftState = buyBattery(shiftState);
+        flash(shiftState === before ? 'Your pockets are full of batteries!' : `Battery! −${BATTERY_PRICE}g`, shiftState !== before);
+      }
     } else if (overlay.kind === 'cafe') {
       if (insideRect(cafeButtonRect(), x, y)) eatCafeMeal();
     } else if (overlay.kind === 'pick') {
@@ -1821,6 +1846,7 @@ export function init(canvas, elements) {
   }
 
   function onCanvasPointerMove(e) {
+    aim = canvasCoordsFromEvent(e);
     if (overlay?.kind === 'bandage' && overlay.tracing) {
       overlay.samples.push(canvasCoordsFromEvent(e));
       return;
@@ -1869,6 +1895,11 @@ export function init(canvas, elements) {
       melCodeBuffer = typed.buffer;
       if (typed.matched) bringMelIn('code');
     }
+    if ((e.key === 'f' || e.key === 'F') && shiftState?.night && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      flipFlashlight();
+      return;
+    }
     if (e.key === 'Enter' && hoverStation) {
       e.preventDefault();
       commitStationTarget(hoverStation, null);
@@ -1901,6 +1932,8 @@ export function init(canvas, elements) {
     }
     shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber, {
       perks: daily ? dailyPerksForTwist(daily.twist) : perksForRank(rankForXp(save.careerXp).rank),
+      // Night shifts (every 5th of the month, or the Daily's Night Shift twist).
+      night: daily ? dailyEffect('night') : isNightShift(currentShiftNumber),
     }));
     lastLiveRank = rankForXp(save.careerXp).rank;
     shiftXpAwarded = false;
@@ -1921,6 +1954,8 @@ export function init(canvas, elements) {
     paused = false;
     showScreen(null);
     renderHud();
+    updateFlashlightButton();
+    if (shiftState.night) showToast('Night shift — the ER is dark. Press F (or the Flashlight button) for your flashlight; spare batteries are upstairs.', 5);
     if (rafHandle === null) rafHandle = window.requestAnimationFrame(loop);
   }
 
@@ -2014,7 +2049,7 @@ export function init(canvas, elements) {
     screen.outcome.textContent = parts.join(' · ');
     screen.shiftTotal.textContent = `${payout} Gard`;
     screen.monthTotal.textContent = `${save.monthToDateGard} Gard`;
-    screen.nextShiftButton.textContent = 'Start Next Shift';
+    screen.nextShiftButton.textContent = isNightShift(currentShiftNumber + 1) ? 'Start Night Shift 🌙' : 'Start Next Shift';
     screen.nextShiftButton.classList.toggle('hidden', isFinalShift);
     screen.newMonthButton.classList.toggle('hidden', !isFinalShift);
     setPaycheckMode({ submit: isFinalShift, earnings: save.monthToDateGard });
@@ -2225,23 +2260,120 @@ export function init(canvas, elements) {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  /**
-   * Night Shift's dim ER: a deep-blue night over everything, with a soft
-   * pool of light around the nurse and a few stars twinkling up top.
-   */
-  function drawNightShade() {
-    ctx.save();
-    const g = ctx.createRadialGradient(player.x, player.y - 30, 70, player.x, player.y - 30, 430);
-    g.addColorStop(0, 'rgba(20,18,60,0.05)');
-    g.addColorStop(1, 'rgba(20,18,60,0.55)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    const t = performance.now() / 1000;
-    [[300, 300], [460, 380], [740, 330], [880, 250], [220, 480]].forEach(([sx, sy], i) => {
-      ctx.globalAlpha = 0.4 + 0.4 * Math.sin(t * 1.5 + i * 1.7);
-      sparkle(ctx, sx, sy, 4 + (i % 2) * 2, '#fff6d6');
-    });
-    ctx.restore();
+  // -- Night shifts and the flashlight -----------------------------------------
+  //
+  // At night the ER and the Supply Room are dark (the OR and Cafeteria keep
+  // their lights on): an offscreen layer of deep-blue night with holes cut
+  // out for a small glow around the nurse, a few glowing fixtures, and the
+  // flashlight's cone toward the mouse (rules.js "Night shifts and the
+  // flashlight").
+
+  /** Where the flashlight points: the mouse, last seen over the canvas. */
+  let aim = null;
+  const darkness = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  if (darkness) { darkness.width = CANVAS_WIDTH; darkness.height = CANVAS_HEIGHT; }
+  const FLASHLIGHT_REACH = 340;
+  const FLASHLIGHT_SPREAD = 0.42; // half-angle, radians
+
+  function isDarkHere() {
+    return Boolean(shiftState?.night) && (currentFloor === FLOOR_1 || currentFloor === FLOOR_2);
+  }
+
+  /** Cuts a soft round hole of light into the darkness layer. */
+  function cutGlow(dctx, x, y, r, strength = 1) {
+    const g = dctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    dctx.fillStyle = g;
+    dctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function drawDarkness() {
+    if (!darkness) return;
+    const dctx = darkness.getContext('2d');
+    dctx.globalCompositeOperation = 'source-over';
+    dctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    dctx.fillStyle = 'rgba(8,10,34,0.88)';
+    dctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    dctx.globalCompositeOperation = 'destination-out';
+    const px = player.x;
+    const py = player.y - 30;
+    cutGlow(dctx, px, py, 78, 0.85);
+    // Glowing fixtures: the vending machine, the elevator button, the signs.
+    for (const st of visibleStations()) {
+      if (st.kind === 'vending-machine') cutGlow(dctx, st.x, st.y, 60, 0.7);
+      if (st.kind === 'elevator') cutGlow(dctx, st.x + 35, st.y, 26, 0.6);
+    }
+    cutGlow(dctx, 839, 28, 90, 0.55);
+    const f = shiftState.flashlight;
+    if (f.on) {
+      const tx = aim?.x ?? px + 100;
+      const ty = aim?.y ?? py;
+      const angle = Math.atan2(ty - py, tx - px);
+      // A flickering cone when the battery is nearly flat.
+      const flicker = f.battery < 15 ? 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 70)) : 1;
+      const g = dctx.createRadialGradient(px, py, 10, px, py, FLASHLIGHT_REACH);
+      g.addColorStop(0, `rgba(0,0,0,${flicker})`);
+      g.addColorStop(0.7, `rgba(0,0,0,${0.85 * flicker})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      dctx.fillStyle = g;
+      dctx.beginPath();
+      dctx.moveTo(px, py);
+      dctx.arc(px, py, FLASHLIGHT_REACH, angle - FLASHLIGHT_SPREAD, angle + FLASHLIGHT_SPREAD);
+      dctx.closePath();
+      dctx.fill();
+    }
+    dctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(darkness, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // A warm tint inside the beam.
+    if (f.on) {
+      const tx = aim?.x ?? px + 100;
+      const ty = aim?.y ?? py;
+      const angle = Math.atan2(ty - py, tx - px);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(px, py, 10, px, py, FLASHLIGHT_REACH);
+      g.addColorStop(0, 'rgba(255,240,180,0.18)');
+      g.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.arc(px, py, FLASHLIGHT_REACH, angle - FLASHLIGHT_SPREAD, angle + FLASHLIGHT_SPREAD);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /** The battery meter left of the wall clock, with a dot per spare (night shifts only). */
+  function drawBatteryMeter() {
+    const f = shiftState.flashlight;
+    animePlate(ctx, 446, 39, 50, 18, 9);
+    drawBatteryIcon(ctx, 466, 48, 1, f.battery / FLASHLIGHT_BATTERY_MAX);
+    for (let i = 0; i < FLASHLIGHT_MAX_SPARES; i++) {
+      ctx.fillStyle = i < f.spares ? ANIME.goldDeep : 'rgba(59,42,74,0.25)';
+      ctx.beginPath();
+      ctx.arc(484 + i * 6, 48, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function flipFlashlight() {
+    if (!shiftState?.night) return;
+    const before = shiftState;
+    shiftState = toggleFlashlight(shiftState);
+    if (shiftState === before && !before.flashlight.on) showToast('The flashlight is dead — grab a battery from the Supply Room shelf or the vending machine.', 3.6);
+    updateFlashlightButton();
+  }
+
+  function updateFlashlightButton() {
+    const button = elements.flashlightButton;
+    if (!button) return;
+    const night = Boolean(shiftState?.night) && running;
+    button.classList.toggle('hidden', !night);
+    const on = Boolean(shiftState?.flashlight.on);
+    button.textContent = on ? '🔦 Light: On (F)' : '🔦 Light: Off (F)';
+    button.setAttribute('aria-pressed', String(on));
   }
 
   /** The sign on the back wall (EMERGENCY / SUPPLY ROOM), anime-plated. */
@@ -2442,7 +2574,7 @@ export function init(canvas, elements) {
 
   function drawWallClock() {
     if (!shiftState) return;
-    const label = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds);
+    const label = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds, { night: shiftState.night });
     const match = /^(\d+):(\d+) (AM|PM)$/.exec(label);
     if (!match) return;
     const hour = Number(match[1]) % 12;
@@ -2597,6 +2729,7 @@ export function init(canvas, elements) {
     'cafeteria-door': '#ffe8d0',
     'cafe-counter': '#fff0dc',
     'cafe-door': '#ffe8d0',
+    'battery-shelf': '#fff6d6',
   };
   const STATION_DETAILS = {
     office: drawOfficeDetail,
@@ -2622,6 +2755,7 @@ export function init(canvas, elements) {
     'vending-machine': (st) => drawVendingStation(ctx, st),
     'cafeteria-door': (st) => drawCafeteriaDoor(ctx, st),
     'cafe-door': (st) => drawCafeDoor(ctx, st),
+    'battery-shelf': (st) => drawBatteryShelf(ctx, st),
     'cafe-counter': (st) => drawCafeCounter(ctx, st, {
       drawLady: (x, y) => drawAnimePerson(ctx, x, y + 6, STAFF_DESIGNS.cafeLady, { scale: 1.25, t: performance.now() / 1000 }),
     }),
@@ -3877,7 +4011,18 @@ export function init(canvas, elements) {
       ctx.fillText(effectText(item), r.x + r.w / 2, r.y + 104, r.w - 12);
       drawLabelChip(ctx, r.x + r.w / 2, r.y + r.h - 12, `${item.price}g`, 'bold 11px sans-serif', ANIME.goldDeep, '#ffffff');
     }
+    const b = vendingBatteryRect();
+    animeButton(ctx, b, '', ANIME.gold, ANIME.goldDeep);
+    drawBatteryIcon(ctx, b.x + 26, b.y + b.h / 2, 1.3, 1);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    outlinedText(ctx, `Flashlight battery · ${BATTERY_PRICE}g (${shiftState.flashlight.spares}/${FLASHLIGHT_MAX_SPARES})`, b.x + 46, b.y + b.h / 2 + 1, '#ffffff', tint(ANIME.goldDeep, -0.45), 3);
     drawFlash(118);
+  }
+
+  function vendingBatteryRect() {
+    return { x: CANVAS_WIDTH / 2 - 170, y: 452, w: 340, h: 40 };
   }
 
   function drawCafeOverlay() {
@@ -4218,7 +4363,7 @@ export function init(canvas, elements) {
     drawPlayer();
     drawHallucinations();
     ctx.restore();
-    if (dailyEffect('night')) drawNightShade();
+    if (isDarkHere()) drawDarkness();
     if (shiftState && (shiftState.hunger < HUNGER_THIRST_LOW || shiftState.thirst < HUNGER_THIRST_LOW)) drawDiscomfortVignette();
     if (daily && shiftState) {
       drawLabelChip(ctx, CANVAS_WIDTH / 2, 588, `✦ Daily Challenge · ${daily.twist.name} ✦`, 'bold 11px sans-serif', ANIME.lavenderDeep, '#ffffff');
@@ -4243,6 +4388,7 @@ export function init(canvas, elements) {
     }
     drawRatingStars();
     drawHungerThirst();
+    if (shiftState?.night) drawBatteryMeter();
     drawGardCounter();
     drawRankBar();
     drawOverlay();
@@ -4285,6 +4431,10 @@ export function init(canvas, elements) {
     // XP mostly changes in click/key handlers between frames, so check the
     // live rank every frame rather than diffing this tick.
     announceLiveRankUp();
+    if (before.flashlight.on !== shiftState.flashlight.on) {
+      updateFlashlightButton();
+      if (!shiftState.flashlight.on) showToast('Your flashlight battery died! Grab a spare from the Supply Room or the vending machine.', 3.6);
+    }
     // Getting uncomfortable: a heads-up the moment Hunger or Thirst dips under the line.
     for (const [stat, fix] of [['hunger', 'grab a snack'], ['thirst', 'grab a drink']]) {
       if (before[stat] >= HUNGER_THIRST_LOW && shiftState[stat] < HUNGER_THIRST_LOW) {
@@ -4356,6 +4506,7 @@ export function init(canvas, elements) {
   document.addEventListener('visibilitychange', onVisibilityChange);
   document.addEventListener('fullscreenchange', onFullscreenChange);
   elements.fullscreenButton.addEventListener('click', toggleFullscreen);
+  elements.flashlightButton?.addEventListener('click', flipFlashlight);
   elements.floorButton?.addEventListener('click', () => {
     if (currentFloor === FLOOR_OR) switchFloor(FLOOR_1, 'or-exit');
     else if (currentFloor === FLOOR_CAFE) switchFloor(FLOOR_1, 'cafe-exit');
@@ -4428,6 +4579,9 @@ export function init(canvas, elements) {
     getCafeButtonRect: () => cafeButtonRect(),
     setHunger(value) { if (shiftState) shiftState = { ...shiftState, hunger: value }; },
     setThirst(value) { if (shiftState) shiftState = { ...shiftState, thirst: value }; },
+    setAim(x, y) { aim = { x, y }; },
+    setFlashlightBattery(value) { if (shiftState) shiftState = { ...shiftState, flashlight: { ...shiftState.flashlight, battery: value } }; },
+    getVendingBatteryRect: () => vendingBatteryRect(),
     setPickGauge(pos) { if (overlay?.kind === 'pick') { overlay.gauge = pos; overlay.direction = 0; } },
     giveSurgeryKit(item) { if (shiftState) shiftState = { ...shiftState, surgeryKit: { scalpel: true, item } }; },
     getMelVaseRect: () => ({ ...MEL_VASE_RECT }),
@@ -4493,6 +4647,7 @@ function bootstrap() {
     toast: byId('hospital-toast'),
     fullscreenButton: byId('hospital-fullscreen-button'),
     floorButton: byId('hospital-floor-button'),
+    flashlightButton: byId('hospital-flashlight-button'),
     startScreen: {
       root: byId('hospital-start-screen'),
       shiftButton: byId('hospital-start-shift-button'),
