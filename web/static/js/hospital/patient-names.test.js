@@ -5,11 +5,14 @@ import { PATIENT_PROFILES, patientProfileFor, shortPatientName } from './patient
 import { PATIENT_DESIGN_KEYS } from './anime-people.js';
 
 describe('patient names', () => {
+  const NAMED_CHARACTERS = new Set(['maiko']);
+
   test('every patient design has a name pool and a sane age range', () => {
     for (const key of PATIENT_DESIGN_KEYS) {
       const profile = PATIENT_PROFILES[key];
       assert.ok(profile, `no names for ${key}`);
-      assert.ok(profile.names.length >= 3, key);
+      // Named characters (the maiko is always Hiko Maiko) have just the one.
+      assert.ok(profile.names.length >= (NAMED_CHARACTERS.has(key) ? 1 : 3), key);
       assert.ok(profile.ages[0] <= profile.ages[1], key);
     }
   });

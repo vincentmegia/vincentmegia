@@ -62,8 +62,9 @@ export const PATIENT_PROFILES = {
   momijiLady: { names: ['Kaede Akiyama', 'Momiji Tachibana', 'Ayame Saionji', 'Shizuka Hino'], ages: [30, 50] },
   goldfishKid: { names: ['Kintaro Yoshino', 'Haruki Mochizuki', 'Sota Kaneko', 'Tomo Ichinose'], ages: [5, 9] },
   kikkoGrandpa: { names: ['Kamejiro Ueno', 'Tsurukichi Hata', 'Bunzo Okada', 'Heihachi Mishima'], ages: [72, 90] },
-  // Maiko go by their professional names alone.
-  maiko: { names: ['Mameharu', 'Ichifumi', 'Katsuna', 'Satomomo'], ages: [16, 20] },
+  // The showpiece maiko always has the one name (the user: "i want it to
+  // be hiko maiko").
+  maiko: { names: ['Hiko Maiko'], ages: [16, 20] },
 };
 
 const FALLBACK_PROFILE = { names: ['Alex Mori'], ages: [30, 50] };

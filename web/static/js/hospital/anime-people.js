@@ -2425,6 +2425,9 @@ function drawBrows(ctx, d) {
   ctx.lineCap = 'butt';
 }
 
+/** How much lower the maiko's painted lips sit than other mouths. */
+const MAIKO_MOUTH_DROP = 2;
+
 function drawMouth(ctx, d) {
   ctx.strokeStyle = '#b05060';
   ctx.lineWidth = 0.7;
@@ -2447,7 +2450,10 @@ function drawMouth(ctx, d) {
     ctx.fill();
   } else if (d.mouth === 'beni') {
     // A first-year maiko paints only her lower lip: a small red rosebud
-    // under a barely-tinted upper lip.
+    // under a barely-tinted upper lip. Set lower on the face than other
+    // mouths (the user: "make the mouth lower").
+    ctx.save();
+    ctx.translate(0, MAIKO_MOUTH_DROP);
     ctx.fillStyle = 'rgba(230,140,150,0.55)';
     ctx.moveTo(-1.8, 5.5);
     ctx.quadraticCurveTo(-0.9, 4.6, 0, 5.1);
@@ -2467,6 +2473,7 @@ function drawMouth(ctx, d) {
     ctx.moveTo(-1.7, 5.5);
     ctx.quadraticCurveTo(0, 5.9, 1.7, 5.5);
     ctx.stroke();
+    ctx.restore();
   } else if (d.mouth === 'flat') {
     ctx.moveTo(-1.4, 6.2);
     ctx.lineTo(1.4, 6.2);

@@ -377,8 +377,9 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     with a fine red liner, rosebud lips, a low, wide two-lobed mage drawn
     behind the head (`hair.back: 'maiko'`, `drawMaikoMage`) so the front
     hair laps over it, a warm pink bang shadow on the oshiroi instead of
-    grey, and a finer obi brocade with a soft sheen. Maiko go by single professional names
-    (Mameharu, Ichifumi…). New head pieces
+    grey, and a finer obi brocade with a soft sheen. Her lips sit lower
+    than other mouths ("make the mouth lower": `MAIKO_MOUTH_DROP`). She's always named Hiko Maiko ("Hiko M." on
+    her chip; "i want it to be hiko maiko"). New head pieces
     (`hardhat`, `chefHat`, `catEars`, `beret`, `sunhat`, `flowerCrown`,
     `veil`, and a `beard`), each design with its own name pool.
   * *Staff:* a **janitor** wanders and every ~45 s
