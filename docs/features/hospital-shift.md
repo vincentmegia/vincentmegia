@@ -3,7 +3,7 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (130 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (133 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
 Playwright: `e2e/hospital-shift.spec.js` (34 tests, Chromium + WebKit),
@@ -456,6 +456,27 @@ area are unchanged; only the drawing moved to an anime game-UI style.
   dose buttons; Karen speaks in a speech bubble pointing at her, with
   manga speed lines and a throbbing anger mark; Mel's thanks and the
   coffee pour use the same window and buttons.
+* **Objects** (the user: "adjust the objects", then — asked — all four:
+  redraw, resize, re-space and add more). Stations grew a little
+  (`STATION_BOX_SIZE` 84 → 92, beds 92×120 → 100×128, the Triage Desk
+  140 wide, the OR 150×160) and were re-spaced: beds evenly at x
+  150/320/490/660 with room for an IV pole each, the office nudged right
+  so its long label stays on screen. Every station's furniture is redrawn
+  in `web/static/js/hospital/anime-furniture.js` (pure canvas,
+  smoke-tested): a pastel door with a round window, gold plaque and a heart
+  note; a peach triage counter with a heart-ECG monitor, clipboard,
+  service bell and pen cup; a glass-door med cabinet of capped bottles; an
+  OR with a gold lamp ring, sheeted table, monitor, tray and "OR" sign;
+  outlined stairs and a lavender elevator with a pulsing call button; a pastel
+  supply cart with outlined bandage rolls. The Coffee Machine keeps its
+  original Library Shift art (the user: "i want the old coffee machine
+  design to be kept"), drawn by `hospital-game.js`'s
+  `drawCoffeeMachineDetail` on the new pastel tile. Set dressing comes from
+  `floor-plan.js`'s `buildDecor()` (plain data, tested to stay clear of
+  every station, the triage line and the player start): waiting chairs, a
+  water cooler, potted plants, a vending machine and an IV pole by each bed
+  in the ER; a step ladder and a plant upstairs. Props are drawn after the
+  stations and under people; two staff waypoints moved off the cooler.
 * **Page:** `.hospital-anime` on the page's `<main>` scopes an anime theme
   in `web/static/css/app.css` (`ha-*` classes): a candy-gradient title
   banner with a plum-outlined Caprasimo title, a plum-framed game with a
@@ -607,7 +628,10 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       (thresholds, progress, stacking perks, XP from each source, perks on
       patience/Sanity drain/pay), the Daily Challenge (UTC date, seeded
       stream determinism, every twist reachable, neutral perks + twist,
-      Rush Hour volume, Flu Season bias), floor-plan geometry.
+      Rush Hour volume, Flu Season bias), floor-plan geometry (decor clear
+      of stations, the triage line and the player start), anime-furniture
+      smoke tests (every station and decor drawer runs; every decor kind
+      has one).
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
       coffee → Karen → Mel (typing "mel" → card → gift → badge, gone after

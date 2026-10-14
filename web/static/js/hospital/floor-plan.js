@@ -13,12 +13,16 @@
 export const CANVAS_WIDTH = 960;
 export const CANVAS_HEIGHT = 600;
 
-/** Box size for every ordinary station — Library Shift's 84. */
-export const STATION_BOX_SIZE = 84;
+/**
+ * Box size for every ordinary station — Library Shift's 84 until the user
+ * asked to "adjust the objects" (resize, re-space, redraw, add decor):
+ * stations grew a little so their redrawn furniture reads at a glance.
+ */
+export const STATION_BOX_SIZE = 92;
 
 /** Beds are taller than wide: a patient lies head-up on the pillow. */
-export const BED_WIDTH = 92;
-export const BED_HEIGHT = 120;
+export const BED_WIDTH = 100;
+export const BED_HEIGHT = 128;
 
 /** How far outside a station's box the player stops — Library Shift's value. */
 export const PLAYER_STOP_MARGIN = 28;
@@ -42,23 +46,56 @@ export const PLAYER_START = { x: 480, y: 520 };
 export function buildStations(bedCount = 4) {
   const s = STATION_BOX_SIZE;
   const stations = [
-    { id: 'office', kind: 'office', floor: FLOOR_1, x: 80, y: 110, w: s, h: s },
-    { id: 'triage-desk', kind: 'triage-desk', floor: FLOOR_1, x: 330, y: 110, w: 120, h: s },
-    { id: 'med-cabinet', kind: 'med-cabinet', floor: FLOOR_1, x: 640, y: 110, w: s, h: s },
-    { id: 'operating-room', kind: 'operating-room', floor: FLOOR_1, x: 868, y: 360, w: 140, h: 150 },
-    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 80, y: 530, w: s, h: s },
-    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, targetFloor: FLOOR_2, x: 880, y: 110, w: s, h: s },
-    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, targetFloor: FLOOR_2, x: 880, y: 530, w: s, h: s },
+    // The office sits a little right of the wall so its long "Charge Nurse
+    // (after 7 PM)" label stays on screen.
+    { id: 'office', kind: 'office', floor: FLOOR_1, x: 96, y: 112, w: s, h: s },
+    { id: 'triage-desk', kind: 'triage-desk', floor: FLOOR_1, x: 330, y: 112, w: 140, h: s },
+    { id: 'med-cabinet', kind: 'med-cabinet', floor: FLOOR_1, x: 640, y: 112, w: s, h: s },
+    { id: 'operating-room', kind: 'operating-room', floor: FLOOR_1, x: 866, y: 362, w: 150, h: 160 },
+    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 90, y: 530, w: s, h: s },
+    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, targetFloor: FLOOR_2, x: 878, y: 112, w: s, h: s },
+    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, targetFloor: FLOOR_2, x: 878, y: 530, w: s, h: s },
     // The Supply Room: the cart sits in the middle, shelves line the walls.
-    { id: 'supply-cart', kind: 'supply-cart', floor: FLOOR_2, x: 420, y: 330, w: 110, h: s },
-    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, targetFloor: FLOOR_1, x: 880, y: 110, w: s, h: s },
-    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, targetFloor: FLOOR_1, x: 880, y: 530, w: s, h: s },
+    { id: 'supply-cart', kind: 'supply-cart', floor: FLOOR_2, x: 420, y: 330, w: 124, h: s },
+    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 112, w: s, h: s },
+    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 530, w: s, h: s },
   ];
-  const bedXs = [150, 315, 480, 645];
+  // Evenly spaced, with room between beds for each bed's IV pole.
+  const bedXs = [150, 320, 490, 660];
   for (let i = 0; i < bedCount; i++) {
-    stations.push({ id: `bed-${i}`, kind: 'bed', floor: FLOOR_1, bedIndex: i, x: bedXs[i] ?? (150 + i * 165), y: 360, w: BED_WIDTH, h: BED_HEIGHT });
+    stations.push({ id: `bed-${i}`, kind: 'bed', floor: FLOOR_1, bedIndex: i, x: bedXs[i] ?? (150 + i * 170), y: 360, w: BED_WIDTH, h: BED_HEIGHT });
   }
   return stations;
+}
+
+/**
+ * Set dressing (the user: "add more objects"): non-interactive props drawn
+ * on the floor under everyone, kept clear of every station box, the triage
+ * line and the player's start (floor-plan.test.js checks). `x, y` is the
+ * prop's center, `w, h` its footprint; hospital-game.js draws each kind.
+ *
+ * @returns {{kind: string, floor: number, x: number, y: number, w: number, h: number}[]}
+ */
+export function buildDecor(bedCount = 4) {
+  const decor = [
+    // Waiting chairs beside the triage line, under the Med Cabinet.
+    { kind: 'waiting-chairs', floor: FLOOR_1, x: 600, y: 206, w: 96, h: 34 },
+    // A water cooler between the Med Cabinet and the Stairs.
+    { kind: 'water-cooler', floor: FLOOR_1, x: 772, y: 196, w: 28, h: 52 },
+    // Potted plants along the left wall, by the first bed's curtain (off
+    // the staff's walking routes).
+    { kind: 'plant', floor: FLOOR_1, x: 36, y: 372, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_1, x: 34, y: 452, w: 30, h: 46 },
+    // A vending machine across from the Elevator.
+    { kind: 'vending-machine', floor: FLOOR_1, x: 762, y: 524, w: 46, h: 78 },
+    // Supply Room: a step ladder and a plant.
+    { kind: 'ladder', floor: FLOOR_2, x: 566, y: 232, w: 30, h: 62 },
+    { kind: 'plant', floor: FLOOR_2, x: 878, y: 318, w: 30, h: 46 },
+  ];
+  // An IV pole at each bed's right, in the gap before the next curtain.
+  const beds = buildStations(bedCount).filter((st) => st.kind === 'bed');
+  for (const bed of beds) decor.push({ kind: 'iv-pole', floor: FLOOR_1, x: bed.x + bed.w / 2 + 16, y: bed.y - 4, w: 16, h: 112 });
+  return decor;
 }
 
 /** Just the stations on one floor — what's drawn and clickable there. */

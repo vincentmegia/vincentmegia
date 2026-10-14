@@ -116,6 +116,17 @@ import {
   animeTile,
   sakuraBranch,
 } from './hospital/anime-ui.js';
+import {
+  drawOffice,
+  drawTriageDesk,
+  drawMedCabinet,
+  drawOperatingRoom,
+  drawStairs,
+  drawElevator,
+  drawSupplyCart,
+  drawBandageRoll as drawBandageRollArt,
+  drawDecor,
+} from './hospital/anime-furniture.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
   createInitialState,
@@ -155,6 +166,7 @@ import {
 } from './hospital/engine-state.js';
 import {
   buildStations,
+  buildDecor,
   stationsOnFloor,
   entryPointFor,
   FLOOR_1,
@@ -248,8 +260,8 @@ export const PERSON_SCALE = 1.55;
 const AMBIENT_STAFF = [
   // Floor 1 routes stay below the beds and in the right-hand corridor, clear
   // of the triage line, so staff never read as patients waiting there.
-  { key: 'doctor', name: 'Dr. Okafor', floor: 1, waypoints: [[220, 462], [420, 470], [600, 462], [700, 470], [745, 235]] },
-  { key: 'orderly', name: 'Orderly', floor: 1, waypoints: [[560, 525], [300, 525], [170, 520], [745, 240], [480, 520]] },
+  { key: 'doctor', name: 'Dr. Okafor', floor: 1, waypoints: [[220, 462], [420, 470], [600, 462], [700, 470], [736, 262]] },
+  { key: 'orderly', name: 'Orderly', floor: 1, waypoints: [[560, 525], [300, 525], [170, 520], [730, 266], [480, 520]] },
   { key: 'stockTech', name: 'Stock tech', floor: 2, waypoints: [[160, 250], [600, 330], [240, 430], [560, 440], [700, 200]] },
 ];
 const AMBIENT_SPEED = 70;
@@ -2197,132 +2209,18 @@ export function init(canvas, elements) {
     ctx.fill();
   }
 
-  function drawOfficeDetail(st) {
-    const hw = st.w / 2;
-    const hh = st.h / 2;
-    drawRoundRect(ctx, -hw + 12, -hh + 8, st.w - 24, st.h - 8, [6, 6, 0, 0], 'rgba(60,90,110,0.18)');
-    ctx.strokeStyle = 'rgba(60,90,110,0.3)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-hw + 18, -hh + 26, st.w - 36, 22);
-    ctx.strokeRect(-hw + 18, 8, st.w - 36, 24);
-    drawRoundRect(ctx, -26, -hh + 12, 52, 10, 2, '#e8cf8a');
-    ctx.fillStyle = '#6a5a3a';
-    ctx.font = 'bold 6.5px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('CHARGE NURSE', 0, -hh + 17.5);
-    ctx.fillStyle = '#c9a24a';
-    ctx.beginPath();
-    ctx.arc(hw - 20, 4, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Station furniture, redrawn in the anime style (hospital/anime-furniture.js).
+  const drawOfficeDetail = (st) => drawOffice(ctx, st);
+  const drawTriageDeskDetail = (st) => drawTriageDesk(ctx, st);
+  const drawMedCabinetDetail = (st) => drawMedCabinet(ctx, st, { colors: MEDICATIONS.map((m) => m.color) });
+  const drawStairsDetail = (st) => drawStairs(ctx, st);
+  const drawElevatorDetail = (st) => drawElevator(ctx, st, { t: performance.now() / 1000 });
+  const drawSupplyCartDetail = (st) => drawSupplyCart(ctx, st);
+  const drawBandageRoll = (x, y, s = 1) => drawBandageRollArt(ctx, x, y, s);
 
-  function drawTriageDeskDetail(st) {
-    const hw = st.w / 2;
-    // Counter top and front.
-    drawRoundRect(ctx, -hw + 4, -6, st.w - 8, 34, 6, '#c9d8e4');
-    drawRoundRect(ctx, -hw + 4, -6, st.w - 8, 8, [6, 6, 0, 0], '#e6eef4');
-    // Monitor.
-    drawRoundRect(ctx, -34, -34, 34, 24, 3, '#3a4650');
-    drawRoundRect(ctx, -31, -31, 28, 18, 2, '#8fd6c8');
-    ctx.strokeStyle = '#2f7a6a';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-30, -22); ctx.lineTo(-22, -22); ctx.lineTo(-19, -29); ctx.lineTo(-15, -16); ctx.lineTo(-12, -22); ctx.lineTo(-4, -22);
-    ctx.stroke();
-    ctx.fillStyle = '#3a4650';
-    ctx.fillRect(-20, -10, 6, 4);
-    // Clipboard.
-    drawRoundRect(ctx, 12, -30, 22, 28, 2, '#a8794a');
-    drawRoundRect(ctx, 15, -26, 16, 21, 1, CREAM);
-    drawRoundRect(ctx, 18, -32, 10, 5, 1, '#8a8a90');
-    ctx.fillStyle = 'rgba(58,42,42,0.4)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(17, -22 + i * 4, 12, 1.2);
-    // Red cross sign.
-    drawRoundRect(ctx, -hw + 10, -st.h / 2 + 6, 20, 20, 4, CREAM);
-    ctx.fillStyle = '#d9534f';
-    ctx.fillRect(-hw + 17, -st.h / 2 + 9, 6, 14);
-    ctx.fillRect(-hw + 13, -st.h / 2 + 13, 14, 6);
-  }
-
-  function drawMedCabinetDetail(st) {
-    const hw = st.w / 2;
-    const hh = st.h / 2;
-    drawRoundRect(ctx, -hw + 8, -hh + 8, st.w - 16, st.h - 16, 4, '#f2f4f6');
-    ctx.strokeStyle = 'rgba(58,70,80,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-hw + 8, -hh + 8, st.w - 16, st.h - 16);
-    ctx.beginPath();
-    ctx.moveTo(0, -hh + 8);
-    ctx.lineTo(0, hh - 8);
-    ctx.stroke();
-    const colors = MEDICATIONS.map((m) => m.color);
-    for (let shelf = 0; shelf < 3; shelf++) {
-      const sy = -hh + 30 + shelf * 20;
-      ctx.fillStyle = 'rgba(58,70,80,0.25)';
-      ctx.fillRect(-hw + 10, sy, st.w - 20, 2);
-      for (let b = 0; b < 6; b++) {
-        const bx = -hw + 14 + b * 10 + (b >= 3 ? 4 : 0);
-        drawRoundRect(ctx, bx, sy - 11, 7, 11, 1.5, colors[(shelf * 6 + b) % colors.length]);
-        ctx.fillStyle = CREAM;
-        ctx.fillRect(bx + 1, sy - 7, 5, 3);
-      }
-    }
-    drawRoundRect(ctx, -9, -hh + 2, 18, 12, 3, '#d9534f');
-    ctx.fillStyle = CREAM;
-    ctx.fillRect(-1.5, -hh + 4, 3, 8);
-    ctx.fillRect(-5, -hh + 6.5, 10, 3);
-  }
-
-  function drawOperatingRoomDetail(st) {
-    const hw = st.w / 2;
-    const hh = st.h / 2;
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-hw, -hh, st.w, st.h, 10);
-    ctx.clip();
-    ctx.fillStyle = '#bfe0d2';
-    ctx.fillRect(-hw, -hh, st.w, st.h);
-    ctx.strokeStyle = 'rgba(60,120,100,0.18)';
-    ctx.lineWidth = 1;
-    for (let gx = -hw; gx < hw; gx += 14) { ctx.beginPath(); ctx.moveTo(gx, -hh); ctx.lineTo(gx, hh); ctx.stroke(); }
-    for (let gy = -hh; gy < hh; gy += 14) { ctx.beginPath(); ctx.moveTo(-hw, gy); ctx.lineTo(hw, gy); ctx.stroke(); }
-    // Overhead lamp glow.
-    const glow = ctx.createRadialGradient(0, -6, 4, 0, -6, 60);
-    glow.addColorStop(0, 'rgba(255,255,230,0.85)');
-    glow.addColorStop(1, 'rgba(255,255,230,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(-hw, -hh, st.w, st.h);
-    ctx.restore();
-    // Table with a sheet.
-    drawRoundRect(ctx, -22, -46, 44, 86, 8, '#8a98a4');
-    drawRoundRect(ctx, -19, -43, 38, 80, 6, '#e8f2f0');
-    drawRoundRect(ctx, -12, -40, 24, 12, 5, CREAM);
-    // Lamp rim.
-    ctx.strokeStyle = '#6a7a84';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, -6, 18, 0, Math.PI * 2);
-    ctx.stroke();
-    // Instrument tray + monitor.
-    drawRoundRect(ctx, hw - 30, 20, 22, 30, 3, '#c8ccd4');
-    ctx.fillStyle = '#7a8088';
-    for (let i = 0; i < 3; i++) ctx.fillRect(hw - 26 + i * 6, 25, 2, 20);
-    drawRoundRect(ctx, -hw + 8, -hh + 10, 26, 20, 3, '#3a4650');
-    ctx.strokeStyle = '#7fd68a';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-hw + 10, -hh + 21); ctx.lineTo(-hw + 17, -hh + 21); ctx.lineTo(-hw + 20, -hh + 14); ctx.lineTo(-hw + 23, -hh + 26); ctx.lineTo(-hw + 26, -hh + 21); ctx.lineTo(-hw + 32, -hh + 21);
-    ctx.stroke();
-    // A patient on the table while the operation's under way.
-    const onTable = shiftState?.activeTask?.kind === 'surgery' ? shiftState.activeTask.patientId : shiftState?.orPatient?.patientId;
-    if (onTable) {
-      drawPatient(0, 6, patientInfo.get(onTable), 0.6);
-      drawRoundRect(ctx, -18, -14, 36, 50, 5, '#7fb8a4');
-    }
-  }
-
-  // Ported verbatim from library-game.js so the two machines match.
+  // The original coffee machine, kept as is (the user: "i want the old
+  // coffee machine design to be kept") — ported verbatim from
+  // library-game.js so the two machines match.
   function drawCoffeeMachineDetail(st) {
     const half = st.w / 2;
     // Bean hopper on top: a clear trapezoid full of beans.
@@ -2385,100 +2283,18 @@ export function init(canvas, elements) {
     }
   }
 
-  function drawStairsDetail(st) {
-    const half = st.w / 2;
-    const steps = 5;
-    const stepH = (half * 2 - 16) / steps;
-    for (let i = 0; i < steps; i++) {
-      const y = half - 8 - (i + 1) * stepH;
-      const inset = 8 + i * 2.5;
-      drawRoundRect(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, shadeColor('#b8cde0', 0.15 + i * 0.1));
-      ctx.fillStyle = 'rgba(58,70,90,0.28)';
-      ctx.fillRect(-half + inset, y + stepH - 3, half * 2 - inset * 2, 3);
-    }
-    ctx.strokeStyle = '#8a6a4a';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-half + 7, half - 10);
-    ctx.lineTo(-half + 17, -half + 10);
-    ctx.stroke();
-    ctx.lineCap = 'butt';
-    const dir = st.targetFloor > st.floor ? -1 : 1;
-    drawRoundRect(ctx, half - 22, -half + 5, 17, 17, 8.5, CREAM);
-    ctx.fillStyle = '#5a6a80';
-    ctx.beginPath();
-    const ay = -half + 13.5;
-    ctx.moveTo(half - 13.5, ay + dir * 5);
-    ctx.lineTo(half - 18.5, ay - dir * 3);
-    ctx.lineTo(half - 8.5, ay - dir * 3);
-    ctx.closePath();
-    ctx.fill();
+  function drawOperatingRoomDetail(st) {
+    // A patient on the table while the operation's under way.
+    const onTable = shiftState?.activeTask?.kind === 'surgery' ? shiftState.activeTask.patientId : shiftState?.orPatient?.patientId;
+    drawOperatingRoom(ctx, st, {
+      drawPatientOnTable: onTable ? (x, y) => drawPatient(x, y, patientInfo.get(onTable), 0.6) : null,
+    });
   }
 
-  function drawElevatorDetail(st) {
-    const half = st.w / 2;
-    drawRoundRect(ctx, -14, -half + 5, 28, 11, 4, '#3a3440');
-    ctx.fillStyle = '#f2d98a';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${st.targetFloor > st.floor ? '▲' : '▼'} ${st.targetFloor}`, 0, -half + 11);
-    drawRoundRect(ctx, -26, -half + 19, 52, half * 2 - 25, 4, '#d8dde3');
-    drawRoundRect(ctx, -23, -half + 22, 22.5, half * 2 - 28, 2, '#aab4bf');
-    drawRoundRect(ctx, 0.5, -half + 22, 22.5, half * 2 - 28, 2, '#aab4bf');
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(-20, -half + 24, 3, half * 2 - 34);
-    ctx.fillRect(3.5, -half + 24, 3, half * 2 - 34);
-    drawRoundRect(ctx, 29, -6, 8, 16, 3, '#d8dde3');
-    ctx.fillStyle = '#e0a83a';
-    ctx.beginPath();
-    ctx.arc(33, 2, 2.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  /** A bandage roll: a cream cylinder seen side-on, its loose end trailing. */
-  function drawBandageRoll(x, y, s = 1) {
-    drawRoundRect(ctx, x - 9 * s, y - 7 * s, 18 * s, 14 * s, 4 * s, '#fbf8f1');
-    ctx.strokeStyle = 'rgba(160,150,130,0.6)';
-    ctx.lineWidth = 1;
-    for (const dx of [-4, 0, 4]) {
-      ctx.beginPath();
-      ctx.moveTo(x + dx * s, y - 7 * s);
-      ctx.lineTo(x + dx * s, y + 7 * s);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#e8e2d4';
-    ctx.beginPath();
-    ctx.ellipse(x + 9 * s, y, 3 * s, 7 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#c8c0ae';
-    ctx.beginPath();
-    ctx.ellipse(x + 9 * s, y, 1.2 * s, 2.6 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    drawRoundRect(ctx, x - 9 * s, y + 5 * s, 7 * s, 9 * s, 1.5 * s, '#fbf8f1');
-  }
-
-  function drawSupplyCartDetail(st) {
-    const hw = st.w / 2;
-    const hh = st.h / 2;
-    // A steel cart: two shelves of bandage rolls and gauze boxes.
-    drawRoundRect(ctx, -hw + 8, -hh + 10, st.w - 16, st.h - 22, 6, '#c3ccd4');
-    ctx.fillStyle = '#9aa6b0';
-    ctx.fillRect(-hw + 8, -4, st.w - 16, 4);
-    ctx.fillRect(-hw + 8, hh - 16, st.w - 16, 4);
-    for (let i = 0; i < 4; i++) drawBandageRoll(-hw + 26 + i * 20, -hh + 26, 0.8);
-    drawRoundRect(ctx, -hw + 16, 6, 32, 20, 3, '#f2f0ea');
-    drawRoundRect(ctx, -hw + 54, 6, 32, 20, 3, '#a9cfe0');
-    ctx.fillStyle = '#d9534f';
-    ctx.fillRect(-hw + 30, 10, 4, 12);
-    ctx.fillRect(-hw + 26, 14, 12, 4);
-    ctx.fillStyle = '#4a4a52';
-    for (const wx of [-hw + 14, hw - 14]) {
-      ctx.beginPath();
-      ctx.arc(wx, hh - 6, 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  /** Set dressing on the current floor (floor-plan.js's buildDecor), under everyone. */
+  const decor = buildDecor();
+  function drawDecorOnFloor() {
+    for (const d of decor) if (d.floor === currentFloor) drawDecor(ctx, d);
   }
 
   // Pastel anime tiles (hospital/anime-ui.js's animeTile shades them).
@@ -3901,6 +3717,7 @@ export function init(canvas, elements) {
     if (shake > 0) ctx.translate((random() - 0.5) * shake, (random() - 0.5) * shake);
     drawFloor();
     visibleStations().forEach(drawStation);
+    drawDecorOnFloor();
     if (currentFloor === FLOOR_1) drawTriageQueue();
     drawAmbient();
     drawPlayer();

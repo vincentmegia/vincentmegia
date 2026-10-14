@@ -5,6 +5,7 @@ import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   buildStations,
+  buildDecor,
   stationsOnFloor,
   entryPointFor,
   FLOOR_1,
@@ -88,5 +89,29 @@ describe('floor plan', () => {
   test('a player already in range stays put; clampToCanvas keeps them on screen', () => {
     assert.deepEqual(approachPoint(100, 100, 110, 100, 50), { x: 110, y: 100 });
     assert.deepEqual(clampToCanvas(-50, 9999), { x: 24, y: CANVAS_HEIGHT - 24 });
+  });
+
+  test('decor sits on the canvas, clear of every station, the triage line and the player start', () => {
+    const decor = buildDecor(4);
+    const rectOf = (o) => ({ l: o.x - o.w / 2, r: o.x + o.w / 2, t: o.y - o.h / 2, b: o.y + o.h / 2 });
+    const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+    const desk = stations.find((st) => st.kind === 'triage-desk');
+    // The triage line: up to seven 52-px slots centered under the desk (people ~50 px tall).
+    const line = { l: desk.x - 3 * 52 - 22, r: desk.x + 3 * 52 + 22, t: desk.y + desk.h / 2 + 20, b: desk.y + desk.h / 2 + 106 };
+    assert.ok(decor.filter((d) => d.kind === 'iv-pole').length === 4);
+    for (const d of decor) {
+      const r = rectOf(d);
+      assert.ok(r.l >= 0 && r.r <= CANVAS_WIDTH && r.t >= 58 && r.b <= CANVAS_HEIGHT, `${d.kind} off the floor`);
+      for (const st of stationsOnFloor(stations, d.floor)) {
+        // A bed's curtain hangs 14 px left of its box, so give beds that margin.
+        const box = rectOf(st);
+        if (st.kind === 'bed') box.l -= 14;
+        assert.ok(!overlaps(r, box), `${d.kind} at ${d.x},${d.y} overlaps ${st.id}`);
+      }
+      if (d.floor === FLOOR_1) {
+        assert.ok(!overlaps(r, line), `${d.kind} blocks the triage line`);
+        assert.ok(!(PLAYER_START.x > r.l && PLAYER_START.x < r.r && PLAYER_START.y > r.t && PLAYER_START.y < r.b), `${d.kind} covers the player start`);
+      }
+    }
   });
 });
