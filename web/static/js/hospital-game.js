@@ -89,6 +89,25 @@ import {
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { patientProfileFor } from './hospital/patient-names.js';
+import {
+  ANIME,
+  animeChip,
+  animeCloseButton,
+  animeBackdrop,
+  animeWindow,
+  animeButton,
+  speechBubble,
+  sparkle,
+  screentone,
+  outlinedText,
+  tint,
+  animePlate,
+  animeGauge,
+  animeBadge,
+  animeStar,
+  animeTile,
+  sakuraBranch,
+} from './hospital/anime-ui.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
   createInitialState,
@@ -190,41 +209,12 @@ function drawRoundRect(ctx, x, y, w, h, r, color) {
   ctx.fill();
 }
 
-function drawStar(ctx, cx, cy, outerRadius, innerRadius, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const radius = i % 2 === 0 ? outerRadius : innerRadius;
-    const angle = (Math.PI / 5) * i - Math.PI / 2;
-    const px = cx + Math.cos(angle) * radius;
-    const py = cy + Math.sin(angle) * radius;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-}
-
-const LABEL_TEXT_COLOR = '#3a2a2a';
+const LABEL_TEXT_COLOR = ANIME.ink;
 const CREAM = '#fdf8ee';
 
-function drawLabelChip(ctx, x, y, text, font, fill = 'rgba(255,251,246,0.92)', ink = LABEL_TEXT_COLOR) {
-  if (!text) return;
-  ctx.save();
-  ctx.font = font;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const w = ctx.measureText(text).width + 14;
-  const h = 16;
-  drawRoundRect(ctx, x - w / 2, y - h / 2, w, h, 6, fill);
-  ctx.strokeStyle = 'rgba(58,42,42,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(x - w / 2, y - h / 2, w, h, 6);
-  ctx.stroke();
-  ctx.fillStyle = ink;
-  ctx.fillText(text, x, y + 0.5);
-  ctx.restore();
+/** A name/label chip — the anime nameplate (hospital/anime-ui.js's animeChip). */
+function drawLabelChip(ctx, x, y, text, font, fill = null, ink = LABEL_TEXT_COLOR) {
+  animeChip(ctx, x, y, text, font, fill, ink);
 }
 
 function insideRect(r, x, y) {
@@ -700,7 +690,7 @@ export function init(canvas, elements) {
   // -- Triage queue -------------------------------------------------------------
 
   const QUEUE_VISIBLE_MAX = 4;
-  const QUEUE_SLOT_PITCH = 46;
+  const QUEUE_SLOT_PITCH = 52;
   const QUEUE_SLOT_OFFSET_Y = 72;
 
   function triageSlots() {
@@ -1773,49 +1763,113 @@ export function init(canvas, elements) {
       drawSupplyRoomFloor();
       return;
     }
-    ctx.fillStyle = '#e4efe9';
+    drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
+    drawSunbeams();
+
+    // Pastel guide stripes on the floor leading from triage to the beds.
+    drawRoundRect(ctx, 0, 261, 790, 7, 3.5, 'rgba(255,138,122,0.28)');
+    drawRoundRect(ctx, 0, 455, 790, 7, 3.5, 'rgba(63,181,143,0.26)');
+
+    drawBackWall();
+    // A painted sakura branch on the wall between the vase and the sign.
+    sakuraBranch(ctx, 672, 28, 1.1);
+    drawEmergencySign('✚ EMERGENCY', ANIME.coral, ANIME.coralDeep);
+
+    // Break-room rug under the coffee machine: a soft pink rug with a
+    // stitched border and a little heart.
+    const coffee = stationOfKind('coffee-machine');
+    const rx = coffee.x - 70;
+    const ry = coffee.y - 62;
+    drawRoundRect(ctx, rx, ry, 190, 120, 22, 'rgba(255,194,218,0.55)');
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = 'rgba(232,85,143,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(rx + 7, ry + 7, 176, 106, 17);
+    ctx.stroke();
+    ctx.restore();
+    drawWallClock();
+    drawDandelionVase();
+  }
+
+  /** The floor: big pastel checker tiles with a glossy sheen. */
+  function drawAnimeTiles(light, dark, sheen) {
+    const g = ctx.createLinearGradient(0, 58, 0, CANVAS_HEIGHT);
+    g.addColorStop(0, tint(light, 0.3));
+    g.addColorStop(1, light);
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = dark;
     for (let row = 0; row * TILE < CANVAS_HEIGHT; row++) {
       for (let col = 0; col * TILE < CANVAS_WIDTH; col++) {
-        if ((row + col) % 2 === 0) {
-          ctx.fillStyle = '#dbe9e2';
-          ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
-        }
-        if ((row * 7 + col * 13) % 23 === 0) {
-          ctx.fillStyle = 'rgba(90,140,120,0.08)';
-          ctx.fillRect(col * TILE + 8, row * TILE + 12, 6, 6);
-        }
+        if ((row + col) % 2 === 0) ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
       }
     }
-    ctx.strokeStyle = 'rgba(80,120,105,0.12)';
+    ctx.strokeStyle = 'rgba(59,42,74,0.07)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = 0; x <= CANVAS_WIDTH; x += TILE) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, CANVAS_HEIGHT); }
     for (let y = 0; y <= CANVAS_HEIGHT; y += TILE) { ctx.moveTo(0, y + 0.5); ctx.lineTo(CANVAS_WIDTH, y + 0.5); }
     ctx.stroke();
+    // Glossy floor: soft diagonal reflection streaks.
+    ctx.save();
+    ctx.fillStyle = sheen;
+    for (const sx of [120, 420, 700]) {
+      ctx.beginPath();
+      ctx.moveTo(sx, CANVAS_HEIGHT);
+      ctx.lineTo(sx + 60, CANVAS_HEIGHT);
+      ctx.lineTo(sx + 260, 60);
+      ctx.lineTo(sx + 230, 60);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
-    // A guide stripe on the floor leading from triage to the beds.
-    ctx.fillStyle = 'rgba(217,83,79,0.18)';
-    ctx.fillRect(0, 262, 790, 6);
-    ctx.fillStyle = 'rgba(95,168,106,0.2)';
-    ctx.fillRect(0, 456, 790, 6);
+  /** Warm light falling in from the upper right, like an anime afternoon. */
+  function drawSunbeams() {
+    ctx.save();
+    const beams = [[560, 160], [700, 120], [820, 90]];
+    beams.forEach(([bx, bw], i) => {
+      const g = ctx.createLinearGradient(bx, 58, bx - 260, CANVAS_HEIGHT);
+      g.addColorStop(0, 'rgba(255,246,214,0.42)');
+      g.addColorStop(1, 'rgba(255,246,214,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(bx, 58);
+      ctx.lineTo(bx + bw, 58);
+      ctx.lineTo(bx + bw - 300 - i * 20, CANVAS_HEIGHT);
+      ctx.lineTo(bx - 330 - i * 20, CANVAS_HEIGHT);
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.restore();
+  }
 
-    // Back wall with the ER sign.
-    drawRoundRect(ctx, 0, 0, CANVAS_WIDTH, 58, 0, '#f4f1ea');
-    ctx.fillStyle = 'rgba(58,42,42,0.12)';
-    ctx.fillRect(0, 56, CANVAS_WIDTH, 3);
-    drawRoundRect(ctx, 744, 14, 190, 30, 6, '#d9534f');
-    ctx.fillStyle = CREAM;
+  /** The back wall: cream to blush, a pink wainscot rail and plum trim. */
+  function drawBackWall() {
+    const g = ctx.createLinearGradient(0, 0, 0, 58);
+    g.addColorStop(0, '#fffaf3');
+    g.addColorStop(1, '#fdeef3');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, 58);
+    ctx.fillStyle = '#ffd1e3';
+    ctx.fillRect(0, 48, CANVAS_WIDTH, 7);
+    ctx.fillStyle = ANIME.ink;
+    ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
+    ctx.fillStyle = 'rgba(59,42,74,0.12)';
+    ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
+  }
+
+  /** The sign on the back wall (EMERGENCY / SUPPLY ROOM), anime-plated. */
+  function drawEmergencySign(text, color, colorDeep) {
+    animeButton(ctx, { x: 744, y: 12, w: 190, h: 32 }, '', color, colorDeep);
     ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('✚ EMERGENCY', 839, 30);
-
-    // Break-room rug under the coffee machine.
-    const coffee = stationOfKind('coffee-machine');
-    drawRoundRect(ctx, coffee.x - 70, coffee.y - 62, 190, 120, 16, 'rgba(194,138,90,0.18)');
-    drawWallClock();
-    drawDandelionVase();
+    outlinedText(ctx, text, 839, 29, '#ffffff', tint(colorDeep, -0.45), 3.2);
+    sparkle(ctx, 750, 14, 5, '#ffffff');
   }
 
   /**
@@ -1863,52 +1917,75 @@ export function init(canvas, elements) {
 
   /** The 2nd Floor: a stockroom — warm grey tiles, shelving along the walls. */
   function drawSupplyRoomFloor() {
-    ctx.fillStyle = '#ece8e0';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    for (let row = 0; row * TILE < CANVAS_HEIGHT; row++) {
-      for (let col = 0; col * TILE < CANVAS_WIDTH; col++) {
-        if ((row + col) % 2 === 0) {
-          ctx.fillStyle = '#e3ded4';
-          ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
-        }
-      }
-    }
-    drawRoundRect(ctx, 0, 0, CANVAS_WIDTH, 58, 0, '#f4f1ea');
-    ctx.fillStyle = 'rgba(58,42,42,0.12)';
-    ctx.fillRect(0, 56, CANVAS_WIDTH, 3);
-    drawRoundRect(ctx, 744, 14, 190, 30, 6, '#2f5f6f');
-    ctx.fillStyle = CREAM;
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('SUPPLY ROOM · 2F', 839, 30);
+    drawAnimeTiles('#f6efe4', '#efe5d6', 'rgba(255,255,255,0.18)');
+    drawSunbeams();
+    drawBackWall();
+    drawEmergencySign('SUPPLY ROOM · 2F', ANIME.lavender, ANIME.lavenderDeep);
 
     // Wall shelving full of boxes, gauze and linen — set dressing only.
+    // Pastel boxes with plum line art; every few gets a tiny kawaii face.
+    const kawaiiFace = (cx, cy) => {
+      ctx.fillStyle = ANIME.ink;
+      for (const dx of [-3, 3]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx, cy, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 1.2, 1.6, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,143,184,0.6)';
+      for (const dx of [-5, 5]) {
+        ctx.beginPath();
+        ctx.ellipse(cx + dx, cy + 2, 1.4, 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
     const shelf = (x, y, w) => {
-      drawRoundRect(ctx, x, y, w, 70, 6, '#c9b9a0');
+      animeTile(ctx, x, y, w, 70, 8, '#e8c9a8');
       for (let r = 0; r < 2; r++) {
         const sy = y + 8 + r * 32;
-        ctx.fillStyle = '#a8957a';
+        ctx.fillStyle = '#c99e78';
         ctx.fillRect(x + 4, sy + 24, w - 8, 3);
         for (let bx = x + 8, k = 0; bx < x + w - 26; bx += 26, k++) {
-          const tone = ['#f2f0ea', '#a9cfe0', '#e8d6b0', '#f2f0ea', '#cfe3c8'][(k + r * 2 + Math.round(x)) % 5];
-          drawRoundRect(ctx, bx, sy + 4, 22, 20, 3, tone);
-          if (tone === '#f2f0ea') {
-            ctx.fillStyle = '#d9534f';
-            ctx.fillRect(bx + 9, sy + 9, 4, 10);
-            ctx.fillRect(bx + 6, sy + 12, 10, 4);
+          const tone = ['#ffffff', '#c9e4ff', '#ffe2b8', '#ffd1e3', '#d4f2de'][(k + r * 2 + Math.round(x)) % 5];
+          drawRoundRect(ctx, bx, sy + 4, 22, 20, 4, tone);
+          ctx.strokeStyle = ANIME.ink;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(bx, sy + 4, 22, 20, 4);
+          ctx.stroke();
+          if (tone === '#ffffff') {
+            ctx.fillStyle = ANIME.coralDeep;
+            ctx.fillRect(bx + 9, sy + 8, 4, 10);
+            ctx.fillRect(bx + 6, sy + 11, 10, 4);
+          } else if ((k + r) % 3 === 0) {
+            kawaiiFace(bx + 11, sy + 13);
           }
         }
       }
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, 70, 8);
+      ctx.stroke();
     };
     shelf(20, 74, 260);
     shelf(320, 74, 260);
     shelf(20, 500, 300);
     shelf(380, 500, 300);
     // A rolled-up mop bucket and a cardboard stack for life.
-    drawRoundRect(ctx, 640, 230, 70, 50, 6, '#c8a878');
-    drawRoundRect(ctx, 648, 200, 56, 34, 6, '#d6b88a');
-    ctx.strokeStyle = 'rgba(90,60,30,0.35)';
+    for (const [bx, by, bw, bh] of [[640, 230, 70, 50], [648, 200, 56, 34]]) {
+      animeTile(ctx, bx, by, bw, bh, 7, '#e8c48e');
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 7);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(122,80,40,0.45)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(640, 255);
@@ -1916,6 +1993,7 @@ export function init(canvas, elements) {
     ctx.moveTo(676, 200);
     ctx.lineTo(676, 234);
     ctx.stroke();
+    kawaiiFace(660, 268);
     drawWallClock();
   }
 
@@ -1928,12 +2006,28 @@ export function init(canvas, elements) {
     const minute = Number(match[2]);
     const cx = 520;
     const cy = 29;
-    ctx.fillStyle = CREAM;
+    // A cute pastel clock: pink rim, plum line art, two little bells on top.
+    for (const dir of [-1, 1]) {
+      ctx.fillStyle = ANIME.gold;
+      ctx.beginPath();
+      ctx.arc(cx + dir * 13, cy - 16, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    ctx.fillStyle = ANIME.pink;
     ctx.beginPath();
-    ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 21, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#6a7a74';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#fffaf3';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.2;
     ctx.stroke();
     const hand = (angle, len, width) => {
       ctx.lineWidth = width;
@@ -1942,9 +2036,15 @@ export function init(canvas, elements) {
       ctx.lineTo(cx + Math.sin(angle) * len, cy - Math.cos(angle) * len);
       ctx.stroke();
     };
-    ctx.strokeStyle = '#3a2a2a';
-    hand(((hour + minute / 60) / 12) * Math.PI * 2, 10, 2.5);
-    hand((minute / 60) * Math.PI * 2, 15, 1.5);
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineCap = 'round';
+    hand(((hour + minute / 60) / 12) * Math.PI * 2, 9, 2.5);
+    hand((minute / 60) * Math.PI * 2, 13, 1.5);
+    ctx.lineCap = 'butt';
+    ctx.fillStyle = ANIME.pinkDeep;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function drawOfficeDetail(st) {
@@ -2231,15 +2331,16 @@ export function init(canvas, elements) {
     }
   }
 
+  // Pastel anime tiles (hospital/anime-ui.js's animeTile shades them).
   const STATION_COLORS = {
-    stairs: '#b8cde0',
-    elevator: '#c9a7d1',
-    'supply-cart': '#e8e2d4',
-    office: '#d6e2ea',
-    'triage-desk': '#f2e2c8',
-    'med-cabinet': '#d9e4ec',
-    'operating-room': '#bfe0d2',
-    'coffee-machine': '#e3cdb4',
+    stairs: '#b9d4f2',
+    elevator: '#d8b9f2',
+    'supply-cart': '#f2e6d0',
+    office: '#cfe0f5',
+    'triage-desk': '#ffe0c2',
+    'med-cabinet': '#d6e8ff',
+    'operating-room': '#bdeedd',
+    'coffee-machine': '#f5d3bd',
   };
   const STATION_DETAILS = {
     office: drawOfficeDetail,
@@ -2255,11 +2356,21 @@ export function init(canvas, elements) {
   function stationOutline(st, highlightColor) {
     const isHovered = hoverStation?.id === st.id;
     const isTarget = moveTarget?.station?.id === st.id;
-    ctx.strokeStyle = highlightColor ?? (isTarget ? '#e0a83a' : (isHovered ? '#7fb0d6' : 'rgba(58,42,42,0.3)'));
-    ctx.lineWidth = highlightColor || isTarget || isHovered ? 3 : 2;
+    // Plum line art always; a glowing ring on top when hovered/targeted/needed.
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(-st.w / 2 + 1, -st.h / 2 + 1, st.w - 2, st.h - 2, 8);
+    ctx.roundRect(-st.w / 2, -st.h / 2, st.w, st.h, 12);
     ctx.stroke();
+    const ring = highlightColor ?? (isTarget ? ANIME.gold : (isHovered ? ANIME.pink : null));
+    if (ring) {
+      ctx.strokeStyle = ring;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-st.w / 2 - 3, -st.h / 2 - 3, st.w + 6, st.h + 6, 15);
+      ctx.stroke();
+      sparkle(ctx, st.w / 2 - 2, -st.h / 2 + 2, 6, '#ffffff');
+    }
   }
 
   function drawStation(st) {
@@ -2267,7 +2378,7 @@ export function init(canvas, elements) {
     const locked = st.kind === 'office' && shiftState && !isOfficeReady(shiftState) && shiftState.phase !== 'paycheck';
     ctx.save();
     ctx.translate(Math.round(st.x), Math.round(st.y));
-    drawRoundRect(ctx, -st.w / 2, -st.h / 2, st.w, st.h, 10, locked ? '#c4c8cc' : STATION_COLORS[st.kind]);
+    animeTile(ctx, -st.w / 2, -st.h / 2, st.w, st.h, 12, locked ? '#cfc8d8' : STATION_COLORS[st.kind]);
     STATION_DETAILS[st.kind]?.(st);
     if (locked) {
       drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
@@ -2292,29 +2403,48 @@ export function init(canvas, elements) {
     const hh = st.h / 2;
     ctx.save();
     ctx.translate(st.x, st.y);
-    // Privacy curtain on its rail, bunched to the left.
-    ctx.strokeStyle = 'rgba(90,110,120,0.5)';
+    // Privacy curtain on its rail, bunched to the left: pastel pink pleats.
+    ctx.strokeStyle = ANIME.ink;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-hw - 6, -hh - 4);
     ctx.lineTo(hw + 6, -hh - 4);
     ctx.stroke();
-    ctx.fillStyle = '#a9cfe0';
+    const curtain = ctx.createLinearGradient(-hw - 14, 0, -hw - 2, 0);
+    curtain.addColorStop(0, '#ffc2da');
+    curtain.addColorStop(1, '#ffe3ee');
+    ctx.fillStyle = curtain;
     ctx.beginPath();
-    ctx.moveTo(-hw - 6, -hh - 4);
-    for (let i = 0; i <= 4; i++) ctx.lineTo(-hw - 6 + (i % 2 ? 6 : 0), -hh - 4 + i * 30);
-    ctx.lineTo(-hw - 12, hh);
-    ctx.lineTo(-hw - 12, -hh - 4);
+    ctx.moveTo(-hw - 4, -hh - 4);
+    for (let i = 0; i <= 4; i++) ctx.lineTo(-hw - 4 + (i % 2 ? 5 : 0), -hh - 4 + i * 30);
+    ctx.lineTo(-hw - 14, hh + 2);
+    ctx.lineTo(-hw - 14, -hh - 4);
     ctx.closePath();
     ctx.fill();
-    // Frame, mattress, pillow.
-    drawRoundRect(ctx, -hw, -hh, st.w, st.h, 10, '#9aa6b0');
-    drawRoundRect(ctx, -hw + 5, -hh + 5, st.w - 10, st.h - 10, 7, '#f6f8fa');
-    drawRoundRect(ctx, -hw + 16, -hh + 9, st.w - 32, 18, 8, '#ffffff');
-    ctx.strokeStyle = 'rgba(58,70,80,0.15)';
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(232,85,143,0.45)';
+    ctx.lineWidth = 1;
+    for (const fx of [-hw - 11, -hw - 8]) {
+      ctx.beginPath();
+      ctx.moveTo(fx, -hh);
+      ctx.lineTo(fx + 1, hh - 4);
+      ctx.stroke();
+    }
+    // Frame, mattress, pillow — outlined.
+    animeTile(ctx, -hw, -hh, st.w, st.h, 12, '#c9c3e6');
+    drawRoundRect(ctx, -hw + 5, -hh + 5, st.w - 10, st.h - 10, 8, '#fbfaff');
+    ctx.strokeStyle = 'rgba(59,42,74,0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(-hw + 16, -hh + 9, st.w - 32, 18, 8);
+    ctx.roundRect(-hw + 5, -hh + 5, st.w - 10, st.h - 10, 8);
+    ctx.stroke();
+    drawRoundRect(ctx, -hw + 16, -hh + 9, st.w - 32, 18, 9, '#ffffff');
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(-hw + 16, -hh + 9, st.w - 32, 18, 9);
     ctx.stroke();
 
     if (patient && !patient.inSurgery) {
@@ -2322,8 +2452,13 @@ export function init(canvas, elements) {
       const level = findTriageLevel(patient.level);
       drawPatient(0, 0, info, 0.75);
       // Blanket in a tint of their triage color, folded back at the chest.
-      drawRoundRect(ctx, -hw + 9, -24, st.w - 18, hh + 16, 6, shadeColor(level.color, 0.55));
-      drawRoundRect(ctx, -hw + 9, -24, st.w - 18, 8, [6, 6, 0, 0], shadeColor(level.color, 0.75));
+      drawRoundRect(ctx, -hw + 9, -24, st.w - 18, hh + 16, 7, shadeColor(level.color, 0.55));
+      drawRoundRect(ctx, -hw + 9, -24, st.w - 18, 8, [7, 7, 0, 0], shadeColor(level.color, 0.78));
+      ctx.strokeStyle = 'rgba(59,42,74,0.55)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.roundRect(-hw + 9, -24, st.w - 18, hh + 16, 7);
+      ctx.stroke();
       ctx.fillStyle = patientSkin(info);
       for (const dx of [-14, 14]) {
         ctx.beginPath();
@@ -2335,12 +2470,12 @@ export function init(canvas, elements) {
       ctx.beginPath();
       ctx.arc(hw - 10, -hh + 10, 7, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = CREAM;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
       const f = Math.max(0, Math.min(1, patient.patienceRemainingSeconds / patient.patienceMaxSeconds));
-      drawRoundRect(ctx, -34, hh - 16, 68, 7, 3.5, 'rgba(58,42,42,0.25)');
-      drawRoundRect(ctx, -34, hh - 16, 68 * f, 7, 3.5, f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b'));
+      const [pTop, pDeep] = f > 0.5 ? [ANIME.mint, ANIME.mintDeep] : (f > 0.25 ? [ANIME.gold, ANIME.goldDeep] : [ANIME.coral, ANIME.coralDeep]);
+      animeGauge(ctx, -34, hh - 17, 68, 8, f, pTop, pDeep);
     }
 
     const mine = shiftState?.carried?.kind === 'meds' && shiftState.carried.bedIndex === st.bedIndex;
@@ -2387,8 +2522,8 @@ export function init(canvas, elements) {
       drawLabelChip(ctx, slot.x, slot.y + 20, info?.shortName ?? '', 'bold 9px sans-serif');
       if (slot.waitFraction != null) {
         const f = Math.max(0, Math.min(1, slot.waitFraction));
-        drawRoundRect(ctx, slot.x - 18, slot.y + 30, 36, 5, 2.5, 'rgba(58,42,42,0.25)');
-        drawRoundRect(ctx, slot.x - 18, slot.y + 30, 36 * f, 5, 2.5, f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b'));
+        const [wTop, wDeep] = f > 0.5 ? [ANIME.mint, ANIME.mintDeep] : (f > 0.25 ? [ANIME.gold, ANIME.goldDeep] : [ANIME.coral, ANIME.coralDeep]);
+        animeGauge(ctx, slot.x - 19, slot.y + 30, 38, 7, f, wTop, wDeep);
       }
     }
     const total = shiftState?.triageQueue.length ?? 0;
@@ -2472,38 +2607,23 @@ export function init(canvas, elements) {
     const height = 16;
     const percent = Math.round(value);
     const frac = Math.max(0, Math.min(1, value / max));
-    const fill = percent > 50 ? colorHigh : (percent > 20 ? '#e0a83a' : '#e06a5b');
-    drawRoundRect(ctx, x, y, width, height, 8, 'rgba(255,251,246,0.9)');
-    drawRoundRect(ctx, x + 2, y + 2, Math.max(0, (width - 4) * frac), height - 4, 6, fill);
-    ctx.strokeStyle = 'rgba(58,42,42,0.3)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 8);
-    ctx.stroke();
-    ctx.fillStyle = LABEL_TEXT_COLOR;
+    // Healthy in the stat's own color, then gold, then coral when low.
+    const [top, deep] = percent > 50 ? colorHigh : (percent > 20 ? [ANIME.gold, ANIME.goldDeep] : [ANIME.coral, ANIME.coralDeep]);
+    animeGauge(ctx, x + 6, y, width - 6, height, frac, top, deep);
+    animeBadge(ctx, x + 6, y + height / 2, 10, top, deep, label === 'Sanity' ? 'heart' : 'smile');
     ctx.font = font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${label} ${percent}%`, x + width / 2, y + height / 2 + 0.5);
+    outlinedText(ctx, `${label} ${percent}%`, x + width / 2 + 9, y + height / 2 + 0.5, '#ffffff', ANIME.ink, 2.6);
   }
 
   function drawRatingStars() {
     const rating = shiftState ? shiftState.rating : RATING_MAX;
     const x0 = 152;
     const cy = 25;
-    drawRoundRect(ctx, x0 - 4, cy - 11, 5 * 20 + 8, 22, 11, 'rgba(255,251,246,0.9)');
+    animePlate(ctx, x0 - 4, cy - 12, 5 * 20 + 8, 24, 12);
     for (let i = 0; i < RATING_MAX; i++) {
-      const cx = x0 + 10 + i * 20;
-      drawStar(ctx, cx, cy, 8, 3.6, 'rgba(58,42,42,0.18)');
-      const fill = Math.max(0, Math.min(1, rating - i));
-      if (fill > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(cx - 9, cy - 9, 18 * fill, 18);
-        ctx.clip();
-        drawStar(ctx, cx, cy, 8, 3.6, '#e8b95a');
-        ctx.restore();
-      }
+      animeStar(ctx, x0 + 10 + i * 20, cy, 8.5, 3.9, Math.max(0, Math.min(1, rating - i)));
     }
   }
 
@@ -2524,17 +2644,15 @@ export function init(canvas, elements) {
     const w = 176;
     const h = 16;
     const p = rankProgress(liveCareerXp());
-    drawRoundRect(ctx, x, y, w, h, 8, 'rgba(255,251,246,0.9)');
-    drawRoundRect(ctx, x + 2, y + 2, Math.max(0, (w - 4) * p.fraction), h - 4, 6, 'rgba(127,176,214,0.55)');
-    ctx.fillStyle = LABEL_TEXT_COLOR;
+    animeGauge(ctx, x + 8, y, w - 8, h, p.fraction, ANIME.lavender, ANIME.lavenderDeep);
+    animeBadge(ctx, x + 8, y + h / 2, 9.5, ANIME.lavender, ANIME.lavenderDeep, String(p.rank.rank));
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.font = 'bold 9.5px sans-serif';
-    ctx.fillText(`Lv ${p.rank.rank} ${p.rank.title}`, x + 8, y + h / 2 + 0.5);
+    outlinedText(ctx, `Lv ${p.rank.rank} ${p.rank.title}`, x + 22, y + h / 2 + 0.5, '#ffffff', ANIME.ink, 2.4);
     ctx.textAlign = 'right';
-    ctx.font = '9px sans-serif';
-    ctx.fillStyle = 'rgba(58,42,42,0.75)';
-    ctx.fillText(`+${shiftState?.xp ?? 0} XP`, x + w - 8, y + h / 2 + 0.5);
+    ctx.font = 'bold 9px sans-serif';
+    outlinedText(ctx, `+${shiftState?.xp ?? 0} XP`, x + w - 8, y + h / 2 + 0.5, '#ffffff', ANIME.ink, 2.4);
   }
 
   function drawGardCounter() {
@@ -2543,26 +2661,15 @@ export function init(canvas, elements) {
     const y = 14;
     const w = 176;
     const h = 22;
-    drawRoundRect(ctx, x, y, w, h, 11, 'rgba(255,251,246,0.9)');
-    ctx.fillStyle = '#c28a2c';
-    ctx.beginPath();
-    ctx.arc(x + 13, y + 11, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#f2cf6a';
-    ctx.beginPath();
-    ctx.arc(x + 13, y + 11, 6.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#a8741e';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('G', x + 13, y + 11.5);
+    animePlate(ctx, x, y, w, h, 11);
+    animeBadge(ctx, x + 13, y + 11, 8.5, ANIME.gold, ANIME.goldDeep, 'G');
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
     ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(`+${bonus}g shift`, x + 26, y + 11.5);
+    ctx.fillText(`+${bonus}g shift`, x + 27, y + 11.5);
     ctx.font = '10px sans-serif';
-    ctx.fillStyle = 'rgba(58,42,42,0.7)';
+    ctx.fillStyle = ANIME.inkSoft;
     ctx.textAlign = 'right';
     ctx.fillText(`Month ${save.monthToDateGard}g`, x + w - 9, y + 11.5);
     for (const pop of gardPops) {
@@ -2584,43 +2691,34 @@ export function init(canvas, elements) {
 
   // -- Rendering: overlays ------------------------------------------------------------
 
+  /** Each overlay's ribbon color, so screens are told apart at a glance. */
+  const PANEL_ACCENTS = {
+    triage: [ANIME.coral, ANIME.coralDeep],
+    skill: [ANIME.sky, ANIME.skyDeep],
+    oxygen: [ANIME.sky, ANIME.skyDeep],
+    bandage: [ANIME.mint, ANIME.mintDeep],
+    meds: [ANIME.lavender, ANIME.lavenderDeep],
+    karen: [ANIME.coral, ANIME.coralDeep],
+    mel: [ANIME.gold, ANIME.goldDeep],
+  };
+
+  /** An anime dialog window (hospital/anime-ui.js) over a dimmed, sparkly ER. */
   function drawPanel(title, subtitle) {
-    ctx.fillStyle = 'rgba(20,30,30,0.55)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawRoundRect(ctx, PANEL.x, PANEL.y, PANEL.w, PANEL.h, 18, '#f4f1ea');
-    ctx.strokeStyle = 'rgba(58,42,42,0.2)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h, 18);
-    ctx.stroke();
+    const t = performance.now() / 1000;
+    animeBackdrop(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, t);
+    const [accent, accentDeep] = PANEL_ACCENTS[overlay.kind] ?? [ANIME.pink, ANIME.pinkDeep];
+    animeWindow(ctx, PANEL, { title, subtitle, t, accent, accentDeep });
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 21px sans-serif';
-    ctx.fillText(title, CANVAS_WIDTH / 2, PANEL.y + 38);
-    if (subtitle) {
-      ctx.font = '13px sans-serif';
-      ctx.fillStyle = 'rgba(58,42,42,0.75)';
-      ctx.fillText(subtitle, CANVAS_WIDTH / 2, PANEL.y + 60);
-    }
-    if (overlay.kind !== 'karen') {
-      drawRoundRect(ctx, CLOSE_RECT.x, CLOSE_RECT.y, CLOSE_RECT.w, CLOSE_RECT.h, 14, 'rgba(58,42,42,0.12)');
-      ctx.strokeStyle = LABEL_TEXT_COLOR;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(CLOSE_RECT.x + 9, CLOSE_RECT.y + 9);
-      ctx.lineTo(CLOSE_RECT.x + 19, CLOSE_RECT.y + 19);
-      ctx.moveTo(CLOSE_RECT.x + 19, CLOSE_RECT.y + 9);
-      ctx.lineTo(CLOSE_RECT.x + 9, CLOSE_RECT.y + 19);
-      ctx.stroke();
-    }
+    if (overlay.kind !== 'karen') animeCloseButton(ctx, CLOSE_RECT);
   }
 
   function drawFlash(y) {
     if (!overlay.flash) return;
     ctx.save();
     ctx.globalAlpha = Math.min(1, overlay.flash.seconds / 0.3);
-    drawLabelChip(ctx, CANVAS_WIDTH / 2, y, overlay.flash.text, 'bold 15px sans-serif', overlay.flash.good ? '#5fa86a' : '#d9534f', CREAM);
+    drawLabelChip(ctx, CANVAS_WIDTH / 2, y, overlay.flash.text, 'bold 15px sans-serif', overlay.flash.good ? ANIME.mintDeep : ANIME.coralDeep, '#ffffff');
     ctx.restore();
   }
 
@@ -2648,7 +2746,14 @@ export function init(canvas, elements) {
     const v = info.vitals;
     drawPanel('Triage', 'Read the vitals and pick a priority (or press 1 / 2 / 3).');
 
-    drawRoundRect(ctx, PANEL.x + 30, 140, 190, 300, 14, '#e2ece8');
+    // Portrait card: a pastel frame with screentone, like a character profile.
+    animeTile(ctx, PANEL.x + 30, 140, 190, 300, 16, '#d8f0ea');
+    screentone(ctx, PANEL.x + 34, 144, 182, 120, 'rgba(255,255,255,0.55)', 8, 1.6);
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(PANEL.x + 30, 140, 190, 300, 16);
+    ctx.stroke();
     drawPatient(PANEL.x + 125, 418, info, 2.55);
 
     const left = PANEL.x + 250;
@@ -2669,8 +2774,13 @@ export function init(canvas, elements) {
     ];
     rows.forEach(([name, value], i) => {
       const y = 214 + i * 34;
-      drawRoundRect(ctx, left, y, 330, 28, 8, i % 2 ? '#ebe6dc' : '#f9f6f0');
-      ctx.fillStyle = 'rgba(58,42,42,0.75)';
+      drawRoundRect(ctx, left, y, 330, 28, 10, i % 2 ? '#f6ecff' : '#ffffff');
+      ctx.strokeStyle = 'rgba(59,42,74,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(left, y, 330, 28, 10);
+      ctx.stroke();
+      ctx.fillStyle = ANIME.inkSoft;
       ctx.font = '14px sans-serif';
       ctx.fillText(name, left + 12, y + 19);
       ctx.fillStyle = LABEL_TEXT_COLOR;
@@ -2689,15 +2799,17 @@ export function init(canvas, elements) {
       ctx.fillText(line, left + 18, 366 + i * 20);
     });
 
+    const TRIAGE_CANDY = { red: [ANIME.coral, ANIME.coralDeep], yellow: [ANIME.gold, ANIME.goldDeep], green: [ANIME.mint, ANIME.mintDeep] };
     triageButtonRects().forEach((r, i) => {
       const level = findTriageLevel(r.level);
-      drawRoundRect(ctx, r.x, r.y, r.w, r.h, 10, level.color);
-      ctx.fillStyle = CREAM;
+      const [top, deep] = TRIAGE_CANDY[r.level] ?? [level.color, level.color];
+      animeButton(ctx, r, '', top, deep);
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
       ctx.font = 'bold 16px sans-serif';
-      ctx.fillText(`${i + 1}  ${level.name}`, r.x + r.w / 2, r.y + 22);
-      ctx.font = '12px sans-serif';
-      ctx.fillText(level.label, r.x + r.w / 2, r.y + 40);
+      outlinedText(ctx, `${i + 1}  ${level.name}`, r.x + r.w / 2, r.y + 22, '#ffffff', tint(deep, -0.45), 3);
+      ctx.font = 'bold 11px sans-serif';
+      outlinedText(ctx, level.label, r.x + r.w / 2, r.y + 40, '#ffffff', tint(deep, -0.45), 2.4);
     });
   }
 
@@ -2862,29 +2974,28 @@ export function init(canvas, elements) {
     }
 
     // Shared timing bar.
-    drawRoundRect(ctx, bar.x, bar.y, bar.w, bar.h, 10, 'rgba(255,251,246,0.95)');
-    drawRoundRect(ctx, bar.x + zone.start * bar.w, bar.y, zone.width * bar.w, bar.h, 6, '#f2d98a');
-    ctx.strokeStyle = 'rgba(58,42,42,0.4)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(bar.x, bar.y, bar.w, bar.h, 10);
-    ctx.stroke();
+    // Anime timing bar: screentoned track, a glossy gold zone with a
+    // sparkle, and a heart-tipped pink marker.
+    animeGauge(ctx, bar.x, bar.y, bar.w, bar.h, 0, ANIME.pink, ANIME.pinkDeep);
+    const zx = bar.x + zone.start * bar.w;
+    const zw = zone.width * bar.w;
+    const zg = ctx.createLinearGradient(0, bar.y, 0, bar.y + bar.h);
+    zg.addColorStop(0, '#fff0a8');
+    zg.addColorStop(1, ANIME.gold);
+    ctx.fillStyle = zg;
+    ctx.fillRect(zx, bar.y + 1.5, zw, bar.h - 3);
+    ctx.strokeStyle = ANIME.goldDeep;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(zx, bar.y + 1.5, zw, bar.h - 3);
+    sparkle(ctx, zx + zw / 2, bar.y + bar.h / 2, 6, '#ffffff');
     const mx = bar.x + overlay.gauge * bar.w;
-    ctx.fillStyle = '#c65f7c';
-    ctx.beginPath();
-    ctx.moveTo(mx, bar.y - 4);
-    ctx.lineTo(mx - 8, bar.y - 17);
-    ctx.lineTo(mx + 8, bar.y - 17);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillRect(mx - 1.5, bar.y, 3, bar.h);
+    ctx.fillStyle = ANIME.pinkDeep;
+    ctx.fillRect(mx - 1.5, bar.y - 2, 3, bar.h + 4);
+    drawHeart(mx, bar.y - 11, 9, ANIME.pinkDeep);
 
     if (overlay.required > 1) {
       for (let i = 0; i < overlay.required; i++) {
-        ctx.fillStyle = i < overlay.hits ? '#5fa86a' : 'rgba(58,42,42,0.2)';
-        ctx.beginPath();
-        ctx.arc(CANVAS_WIDTH / 2 - 24 + i * 24, 498, 8, 0, Math.PI * 2);
-        ctx.fill();
+        animeStar(ctx, CANVAS_WIDTH / 2 - 26 + i * 26, 498, 10, 4.6, i < overlay.hits ? 1 : 0);
       }
     }
     drawFlash(406);
@@ -3251,12 +3362,11 @@ export function init(canvas, elements) {
     drawPanel('Med Cabinet', overlay.picked
       ? 'Found it — now pick the dose (keys 1–3).'
       : 'Search the shelves for the ordered medication. Look-alikes are everywhere!');
-    drawRoundRect(ctx, CANVAS_WIDTH / 2 - 210, 134, 420, 30, 8, '#2f5f6f');
-    ctx.fillStyle = CREAM;
+    animeButton(ctx, { x: CANVAS_WIDTH / 2 - 210, y: 134, w: 420, h: 30 }, '', ANIME.lavender, ANIME.lavenderDeep);
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`Order · ${bedLabel(bedIndex)} · ${name}: ${overlay.order.drug} × ${overlay.order.dose}`, CANVAS_WIDTH / 2, 149);
+    outlinedText(ctx, `Order · ${bedLabel(bedIndex)} · ${name}: ${overlay.order.drug} × ${overlay.order.dose}`, CANVAS_WIDTH / 2, 150, '#ffffff', tint(ANIME.lavenderDeep, -0.45), 3);
 
     // The cabinet: a wooden frame with glass-backed shelves.
     const cab = MED_CABINET;
@@ -3300,33 +3410,61 @@ export function init(canvas, elements) {
     ctx.font = 'bold 14px sans-serif';
     ctx.fillText(overlay.picked ? `${overlay.picked} — dose:` : 'Dose:', CANVAS_WIDTH / 2 + 6, 499);
     medsDoseRects().forEach((r) => {
-      drawRoundRect(ctx, r.x, r.y, r.w, r.h, 10, overlay.picked ? '#7fb0d6' : '#c8d0d6');
-      ctx.fillStyle = CREAM;
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.fillText(`× ${r.dose}`, r.x + r.w / 2, r.y + 29);
+      if (overlay.picked) animeButton(ctx, r, `× ${r.dose}`, ANIME.sky, ANIME.skyDeep);
+      else animeButton(ctx, r, `× ${r.dose}`, '#e4e0ec', '#bdb6cc');
     });
     drawFlash(118);
   }
 
   function drawKarenOverlay() {
+    const t = performance.now() / 1000;
     drawPanel('An angry relative', null);
-    drawAnimePerson(ctx, CANVAS_WIDTH / 2, 452, STAFF_DESIGNS.karen, { scale: 2.7, angryTint: true, t: performance.now() / 1000 });
-    drawRoundRect(ctx, 180, 118, CANVAS_WIDTH - 360, 96, 12, CREAM);
-    ctx.fillStyle = LABEL_TEXT_COLOR;
+    // Manga speed lines radiating from behind her, clipped to the window.
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(PANEL.x + 8, PANEL.y + 8, PANEL.w - 16, PANEL.h - 16, 18);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,138,122,0.22)';
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2 + Math.sin(t * 3 + i) * 0.01;
+      ctx.lineWidth = 1 + (i % 3);
+      ctx.beginPath();
+      ctx.moveTo(CANVAS_WIDTH / 2 + Math.cos(a) * 90, 340 + Math.sin(a) * 90);
+      ctx.lineTo(CANVAS_WIDTH / 2 + Math.cos(a) * 520, 340 + Math.sin(a) * 520);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawAnimePerson(ctx, CANVAS_WIDTH / 2, 452, STAFF_DESIGNS.karen, { scale: 2.7, angryTint: true, t });
+    drawAngerMark(CANVAS_WIDTH / 2 + 50, 284 + Math.sin(t * 8) * 2, 19);
+
+    // Her line in a speech bubble pointing down at her.
+    speechBubble(ctx, { x: 180, y: 112, w: CANVAS_WIDTH - 360, h: 100 }, { tailX: CANVAS_WIDTH / 2 + 20, tailY: 258 });
+    ctx.fillStyle = ANIME.ink;
     ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    wrapText(KAREN_LINE, CANVAS_WIDTH / 2, 154, CANVAS_WIDTH - 400, 22);
-    ctx.font = '12px sans-serif';
-    ctx.fillText(`${Math.max(0, Math.ceil(shiftState.karen.timerSecondsRemaining))}s to respond`, CANVAS_WIDTH / 2, 202);
+    wrapText(KAREN_LINE, CANVAS_WIDTH / 2, 152, CANVAS_WIDTH - 400, 22);
+    drawLabelChip(ctx, CANVAS_WIDTH / 2, 194, `${Math.max(0, Math.ceil(shiftState.karen.timerSecondsRemaining))}s to respond`, 'bold 11px sans-serif', ANIME.coralDeep, '#ffffff');
     const b = karenButtonRects();
-    drawRoundRect(ctx, b.explain.x, b.explain.y, b.explain.w, b.explain.h, 8, '#5fa86a');
-    drawRoundRect(ctx, b.letCut.x, b.letCut.y, b.letCut.w, b.letCut.h, 8, '#e0a83a');
-    ctx.fillStyle = CREAM;
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('Explain Triage', b.explain.x + b.explain.w / 2, b.explain.y + 27);
-    ctx.fillText('Let Her Cut In', b.letCut.x + b.letCut.w / 2, b.letCut.y + 27);
+    animeButton(ctx, b.explain, 'Explain Triage', ANIME.mint, ANIME.mintDeep, 'bold 14px sans-serif');
+    animeButton(ctx, b.letCut, 'Let Her Cut In', ANIME.gold, ANIME.goldDeep, 'bold 14px sans-serif');
+  }
+
+  /** The anime anger mark (a throbbing red cross-vein) centered on (x, y). */
+  function drawAngerMark(x, y, r) {
+    ctx.save();
+    ctx.strokeStyle = '#e0303a';
+    ctx.lineWidth = r * 0.28;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const cx = x + Math.cos(a) * r * 0.62;
+      const cy = y + Math.sin(a) * r * 0.62;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.42, a + Math.PI * 0.75, a + Math.PI * 1.25);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** Mel's visit: her, in her kimono, holding out a hand-drawn card. */
@@ -3407,25 +3545,20 @@ export function init(canvas, elements) {
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`+${MEL_GIFT_GARD}g · +${MEL_SANITY_RESTORE} Sanity · +${MEL_MOOD_RESTORE} Ward Mood`, 650, 450);
-    const b = melButtonRect();
-    drawRoundRect(ctx, b.x, b.y, b.w, b.h, 8, '#e0a81e');
-    ctx.fillStyle = CREAM;
-    ctx.font = 'bold 15px sans-serif';
-    ctx.fillText('Thank you, Mel!', b.x + b.w / 2, b.y + 28);
+    animeButton(ctx, melButtonRect(), 'Thank you, Mel!', ANIME.gold, ANIME.goldDeep);
   }
 
   function drawCoffeePourOverlay() {
-    ctx.fillStyle = 'rgba(20,30,30,0.55)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    const t = performance.now() / 1000;
+    animeBackdrop(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, t);
     const cx = CANVAS_WIDTH / 2;
-    drawRoundRect(ctx, cx - 210, 110, 420, 400, 18, '#f2e9da');
+    animeWindow(ctx, { x: cx - 210, y: 104, w: 420, h: 406 }, {
+      title: 'Pour a Coffee', subtitle: 'Hold mouse/tap or Space/Enter. Let go in the gold band.', t,
+      accent: '#d9a27a', accentDeep: '#a8683e',
+    });
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText('Pour a Coffee', cx, 145);
-    ctx.font = '13px sans-serif';
-    ctx.fillText('Hold mouse/tap or Space/Enter to pour. Let go in the gold band.', cx, 167);
 
     // Machine head + spout above the cup.
     drawRoundRect(ctx, cx - 70, 180, 140, 34, 8, '#7a5a42');
@@ -3605,8 +3738,8 @@ export function init(canvas, elements) {
     drawPlayer();
     drawHallucinations();
     ctx.restore();
-    drawStatBar(14, 'Sanity', shiftState ? shiftState.sanity : SANITY_MAX, SANITY_MAX, '#7fd68a', sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif');
-    drawStatBar(36, 'Mood', shiftState ? shiftState.wardMood : WARD_MOOD_MAX, WARD_MOOD_MAX, '#7fb0d6', 'bold 10px sans-serif');
+    drawStatBar(14, 'Sanity', shiftState ? shiftState.sanity : SANITY_MAX, SANITY_MAX, [ANIME.mint, ANIME.mintDeep], sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif');
+    drawStatBar(36, 'Mood', shiftState ? shiftState.wardMood : WARD_MOOD_MAX, WARD_MOOD_MAX, [ANIME.sky, ANIME.skyDeep], 'bold 10px sans-serif');
     const collapseIn = shiftState ? collapseSecondsRemaining(shiftState) : null;
     if (collapseIn != null && !overlay) {
       const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 120);

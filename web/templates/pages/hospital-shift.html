@@ -26,11 +26,11 @@
      No server-side state is read here, and progress isn't saved at all: it
      lasts one visit to the page (leaving in any way resets it to shift 1). */}}
 {{define "hospital-shift-content"}}
-<main id="main-content" class="mx-auto max-w-5xl px-4 py-8">
+<main id="main-content" class="hospital-anime mx-auto max-w-5xl px-4 py-8">
 	<div class="space-y-6">
-		<section class="space-y-2">
-			<h1 class="text-2xl font-semibold text-ink">Hospital Shift</h1>
-			<p class="text-muted">
+		<section class="ha-hero space-y-2">
+			<h1 class="ha-title">Hospital Shift</h1>
+			<p class="ha-hero-text">
 				Work the ER as a nurse: triage arriving patients, then treat them bed by bed — check vitals, pump
 				oxygen, start IVs, bandage wounds, search the cabinet for meds and scrub in for surgery — over 30 shifts.
 			</p>
@@ -38,40 +38,40 @@
 
 		<div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
 			<div class="space-y-4">
-				<p id="hospital-interact-hint" class="hidden rounded-card border border-line bg-surface-2 px-2 py-1 text-center text-xs font-medium text-ink sm:text-sm" role="status" aria-live="polite"></p>
+				<p id="hospital-interact-hint" class="hidden ha-chip px-3 py-1 text-center text-xs font-semibold sm:text-sm" role="status" aria-live="polite"></p>
 
-				<p id="hospital-toast" class="hidden rounded-card border border-line bg-surface-2 px-2 py-1 text-center text-xs font-medium text-ink sm:text-sm" role="status" aria-live="polite"></p>
+				<p id="hospital-toast" class="hidden ha-chip px-3 py-1 text-center text-xs font-semibold sm:text-sm" role="status" aria-live="polite"></p>
 
-				<div id="hospital-game-container" class="relative mx-auto flex w-full max-w-[900px] flex-col overflow-hidden rounded-card border border-line bg-surface-2 shadow-sm">
-					<div class="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-2/95 px-3 py-2">
-						<dl class="grid flex-1 grid-cols-4 gap-2 rounded-card border border-line bg-surface-2 px-2 py-2 text-center sm:px-4">
+				<div id="hospital-game-container" class="ha-frame relative mx-auto flex w-full max-w-[900px] flex-col overflow-hidden">
+					<div class="ha-bar flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+						<dl class="ha-stats grid flex-1 grid-cols-4 gap-2 px-2 py-1.5 text-center sm:px-4">
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Shift</dt>
-								<dd id="hospital-hud-shift" class="font-mono text-sm tabular-nums text-ink sm:text-base">1/30</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Shift</dt>
+								<dd id="hospital-hud-shift" class="font-mono text-sm tabular-nums sm:text-base">1/30</dd>
 							</div>
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Time</dt>
-								<dd id="hospital-hud-clock" class="font-mono text-sm tabular-nums text-ink sm:text-base">--:--</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Time</dt>
+								<dd id="hospital-hud-clock" class="font-mono text-sm tabular-nums sm:text-base">--:--</dd>
 							</div>
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Ward</dt>
-								<dd id="hospital-hud-status" class="text-sm font-medium text-ink sm:text-base">Quiet</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Ward</dt>
+								<dd id="hospital-hud-status" class="text-sm sm:text-base">Quiet</dd>
 							</div>
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Rank</dt>
-								<dd id="hospital-hud-rank" class="font-mono text-sm tabular-nums text-ink sm:text-base" title="Student Nurse">Lv 1</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Rank</dt>
+								<dd id="hospital-hud-rank" class="font-mono text-sm tabular-nums sm:text-base" title="Student Nurse">Lv 1</dd>
 							</div>
 						</dl>
 						<button
 							type="button"
 							id="hospital-floor-button"
 							aria-pressed="false"
-							class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>Go Upstairs</button>
 						<button
 							type="button"
 							id="hospital-fullscreen-button"
-							class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>Fullscreen</button>
 					</div>
 
@@ -87,25 +87,25 @@
 
 						{{/* Start screen — visible by default (the only screen shown pre-JS). */}}
 						<div id="hospital-start-screen" class="absolute inset-0 flex items-center justify-center p-4">
-							<div class="w-full max-w-xs space-y-4 rounded-card border border-line bg-surface p-6 text-center shadow-lg">
-								<h2 class="text-lg font-semibold text-ink">The ER</h2>
-								<p class="text-xs text-muted">
-									You're <span class="font-semibold text-ink">Nurse Kimono Himura</span>. Triage patients at the desk,
+							<div class="ha-card w-full max-w-xs space-y-4 p-6 text-center">
+								<h2 class="ha-ribbon">The ER</h2>
+								<p class="ha-muted text-xs">
+									You're <span class="ha-ink font-semibold">Nurse Kimono Himura</span>. Triage patients at the desk,
 									treat them in the beds, and keep the ward calm over a 30-shift run.
 								</p>
-								<div id="hospital-rank-card" class="space-y-1.5 rounded-card border border-line bg-surface-2 px-3 py-2 text-left">
-									<p id="hospital-rank-title" class="text-sm font-semibold text-ink">Lv 1 · Student Nurse</p>
-									<div class="h-2 overflow-hidden rounded-full bg-line" aria-hidden="true">
-										<div id="hospital-rank-bar" class="h-full w-0 rounded-full bg-primary"></div>
+								<div id="hospital-rank-card" class="ha-panel space-y-1.5 px-3 py-2 text-left">
+									<p id="hospital-rank-title" class="ha-ink text-sm font-bold">Lv 1 · Student Nurse</p>
+									<div class="ha-meter h-2.5 overflow-hidden" aria-hidden="true">
+										<div id="hospital-rank-bar" class="h-full w-0 rounded-full"></div>
 									</div>
-									<p id="hospital-rank-next" class="text-xs text-muted">0 / 100 XP to Nursing Intern</p>
-									<p id="hospital-rank-perks" class="text-xs text-muted">Earn XP to unlock perks.</p>
+									<p id="hospital-rank-next" class="ha-muted text-xs">0 / 100 XP to Nursing Intern</p>
+									<p id="hospital-rank-perks" class="ha-muted text-xs">Earn XP to unlock perks.</p>
 								</div>
-								<p id="hospital-mel-badge" class="hidden rounded-card border border-line bg-surface-2 px-2 py-1 text-xs font-medium text-ink">✿ You found Mel in her kimono</p>
+								<p id="hospital-mel-badge" class="hidden ha-chip px-2 py-1 text-xs font-semibold">✿ You found Mel in her kimono</p>
 								<button
 									type="button"
 									id="hospital-start-shift-button"
-									class="w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+									class="ha-btn w-full px-4 py-2 text-sm"
 								>Start Shift</button>
 							</div>
 						</div>
@@ -113,32 +113,32 @@
 						{{/* Paycheck screen — hidden by default; hospital-game.js unhides
 						     it and sets data-outcome/data-final. */}}
 						<div id="hospital-paycheck-screen" class="hidden absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
-							<div class="w-full max-w-xs space-y-4 rounded-card border border-line bg-surface p-6 shadow-lg">
-								<h2 id="hospital-paycheck-title" class="text-center text-lg font-semibold text-ink">Handover</h2>
+							<div class="ha-card mt-6 w-full max-w-xs space-y-4 p-6">
+								<h2 id="hospital-paycheck-title" class="ha-ribbon text-center">Handover</h2>
 
 								<dl class="space-y-1.5 text-sm">
 									<div class="flex items-start justify-between gap-3">
-										<dt class="text-muted">Outcome</dt>
-										<dd id="hospital-paycheck-outcome" class="text-right font-medium text-ink">Went well</dd>
+										<dt class="ha-muted">Outcome</dt>
+										<dd id="hospital-paycheck-outcome" class="ha-ink text-right font-semibold">Went well</dd>
 									</div>
 									<div class="flex items-center justify-between">
-										<dt class="text-muted">This shift</dt>
-										<dd id="hospital-paycheck-shift-total" class="font-mono tabular-nums text-ink">0 Gard</dd>
+										<dt class="ha-muted">This shift</dt>
+										<dd id="hospital-paycheck-shift-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 									<div class="flex items-center justify-between">
-										<dt class="text-muted">Run total</dt>
-										<dd id="hospital-paycheck-month-total" class="font-mono tabular-nums text-ink">0 Gard</dd>
+										<dt class="ha-muted">Run total</dt>
+										<dd id="hospital-paycheck-month-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 									<div class="flex items-start justify-between gap-3">
-										<dt class="text-muted">Career</dt>
-										<dd id="hospital-paycheck-xp" class="text-right font-medium text-ink">+0 XP</dd>
+										<dt class="ha-muted">Career</dt>
+										<dd id="hospital-paycheck-xp" class="ha-ink text-right font-semibold">+0 XP</dd>
 									</div>
 								</dl>
-								<p id="hospital-paycheck-rankup" class="hidden rounded-card border border-line bg-surface-2 px-3 py-2 text-xs font-medium text-ink" role="status"></p>
+								<p id="hospital-paycheck-rankup" class="hidden ha-panel px-3 py-2 text-xs font-semibold" role="status"></p>
 
 								{{/* Final Paycheck — shown only after shift 30. */}}
 								<div id="hospital-final-paycheck-block" class="hidden space-y-2 border-t border-line pt-4">
-									<p class="text-sm font-medium text-ink">Final Paycheck</p>
+									<p class="ha-ink text-sm font-bold">Final Paycheck</p>
 									<form
 										hx-post="/hospital-shift/score"
 										hx-target="#hospital-leaderboard"
@@ -146,7 +146,7 @@
 										hx-indicator="#leaderboard-loading"
 										class="space-y-2"
 									>
-										<label for="hospital-paycheck-name-input" class="block text-xs font-medium text-muted">
+										<label for="hospital-paycheck-name-input" class="ha-muted block text-xs font-medium">
 											Submit to leaderboard (optional)
 										</label>
 										<div class="flex gap-2">
@@ -157,12 +157,12 @@
 												maxlength="20"
 												required
 												placeholder="Your name"
-												class="w-full min-w-0 rounded-card border border-line bg-surface px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+												class="ha-input w-full min-w-0 px-3 py-2 text-sm"
 											>
 											<button
 												type="submit"
 												id="hospital-paycheck-submit-button"
-												class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+												class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 											>Submit</button>
 										</div>
 										<input type="hidden" id="hospital-paycheck-earnings-input" name="total_earnings" value="0">
@@ -174,12 +174,12 @@
 									<button
 										type="button"
 										id="hospital-paycheck-next-shift-button"
-										class="w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+										class="ha-btn ha-btn--gold w-full px-4 py-2 text-sm"
 									>Start Next Shift</button>
 									<button
 										type="button"
 										id="hospital-paycheck-new-month-button"
-										class="hidden w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+										class="hidden ha-btn ha-btn--gold w-full px-4 py-2 text-sm"
 									>Start New Month</button>
 								</div>
 							</div>
@@ -190,7 +190,7 @@
 
 			<aside class="space-y-3">
 				<div class="flex items-center justify-between gap-2">
-					<h2 class="text-lg font-semibold text-ink">Leaderboard</h2>
+					<h2 class="ha-heading text-xl">Leaderboard</h2>
 					<span id="leaderboard-loading" class="htmx-indicator text-xs text-muted">Loading…</span>
 				</div>
 
@@ -202,7 +202,7 @@
 					hx-swap="outerHTML"
 					hx-indicator="#leaderboard-loading"
 				>
-					<p class="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">Loading leaderboard…</p>
+					<p class="ha-panel ha-muted px-4 py-3 text-sm">Loading leaderboard…</p>
 				</div>
 			</aside>
 		</div>

@@ -3,7 +3,7 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (121 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (124 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
 Playwright: `e2e/hospital-shift.spec.js` (31 tests, Chromium + WebKit),
@@ -392,6 +392,52 @@ Supply Cart stacked with bandage rolls in the middle; it pulses while a
 bed is waiting on a dressing and your hands are free. Minigames are full-canvas
 overlays; each skill check has its own scene (ECG monitor, bag-valve mask,
 arm with vein, surgical field) over one shared timing bar.
+
+**Anime look** (the user: "i want the layouts now to be anime like", and —
+asked which parts — all four: the ER and Supply Room, the minigame
+screens, the HUD and labels, and the web page). The layout and every hit
+area are unchanged; only the drawing moved to an anime game-UI style.
+
+* **Kit:** `web/static/js/hospital/anime-ui.js` (pure canvas, unit-tested
+  in `anime-ui.test.js`) holds the shared pieces: the `ANIME` palette
+  (pastel pink/lavender/sky/mint/gold/coral with deep-plum `ink` line
+  art), `animeChip` nameplates (still 16 px tall), `animeWindow` dialogs
+  (paper-to-blush gradient, plum border with a pink inner line,
+  screentone corners, sparkles, the title on a ribbon tab whose baseline
+  is the old title's, so content below didn't move), `animeBackdrop` (a
+  plum vignette with twinkling sparkles), candy `animeButton`s,
+  `speechBubble`, HUD `animePlate`/`animeGauge`/`animeBadge`/`animeStar`,
+  `animeTile` for stations, and `sakuraBranch`.
+* **ER / Supply Room:** glossy pastel checker floors with reflection
+  streaks and afternoon sunbeams, a cream-to-blush back wall with a pink
+  wainscot rail, a painted sakura branch, an anime-plated EMERGENCY /
+  SUPPLY ROOM sign, a pink-rimmed clock with bells, a stitched pink rug
+  under the coffee machine; stations are pastel tiles with plum line art
+  (a pink hover ring, a gold target ring); beds have pink pleated curtains,
+  outlined frames/pillows/blankets and gauge patience bars; supply-room
+  shelves hold outlined pastel boxes, some with tiny kawaii faces. The
+  triage line's slot pitch went from 46 to 52 so long names don't touch.
+* **HUD:** gauges with a heart (Sanity, mint) and smile (Mood, sky) badge,
+  gold outlined stars on a plate, a coin badge on the Gard plate, and a
+  level badge on the lavender XP gauge — positions unchanged.
+* **Minigames:** each dialog's ribbon has its own color (triage/Karen
+  coral, skill/oxygen sky, bandage mint, meds lavender, Mel gold, coffee
+  latte). Triage gets a screentoned portrait card, outlined vitals rows
+  and candy Red/Yellow/Green buttons; the timing bar is a gauge with a
+  glossy sparkling gold zone and a heart-tipped marker (multi-stage
+  progress shows as stars); Meds' order is a lavender plate with candy
+  dose buttons; Karen speaks in a speech bubble pointing at her, with
+  manga speed lines and a throbbing anger mark; Mel's thanks and the
+  coffee pour use the same window and buttons.
+* **Page:** `.hospital-anime` on the page's `<main>` scopes an anime theme
+  in `web/static/css/app.css` (`ha-*` classes): a candy-gradient title
+  banner with a plum-outlined Caprasimo title, a plum-framed game with a
+  pastel header bar and pill stats, candy buttons, ribbon-titled start and
+  paycheck cards, chip toasts, and a themed leaderboard (styled by id, as
+  its fragment is swapped in by HTMX). Dark mode keeps the candy accents on
+  deep plum. The rules are unlayered and never set `display`, so
+  Tailwind's `hidden` still hides what the game toggles. The `/projects`
+  card screenshot was retaken in the new look.
 
 ---
 

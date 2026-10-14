@@ -97,7 +97,11 @@ touching that area rather than expecting this section to carry it:
   in `web/static/js/hospital/rules.js`. Everyone in it is drawn by its own
   anime-style renderers — the player (Kimono Himura) by
   `hospital/kimono-himura.js`, patients, staff and Karen by
-  `hospital/anime-people.js` — not the shared `people.js`.
+  `hospital/anime-people.js` — not the shared `people.js`. The whole game
+  (ER, minigame screens, HUD, labels) is drawn in an anime UI style from
+  `hospital/anime-ui.js`, and its page has its own anime theme
+  (`.hospital-anime`/`ha-*` classes in `app.css`) instead of the site's
+  Organic look.
 - **Projects** (`/projects` card grid: Fishing Game, Kitchen Shift, Puzzle
   Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift) —
   `docs/features/projects.md`.

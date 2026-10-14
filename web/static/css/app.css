@@ -529,3 +529,206 @@ h1, h2, h3, h4, h5, h6 {
 		animation: none;
 	}
 }
+
+/* Hospital Shift's anime theme (docs/features/hospital-shift.md — the user:
+   "i want the layouts now to be anime like", including the page around the
+   canvas). Scoped to .hospital-anime on that page's <main>, so nothing else
+   on the site changes. Pastel candy colors with deep-plum line art, the
+   same palette as the canvas kit (web/static/js/hospital/anime-ui.js).
+   These rules are unlayered, so they never set `display` on anything the
+   game shows/hides with Tailwind's `hidden` class. */
+.hospital-anime {
+	--ha-ink: #3b2a4a;
+	--ha-ink-soft: #6b5a7a;
+	--ha-paper: #fffaf6;
+	--ha-blush: #fdeef6;
+	--ha-pink: #ff8fb8;
+	--ha-pink-deep: #e8558f;
+	--ha-lavender: #c9b8ff;
+	--ha-lavender-deep: #8f7ae0;
+	--ha-sky: #8fd3ff;
+	--ha-gold: #ffd166;
+	--ha-gold-deep: #e0a020;
+	--ha-mint: #8fe3c8;
+	--ha-mint-deep: #3fb58f;
+	--ha-line: #3b2a4a;
+	--ha-card: linear-gradient(180deg, #fffaf6, #fdeef6);
+	--ha-page: radial-gradient(circle at 12% 0%, #ffe3ee 0, transparent 40%),
+		radial-gradient(circle at 90% 10%, #e6ddff 0, transparent 38%),
+		radial-gradient(circle at 50% 100%, #d9f3ff 0, transparent 45%);
+
+	@variant dark {
+		--ha-ink: #fdf2fa;
+		--ha-ink-soft: #d9c8e8;
+		--ha-paper: #2c2238;
+		--ha-blush: #3a2a48;
+		--ha-line: #f2b8d4;
+		--ha-card: linear-gradient(180deg, #33263f, #2a1f35);
+		--ha-page: radial-gradient(circle at 12% 0%, rgba(232, 85, 143, 0.22) 0, transparent 40%),
+			radial-gradient(circle at 90% 10%, rgba(143, 122, 224, 0.25) 0, transparent 38%),
+			radial-gradient(circle at 50% 100%, rgba(79, 168, 224, 0.18) 0, transparent 45%);
+	}
+
+	background-image: var(--ha-page);
+	border-radius: 2rem;
+}
+
+/* Title banner: candy gradient, outlined display title, sparkles. */
+.ha-hero {
+	position: relative;
+	overflow: hidden;
+	border: 3px solid var(--ha-line);
+	border-radius: 1.5rem;
+	padding: 1.25rem 1.5rem;
+	background: linear-gradient(120deg, #ffc2da 0%, #e6ddff 50%, #c9ecff 100%);
+	box-shadow: 0 6px 0 rgba(59, 42, 74, 0.25);
+	color: #3b2a4a;
+}
+.ha-hero::before,
+.ha-hero::after {
+	content: "✦";
+	position: absolute;
+	color: #fff;
+	text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+	pointer-events: none;
+}
+.ha-hero::before { top: 0.6rem; right: 1.4rem; font-size: 1.6rem; }
+.ha-hero::after { bottom: 0.5rem; right: 4.5rem; font-size: 1rem; color: #ffd166; }
+.ha-title {
+	font-family: "Caprasimo", sans-serif;
+	font-size: 2.1rem;
+	line-height: 1.1;
+	color: #fff;
+	-webkit-text-stroke: 6px #3b2a4a;
+	paint-order: stroke fill;
+	letter-spacing: 0.01em;
+}
+.ha-hero-text {
+	color: #3b2a4a;
+	font-weight: 500;
+}
+
+/* The game frame and its header bar. */
+.ha-frame {
+	border: 3px solid var(--ha-line);
+	border-radius: 1.5rem;
+	background: var(--ha-paper);
+	box-shadow: 0 8px 0 rgba(59, 42, 74, 0.22), 0 0 0 6px rgba(255, 143, 184, 0.25);
+}
+.ha-bar {
+	border-bottom: 3px solid var(--ha-line);
+	background: linear-gradient(90deg, #ffd1e3, #e6ddff, #d1ecff);
+}
+.ha-stats {
+	border: 2px solid #3b2a4a;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.85);
+	color: #3b2a4a;
+}
+.ha-stats dt { color: #8f7ae0; font-weight: 700; }
+.ha-stats dd { color: #3b2a4a; font-weight: 700; }
+
+/* Candy buttons: gradient, plum outline, a pressed lip. */
+.ha-btn {
+	border: 2px solid #3b2a4a;
+	border-radius: 999px;
+	padding: 0.5rem 1rem;
+	font-weight: 700;
+	color: #fff;
+	text-shadow: 0 1.5px 0 rgba(59, 42, 74, 0.55), 1px 0 0 rgba(59, 42, 74, 0.35), -1px 0 0 rgba(59, 42, 74, 0.35);
+	background: linear-gradient(180deg, var(--ha-pink), var(--ha-pink-deep));
+	box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), 0 4px 0 #a8305e;
+	transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.ha-btn:hover { filter: brightness(1.05); }
+.ha-btn:active { transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), 0 1px 0 #a8305e; }
+.ha-btn:focus-visible { outline: 3px solid var(--ha-gold); outline-offset: 2px; }
+.ha-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.ha-btn--soft {
+	color: #3b2a4a;
+	text-shadow: none;
+	background: linear-gradient(180deg, #ffffff, #f1ecff);
+	box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7), 0 4px 0 #b9acd9;
+}
+.ha-btn--soft:active { box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7), 0 1px 0 #b9acd9; }
+.ha-btn--gold {
+	background: linear-gradient(180deg, var(--ha-gold), var(--ha-gold-deep));
+	box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4), 0 4px 0 #a8730e;
+}
+
+/* Dialog cards (start screen, paycheck) with a ribbon title. */
+.ha-card {
+	position: relative;
+	border: 3px solid var(--ha-line);
+	border-radius: 1.5rem;
+	background: var(--ha-card);
+	color: var(--ha-ink);
+	box-shadow: 0 8px 0 rgba(59, 42, 74, 0.28), inset 0 0 0 5px rgba(255, 143, 184, 0.35);
+}
+.ha-card::after {
+	content: "✦";
+	position: absolute;
+	top: 0.7rem;
+	right: 1rem;
+	color: var(--ha-gold);
+	font-size: 1.1rem;
+	pointer-events: none;
+}
+.ha-ribbon {
+	margin: -2.4rem auto 0;
+	width: fit-content;
+	border: 2px solid #3b2a4a;
+	border-radius: 0.8rem;
+	padding: 0.25rem 1.4rem;
+	background: linear-gradient(180deg, var(--ha-pink), var(--ha-pink-deep));
+	font-family: "Caprasimo", sans-serif;
+	font-size: 1.25rem;
+	color: #fff;
+	-webkit-text-stroke: 4px #3b2a4a;
+	paint-order: stroke fill;
+	box-shadow: 0 3px 0 rgba(59, 42, 74, 0.3);
+}
+.ha-muted { color: var(--ha-ink-soft); }
+.ha-ink { color: var(--ha-ink); }
+.ha-panel {
+	border: 2px solid var(--ha-line);
+	border-radius: 1rem;
+	background: var(--ha-paper);
+	color: var(--ha-ink);
+}
+.ha-meter { border: 2px solid var(--ha-line); border-radius: 999px; background: #f1ecff; }
+.ha-meter > div { background: linear-gradient(90deg, var(--ha-lavender), var(--ha-pink)); }
+.ha-input {
+	border: 2px solid var(--ha-line);
+	border-radius: 999px;
+	background: var(--ha-paper);
+	color: var(--ha-ink);
+}
+.ha-input:focus-visible { outline: 3px solid var(--ha-pink); outline-offset: 1px; }
+
+/* Speech-bubble chips for the hover hint and toasts. */
+.ha-chip {
+	border: 2px solid var(--ha-line);
+	border-radius: 999px;
+	background: var(--ha-paper);
+	color: var(--ha-ink);
+	box-shadow: 0 3px 0 rgba(59, 42, 74, 0.2);
+}
+
+/* Leaderboard (its fragment is swapped in by HTMX, so it's styled from here). */
+.ha-heading {
+	font-family: "Caprasimo", sans-serif;
+	color: var(--ha-ink);
+}
+.hospital-anime #hospital-leaderboard {
+	border: 3px solid var(--ha-line);
+	border-radius: 1.25rem;
+	background: var(--ha-card);
+	overflow: hidden;
+	box-shadow: 0 6px 0 rgba(59, 42, 74, 0.22);
+}
+.hospital-anime #hospital-leaderboard > li { border-color: rgba(201, 184, 255, 0.6); }
+.hospital-anime #hospital-leaderboard > li:nth-child(odd) { background: rgba(255, 194, 218, 0.18); }
+.hospital-anime #hospital-leaderboard > li:nth-child(1) { background: rgba(255, 209, 102, 0.28); }
+.hospital-anime #hospital-leaderboard .text-ink { color: var(--ha-ink); }
+.hospital-anime #hospital-leaderboard .text-muted { color: var(--ha-ink-soft); }
