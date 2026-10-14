@@ -32,6 +32,11 @@ import {
   melCardLineForShift,
   melArrivesWithPatient,
   typeSecretCodeKey,
+  rankForXp,
+  rankProgress,
+  perksForRank,
+  ranksGained,
+  NURSE_RANKS,
   TRIAGE_LEVELS,
   findTriageLevel,
   TRIAGE_LEGEND,
@@ -144,7 +149,7 @@ import {
 const STORAGE_KEY = 'hospital-game:v1';
 
 function defaultSave() {
-  return { version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: Date.now(), foundMel: false };
+  return { version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: Date.now(), foundMel: false, careerXp: 0 };
 }
 
 function probeStorageAvailable() {
@@ -179,6 +184,8 @@ export function loadSave(storageAvailable) {
       karenSeed: Math.round(parsed.karenSeed),
       // The easter egg's badge — optional, so saves from before Mel still load.
       foundMel: parsed.foundMel === true,
+      // Nurse career rank — optional, so older saves start as a Student Nurse.
+      careerXp: Number.isFinite(parsed.careerXp) ? Math.max(0, Math.round(parsed.careerXp)) : 0,
     };
   } catch {
     return defaultSave();
@@ -566,6 +573,11 @@ export function init(canvas, elements) {
 
   function renderHud() {
     elements.hud.shift.textContent = `${currentShiftNumber}/${SHIFTS_PER_MONTH}`;
+    if (elements.hud.rank) {
+      const rank = rankForXp(liveCareerXp());
+      elements.hud.rank.textContent = `Lv ${rank.rank}`;
+      elements.hud.rank.title = rank.title;
+    }
     if (!shiftState) {
       elements.hud.clock.textContent = '--:--';
       elements.hud.status.textContent = 'Quiet';
@@ -662,7 +674,8 @@ export function init(canvas, elements) {
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
     const gurney = shiftState?.carried?.kind === 'gurney' ? GURNEY_WALK_MULTIPLIER : 1;
-    const step = 240 * walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX) * gurney * deltaSeconds;
+    const rankWalk = shiftState?.perks?.walk ?? 1;
+    const step = 240 * walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX) * gurney * rankWalk * deltaSeconds;
     const dx = moveTarget.x - player.x;
     const dy = moveTarget.y - player.y;
     const dist = Math.hypot(dx, dy);
@@ -833,6 +846,75 @@ export function init(canvas, elements) {
       melVaseClicks = 0;
       bringMelIn('vase');
     }
+  }
+
+  // -- Nurse career rank ------------------------------------------------------------
+  //
+  // XP (engine-state's `xp`, rules.js's XP_*) adds up in save.careerXp
+  // across shifts and months; the rank sets next shift's perks
+  // (perksForRank). A rank reached mid-shift is announced right away, but
+  // its perk waits for the next shift so a shift's rules never change
+  // halfway through.
+
+  let lastLiveRank = 1;
+  /** Set once the shift's XP is in save.careerXp, so it isn't counted twice. */
+  let shiftXpAwarded = false;
+
+  /** Career XP right now, including the running shift's until it's banked. */
+  function liveCareerXp() {
+    return save.careerXp + (shiftXpAwarded ? 0 : (shiftState?.xp ?? 0));
+  }
+
+  function announceLiveRankUp() {
+    if (!shiftState) return;
+    const live = rankForXp(liveCareerXp());
+    if (live.rank <= lastLiveRank) return;
+    lastLiveRank = live.rank;
+    showToast(`Promoted to ${live.title} (Lv ${live.rank})! ${live.perk.name} — ${live.perk.description} — starts next shift.`, 4.5);
+  }
+
+  /** Adds the shift's XP to the career; returns what it gained. */
+  function awardShiftXp() {
+    if (shiftXpAwarded) return { gained: 0, ranks: [] };
+    const before = save.careerXp;
+    save.careerXp = before + (shiftState?.xp ?? 0);
+    shiftXpAwarded = true;
+    return { gained: save.careerXp - before, ranks: ranksGained(before, save.careerXp) };
+  }
+
+  function renderPaycheckXp({ gained, ranks }) {
+    const screen = elements.paycheckScreen;
+    const rank = rankForXp(save.careerXp);
+    if (screen.xp) screen.xp.textContent = `+${gained} XP · Lv ${rank.rank} ${rank.title}`;
+    if (screen.rankUp) {
+      screen.rankUp.classList.toggle('hidden', ranks.length === 0);
+      screen.rankUp.textContent = ranks.length
+        ? `Promoted to ${rank.title}! Unlocked: ${ranks.map((r) => `${r.perk.name} (${r.perk.description})`).join(', ')}.`
+        : '';
+    }
+  }
+
+  /** The start screen's career card: rank, progress to the next one, perks so far. */
+  function renderRankCard() {
+    const card = elements.startScreen.rank;
+    if (!card?.root) return;
+    const p = rankProgress(save.careerXp);
+    card.title.textContent = `Lv ${p.rank.rank} · ${p.rank.title}`;
+    card.bar.style.width = `${Math.round(p.fraction * 100)}%`;
+    card.next.textContent = p.next
+      ? `${p.intoRank} / ${p.needed} XP to ${p.next.title}`
+      : 'Top rank reached';
+    const perks = [];
+    const seen = new Set();
+    // Latest tier of each perk kind only (Running Shoes, not Comfy Shoes too).
+    for (const r of [...NURSE_RANKS].reverse()) {
+      if (r.rank > p.rank.rank || !r.perk) continue;
+      const kind = Object.keys(r.perk.effect)[0];
+      if (seen.has(kind)) continue;
+      seen.add(kind);
+      perks.unshift(r.perk.name);
+    }
+    card.perks.textContent = perks.length ? `Perks: ${perks.join(', ')}` : 'Earn XP to unlock perks.';
   }
 
   function renderMelBadge() {
@@ -1152,7 +1234,7 @@ export function init(canvas, elements) {
 
   function sampleSkillCheck() {
     if (overlay.flash && !overlay.flash.good && overlay.flash.seconds > 0.6) return; // brief lockout after a miss
-    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()));
+    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
     const hit = isSkillCheckSuccess(overlay.gauge, zone);
     const resolve = overlay.task === 'surgery' ? resolveSurgery : (overlay.task === 'meds' ? resolveMedsGive : resolveBedTask);
     if (!hit) {
@@ -1589,7 +1671,11 @@ export function init(canvas, elements) {
     gardPops = [];
     currentShiftNumber = save.currentShift;
     karenShiftNumber = karenShiftForSeed(save.karenSeed);
-    shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber));
+    shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber, {
+      perks: perksForRank(rankForXp(save.careerXp).rank),
+    }));
+    lastLiveRank = rankForXp(save.careerXp).rank;
+    shiftXpAwarded = false;
     player = { ...PLAYER_START };
     resetAmbient();
     currentFloor = FLOOR_1;
@@ -1623,6 +1709,7 @@ export function init(canvas, elements) {
     }
     const payout = shiftState.payout ?? 0;
     save.monthToDateGard += payout;
+    const xpResult = awardShiftXp();
     const isFinalShift = currentShiftNumber >= SHIFTS_PER_MONTH;
     if (isFinalShift) save.bestRunTotal = Math.max(save.bestRunTotal, save.monthToDateGard);
     else save.currentShift = currentShiftNumber + 1;
@@ -1648,6 +1735,8 @@ export function init(canvas, elements) {
     screen.nextShiftButton.classList.toggle('hidden', isFinalShift);
     screen.newMonthButton.classList.toggle('hidden', !isFinalShift);
     screen.finalBlock.classList.toggle('hidden', !isFinalShift);
+    renderPaycheckXp(xpResult);
+    renderRankCard();
     if (isFinalShift) {
       if (screen.earningsInput) screen.earningsInput.value = String(save.monthToDateGard);
       if (screen.shiftsInput) screen.shiftsInput.value = String(SHIFTS_PER_MONTH);
@@ -1671,6 +1760,11 @@ export function init(canvas, elements) {
     overlay = null;
     moveTarget = null;
     render();
+    // XP earned before the collapse still counts toward the career.
+    const xpResult = awardShiftXp();
+    persistSave(storageAvailable, save);
+    renderPaycheckXp(xpResult);
+    renderRankCard();
     const screen = elements.paycheckScreen;
     screen.root.dataset.outcome = 'game-over';
     screen.root.dataset.final = 'false';
@@ -2449,6 +2543,26 @@ export function init(canvas, elements) {
     gardPops = gardPops.map((pop) => ({ ...pop, age: pop.age + dt })).filter((pop) => pop.age < 1.4);
   }
 
+  /** Under the Gard counter: rank and live progress, this shift's XP included. */
+  function drawRankBar() {
+    const x = 264;
+    const y = 40;
+    const w = 176;
+    const h = 16;
+    const p = rankProgress(liveCareerXp());
+    drawRoundRect(ctx, x, y, w, h, 8, 'rgba(255,251,246,0.9)');
+    drawRoundRect(ctx, x + 2, y + 2, Math.max(0, (w - 4) * p.fraction), h - 4, 6, 'rgba(127,176,214,0.55)');
+    ctx.fillStyle = LABEL_TEXT_COLOR;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText(`Lv ${p.rank.rank} ${p.rank.title}`, x + 8, y + h / 2 + 0.5);
+    ctx.textAlign = 'right';
+    ctx.font = '9px sans-serif';
+    ctx.fillStyle = 'rgba(58,42,42,0.75)';
+    ctx.fillText(`+${shiftState?.xp ?? 0} XP`, x + w - 8, y + h / 2 + 0.5);
+  }
+
   function drawGardCounter() {
     const bonus = shiftState ? shiftState.bonusGard : 0;
     const x = 264;
@@ -2482,7 +2596,7 @@ export function init(canvas, elements) {
       ctx.globalAlpha = 1 - t;
       ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'left';
-      const popY = y + h + 20 - t * 10;
+      const popY = y + h + 36 - t * 10;
       const text = `${pop.amount >= 0 ? '+' : '−'}${Math.abs(pop.amount)}g`;
       ctx.strokeStyle = CREAM;
       ctx.lineWidth = 3.5;
@@ -2628,7 +2742,7 @@ export function init(canvas, elements) {
     const [title, subtitle] = SKILL_TITLES[overlay.task];
     drawPanel(title, subtitle);
     const bar = skillBar();
-    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()));
+    const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
     const patientId = shiftState.activeTask?.patientId;
     const info = patientInfo.get(patientId);
     const t = performance.now() / 1000;
@@ -3529,6 +3643,7 @@ export function init(canvas, elements) {
     }
     drawRatingStars();
     drawGardCounter();
+    drawRankBar();
     drawOverlay();
   }
 
@@ -3565,6 +3680,10 @@ export function init(canvas, elements) {
       overlay = null;
       showToast('Karen shoves past you to the front of the line.');
     }
+
+    // XP mostly changes in click/key handlers between frames, so check the
+    // live rank every frame rather than diffing this tick.
+    announceLiveRankUp();
 
     if (shiftState.transfers > before.transfers) {
       showToast(`A patient waited too long and was transferred out — mistake, −${RATING_PENALTY_PER_WALKOUT}★`);
@@ -3707,6 +3826,8 @@ export function init(canvas, elements) {
       karenAvailable = true;
     },
     bringMelInNow: () => bringMelIn('code'),
+    getCareerXp: () => save.careerXp,
+    addShiftXp(amount) { if (shiftState) shiftState = { ...shiftState, xp: shiftState.xp + amount }; },
     spawnGhostNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
     getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.length }),
     wasPlayerDrawnLastFrame: () => lastFrameDrewPlayer,
@@ -3723,6 +3844,7 @@ export function init(canvas, elements) {
   showScreen('start');
   renderHud();
   renderMelBadge();
+  renderRankCard();
   return teardown;
 }
 
@@ -3737,18 +3859,25 @@ function bootstrap() {
   if (!canvas) return;
   const byId = (id) => document.getElementById(id);
   init(canvas, {
-    hud: { shift: byId('hospital-hud-shift'), clock: byId('hospital-hud-clock'), status: byId('hospital-hud-status') },
+    hud: { shift: byId('hospital-hud-shift'), clock: byId('hospital-hud-clock'), status: byId('hospital-hud-status'), rank: byId('hospital-hud-rank') },
     hoverHint: byId('hospital-interact-hint'),
     toast: byId('hospital-toast'),
     fullscreenButton: byId('hospital-fullscreen-button'),
     floorButton: byId('hospital-floor-button'),
-    startScreen: { root: byId('hospital-start-screen'), shiftButton: byId('hospital-start-shift-button'), melBadge: byId('hospital-mel-badge') },
+    startScreen: {
+      root: byId('hospital-start-screen'),
+      shiftButton: byId('hospital-start-shift-button'),
+      melBadge: byId('hospital-mel-badge'),
+      rank: { root: byId('hospital-rank-card'), title: byId('hospital-rank-title'), bar: byId('hospital-rank-bar'), next: byId('hospital-rank-next'), perks: byId('hospital-rank-perks') },
+    },
     paycheckScreen: {
       root: byId('hospital-paycheck-screen'),
       title: byId('hospital-paycheck-title'),
       outcome: byId('hospital-paycheck-outcome'),
       shiftTotal: byId('hospital-paycheck-shift-total'),
       monthTotal: byId('hospital-paycheck-month-total'),
+      xp: byId('hospital-paycheck-xp'),
+      rankUp: byId('hospital-paycheck-rankup'),
       finalBlock: byId('hospital-final-paycheck-block'),
       earningsInput: byId('hospital-paycheck-earnings-input'),
       shiftsInput: byId('hospital-paycheck-shifts-input'),

@@ -212,6 +212,84 @@ export function typeSecretCodeKey(buffer, key, code = MEL_SECRET_CODE) {
 }
 
 // ---------------------------------------------------------------------------
+// 3c. Nurse career rank (the user: "add levels", then picked a career rank
+//     over hospital stages/severity levels/level select). XP is earned in
+//     every shift — correct triage calls, finished treatment steps,
+//     discharges (sicker = more), calming Karen, Mel's visit — and adds up
+//     across months in the save (`careerXp`; Start New Month keeps it).
+//     Each rank from 2 up unlocks one perk; a later perk of the same kind
+//     replaces the earlier one.
+// ---------------------------------------------------------------------------
+
+export const XP_CORRECT_TRIAGE = 5;
+export const XP_TREATMENT_STEP = 5;
+export const XP_DISCHARGE = { red: 25, yellow: 15, green: 10 };
+export const XP_KAREN_CALMED = 10;
+export const XP_MEL_VISIT = 5;
+
+/** Every perk at 1 — what a Student Nurse works with. */
+export const NEUTRAL_PERKS = Object.freeze({ walk: 1, skillZone: 1, patience: 1, sanityDrain: 1, pay: 1 });
+
+/**
+ * The ten ranks: `xp` is the career total needed to reach it. A full
+ * month earns very roughly 5–8k XP, so Charge Nurse takes about a month
+ * of good shifts.
+ */
+export const NURSE_RANKS = [
+  { rank: 1, title: 'Student Nurse', xp: 0, perk: null },
+  { rank: 2, title: 'Nursing Intern', xp: 100, perk: { name: 'Comfy Shoes', description: 'walk 10% faster', effect: { walk: 1.1 } } },
+  { rank: 3, title: 'Junior Nurse', xp: 300, perk: { name: 'Steady Hands', description: 'skill-check zones 15% wider', effect: { skillZone: 1.15 } } },
+  { rank: 4, title: 'Staff Nurse', xp: 600, perk: { name: 'Bedside Manner', description: 'patients wait 10% longer', effect: { patience: 1.1 } } },
+  { rank: 5, title: 'Senior Nurse', xp: 1000, perk: { name: 'Second Wind', description: 'Sanity drains 15% slower', effect: { sanityDrain: 0.85 } } },
+  { rank: 6, title: 'Triage Specialist', xp: 1600, perk: { name: 'Running Shoes', description: 'walk 20% faster', effect: { walk: 1.2 } } },
+  { rank: 7, title: 'Trauma Nurse', xp: 2400, perk: { name: 'Surgeon\'s Hands', description: 'skill-check zones 30% wider', effect: { skillZone: 1.3 } } },
+  { rank: 8, title: 'Nurse Practitioner', xp: 3400, perk: { name: 'Pay Raise', description: 'paychecks +10%', effect: { pay: 1.1 } } },
+  { rank: 9, title: 'Head Nurse', xp: 4700, perk: { name: 'Reassuring Presence', description: 'patients wait 20% longer', effect: { patience: 1.2 } } },
+  { rank: 10, title: 'Charge Nurse', xp: 6200, perk: { name: 'Charge Nurse Pay', description: 'paychecks +25%', effect: { pay: 1.25 } } },
+];
+
+function safeXp(xp) {
+  return Number.isFinite(xp) && xp > 0 ? xp : 0;
+}
+
+/** The rank a career XP total has reached. */
+export function rankForXp(xp) {
+  const total = safeXp(xp);
+  let reached = NURSE_RANKS[0];
+  for (const r of NURSE_RANKS) if (total >= r.xp) reached = r;
+  return reached;
+}
+
+/**
+ * Where a career XP total sits within its rank, for progress bars.
+ * At the top rank `next` is null and `fraction` is 1.
+ */
+export function rankProgress(xp) {
+  const total = safeXp(xp);
+  const rank = rankForXp(total);
+  const next = NURSE_RANKS.find((r) => r.rank === rank.rank + 1) ?? null;
+  if (!next) return { rank, next: null, intoRank: total - rank.xp, needed: 0, fraction: 1 };
+  const needed = next.xp - rank.xp;
+  return { rank, next, intoRank: total - rank.xp, needed, fraction: (total - rank.xp) / needed };
+}
+
+/** Every perk unlocked up to `rankNumber`, later ones replacing earlier ones of the same kind. */
+export function perksForRank(rankNumber) {
+  const perks = { ...NEUTRAL_PERKS };
+  for (const r of NURSE_RANKS) {
+    if (r.rank <= rankNumber && r.perk) Object.assign(perks, r.perk.effect);
+  }
+  return perks;
+}
+
+/** The ranks newly reached going from `beforeXp` to `afterXp` (usually zero or one). */
+export function ranksGained(beforeXp, afterXp) {
+  const from = rankForXp(beforeXp).rank;
+  const to = rankForXp(afterXp).rank;
+  return NURSE_RANKS.filter((r) => r.rank > from && r.rank <= to);
+}
+
+// ---------------------------------------------------------------------------
 // 4. Triage levels and vitals. vitalsForLevel generates a chart that
 //    triageLevelForVitals classifies back to the same level, so the Triage
 //    Sort is a real read-the-vitals decision with one right answer.

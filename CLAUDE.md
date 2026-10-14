@@ -90,7 +90,8 @@ touching that area rather than expecting this section to carry it:
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls
   down); Karen, Coffee Pour, hallucinations; an easter egg — Mel in a
   dandelion kimono visits with a card (rare arrival, shift 7, five clicks on
-  the back-wall vase, or typing "mel"); Postgres leaderboard,
+  the back-wall vase, or typing "mel"); a 10-rank nurse career (XP banked
+  across months, a perk per rank, `rules.js` §3c); Postgres leaderboard,
   `localStorage` progress) — `docs/features/hospital-shift.md`. Rules live
   in `web/static/js/hospital/rules.js`. Everyone in it is drawn by its own
   anime-style renderers — the player (Kimono Himura) by

@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (112 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (121 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (27 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (30 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -138,6 +138,39 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   The first visit ever sets `foundMel` in the save, which shows a
   "✿ You found Mel in her kimono" badge (`#hospital-mel-badge`) on the
   start screen. She doesn't time out; if the shift ends first she's gone.
+* **Nurse career rank** (the user: "add levels", then chose a career rank
+  over hospital stages, more severity levels or a level select). XP is
+  earned every shift — +5 per correct triage call, +5 per treatment step
+  you finish, +25/15/10 per Red/Yellow/Green discharge, +10 for calming
+  Karen, +5 for Mel's visit (`rules.js` §3c `XP_*`; tracked as
+  engine-state's `xp`) — and banked into `save.careerXp` at handover, and
+  also on a game over (what you learned before collapsing still counts).
+  Career XP carries across months; Start New Month keeps it. Ten ranks
+  (`NURSE_RANKS`), each from 2 up unlocking a perk; a later perk of the
+  same kind replaces the earlier one (`perksForRank`):
+
+  | Lv | Rank | XP | Perk |
+  | -- | ---- | -- | ---- |
+  | 1 | Student Nurse | 0 | — |
+  | 2 | Nursing Intern | 100 | Comfy Shoes: walk +10% |
+  | 3 | Junior Nurse | 300 | Steady Hands: skill-check zones +15% |
+  | 4 | Staff Nurse | 600 | Bedside Manner: patient patience +10% |
+  | 5 | Senior Nurse | 1000 | Second Wind: Sanity drains 15% slower |
+  | 6 | Triage Specialist | 1600 | Running Shoes: walk +20% |
+  | 7 | Trauma Nurse | 2400 | Surgeon's Hands: skill-check zones +30% |
+  | 8 | Nurse Practitioner | 3400 | Pay Raise: paychecks +10% |
+  | 9 | Head Nurse | 4700 | Reassuring Presence: patience +20% |
+  | 10 | Charge Nurse | 6200 | Charge Nurse Pay: paychecks +25% |
+
+  Perks are fixed for the whole shift: they're set from the banked rank at
+  shift start (engine-state's `perks` — patience, Sanity drain, pay;
+  hospital-game.js applies walk speed and skill-check zones). Ranking up
+  mid-shift shows a toast right away, but the perk starts next shift. The
+  rank shows in the HUD ("Lv 3", full title on hover), in a live XP bar
+  under the Gard counter, on the start screen's rank card (progress to the
+  next rank, perks so far) and on the paycheck's Career row with any
+  promotion. The bar's width is set from JS — the site CSP blocks inline
+  `style` attributes.
 * **Ward Mood** (Library Mood's analog): starts at 100, −25 per mistake,
   raised by coffee (below),
   scales new patients' wait and treatment patience (×1.0 → ×0.6), drives
@@ -242,7 +275,8 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   (head 12 units above the shoulders, was 15; Kimono Himura's `NECK_DROP`).
   Hospital Shift no longer draws anyone with people.js.
 * `localStorage` progress (`hospital-game:v1`; the optional `foundMel`
-  flag is the easter egg's badge, so older saves still load), Postgres leaderboard
+  flag is the easter egg's badge and `careerXp` the nurse's career rank —
+  both optional, so older saves still load), Postgres leaderboard
   (`hospital_scores`), `/projects` card.
 
 * **Two floors + Supply Cart** (added after v1 — the user asked for a
@@ -457,11 +491,16 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
       surgery transport, patience transfers, Karen, Mel, coffee, closing,
       payout), Mel's arrival roll / secret code / card lines, patient name
-      pools (one per design, no name shared, ages in range), floor-plan geometry.
+      pools (one per design, no name shared, ages in range), career rank
+      (thresholds, progress, stacking perks, XP from each source, perks on
+      patience/Sanity drain/pay), floor-plan geometry.
 * [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
       triage a patient → vitals skill check → meds → bandage → surgery →
       coffee → Karen → Mel (typing "mel" → card → gift → badge survives a
-      reload; five vase clicks bring her in) → handover → paycheck →
+      reload; five vase clicks bring her in) → career rank (XP ranks you up
+      with a toast, the paycheck shows it, the perk applies next shift, the
+      start screen card after a reload; the HUD doesn't double-count banked
+      XP; a Charge Nurse starts with every top perk) → handover → paycheck →
       final-shift leaderboard submit; HTMX revisit stays interactive. Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,

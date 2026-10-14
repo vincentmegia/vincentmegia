@@ -471,6 +471,65 @@ test.describe('Karen', () => {
 	});
 });
 
+test.describe('nurse career rank', () => {
+	async function seedCareer(page, careerXp) {
+		// Once per tab, so a reload reads what the game saved, not the seed again.
+		await page.addInitScript((xp) => {
+			if (window.sessionStorage.getItem('career-seeded')) return;
+			window.sessionStorage.setItem('career-seeded', '1');
+			window.localStorage.setItem('hospital-game:v1', JSON.stringify({
+				version: 1, monthToDateGard: 0, currentShift: 1, bestRunTotal: 0, karenSeed: 1, careerXp: xp,
+			}));
+		}, careerXp);
+	}
+
+	test('XP from a shift ranks you up, shows on the paycheck and is saved', async ({ page }) => {
+		await seedCareer(page, 90);
+		await page.goto('/hospital-shift');
+		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 1 · Student Nurse');
+		await expect(page.locator('#hospital-rank-next')).toHaveText('90 / 100 XP to Nursing Intern');
+		await startShift(page);
+		await expect(page.locator('#hospital-hud-rank')).toHaveText('Lv 1');
+		await hooks(page, 'addShiftXp', 20);
+		await expect(page.locator('#hospital-toast')).toContainText('Promoted to Nursing Intern');
+		// The perk waits for the next shift.
+		expect((await shiftState(page)).perks.walk).toBe(1);
+		await hooks(page, 'skipToClosing');
+		await walkTo(page, 'office');
+		await expect(page.locator('#hospital-paycheck-xp')).toHaveText('+20 XP · Lv 2 Nursing Intern');
+		await expect(page.locator('#hospital-paycheck-rankup')).toContainText('Comfy Shoes');
+		await expect(page.locator('#hospital-hud-rank')).toHaveText('Lv 2');
+		expect(await hooks(page, 'getCareerXp')).toBe(110);
+		await page.locator('#hospital-paycheck-next-shift-button').click();
+		await page.waitForFunction(() => window.__hospitalShiftTestHooks.getShiftState()?.phase === 'playing');
+		expect((await shiftState(page)).perks.walk).toBe(1.1);
+		await page.reload();
+		await expect(page.locator('#hospital-rank-title')).toHaveText('Lv 2 · Nursing Intern');
+		await expect(page.locator('#hospital-rank-perks')).toHaveText('Perks: Comfy Shoes');
+	});
+
+	test('after handover the HUD shows the banked rank, not the shift XP counted twice', async ({ page }) => {
+		await seedCareer(page, 380);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await hooks(page, 'addShiftXp', 150);
+		await hooks(page, 'skipToClosing');
+		await walkTo(page, 'office');
+		await expect(page.locator('#hospital-paycheck-xp')).toHaveText('+150 XP · Lv 3 Junior Nurse');
+		await expect(page.locator('#hospital-hud-rank')).toHaveText('Lv 3');
+		expect(await hooks(page, 'getCareerXp')).toBe(530);
+	});
+
+	test('a Charge Nurse starts the shift with every top perk', async ({ page }) => {
+		await seedCareer(page, 6200);
+		await page.goto('/hospital-shift');
+		await expect(page.locator('#hospital-rank-next')).toHaveText('Top rank reached');
+		await startShift(page);
+		expect((await shiftState(page)).perks).toEqual({ walk: 1.2, skillZone: 1.3, patience: 1.2, sanityDrain: 0.85, pay: 1.25 });
+		await expect(page.locator('#hospital-hud-rank')).toHaveText('Lv 10');
+	});
+});
+
 test.describe('Mel (easter egg)', () => {
 	test('typing "mel" brings her to triage; her card is a gift and the badge sticks', async ({ page }) => {
 		await page.goto('/hospital-shift');

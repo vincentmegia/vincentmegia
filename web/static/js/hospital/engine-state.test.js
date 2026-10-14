@@ -53,6 +53,13 @@ import {
   MEL_GIFT_GARD,
   MEL_SANITY_RESTORE,
   MEL_MOOD_RESTORE,
+  XP_CORRECT_TRIAGE,
+  XP_TREATMENT_STEP,
+  XP_DISCHARGE,
+  XP_KAREN_CALMED,
+  XP_MEL_VISIT,
+  SANITY_DRAIN_PER_SECOND,
+  perksForRank,
   CLOSING_WAIT_SECONDS,
   COFFEE_PERFECT_TIP_GARD,
   COFFEE_MOOD_RESTORE,
@@ -486,6 +493,47 @@ describe('Karen', () => {
     const s = tick(startKarenEvent(playing(12)), KAREN_EVENT_TIMER_SECONDS + 1);
     assert.equal(s.karen.outcome, 'letCut');
     assert.equal(s.karen.active, false);
+  });
+});
+
+describe('career XP and rank perks', () => {
+  test('a correct triage call earns XP; a wrong one earns none', () => {
+    let s = addPatientToTriage(playing(), { id: 'p1', conditionId: 'sprain' });
+    assert.equal(resolveTriage(s, 'p1', findCondition('sprain').level).xp, XP_CORRECT_TRIAGE);
+    assert.equal(resolveTriage(s, 'p1', findCondition('sprain').level === 'red' ? 'green' : 'red').xp, 0);
+  });
+
+  test('each step and the discharge earn XP, sicker patients more', () => {
+    // Pneumonia: vitals, oxygen, IV — bed tasks that need no supplies.
+    let [s, bed] = bedded(playing(), 'p1', 'pneumonia');
+    const level = findCondition('pneumonia').level;
+    const steps = s.beds[bed].plan.length;
+    const before = s.xp;
+    for (let i = 0; i < steps; i++) {
+      s = startBedTask(s, bed);
+      s = resolveBedTask(s, true);
+    }
+    assert.equal(s.beds[bed], null);
+    assert.equal(s.xp - before, steps * XP_TREATMENT_STEP + XP_DISCHARGE[level]);
+    assert.ok(XP_DISCHARGE.red > XP_DISCHARGE.yellow && XP_DISCHARGE.yellow > XP_DISCHARGE.green);
+  });
+
+  test('calming Karen and visiting Mel earn XP', () => {
+    assert.equal(resolveKarenEvent(startKarenEvent(playing(12)), 'explain').xp, XP_KAREN_CALMED);
+    assert.equal(resolveKarenEvent(startKarenEvent(playing(12)), 'letCut').xp, 0);
+    assert.equal(visitMel(melArrives(playing())).xp, XP_MEL_VISIT);
+  });
+
+  test('perks: longer patience, slower Sanity drain, bigger pay', () => {
+    const perks = perksForRank(10);
+    const plain = addPatientToTriage(playing(), { id: 'p1', conditionId: 'sprain', waitSeconds: 100 });
+    const ranked = addPatientToTriage(playing(5, { perks }), { id: 'p1', conditionId: 'sprain', waitSeconds: 100 });
+    assert.equal(ranked.triageQueue[0].waitMaxSeconds, plain.triageQueue[0].waitMaxSeconds * perks.patience);
+
+    assert.equal(tick(playing(5, { perks }), 10).sanity, 100 - SANITY_DRAIN_PER_SECOND * perks.sanityDrain * 10);
+
+    const office = (overrides) => enterOffice({ ...playing(1, { bonusGard: 100, ...overrides }), phase: 'closing-wait', closingWaitSecondsRemaining: 0 });
+    assert.equal(office({ perks }).payout, Math.round(office({}).payout * perks.pay));
   });
 });
 

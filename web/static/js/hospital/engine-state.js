@@ -28,6 +28,8 @@
 //     doctorAssists: number,                         // times he did this shift
 //     karen: { shiftNumber, active, triggered, resolved, outcome, timerSecondsRemaining },
 //     mel: { waiting, visited },  // the easter egg: in the triage line / already visited this shift
+//     xp,     // career XP earned this shift (rules.js's XP_*); the game adds it to the save
+//     perks,  // { walk, skillZone, patience, sanityDrain, pay } from the nurse's rank (rules.js's perksForRank)
 //     wardMood, sanity, rating, walkouts, transfers, discharged,
 //     zeroSanitySeconds, mistakeCount, bonusGard, payout,
 //   }
@@ -61,6 +63,12 @@ import {
   MEL_GIFT_GARD,
   MEL_SANITY_RESTORE,
   MEL_MOOD_RESTORE,
+  XP_CORRECT_TRIAGE,
+  XP_TREATMENT_STEP,
+  XP_DISCHARGE,
+  XP_KAREN_CALMED,
+  XP_MEL_VISIT,
+  NEUTRAL_PERKS,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
   COFFEE_PERFECT_TIP_GARD,
@@ -112,6 +120,8 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
       timerSecondsRemaining: 0,
     },
     mel: { waiting: false, visited: false },
+    xp: 0,
+    perks: { ...NEUTRAL_PERKS },
 
     wardMood: WARD_MOOD_MAX,
     sanity: SANITY_MAX,
@@ -177,15 +187,17 @@ function advanceStep(state, bedIndex, { tip: earnsTip = true } = {}) {
   const patient = state.beds[bedIndex];
   const nextStep = patient.step + 1;
   const tip = state.bonusGard + (earnsTip ? TREATMENT_TIP_GARD : 0);
+  const xp = state.xp + (earnsTip ? XP_TREATMENT_STEP : 0);
   if (nextStep >= patient.plan.length) {
     return {
       ...state,
       beds: setBed(state.beds, bedIndex, null),
       bonusGard: tip + (DISCHARGE_GARD[patient.level] ?? 0),
+      xp: xp + (XP_DISCHARGE[patient.level] ?? 0),
       discharged: state.discharged + 1,
     };
   }
-  return { ...state, beds: setBed(state.beds, bedIndex, { ...patient, step: nextStep, inSurgery: false }), bonusGard: tip };
+  return { ...state, beds: setBed(state.beds, bedIndex, { ...patient, step: nextStep, inSurgery: false }), bonusGard: tip, xp };
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +216,7 @@ export function addPatientToTriage(state, patient) {
   const condition = findCondition(patient.conditionId);
   if (!condition) return state;
   const wait = Number.isFinite(patient.waitSeconds) && patient.waitSeconds > 0
-    ? patient.waitSeconds * patienceMultiplierForWardMood(state.wardMood)
+    ? patient.waitSeconds * patienceMultiplierForWardMood(state.wardMood) * state.perks.patience
     : null;
   return {
     ...state,
@@ -242,8 +254,9 @@ export function resolveTriage(state, patientId, chosenLevel) {
   const condition = findCondition(patient.conditionId);
   const bedIndex = freeBedIndex(state);
   const correct = chosenLevel === patient.level;
-  const after = correct ? state : { ...state, ...applyMistake(state) };
-  const patience = treatmentPatienceSeconds(patient.level, state.shiftNumber) * patienceMultiplierForWardMood(after.wardMood);
+  const after = correct ? { ...state, xp: state.xp + XP_CORRECT_TRIAGE } : { ...state, ...applyMistake(state) };
+  const patience = treatmentPatienceSeconds(patient.level, state.shiftNumber)
+    * patienceMultiplierForWardMood(after.wardMood) * state.perks.patience;
   return {
     ...after,
     triageQueue: state.triageQueue.filter((p) => p !== patient),
@@ -507,7 +520,7 @@ export function startKarenEvent(state) {
 function resolveKarenOutcome(state, outcome) {
   const karen = { ...state.karen, active: false, resolved: true, outcome };
   if (outcome === 'explain') {
-    return { ...state, karen, bonusGard: state.bonusGard + KAREN_CALMED_TIP_GARD };
+    return { ...state, karen, bonusGard: state.bonusGard + KAREN_CALMED_TIP_GARD, xp: state.xp + XP_KAREN_CALMED };
   }
   return {
     ...state,
@@ -540,6 +553,7 @@ export function visitMel(state) {
     ...state,
     mel: { waiting: false, visited: true },
     bonusGard: state.bonusGard + MEL_GIFT_GARD,
+    xp: state.xp + XP_MEL_VISIT,
     sanity: clampSanity(state.sanity + MEL_SANITY_RESTORE),
     wardMood: clampWardMood(state.wardMood + MEL_MOOD_RESTORE),
   };
@@ -565,13 +579,14 @@ export function tick(state, deltaSeconds) {
     return { ...state, closingWaitSecondsRemaining: Math.max(0, state.closingWaitSecondsRemaining - delta) };
   }
 
+  const drainPerSecond = SANITY_DRAIN_PER_SECOND * state.perks.sanityDrain;
   let next = {
     ...state,
-    sanity: clampSanity(state.sanity - SANITY_DRAIN_PER_SECOND * delta),
+    sanity: clampSanity(state.sanity - drainPerSecond * delta),
     doctorCooldownSeconds: Math.max(0, (state.doctorCooldownSeconds ?? 0) - delta),
   };
   if (next.sanity <= 0) {
-    const secondsToZero = Math.max(0, state.sanity) / SANITY_DRAIN_PER_SECOND;
+    const secondsToZero = Math.max(0, state.sanity) / drainPerSecond;
     next.zeroSanitySeconds = state.zeroSanitySeconds + Math.max(0, delta - secondsToZero);
   }
 
@@ -642,12 +657,12 @@ export function isOfficeReady(state) {
 /**
  * Walking into the Charge Nurse's office after handover: 'paycheck', with
  * payout = (shiftPaycheck(mistakes) + bonusGard) × rating/5 × the
- * hallucination multiplier.
+ * hallucination multiplier × the rank's pay perk.
  */
 export function enterOffice(state) {
   if (!isOfficeReady(state)) return state;
   const gross = Math.max(0, shiftPaycheck(state.mistakeCount) + state.bonusGard);
-  const multiplier = paycheckMultiplierForRating(state.rating) * hallucinationPayMultiplier(state.zeroSanitySeconds);
+  const multiplier = paycheckMultiplierForRating(state.rating) * hallucinationPayMultiplier(state.zeroSanitySeconds) * state.perks.pay;
   return { ...state, phase: 'paycheck', payout: Math.round(gross * multiplier) };
 }
 

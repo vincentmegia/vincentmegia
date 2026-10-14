@@ -18,6 +18,12 @@ import {
   melCardLineForShift,
   melArrivesWithPatient,
   typeSecretCodeKey,
+  NURSE_RANKS,
+  NEUTRAL_PERKS,
+  rankForXp,
+  rankProgress,
+  perksForRank,
+  ranksGained,
   vitalsForLevel,
   triageLevelForVitals,
   CONDITIONS,
@@ -115,6 +121,53 @@ describe('Karen', () => {
     const seen = new Set();
     for (let seed = 0; seed < 500; seed++) seen.add(karenShiftForSeed(seed));
     assert.equal(seen.size, KAREN_SHIFT_MAX - KAREN_SHIFT_MIN + 1);
+  });
+});
+
+describe('nurse career rank', () => {
+  test('ten ranks with rising XP thresholds, Student Nurse to Charge Nurse', () => {
+    assert.equal(NURSE_RANKS.length, 10);
+    assert.equal(NURSE_RANKS[0].title, 'Student Nurse');
+    assert.equal(NURSE_RANKS[9].title, 'Charge Nurse');
+    for (let i = 1; i < NURSE_RANKS.length; i++) {
+      assert.ok(NURSE_RANKS[i].xp > NURSE_RANKS[i - 1].xp);
+      assert.ok(NURSE_RANKS[i].perk, `rank ${i + 1} has a perk`);
+    }
+  });
+
+  test('rankForXp hits each threshold exactly and survives junk', () => {
+    assert.equal(rankForXp(0).rank, 1);
+    assert.equal(rankForXp(99).rank, 1);
+    assert.equal(rankForXp(100).rank, 2);
+    assert.equal(rankForXp(1e9).rank, 10);
+    assert.equal(rankForXp(Number.NaN).rank, 1);
+    assert.equal(rankForXp(-50).rank, 1);
+  });
+
+  test('progress within a rank, and a full bar at the top', () => {
+    const p = rankProgress(200);
+    assert.equal(p.rank.rank, 2);
+    assert.equal(p.next.rank, 3);
+    assert.equal(p.intoRank, 100);
+    assert.equal(p.needed, 200);
+    assert.equal(p.fraction, 0.5);
+    const top = rankProgress(99999);
+    assert.equal(top.next, null);
+    assert.equal(top.fraction, 1);
+  });
+
+  test('perks stack up by rank, a later tier replacing an earlier one', () => {
+    assert.deepEqual(perksForRank(1), { ...NEUTRAL_PERKS });
+    assert.equal(perksForRank(2).walk, 1.1);
+    assert.equal(perksForRank(6).walk, 1.2);
+    assert.equal(perksForRank(5).sanityDrain, 0.85);
+    assert.equal(perksForRank(10).pay, 1.25);
+    assert.equal(perksForRank(10).skillZone, 1.3);
+  });
+
+  test('ranksGained lists only newly reached ranks', () => {
+    assert.deepEqual(ranksGained(90, 95), []);
+    assert.deepEqual(ranksGained(90, 320).map((r) => r.rank), [2, 3]);
   });
 });
 
