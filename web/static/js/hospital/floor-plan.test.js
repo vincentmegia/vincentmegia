@@ -10,6 +10,7 @@ import {
   entryPointFor,
   FLOOR_1,
   FLOOR_2,
+  FLOOR_OR,
   stationAtPoint,
   standoffFor,
   approachPoint,
@@ -24,9 +25,10 @@ describe('floor plan', () => {
   test('the ER on the 1st Floor, the Supply Cart alone upstairs, stairs and an elevator on both', () => {
     const kinds = (floor) => new Set(stationsOnFloor(stations, floor).map((s) => s.kind));
     for (const kind of ['office', 'triage-desk', 'med-cabinet', 'operating-room', 'coffee-machine', 'bed', 'stairs', 'elevator']) assert.ok(kinds(FLOOR_1).has(kind), kind);
-    assert.deepEqual([...kinds(FLOOR_2)].sort(), ['elevator', 'stairs', 'supply-cart']);
+    assert.deepEqual([...kinds(FLOOR_2)].sort(), ['elevator', 'implant-shelf', 'stairs', 'supply-cart']);
+    assert.deepEqual([...kinds(FLOOR_OR)].sort(), ['instrument-tray', 'or-door', 'or-table', 'organ-cooler']);
     assert.deepEqual(stations.filter((s) => s.kind === 'bed').map((s) => s.bedIndex), [0, 1, 2, 3]);
-    assert.ok(stations.every((s) => s.floor === FLOOR_1 || s.floor === FLOOR_2));
+    assert.ok(stations.every((s) => [FLOOR_1, FLOOR_2, FLOOR_OR].includes(s.floor)));
   });
 
   test('stairs and elevator lead to the other floor from the same spot', () => {
@@ -39,9 +41,12 @@ describe('floor plan', () => {
   });
 
   test('you land beside the fixture you used, clear of every station', () => {
-    for (const via of ['stairs', 'elevator', 'button']) {
+    // Where each way in lands: the stairs/elevator/button on either floor,
+    // the OR door's two sides on their own floors.
+    const floorsFor = { stairs: [FLOOR_1, FLOOR_2], elevator: [FLOOR_1, FLOOR_2], button: [FLOOR_1, FLOOR_2], 'or-enter': [FLOOR_OR], 'or-exit': [FLOOR_1] };
+    for (const [via, floors] of Object.entries(floorsFor)) {
       const p = entryPointFor(via);
-      assert.equal(stationAtPoint(p.x, p.y, stations), null, via);
+      for (const floor of floors) assert.equal(stationAtPoint(p.x, p.y, stationsOnFloor(stations, floor)), null, `${via} on floor ${floor}`);
     }
   });
 
@@ -63,7 +68,7 @@ describe('floor plan', () => {
   });
 
   test('the player starts clear of every station', () => {
-    assert.equal(stationAtPoint(PLAYER_START.x, PLAYER_START.y, stations), null);
+    assert.equal(stationAtPoint(PLAYER_START.x, PLAYER_START.y, stationsOnFloor(stations, FLOOR_1)), null);
   });
 
   test('stationAtPoint hits inside a box and misses outside', () => {

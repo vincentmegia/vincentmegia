@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (133 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (136 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (34 tests, Chromium + WebKit),
+Playwright: `e2e/hospital-shift.spec.js` (36 tests, Chromium + WebKit),
 driving the real click/key paths with coordinates from
 `window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
 full shift (every minigame, Karen, coffee, hallucinations, handover) with
@@ -83,10 +83,39 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     hearts that burst into "+O₂", and skulls that shake when hit.
   * **IV** (skill check, 1 hit, narrower) — the needle sways over the arm;
     tap when it's over the vein.
-  * **Surgery** (skill check, 3 stages: Incision → Repair → Sutures,
-    narrowest zone) — the patient must first be wheeled from their bed to
-    the Operating Room (the player carries the gurney), then operated on
-    there; afterwards they return to their bed.
+  * **Surgery** (skill check, 3 stages, narrowest zone) — the patient must
+    first be wheeled from their bed to the Operating Room (the player
+    carries the gurney, or the Orderly does), then operated on there;
+    afterwards they return to their bed. Since the surgery rework (below)
+    the OR is a walk-in room and every operation needs a scalpel plus an
+    organ or implant, and the stages are named for them (e.g. Incision →
+    Transplant Kidney → Sutures).
+  * **Walk-in OR and surgery items** (the user: "for surguries you have to
+    enter the room and get organs if theres an transplant and sclapels and
+    when you get the item you have to do a skillcheck", then "do all" to
+    every option offered). The ER's Operating Room tile is now a door into
+    its own room (`FLOOR_OR`): the Operating Table under a ring lamp, the
+    Instrument Tray, the Organ Cooler, and swing doors back to the ER (the
+    HUD button reads "Leave the OR" in there). Every surgery needs a
+    **scalpel** (Instrument Tray) plus one item (`rules.js`
+    `SURGERY_ITEMS`, `surgeryItemFor`): the matching **organ** for the new
+    transplant cases (kidney, liver, heart failure; from
+    `TRANSPLANT_START_SHIFT` 4) from the Organ Cooler, or an **implant**
+    from the Supply Room's new **Implant Shelf** upstairs (a mesh patch for
+    appendicitis, a bone plate for car-crash injuries). Each source opens a
+    close-up of item cards — its real items plus look-alike decoys
+    (forceps/scissors/clamp, lung/cornea, stent/steel pin); taking anything
+    no waiting surgery needs (a decoy or the wrong organ) is a mistake and
+    greys the card out. Choosing a needed item starts a **grab** skill check
+    (`SKILL_CHECKS.grab`): a hit puts it in the surgery kit (engine-state's
+    `surgeryKit`, a pocket separate from your hands, shown floating beside
+    the nurse), a miss just drops it — no mistake — with a short lockout
+    before the retry. The table only opens once the kit holds the scalpel
+    and the patient's item (`surgeryMissing` says what's missing in a
+    toast); then each item is its own stage at the table, and finishing the
+    operation uses the kit up (a missed stage keeps it). Bed chips read
+    "Transplant: Kidney" / "Surgery: Mesh patch", and the tray, cooler,
+    shelf and ready table glow when they're the next stop.
   * **Bandage** (precision trace) — needs a **bandage roll** from the
     Supply Cart upstairs in your pocket (without one the bed says where to get
     it, and its chip reads "Bandage (roll: 2F)"); then hold and trace the
@@ -628,7 +657,10 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       (thresholds, progress, stacking perks, XP from each source, perks on
       patience/Sanity drain/pay), the Daily Challenge (UTC date, seeded
       stream determinism, every twist reachable, neutral perks + twist,
-      Rush Hour volume, Flu Season bias), floor-plan geometry (decor clear
+      Rush Hour volume, Flu Season bias), the surgery kit (items per
+      condition and stage names, wrong organ/decoy = mistake, the table
+      waits for the full kit, a finished operation uses it up), floor-plan
+      geometry (the OR room and Implant Shelf, floor-aware entry points) (decor clear
       of stations, the triage line and the player start), anime-furniture
       smoke tests (every station and decor drawer runs; every decor kind
       has one).
@@ -647,7 +679,11 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       the paycheck carries daily_date/1 shift, Back to Start leaves the
       month run untouched; a daily submit lands on the daily board and the
       tabs switch boards; Short Staffed has no Dr. Okafor and Coffee
-      Machine Broken refuses to pour). Uses
+      Machine Broken refuses to pour); the walk-in OR (the table refuses
+      without a kit; scalpel from the tray, mesh patch from the Implant
+      Shelf upstairs, then three stages; a transplant where the wrong organ
+      and a decoy are mistakes and a dropped grab isn't; the HUD button
+      leaves the OR). Uses
       `window.__hospitalShiftTestHooks` for exact coordinates/timing.
 * [x] Manual browser check: a click-driven shift with zero console errors,
       (the canvas uses its own fixed palette, like the other games).

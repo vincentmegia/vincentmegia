@@ -28,6 +28,7 @@
 //     doctorAssists: number,                         // times he did this shift
 //     karen: { shiftNumber, active, triggered, resolved, outcome, timerSecondsRemaining },
 //     mel: { waiting, visited },  // the easter egg: in the triage line / already visited this shift
+//     surgeryKit: { scalpel, item },  // scrubbed-in items for the next operation (item = SURGERY_ITEMS id)
 //     xp,     // career XP earned this shift (rules.js's XP_*); the game adds it to the save
 //     perks,  // { walk, skillZone, patience, sanityDrain, pay } from the nurse's rank (rules.js's perksForRank)
 //     wardMood, sanity, rating, walkouts, transfers, discharged,
@@ -69,6 +70,8 @@ import {
   XP_KAREN_CALMED,
   XP_MEL_VISIT,
   NEUTRAL_PERKS,
+  SURGERY_ITEMS,
+  surgeryItemFor,
   CLOSING_WAIT_SECONDS,
   COFFEE_SANITY_RESTORE,
   COFFEE_PERFECT_TIP_GARD,
@@ -105,6 +108,7 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     beds: Array.from({ length: BED_COUNT }, () => null),
     carried: null,
     hasBandage: false,
+    surgeryKit: { scalpel: false, item: null },
     activeTask: null,
     orderlyGurney: null,
     orPatient: null,
@@ -396,27 +400,85 @@ export function startSurgeryTransport(state, bedIndex) {
   };
 }
 
+/** The patient the next operation would be on: the gurney you're pushing, or the one on the table. */
+export function surgeryPatient(state) {
+  const carried = state.carried;
+  const patient = carried?.kind === 'gurney' ? carried : (!carried ? state.orPatient : null);
+  if (!patient) return null;
+  const bed = state.beds[patient.bedIndex];
+  return bed?.id === patient.patientId ? { ...patient, conditionId: bed.conditionId } : { ...patient, conditionId: null };
+}
+
 /**
- * Arriving at the Operating Room opens the surgery — for the gurney you're
+ * Every item some waiting surgery needs right now — beds whose next step is
+ * surgery, the patient on the table, on your gurney or on the Orderly's —
+ * plus the scalpel whenever any surgery is waiting.
+ */
+export function surgeryItemsNeeded(state) {
+  const needed = new Set();
+  state.beds.forEach((patient) => {
+    if (currentStep(patient) !== 'surgery') return;
+    needed.add('scalpel');
+    const item = surgeryItemFor(patient.conditionId);
+    if (item) needed.add(item);
+  });
+  return needed;
+}
+
+/**
+ * Takes a surgery item into the kit (after its grab skill check). The
+ * scalpel fills the scalpel slot; anything else fills the one item slot
+ * (taking another swaps it — the old one goes back). An item no waiting
+ * surgery needs — a decoy, or the wrong organ — is a mistake and isn't
+ * taken.
+ *
+ * @param {string} itemId a SURGERY_ITEMS id, or a decoy's name
+ */
+export function takeSurgeryItem(state, itemId) {
+  if (state.phase !== 'playing') return state;
+  if (!surgeryItemsNeeded(state).has(itemId)) return { ...state, ...applyMistake(state) };
+  if (itemId === 'scalpel') return { ...state, surgeryKit: { ...state.surgeryKit, scalpel: true } };
+  return { ...state, surgeryKit: { ...state.surgeryKit, item: itemId } };
+}
+
+/**
+ * What's still missing to operate on `surgeryPatient`: [] when the kit is
+ * complete, else the SURGERY_ITEMS ids still needed.
+ */
+export function surgeryMissing(state) {
+  const patient = surgeryPatient(state);
+  if (!patient) return [];
+  const missing = [];
+  if (!state.surgeryKit.scalpel) missing.push('scalpel');
+  const item = surgeryItemFor(patient.conditionId);
+  if (item && state.surgeryKit.item !== item) missing.push(item);
+  return missing;
+}
+
+/**
+ * At the Operating Table: opens the surgery — for the gurney you're
  * pushing, or else for a patient the Orderly left on the table (your hands
- * must be free to scrub in).
+ * must be free to scrub in) — once the kit holds the scalpel and the
+ * patient's item. A no-op otherwise (the game says what's missing).
  */
 export function startSurgery(state) {
   if (state.phase !== 'playing' || state.activeTask) return state;
-  const carried = state.carried;
-  const patient = carried?.kind === 'gurney' ? carried : (!carried ? state.orPatient : null);
-  if (!patient) return state;
+  const patient = surgeryPatient(state);
+  if (!patient || surgeryMissing(state).length) return state;
   return { ...state, activeTask: { kind: 'surgery', bedIndex: patient.bedIndex, patientId: patient.patientId } };
 }
 
-/** Success: the patient goes back to their bed with Surgery done. Failure: a mistake, stay on the table. */
+/**
+ * Success: the patient goes back to their bed with Surgery done, and the
+ * kit is used up. Failure: a mistake, stay on the table (kit kept).
+ */
 export function resolveSurgery(state, success) {
   const task = state.activeTask;
   if (state.phase !== 'playing' || task?.kind !== 'surgery') return state;
   if (!success) return { ...state, ...applyMistake(state) };
   const carried = state.carried?.patientId === task.patientId ? null : state.carried;
   const orPatient = state.orPatient?.patientId === task.patientId ? null : state.orPatient;
-  return advanceStep({ ...state, activeTask: null, carried, orPatient }, task.bedIndex);
+  return advanceStep({ ...state, activeTask: null, carried, orPatient, surgeryKit: { scalpel: false, item: null } }, task.bedIndex);
 }
 
 // ---------------------------------------------------------------------------

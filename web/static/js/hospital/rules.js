@@ -479,6 +479,9 @@ export const TREATMENT_LABELS = {
 /** Surgery cases only arrive from this shift on, so shift 1 teaches the basics. Was 4 — the user asked for surgeries "on shift 2". */
 export const SURGERY_START_SHIFT = 2;
 
+/** Organ transplants join the surgery cases from this shift on. */
+export const TRANSPLANT_START_SHIFT = 4;
+
 export const CONDITIONS = [
   { id: 'sprain', name: 'Sprained ankle', level: 'green', complaint: 'Twisted my ankle on the stairs.', plan: ['vitals', 'bandage'] },
   { id: 'migraine', name: 'Migraine', level: 'green', complaint: 'Pounding headache since this morning.', plan: ['vitals', 'meds'], med: { drug: 'Ibuprofen', dose: 2 } },
@@ -492,9 +495,59 @@ export const CONDITIONS = [
   { id: 'pneumonia', name: 'Pneumonia', level: 'yellow', complaint: "Coughing for a week, can't catch my breath.", plan: ['vitals', 'oxygen', 'iv'] },
   { id: 'asthma', name: 'Asthma attack', level: 'red', complaint: "Can't… breathe… inhaler isn't working.", plan: ['oxygen', 'meds', 'vitals'], med: { drug: 'Albuterol', dose: 2 } },
   { id: 'allergy', name: 'Allergic reaction', level: 'red', complaint: 'Ate peanuts — throat is closing up.', plan: ['oxygen', 'meds'], med: { drug: 'Epinephrine', dose: 1 } },
-  { id: 'appendicitis', name: 'Appendicitis', level: 'red', complaint: 'Sharp pain in my lower right side.', plan: ['vitals', 'iv', 'surgery'], minShift: SURGERY_START_SHIFT },
-  { id: 'crash', name: 'Car crash injuries', level: 'red', complaint: 'Car accident — bleeding badly.', plan: ['oxygen', 'iv', 'surgery', 'bandage'], minShift: SURGERY_START_SHIFT },
+  { id: 'appendicitis', name: 'Appendicitis', level: 'red', complaint: 'Sharp pain in my lower right side.', plan: ['vitals', 'iv', 'surgery'], minShift: SURGERY_START_SHIFT, surgeryItem: 'mesh' },
+  { id: 'crash', name: 'Car crash injuries', level: 'red', complaint: 'Car accident — bleeding badly.', plan: ['oxygen', 'iv', 'surgery', 'bandage'], minShift: SURGERY_START_SHIFT, surgeryItem: 'plate' },
+  // Transplants (the user: "get organs if theres an transplant") — the
+  // matching organ comes from the OR's Organ Cooler.
+  { id: 'kidney-failure', name: 'Kidney failure', level: 'red', complaint: "My dialysis isn't working anymore.", plan: ['vitals', 'iv', 'surgery'], minShift: TRANSPLANT_START_SHIFT, surgeryItem: 'kidney' },
+  { id: 'liver-failure', name: 'Liver failure', level: 'red', complaint: "I've turned yellow and I'm so tired.", plan: ['vitals', 'iv', 'surgery'], minShift: TRANSPLANT_START_SHIFT, surgeryItem: 'liver' },
+  { id: 'heart-failure', name: 'Heart failure', level: 'red', complaint: 'My heart is giving out — the donor heart just arrived.', plan: ['oxygen', 'vitals', 'surgery'], minShift: TRANSPLANT_START_SHIFT, surgeryItem: 'heart' },
 ];
+
+// ---------------------------------------------------------------------------
+// Surgery items (the user: "for surguries you have to enter the room and get
+// organs if theres an transplant and sclapels and when you get the item you
+// have to do a skillcheck", then "do all"). Every operation needs a scalpel
+// from the OR's Instrument Tray plus one item: the matching organ from the
+// OR's Organ Cooler for a transplant, or an implant from the Supply Room's
+// Implant Shelf. Each source also holds look-alike decoys; taking one that
+// no waiting surgery needs is a mistake. Taking an item is a `grab` skill
+// check; at the table each item is its own stage (Incision → Place → Sutures).
+// ---------------------------------------------------------------------------
+
+/** id -> { name, source, color } for everything a surgery can need. */
+export const SURGERY_ITEMS = {
+  scalpel: { name: 'Scalpel', source: 'instrument-tray', color: '#c8d0e0' },
+  kidney: { name: 'Kidney', source: 'organ-cooler', color: '#c0506a' },
+  liver: { name: 'Liver', source: 'organ-cooler', color: '#9a3a3a' },
+  heart: { name: 'Heart', source: 'organ-cooler', color: '#e04a5f' },
+  mesh: { name: 'Mesh patch', source: 'implant-shelf', color: '#f2f0ea' },
+  plate: { name: 'Bone plate', source: 'implant-shelf', color: '#b8c4d8' },
+};
+
+/** Each source's display: the real items plus decoys (decoys are never needed). */
+export const SURGERY_SOURCES = {
+  'instrument-tray': { name: 'Instrument Tray', items: ['scalpel'], decoys: ['Forceps', 'Scissors', 'Clamp'] },
+  'organ-cooler': { name: 'Organ Cooler', items: ['kidney', 'liver', 'heart'], decoys: ['Lung', 'Cornea'] },
+  'implant-shelf': { name: 'Implant Shelf', items: ['mesh', 'plate'], decoys: ['Stent', 'Steel pin'] },
+};
+
+/** The second item a condition's surgery needs (besides the scalpel), or null. */
+export function surgeryItemFor(conditionId) {
+  return findCondition(conditionId)?.surgeryItem ?? null;
+}
+
+/** Whether a condition's surgery is an organ transplant. */
+export function isTransplant(conditionId) {
+  return SURGERY_ITEMS[surgeryItemFor(conditionId)]?.source === 'organ-cooler';
+}
+
+/** The table's three stages for this condition: one per item, then closing up. */
+export function surgeryStagesFor(conditionId) {
+  const item = SURGERY_ITEMS[surgeryItemFor(conditionId)];
+  if (!item) return [...SURGERY_STAGES];
+  return ['Incision', isTransplant(conditionId) ? `Transplant ${item.name}` : `Place ${item.name}`, 'Sutures'];
+}
 
 export function findCondition(conditionId) {
   return CONDITIONS.find((c) => c.id === conditionId) ?? null;
@@ -598,6 +651,9 @@ export const SKILL_CHECKS = {
   vitals: { zoneWidth: 0.22, hits: 1, speedMultiplier: 1 },
   iv: { zoneWidth: 0.16, hits: 1, speedMultiplier: 1 },
   surgery: { zoneWidth: 0.14, hits: 3, speedMultiplier: 1.15 },
+  // Lifting a surgical item carefully off its tray/cooler/shelf (a miss just
+  // drops it — no mistake — and you try again).
+  grab: { zoneWidth: 0.24, hits: 1, speedMultiplier: 0.95 },
   // Giving the meds at the bed (the user: "when you go and get it to the
   // patient you have to do a skill check") — push the syringe into the IV port.
   meds: { zoneWidth: 0.18, hits: 1, speedMultiplier: 1.05 },

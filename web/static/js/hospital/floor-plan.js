@@ -29,6 +29,12 @@ export const PLAYER_STOP_MARGIN = 28;
 
 export const FLOOR_1 = 1;
 export const FLOOR_2 = 2;
+/**
+ * The walk-in Operating Room (the user: "for surguries you have to enter the
+ * room"): its own full-canvas room, entered through the ER's Operating Room
+ * door and left through its own door back to the ER.
+ */
+export const FLOOR_OR = 3;
 
 /** Where the nurse starts each shift: the open middle of the floor, below the triage line. */
 export const PLAYER_START = { x: 480, y: 520 };
@@ -59,6 +65,15 @@ export function buildStations(bedCount = 4) {
     { id: 'supply-cart', kind: 'supply-cart', floor: FLOOR_2, x: 420, y: 330, w: 124, h: s },
     { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 112, w: s, h: s },
     { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, targetFloor: FLOOR_1, x: 878, y: 530, w: s, h: s },
+    // Implants (mesh patches, bone plates) for surgery live upstairs.
+    { id: 'implant-shelf', kind: 'implant-shelf', floor: FLOOR_2, x: 210, y: 330, w: 110, h: s },
+    // Inside the Operating Room: the table in the middle under the lamp, the
+    // Instrument Tray (scalpels) and the Organ Cooler at its sides, and the
+    // door back out to the ER.
+    { id: 'or-table', kind: 'or-table', floor: FLOOR_OR, x: 480, y: 330, w: 150, h: 200 },
+    { id: 'instrument-tray', kind: 'instrument-tray', floor: FLOOR_OR, x: 230, y: 330, w: 120, h: s },
+    { id: 'organ-cooler', kind: 'organ-cooler', floor: FLOOR_OR, x: 730, y: 330, w: 110, h: 120 },
+    { id: 'or-door', kind: 'or-door', floor: FLOOR_OR, targetFloor: FLOOR_1, x: 480, y: 540, w: 120, h: 80 },
   ];
   // Evenly spaced, with room between beds for each bed's IV pole.
   const bedXs = [150, 320, 490, 660];
@@ -112,6 +127,8 @@ export function stationsOnFloor(stations, floor) {
  * @returns {{x: number, y: number}}
  */
 export function entryPointFor(via) {
+  if (via === 'or-enter') return { x: 480, y: 470 }; // just inside the OR door
+  if (via === 'or-exit') return { x: 760, y: 362 }; // in the ER, beside the OR door
   return via === 'elevator' ? { x: 790, y: 530 } : { x: 790, y: 130 };
 }
 

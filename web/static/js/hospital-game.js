@@ -60,6 +60,11 @@ import {
   medCabinetStock,
   gradeMedsPick,
   SURGERY_STAGES,
+  SURGERY_ITEMS,
+  SURGERY_SOURCES,
+  surgeryItemFor,
+  surgeryStagesFor,
+  isTransplant,
   skillCheckHitsRequired,
   skillCheckSuccessZone,
   isSkillCheckSuccess,
@@ -126,6 +131,12 @@ import {
   drawSupplyCart,
   drawBandageRoll as drawBandageRollArt,
   drawDecor,
+  drawSurgeryItemIcon,
+  drawOrTable,
+  drawInstrumentTray,
+  drawOrganCooler,
+  drawOrDoor,
+  drawImplantShelf,
 } from './hospital/anime-furniture.js';
 import { drawAnimePatient, drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS, animeHeadCenterY } from './hospital/anime-people.js';
 import {
@@ -161,6 +172,10 @@ import {
   nextSurgeryBedIndex,
   orderlyTakePatient,
   orderlyDeliverToOR,
+  takeSurgeryItem,
+  surgeryMissing,
+  surgeryPatient,
+  surgeryItemsNeeded,
   doctorAssistTarget,
   doctorAssist,
 } from './hospital/engine-state.js';
@@ -171,6 +186,7 @@ import {
   entryPointFor,
   FLOOR_1,
   FLOOR_2,
+  FLOOR_OR,
   stationAtPoint,
   standoffFor,
   approachPoint,
@@ -601,7 +617,12 @@ export function init(canvas, elements) {
       case 'bed': return bedLabel(station.bedIndex);
       case 'triage-desk': return 'Triage Desk';
       case 'med-cabinet': return 'Med Cabinet';
-      case 'operating-room': return 'Operating Room';
+      case 'operating-room': return 'Operating Room (enter)';
+      case 'or-table': return 'Operating Table';
+      case 'instrument-tray': return 'Instrument Tray';
+      case 'organ-cooler': return 'Organ Cooler';
+      case 'implant-shelf': return 'Implant Shelf';
+      case 'or-door': return 'Door → ER';
       case 'coffee-machine': return dailyEffect('noCoffee') ? 'Coffee (out of order)' : 'Coffee Machine';
       case 'supply-cart': return 'Supply Cart';
       case 'stairs': return station.targetFloor === FLOOR_2 ? 'Stairs ↑ Supply Room' : 'Stairs ↓ ER';
@@ -622,6 +643,7 @@ export function init(canvas, elements) {
     if (patient.inSurgery) return `${label} — in the OR`;
     const step = currentStep(patient);
     const name = patientInfo.get(patient.id)?.name ?? 'Patient';
+    if (step === 'surgery') return `${label} — ${name} needs surgery: ${describeItems(['scalpel', surgeryItemFor(patient.conditionId)].filter(Boolean))}`;
     return `${label} — ${name} needs ${TREATMENT_LABELS[step]}`;
   }
 
@@ -691,8 +713,8 @@ export function init(canvas, elements) {
   function updateFloorButton() {
     if (!elements.floorButton) return;
     const upstairs = currentFloor === FLOOR_2;
-    elements.floorButton.textContent = upstairs ? 'Go Downstairs' : 'Go Upstairs';
-    elements.floorButton.setAttribute('aria-pressed', String(upstairs));
+    elements.floorButton.textContent = currentFloor === FLOOR_OR ? 'Leave the OR' : (upstairs ? 'Go Downstairs' : 'Go Upstairs');
+    elements.floorButton.setAttribute('aria-pressed', String(currentFloor !== FLOOR_1));
   }
 
   /** Instant floor switch (Stairs, Elevator or the HUD button), allowed in every phase. */
@@ -1012,6 +1034,81 @@ export function init(canvas, elements) {
     overlay = { kind: 'mel', line: melCardLineForShift(currentShiftNumber), age: 0 };
   }
 
+  /** "Scalpel (Instrument Tray), Kidney (Organ Cooler)" for a list of SURGERY_ITEMS ids. */
+  function describeItems(ids) {
+    return ids.map((id) => `${SURGERY_ITEMS[id].name} (${SURGERY_SOURCES[SURGERY_ITEMS[id].source].name}${SURGERY_ITEMS[id].source === 'implant-shelf' ? ', 2F' : ''})`).join(', ');
+  }
+
+  /**
+   * A close-up of a tray/cooler/shelf (the user: "get organs if theres an
+   * transplant and sclapels and when you get the item you have to do a
+   * skillcheck"): pick the right item from its real items and look-alike
+   * decoys, then lift it with a grab skill check — a miss just drops it.
+   */
+  function openPickOverlay(source) {
+    const def = SURGERY_SOURCES[source];
+    const cards = [...def.items, ...def.decoys];
+    // A fixed shuffle per source so the cards don't jump between visits.
+    const order = cards.map((id, i) => [id, (hashString(`${source}:${id}`) + i) % 97]).sort((a, b) => a[1] - b[1]).map(([id]) => id);
+    overlay = { kind: 'pick', source, cards: order, chosen: null, gauge: 0, direction: 1, wrong: [], flash: null, closeIn: 0, dropLock: 0 };
+  }
+
+  function hashString(text) {
+    let h = 0;
+    for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return h;
+  }
+
+  const PICK_CARD = { w: 120, h: 120, gap: 18, y: 170 };
+
+  function pickCardRects() {
+    if (overlay?.kind !== 'pick') return [];
+    const n = overlay.cards.length;
+    const total = n * PICK_CARD.w + (n - 1) * PICK_CARD.gap;
+    const x0 = CANVAS_WIDTH / 2 - total / 2;
+    return overlay.cards.map((id, i) => ({ id, x: x0 + i * (PICK_CARD.w + PICK_CARD.gap), y: PICK_CARD.y, w: PICK_CARD.w, h: PICK_CARD.h }));
+  }
+
+  /** Whether the kit already holds this item. */
+  function kitHas(id) {
+    return id === 'scalpel' ? shiftState.surgeryKit.scalpel : shiftState.surgeryKit.item === id;
+  }
+
+  function choosePickCard(id) {
+    if (overlay.chosen || overlay.closeIn > 0 || overlay.wrong.includes(id)) return;
+    if (SURGERY_ITEMS[id] && kitHas(id)) {
+      flash(`You already have the ${SURGERY_ITEMS[id].name.toLowerCase()}.`, true);
+      return;
+    }
+    if (!surgeryItemsNeeded(shiftState).has(id)) {
+      shiftState = takeSurgeryItem(shiftState, id); // a mistake
+      overlay.wrong.push(id);
+      flash(SURGERY_ITEMS[id] ? `No surgery needs a ${SURGERY_ITEMS[id].name.toLowerCase()}! (mistake)` : `That's ${id.toLowerCase()} — wrong item! (mistake)`, false);
+      return;
+    }
+    overlay.chosen = id;
+    overlay.gauge = 0;
+    overlay.direction = 1;
+  }
+
+  /** The grab skill check: a hit takes the item, a miss drops it (no mistake). */
+  function samplePickGrab() {
+    if (!overlay.chosen || overlay.closeIn > 0) return;
+    if (overlay.dropLock > 0) return; // a beat after a drop, so mashing doesn't retry instantly
+    const zone = skillCheckSuccessZone('grab', shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+    if (!isSkillCheckSuccess(overlay.gauge, zone)) {
+      flash('Dropped it! Try again.', false);
+      overlay.gauge = 0;
+      overlay.direction = 1;
+      overlay.dropLock = 0.3;
+      return;
+    }
+    const id = overlay.chosen;
+    shiftState = takeSurgeryItem(shiftState, id);
+    flash(`Got the ${SURGERY_ITEMS[id].name.toLowerCase()}!`, true);
+    overlay.closeIn = 0.7;
+  }
+
   function openCoffeeOverlay() {
     overlay = { kind: 'coffee-pour', fill: 0, pouring: false, band: coffeePourTargetBand(random()), grade: null, closeIn: 0 };
   }
@@ -1138,11 +1235,33 @@ export function init(canvas, elements) {
     }
 
     if (station.kind === 'operating-room') {
+      // The ER's OR tile is the door into the walk-in Operating Room.
+      switchFloor(FLOOR_OR, 'or-enter');
+      const missing = surgeryMissing(shiftState);
+      showToast(surgeryPatient(shiftState)
+        ? (missing.length ? `In the OR. Still need: ${describeItems(missing)}.` : 'In the OR — everything is ready. Go to the table.')
+        : 'In the OR. Grab a scalpel and what the next surgery needs, then bring the patient.', 3.6);
+      return;
+    }
+    if (station.kind === 'or-door') {
+      switchFloor(FLOOR_1, 'or-exit');
+      return;
+    }
+    if (station.kind === 'or-table') {
       const before = shiftState;
       shiftState = startSurgery(shiftState);
-      if (shiftState !== before) openSkillOverlay('surgery');
-      else if (shiftState.orPatient && shiftState.carried) showToast(`A patient is waiting on the table — free your hands to scrub in (${handsFullReason()})`);
-      else showToast('Bring a patient who needs surgery — take their gurney from the bed, or click the Orderly.');
+      if (shiftState !== before) {
+        openSkillOverlay('surgery');
+        return;
+      }
+      const missing = surgeryMissing(shiftState);
+      if (shiftState.orPatient && shiftState.carried) showToast(`A patient is waiting on the table — free your hands to scrub in (${handsFullReason()})`);
+      else if (!surgeryPatient(shiftState)) showToast('Bring a patient who needs surgery — take their gurney from the bed, or click the Orderly.');
+      else if (missing.length) showToast(`You can't operate yet — get ${describeItems(missing)}.`, 3.4);
+      return;
+    }
+    if (station.kind === 'instrument-tray' || station.kind === 'organ-cooler' || station.kind === 'implant-shelf') {
+      openPickOverlay(station.kind);
       return;
     }
 
@@ -1252,6 +1371,13 @@ export function init(canvas, elements) {
     else showToast(`Not quite — ${name} is ${actual.name}. The charge nurse corrected it. ${name} → ${bedLabel(bedIndex)}.`, 3.6);
   }
 
+  /** The table's stage names for the patient in surgery (SURGERY_STAGES for other tasks). */
+  function skillStages() {
+    if (overlay?.task !== 'surgery') return SURGERY_STAGES;
+    const bed = shiftState.beds[shiftState.activeTask?.bedIndex];
+    return bed ? surgeryStagesFor(bed.conditionId) : SURGERY_STAGES;
+  }
+
   function sampleSkillCheck() {
     if (overlay.flash && !overlay.flash.good && overlay.flash.seconds > 0.6) return; // brief lockout after a miss
     const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
@@ -1266,7 +1392,7 @@ export function init(canvas, elements) {
     }
     overlay.hits += 1;
     if (overlay.hits < overlay.required) {
-      flash(`${SURGERY_STAGES[overlay.hits - 1]} done!`, true);
+      flash(`${skillStages()[overlay.hits - 1] ?? 'Step'} done!`, true);
       return;
     }
     const before = shiftState;
@@ -1418,6 +1544,10 @@ export function init(canvas, elements) {
       else if (insideRect(b.letCut, x, y)) answerKaren('letCut');
     } else if (overlay.kind === 'mel') {
       if (insideRect(melButtonRect(), x, y)) thankMel();
+    } else if (overlay.kind === 'pick') {
+      if (overlay.chosen) { samplePickGrab(); return; }
+      const card = pickCardRects().find((r) => insideRect(r, x, y));
+      if (card) choosePickCard(card.id);
     }
   }
 
@@ -1566,6 +1696,16 @@ export function init(canvas, elements) {
       const speed = skillCheckSweepSpeed(currentShiftNumber, overlay.task) * shakyHandsSweepMultiplier(currentIntensity());
       overlay.gauge += overlay.direction * speed * dt;
       if (overlay.gauge >= 1) { overlay.gauge = 1; overlay.direction = -1; } else if (overlay.gauge <= 0) { overlay.gauge = 0; overlay.direction = 1; }
+    } else if (overlay.kind === 'pick') {
+      overlay.dropLock = Math.max(0, overlay.dropLock - dt);
+      if (overlay.closeIn > 0) {
+        overlay.closeIn -= dt;
+        if (overlay.closeIn <= 0) overlay = null;
+      } else if (overlay.chosen && overlay.direction !== 0) {
+        const speed = skillCheckSweepSpeed(currentShiftNumber, 'grab') * shakyHandsSweepMultiplier(currentIntensity());
+        overlay.gauge += overlay.direction * speed * dt;
+        if (overlay.gauge >= 1) { overlay.gauge = 1; overlay.direction = -1; } else if (overlay.gauge <= 0) { overlay.gauge = 0; overlay.direction = 1; }
+      }
     } else if (overlay.kind === 'bandage' && overlay.closeIn > 0) {
       overlay.closeIn -= dt;
       if (overlay.closeIn <= 0) overlay = null;
@@ -1663,6 +1803,7 @@ export function init(canvas, elements) {
         if (overlay.kind === 'coffee-pour') startCoffeePour();
         else if (overlay.kind === 'skill') sampleSkillCheck();
         else if (overlay.kind === 'mel') thankMel();
+        else if (overlay.kind === 'pick') samplePickGrab();
       }
       return;
     }
@@ -1906,6 +2047,10 @@ export function init(canvas, elements) {
       drawSupplyRoomFloor();
       return;
     }
+    if (currentFloor === FLOOR_OR) {
+      drawOperatingTheaterFloor();
+      return;
+    }
     drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
     drawSunbeams();
 
@@ -2075,6 +2220,39 @@ export function init(canvas, elements) {
     ctx.roundRect(-7, -14, 14, 14, 4);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /**
+   * Inside the walk-in Operating Room: mint surgical tiles, a sterile green
+   * wall with a scrub sink and an X-ray light box, and the table's lamp.
+   */
+  function drawOperatingTheaterFloor() {
+    drawAnimeTiles('#dff7ee', '#cdeee2', 'rgba(255,255,255,0.16)');
+    const g = ctx.createLinearGradient(0, 0, 0, 58);
+    g.addColorStop(0, '#f2fff9');
+    g.addColorStop(1, '#d4f5e8');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, 58);
+    ctx.fillStyle = ANIME.mint;
+    ctx.fillRect(0, 48, CANVAS_WIDTH, 7);
+    ctx.fillStyle = ANIME.ink;
+    ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
+    drawEmergencySign('OPERATING ROOM', ANIME.mint, ANIME.mintDeep);
+    // An X-ray light box and a scrub sink on the wall.
+    drawRoundRect(ctx, 610, 8, 90, 42, 6, '#e8f4ff');
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(610, 8, 90, 42, 6);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(59,42,74,0.45)';
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(655, 26 + i * 5, 14 - i * 1.5, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    }
+    drawWallClock();
   }
 
   /** The 2nd Floor: a stockroom — warm grey tiles, shelving along the walls. */
@@ -2307,6 +2485,11 @@ export function init(canvas, elements) {
     'med-cabinet': '#d6e8ff',
     'operating-room': '#bdeedd',
     'coffee-machine': '#f5d3bd',
+    'or-table': '#d4f5e8',
+    'instrument-tray': '#e8f2f8',
+    'organ-cooler': '#e0f6ff',
+    'or-door': '#d4f5e8',
+    'implant-shelf': '#f2e6d0',
   };
   const STATION_DETAILS = {
     office: drawOfficeDetail,
@@ -2317,6 +2500,18 @@ export function init(canvas, elements) {
     stairs: drawStairsDetail,
     elevator: drawElevatorDetail,
     'supply-cart': drawSupplyCartDetail,
+    'or-table': (st) => {
+      // The patient the Orderly left on the table (yours rides on your gurney).
+      const onTable = shiftState?.orPatient?.patientId ?? null;
+      drawOrTable(ctx, st, {
+        ready: Boolean(shiftState && surgeryPatient(shiftState) && !surgeryMissing(shiftState).length),
+        drawPatientOnTable: onTable ? (x, y) => drawPatient(x, y, patientInfo.get(onTable), 0.7) : null,
+      });
+    },
+    'instrument-tray': (st) => drawInstrumentTray(ctx, st, { hasScalpel: Boolean(shiftState?.surgeryKit.scalpel) }),
+    'organ-cooler': (st) => drawOrganCooler(ctx, st, { organs: ['kidney', 'liver', 'heart'].filter((id) => shiftState?.surgeryKit.item !== id) }),
+    'or-door': (st) => drawOrDoor(ctx, st),
+    'implant-shelf': (st) => drawImplantShelf(ctx, st),
   };
 
   function stationOutline(st, highlightColor) {
@@ -2375,7 +2570,10 @@ export function init(canvas, elements) {
     }
     const pulse = (st.kind === 'operating-room' && (shiftState?.carried?.kind === 'gurney' || shiftState?.orPatient))
       || (st.kind === 'med-cabinet' && shiftState && !shiftState.carried && shiftState.beds.some((b) => currentStep(b) === 'meds'))
-      || (st.kind === 'supply-cart' && shiftState && !shiftState.hasBandage && shiftState.beds.some((b) => currentStep(b) === 'bandage'));
+      || (st.kind === 'supply-cart' && shiftState && !shiftState.hasBandage && shiftState.beds.some((b) => currentStep(b) === 'bandage'))
+      || (['instrument-tray', 'organ-cooler', 'implant-shelf'].includes(st.kind) && shiftState
+        && [...surgeryItemsNeeded(shiftState)].some((id) => SURGERY_ITEMS[id].source === st.kind && !kitHas(id)))
+      || (st.kind === 'or-table' && shiftState && surgeryPatient(shiftState) && !surgeryMissing(shiftState).length);
     stationOutline(st, pulse ? `rgba(224,168,58,${0.55 + 0.45 * Math.sin(performance.now() / 180)})` : null);
     drawLabelChip(ctx, 0, st.h / 2 + 13, labelForStation(st), 'bold 11px sans-serif');
     ctx.restore();
@@ -2475,6 +2673,10 @@ export function init(canvas, elements) {
         let text = TREATMENT_LABELS[step];
         if (step === 'meds') text = `Meds: ${findCondition(patient.conditionId).med.drug} ×${findCondition(patient.conditionId).med.dose}`;
         else if (step === 'bandage' && !shiftState.hasBandage) text = 'Bandage (roll: 2F)';
+        else if (step === 'surgery') {
+          const item = SURGERY_ITEMS[surgeryItemFor(patient.conditionId)];
+          text = item ? `${isTransplant(patient.conditionId) ? 'Transplant' : 'Surgery'}: ${item.name}` : 'Surgery';
+        }
         drawLabelChip(ctx, 0, -hh - 16, `${patient.step + 1}/${patient.plan.length} ${text}`, 'bold 10px sans-serif', '#2f5f6f', CREAM);
       }
     }
@@ -2553,6 +2755,9 @@ export function init(canvas, elements) {
     drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     // The pocketed roll sits on the left, clear of a meds bottle on the right.
     if (shiftState?.hasBandage) drawBandageRoll(player.x - 24, player.y - 90, 1.1);
+    // The surgery kit floats beside her: scalpel and organ/implant.
+    if (shiftState?.surgeryKit.scalpel) drawSurgeryItemIcon(ctx, player.x + 26, player.y - 96, 0.9, 'scalpel');
+    if (shiftState?.surgeryKit.item) drawSurgeryItemIcon(ctx, player.x + 26, player.y - 78, 0.9, shiftState.surgeryKit.item);
     if (carried?.kind === 'meds') {
       const order = findCondition(shiftState.beds[carried.bedIndex]?.conditionId)?.med;
       const color = MEDICATIONS.find((m) => m.name === order?.drug)?.color ?? '#e8b440';
@@ -2684,6 +2889,7 @@ export function init(canvas, elements) {
     meds: [ANIME.lavender, ANIME.lavenderDeep],
     karen: [ANIME.coral, ANIME.coralDeep],
     mel: [ANIME.gold, ANIME.goldDeep],
+    pick: [ANIME.mint, ANIME.mintDeep],
   };
 
   /** An anime dialog window (hospital/anime-ui.js) over a dimmed, sparkly ER. */
@@ -2809,7 +3015,13 @@ export function init(canvas, elements) {
   }
 
   function drawSkillOverlay() {
-    const [title, subtitle] = SKILL_TITLES[overlay.task];
+    let [title, subtitle] = SKILL_TITLES[overlay.task];
+    if (overlay.task === 'surgery') {
+      // Name the patient's own stages: Incision → Transplant Kidney → Sutures.
+      const bed = shiftState.beds[shiftState.activeTask?.bedIndex];
+      if (bed && isTransplant(bed.conditionId)) title = 'Transplant';
+      subtitle = `Three steady hands: ${skillStages().join(' → ')}.`;
+    }
     drawPanel(title, subtitle);
     const bar = skillBar();
     const zone = skillCheckSuccessZone(overlay.task, shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
@@ -2939,7 +3151,8 @@ export function init(canvas, elements) {
       ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      const stage = SURGERY_STAGES[Math.min(done, SURGERY_STAGES.length - 1)];
+      const stages = skillStages();
+      const stage = stages[Math.min(done, stages.length - 1)];
       ctx.fillText(`Stage ${Math.min(done + 1, 3)} of 3: ${stage}`, CANVAS_WIDTH / 2, 166);
       // Scalpel at the marker.
       const sx = bar.x + overlay.gauge * bar.w;
@@ -3451,6 +3664,51 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  /** A tray/cooler/shelf close-up: item cards, then the grab check for the chosen one. */
+  function drawPickOverlay() {
+    const def = SURGERY_SOURCES[overlay.source];
+    const needed = surgeryItemsNeeded(shiftState);
+    drawPanel(def.name, overlay.chosen
+      ? 'Lift it carefully — stop the marker in the gold zone (click or Space).'
+      : 'Pick what the surgery needs. Look-alikes are a mistake!');
+    for (const r of pickCardRects()) {
+      const wrong = overlay.wrong.includes(r.id);
+      const held = SURGERY_ITEMS[r.id] && kitHas(r.id);
+      const chosen = overlay.chosen === r.id;
+      ctx.save();
+      if (wrong || (overlay.chosen && !chosen)) ctx.globalAlpha = 0.4;
+      animeTile(ctx, r.x, r.y, r.w, r.h, 16, chosen ? '#fff0b8' : '#ffffff');
+      ctx.strokeStyle = chosen ? ANIME.goldDeep : ANIME.ink;
+      ctx.lineWidth = chosen ? 3 : 2;
+      ctx.beginPath();
+      ctx.roundRect(r.x, r.y, r.w, r.h, 16);
+      ctx.stroke();
+      drawSurgeryItemIcon(ctx, r.x + r.w / 2, r.y + 50, 2.4, r.id);
+      ctx.fillStyle = LABEL_TEXT_COLOR;
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(SURGERY_ITEMS[r.id]?.name ?? r.id, r.x + r.w / 2, r.y + r.h - 16);
+      if (held) drawLabelChip(ctx, r.x + r.w / 2, r.y + 12, 'In your kit', 'bold 10px sans-serif', ANIME.mintDeep, '#ffffff');
+      else if (needed.has(r.id)) sparkle(ctx, r.x + r.w - 14, r.y + 14, 6, ANIME.gold);
+      ctx.restore();
+    }
+    if (overlay.chosen) {
+      const bar = skillBar();
+      const zone = skillCheckSuccessZone('grab', shakyHandsZoneScale(currentIntensity()) * (shiftState?.perks?.skillZone ?? 1));
+      animeGauge(ctx, bar.x, bar.y, bar.w, bar.h, 0, ANIME.pink, ANIME.pinkDeep);
+      const zx = bar.x + zone.start * bar.w;
+      const zw = zone.width * bar.w;
+      drawRoundRect(ctx, zx, bar.y + 1.5, zw, bar.h - 3, 4, ANIME.gold);
+      sparkle(ctx, zx + zw / 2, bar.y + bar.h / 2, 6, '#ffffff');
+      const mx = bar.x + overlay.gauge * bar.w;
+      ctx.fillStyle = ANIME.pinkDeep;
+      ctx.fillRect(mx - 1.5, bar.y - 2, 3, bar.h + 4);
+      drawHeart(mx, bar.y - 11, 9, ANIME.pinkDeep);
+    }
+    drawFlash(406);
+  }
+
   /** Mel's visit: her, in her kimono, holding out a hand-drawn card. */
   function drawMelOverlay() {
     const t = performance.now() / 1000;
@@ -3686,6 +3944,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'meds') drawMedsOverlay();
     else if (overlay.kind === 'karen') drawKarenOverlay();
     else if (overlay.kind === 'mel') drawMelOverlay();
+    else if (overlay.kind === 'pick') drawPickOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     ctx.restore();
   }
@@ -3767,7 +4026,7 @@ export function init(canvas, elements) {
       overlay = null;
       if (shiftState.phase === 'playing') showToast('Too late — the patient was transferred to another hospital.');
     }
-    if (overlay && (overlay.kind === 'triage' || overlay.kind === 'coffee-pour' || overlay.kind === 'mel') && shiftState.phase !== 'playing') overlay = null;
+    if (overlay && ['triage', 'coffee-pour', 'mel', 'pick'].includes(overlay.kind) && shiftState.phase !== 'playing') overlay = null;
     if (overlay?.kind === 'triage' && !shiftState.triageQueue.some((p) => p.id === overlay.patientId)) {
       overlay = null;
       showToast('They got tired of waiting and left.');
@@ -3845,7 +4104,10 @@ export function init(canvas, elements) {
   document.addEventListener('visibilitychange', onVisibilityChange);
   document.addEventListener('fullscreenchange', onFullscreenChange);
   elements.fullscreenButton.addEventListener('click', toggleFullscreen);
-  elements.floorButton?.addEventListener('click', () => switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1, 'button'));
+  elements.floorButton?.addEventListener('click', () => {
+    if (currentFloor === FLOOR_OR) switchFloor(FLOOR_1, 'or-exit');
+    else switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1, 'button');
+  });
   elements.startScreen.shiftButton.addEventListener('click', startShift);
   elements.startScreen.daily?.button?.addEventListener('click', startDaily);
   elements.paycheckScreen.nextShiftButton.addEventListener('click', continueFromPaycheck);
@@ -3908,6 +4170,9 @@ export function init(canvas, elements) {
     getMedsLayout: () => (overlay?.kind === 'meds' ? { bottles: medsBottleRects(), doses: medsDoseRects() } : null),
     getKarenButtonRects: () => karenButtonRects(),
     getMelButtonRect: () => melButtonRect(),
+    getPickCardRects: () => pickCardRects(),
+    setPickGauge(pos) { if (overlay?.kind === 'pick') { overlay.gauge = pos; overlay.direction = 0; } },
+    giveSurgeryKit(item) { if (shiftState) shiftState = { ...shiftState, surgeryKit: { scalpel: true, item } }; },
     getMelVaseRect: () => ({ ...MEL_VASE_RECT }),
     getCloseRect: () => ({ ...CLOSE_RECT }),
     getPatientInfo: (id) => patientInfo.get(id) ?? null,

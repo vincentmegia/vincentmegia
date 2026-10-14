@@ -30,6 +30,10 @@ import {
   doctorAssist,
   startKarenEvent,
   resolveKarenEvent,
+  surgeryPatient,
+  surgeryItemsNeeded,
+  takeSurgeryItem,
+  surgeryMissing,
   melArrives,
   visitMel,
   tick,
@@ -51,6 +55,11 @@ import {
   KAREN_MOOD_PENALTY,
   KAREN_EVENT_TIMER_SECONDS,
   MEL_GIFT_GARD,
+  surgeryItemFor,
+  surgeryStagesFor,
+  isTransplant,
+  SURGERY_SOURCES,
+  SURGERY_ITEMS,
   MEL_SANITY_RESTORE,
   MEL_MOOD_RESTORE,
   XP_CORRECT_TRIAGE,
@@ -68,6 +77,13 @@ import {
   DOCTOR_ASSIST_PATIENCE_REFILL,
   ZERO_SANITY_COLLAPSE_SECONDS,
 } from './rules.js';
+
+/** A full surgery kit for whoever is on the gurney or table (the item hunt is tested separately). */
+function withKit(state) {
+  const patient = surgeryPatient(state);
+  const item = patient ? surgeryItemFor(patient.conditionId) : null;
+  return { ...state, surgeryKit: { scalpel: true, item } };
+}
 
 function playing(shift = 5, overrides = {}) {
   return startShift(createInitialState(shift, 12, overrides));
@@ -241,7 +257,7 @@ describe('bandages (Supply Cart)', () => {
     s = resolveBedTask(startBedTask(s, bed), true); // iv
     s = startSurgeryTransport(s, bed);
     assert.equal(s.carried.kind, 'gurney');
-    s = resolveSurgery(startSurgery(s), true);
+    s = resolveSurgery(startSurgery(withKit(s)), true);
     assert.equal(s.beds[bed], null);
     assert.equal(s.hasBandage, true, 'surgery leaves the roll alone');
   });
@@ -251,7 +267,7 @@ describe('bandages (Supply Cart)', () => {
     s = resolveBedTask(startBedTask(s, bed), true);
     s = resolveBedTask(startBedTask(s, bed), true);
     s = orderlyDeliverToOR(orderlyTakePatient(s, bed));
-    assert.equal(startSurgery(s).activeTask?.kind, 'surgery');
+    assert.equal(startSurgery(withKit(s)).activeTask?.kind, 'surgery');
   });
 
   test('any patient can use the roll, and a transfer elsewhere doesn\'t take it', () => {
@@ -362,7 +378,7 @@ describe('surgery', () => {
     s = startSurgeryTransport(s, bed);
     assert.equal(s.carried.kind, 'gurney');
     assert.equal(s.beds[bed].inSurgery, true);
-    s = startSurgery(s);
+    s = startSurgery(withKit(s));
     assert.equal(s.activeTask.kind, 'surgery');
     s = resolveSurgery(s, false);
     assert.equal(s.mistakeCount, 1);
@@ -496,6 +512,59 @@ describe('Karen', () => {
   });
 });
 
+describe('surgery kit (scalpel + organ/implant)', () => {
+  test('every surgery needs a scalpel and one item; transplants need the matching organ', () => {
+    for (const id of ['appendicitis', 'crash', 'kidney-failure', 'liver-failure', 'heart-failure']) {
+      const item = surgeryItemFor(id);
+      assert.ok(SURGERY_ITEMS[item], id);
+      assert.equal(surgeryStagesFor(id).length, 3);
+    }
+    assert.equal(isTransplant('kidney-failure'), true);
+    assert.equal(isTransplant('appendicitis'), false);
+    assert.deepEqual(surgeryStagesFor('liver-failure'), ['Incision', 'Transplant Liver', 'Sutures']);
+    assert.deepEqual(surgeryStagesFor('crash'), ['Incision', 'Place Bone plate', 'Sutures']);
+    for (const [source, def] of Object.entries(SURGERY_SOURCES)) {
+      for (const item of def.items) assert.equal(SURGERY_ITEMS[item].source, source);
+    }
+  });
+
+  test('items are needed only while a surgery waits; a decoy or the wrong organ is a mistake', () => {
+    let s = playing();
+    assert.equal(surgeryItemsNeeded(s).size, 0);
+    assert.equal(takeSurgeryItem(s, 'scalpel').mistakeCount, 1, 'no surgery waiting');
+    let bed;
+    [s, bed] = bedded(s, 'p1', 'kidney-failure');
+    while (currentStep(s.beds[bed]) !== 'surgery') s = resolveBedTask(startBedTask(s, bed), true);
+    assert.deepEqual([...surgeryItemsNeeded(s)].sort(), ['kidney', 'scalpel']);
+    assert.equal(takeSurgeryItem(s, 'heart').mistakeCount, 1, 'wrong organ');
+    assert.equal(takeSurgeryItem(s, 'Forceps').mistakeCount, 1, 'decoy');
+    s = takeSurgeryItem(takeSurgeryItem(s, 'scalpel'), 'kidney');
+    assert.deepEqual(s.surgeryKit, { scalpel: true, item: 'kidney' });
+    assert.equal(s.mistakeCount, 0);
+  });
+
+  test('the table waits for the full kit, and a finished operation uses it up', () => {
+    let s = playing();
+    let bed;
+    [s, bed] = bedded(s, 'p1', 'appendicitis');
+    while (currentStep(s.beds[bed]) !== 'surgery') s = resolveBedTask(startBedTask(s, bed), true);
+    s = startSurgeryTransport(s, bed);
+    assert.deepEqual(surgeryMissing(s), ['scalpel', 'mesh']);
+    assert.equal(startSurgery(s), s);
+    s = takeSurgeryItem(s, 'scalpel');
+    assert.deepEqual(surgeryMissing(s), ['mesh']);
+    assert.equal(startSurgery(s), s);
+    s = takeSurgeryItem(s, 'mesh');
+    assert.deepEqual(surgeryMissing(s), []);
+    s = startSurgery(s);
+    assert.equal(s.activeTask.kind, 'surgery');
+    const failed = resolveSurgery(s, false);
+    assert.deepEqual(failed.surgeryKit, { scalpel: true, item: 'mesh' }, 'a miss keeps the kit');
+    s = resolveSurgery(s, true);
+    assert.deepEqual(s.surgeryKit, { scalpel: false, item: null });
+  });
+});
+
 describe('career XP and rank perks', () => {
   test('a correct triage call earns XP; a wrong one earns none', () => {
     let s = addPatientToTriage(playing(), { id: 'p1', conditionId: 'sprain' });
@@ -615,7 +684,7 @@ describe('the Orderly', () => {
     assert.equal(startSurgery(s), s, 'not on the table yet');
     s = orderlyDeliverToOR(s);
     assert.deepEqual(s.orPatient, { bedIndex: bed, patientId: 'p1' });
-    s = startSurgery(s);
+    s = startSurgery(withKit(s));
     assert.equal(s.activeTask.kind, 'surgery');
     s = resolveSurgery(s, true);
     assert.equal(s.orPatient, null);

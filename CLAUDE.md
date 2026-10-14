@@ -84,7 +84,9 @@ touching that area rather than expecting this section to carry it:
   card screenshot is `web/static/images/busrush/screenshot.png`.
 - **Hospital Shift** (`/hospital-shift`, canvas ER-nurse shift sim mirroring
   Library Shift — triage the queue into 4 beds, then treat each patient's
-  plan: Vitals/IV/Surgery skill checks, Oxygen find-the-hearts, a Bandage
+  plan: Vitals/IV/Surgery skill checks (surgery in a walk-in OR room, with
+  a scalpel plus an organ for transplants or an implant from the Supply
+  Room, each grabbed with a skill check), Oxygen find-the-hearts, a Bandage
   trace with a roll from the 2nd-Floor Supply Room's cart, Meds from the
   cabinet; helping staff (Dr. Okafor rescues near-transfer patients, the
   Orderly wheels surgery patients to the OR, the Stock tech brings rolls

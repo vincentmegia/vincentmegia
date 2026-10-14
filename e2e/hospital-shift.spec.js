@@ -146,6 +146,30 @@ async function passSkillCheck(page) {
 	await page.keyboard.press('Space');
 }
 
+/** In an open tray/cooler/shelf close-up: clicks an item's card. */
+async function clickPickCard(page, id) {
+	await waitForOverlay(page, 'pick');
+	const card = (await hooks(page, 'getPickCardRects')).find((c) => c.id === id);
+	await clickCanvasPoint(page, { x: card.x + card.w / 2, y: card.y + card.h / 2 });
+}
+
+/** Picks an item and passes its grab check; the close-up then closes. */
+async function pickItem(page, id) {
+	await clickPickCard(page, id);
+	await hooks(page, 'setPickGauge', 0.5);
+	await page.keyboard.press('Space');
+	await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+}
+
+/** Passes the three table stages of an open surgery. */
+async function operate(page) {
+	await waitForOverlay(page, 'skill');
+	for (let i = 0; i < 3; i++) {
+		await passSkillCheck(page);
+		await page.waitForTimeout(50);
+	}
+}
+
 test.describe('/hospital-shift page', () => {
 	test('renders canvas, HUD and start screen with the paycheck hidden', async ({ page }) => {
 		await page.goto('/hospital-shift');
@@ -289,16 +313,32 @@ test.describe('treatments', () => {
 		}
 		await walkTo(page, 'bed', bed);
 		expect((await shiftState(page)).carried?.kind).toBe('gurney');
+		// Into the walk-in OR: the table won't start without the kit.
 		await walkTo(page, 'operating-room');
-		await waitForOverlay(page, 'skill');
-		for (let i = 0; i < 3; i++) {
-			await passSkillCheck(page);
-			await page.waitForTimeout(50);
-		}
+		expect(await hooks(page, 'getCurrentFloor')).toBe(3);
+		await walkTo(page, 'or-table');
+		await expect(page.locator('#hospital-toast')).toContainText("can't operate yet");
+		expect(await hooks(page, 'getOverlay')).toBeNull();
+		// The scalpel from the Instrument Tray…
+		await walkTo(page, 'instrument-tray');
+		await pickItem(page, 'scalpel');
+		// …and appendicitis's mesh patch from the Implant Shelf upstairs.
+		await walkTo(page, 'or-door');
+		expect(await hooks(page, 'getCurrentFloor')).toBe(1);
+		await walkTo(page, 'stairs');
+		await walkTo(page, 'implant-shelf');
+		await pickItem(page, 'mesh');
+		expect((await shiftState(page)).surgeryKit).toEqual({ scalpel: true, item: 'mesh' });
+		await walkTo(page, 'elevator');
+		await walkTo(page, 'operating-room');
+		await walkTo(page, 'or-table');
+		await operate(page);
 		const s = await shiftState(page);
 		expect(s.beds[bed]).toBeNull();
 		expect(s.carried).toBeNull();
 		expect(s.discharged).toBe(1);
+		expect(s.surgeryKit).toEqual({ scalpel: false, item: null });
+		expect(s.mistakeCount).toBe(0);
 	});
 
 	test('a bandage roll in your pocket doesn\'t stop you taking the gurney and operating', async ({ page }) => {
@@ -315,12 +355,11 @@ test.describe('treatments', () => {
 		}
 		await walkTo(page, 'bed', bed);
 		expect((await shiftState(page)).carried?.kind).toBe('gurney');
+		// The item hunt has its own test; here the kit is handed over.
+		await hooks(page, 'giveSurgeryKit', 'mesh');
 		await walkTo(page, 'operating-room');
-		await waitForOverlay(page, 'skill');
-		for (let i = 0; i < 3; i++) {
-			await passSkillCheck(page);
-			await page.waitForTimeout(50);
-		}
+		await walkTo(page, 'or-table');
+		await operate(page);
 		const s = await shiftState(page);
 		expect(s.beds[bed]).toBeNull();
 		expect(s.hasBandage).toBe(true);
@@ -339,6 +378,70 @@ test.describe('treatments', () => {
 		expect(await hooks(page, 'getOverlay')).toBeNull();
 		expect(s.activeTask).toBeNull();
 		expect(s.mistakeCount).toBe(0);
+	});
+});
+
+test.describe('surgery items (walk-in OR)', () => {
+	test('a transplant needs its organ: the wrong organ or a decoy is a mistake, a dropped grab is not', async ({ page }) => {
+		await seedSave(page, 6);
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		const [, bed] = await admit(page, 'kidney-failure', 'red');
+		for (let step = 0; step < 2; step++) {
+			await walkTo(page, 'bed', bed);
+			await waitForOverlay(page, 'skill');
+			await passSkillCheck(page);
+			await expect.poll(async () => (await shiftState(page)).beds[bed]?.step).toBe(step + 1);
+		}
+		await expect(page.locator('#hospital-canvas')).toBeVisible();
+		await walkTo(page, 'bed', bed);
+		await walkTo(page, 'operating-room');
+
+		// The Organ Cooler: the heart isn't needed (a mistake, greyed out)…
+		await walkTo(page, 'organ-cooler');
+		await clickPickCard(page, 'heart');
+		expect((await shiftState(page)).mistakeCount).toBe(1);
+		expect((await hooks(page, 'getOverlay')).wrong).toContain('heart');
+		// …the kidney is; a missed grab drops it (no mistake) and a retry takes it.
+		await clickPickCard(page, 'kidney');
+		await hooks(page, 'setPickGauge', 0.02);
+		await page.keyboard.press('Space');
+		expect((await hooks(page, 'getOverlay')).flash.text).toContain('Dropped');
+		expect((await shiftState(page)).mistakeCount).toBe(1);
+		expect((await shiftState(page)).surgeryKit.item).toBeNull();
+		await page.waitForTimeout(400);
+		await hooks(page, 'setPickGauge', 0.5);
+		await page.keyboard.press('Space');
+		await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+		expect((await shiftState(page)).surgeryKit.item).toBe('kidney');
+
+		// The Instrument Tray: forceps are a decoy.
+		await walkTo(page, 'instrument-tray');
+		await clickPickCard(page, 'Forceps');
+		expect((await shiftState(page)).mistakeCount).toBe(2);
+		await clickPickCard(page, 'scalpel');
+		await hooks(page, 'setPickGauge', 0.5);
+		await page.keyboard.press('Space');
+		await page.waitForFunction(() => !window.__hospitalShiftTestHooks.getOverlay(), null, { timeout: 5000 });
+
+		await walkTo(page, 'or-table');
+		const surgery = await waitForOverlay(page, 'skill');
+		expect(surgery.task).toBe('surgery');
+		await operate(page);
+		const s = await shiftState(page);
+		expect(s.beds[bed]).toBeNull();
+		expect(s.mistakeCount).toBe(2);
+	});
+
+	test('the HUD button leaves the OR back to the ER', async ({ page }) => {
+		await page.goto('/hospital-shift');
+		await startShift(page);
+		await walkTo(page, 'operating-room');
+		expect(await hooks(page, 'getCurrentFloor')).toBe(3);
+		await expect(page.locator('#hospital-floor-button')).toHaveText('Leave the OR');
+		await page.locator('#hospital-floor-button').click();
+		expect(await hooks(page, 'getCurrentFloor')).toBe(1);
+		await expect(page.locator('#hospital-floor-button')).toHaveText('Go Upstairs');
 	});
 });
 
@@ -417,12 +520,10 @@ test.describe('helping staff', () => {
 		await clickStaff(page, 'orderly');
 		await expect(page.locator('#hospital-toast')).toContainText('Orderly is on his way');
 		await expect.poll(async () => (await shiftState(page)).orPatient?.patientId, { timeout: 20000 }).toBe(id);
+		await hooks(page, 'giveSurgeryKit', 'mesh');
 		await walkTo(page, 'operating-room');
-		await waitForOverlay(page, 'skill');
-		for (let i = 0; i < 3; i++) {
-			await passSkillCheck(page);
-			await page.waitForTimeout(50);
-		}
+		await walkTo(page, 'or-table');
+		await operate(page);
 		const s = await shiftState(page);
 		expect(s.beds[bed]).toBeNull();
 		expect(s.orPatient).toBeNull();

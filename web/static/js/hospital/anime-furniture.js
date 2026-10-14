@@ -432,6 +432,290 @@ export function drawSupplyCart(ctx, st) {
 }
 
 // ---------------------------------------------------------------------------
+// Surgery items (rules.js SURGERY_ITEMS + each source's decoys)
+// ---------------------------------------------------------------------------
+
+function drawOrgan(ctx, x, y, s, kind) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = INK;
+  if (kind === 'kidney') {
+    ctx.fillStyle = '#d0607a';
+    ctx.beginPath();
+    ctx.moveTo(4, -9);
+    ctx.bezierCurveTo(-10, -12, -12, 10, 2, 9);
+    ctx.bezierCurveTo(8, 8, 2, 3, 6, 0);
+    ctx.bezierCurveTo(9, -3, 9, -7, 4, -9);
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'liver') {
+    ctx.fillStyle = '#a84848';
+    ctx.beginPath();
+    ctx.moveTo(-11, -4);
+    ctx.bezierCurveTo(-8, -10, 10, -10, 11, -5);
+    ctx.bezierCurveTo(12, 0, 2, 8, -6, 7);
+    ctx.bezierCurveTo(-12, 6, -13, 0, -11, -4);
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'heart' || kind === 'lung') {
+    if (kind === 'heart') {
+      ctx.fillStyle = '#e04a5f';
+      ctx.beginPath();
+      ctx.moveTo(0, 9);
+      ctx.bezierCurveTo(-13, 1, -8, -11, 0, -5);
+      ctx.bezierCurveTo(8, -11, 13, 1, 0, 9);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#7a2a3a';
+      ctx.beginPath();
+      ctx.moveTo(-2, -7);
+      ctx.lineTo(-2, -11);
+      ctx.moveTo(2, -7);
+      ctx.lineTo(3, -11);
+      ctx.stroke();
+    } else {
+      for (const dir of [-1, 1]) {
+        ctx.fillStyle = '#f0a0b0';
+        ctx.beginPath();
+        ctx.ellipse(dir * 5, 1, 5, 9, dir * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  } else if (kind === 'cornea') {
+    circle(ctx, 0, 0, 8, '#e8f4ff', 1.2);
+    circle(ctx, 0, 0, 4, '#7ab0e0', 1);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(-3, -3, 2.5, 1.4, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * An item's icon centered on (x, y) at scale s: the scalpel, an organ, an
+ * implant, or a decoy by its display name.
+ */
+export function drawSurgeryItemIcon(ctx, x, y, s, id) {
+  const key = String(id).toLowerCase();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (key === 'scalpel') {
+    flat(ctx, -12, -1.8, 13, 3.6, 1.5, '#8f7ae0', 1);
+    ctx.fillStyle = '#e8eef8';
+    ctx.beginPath();
+    ctx.moveTo(1, -2);
+    ctx.lineTo(12, -1);
+    ctx.quadraticCurveTo(13, 1.5, 9, 2.5);
+    ctx.lineTo(1, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else if (key === 'forceps' || key === 'clamp' || key === 'scissors') {
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3.4;
+    ctx.beginPath();
+    ctx.moveTo(-11, -5);
+    ctx.lineTo(10, 1);
+    ctx.moveTo(-11, 5);
+    ctx.lineTo(10, -1);
+    ctx.stroke();
+    ctx.strokeStyle = '#d8dce8';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    if (key !== 'forceps') {
+      for (const dy of [-5, 5]) {
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 1.2;
+        ctx.fillStyle = key === 'scissors' ? '#ffc2da' : '#c9b8ff';
+        ctx.beginPath();
+        ctx.arc(-12, dy, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  } else if (['kidney', 'liver', 'heart', 'lung', 'cornea'].includes(key)) {
+    drawOrgan(ctx, 0, 0, 1, key);
+  } else if (key === 'mesh' || key === 'mesh patch') {
+    flat(ctx, -10, -8, 20, 16, 3, '#ffffff', 1.1);
+    ctx.strokeStyle = 'rgba(143,122,224,0.6)';
+    ctx.lineWidth = 0.8;
+    for (let i = -6; i <= 6; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(i, -7);
+      ctx.lineTo(i, 7);
+      ctx.moveTo(-9, i * 0.9);
+      ctx.lineTo(9, i * 0.9);
+      ctx.stroke();
+    }
+  } else if (key === 'plate' || key === 'bone plate') {
+    flat(ctx, -11, -3.5, 22, 7, 3.5, '#c8d4e8', 1.1);
+    for (const hx of [-6, 0, 6]) circle(ctx, hx, 0, 1.4, '#5a5a78', 0);
+  } else if (key === 'stent') {
+    flat(ctx, -10, -3.5, 20, 7, 3.5, '#e4e6f0', 1.1);
+    ctx.strokeStyle = 'rgba(59,42,74,0.5)';
+    ctx.lineWidth = 0.8;
+    for (let i = -8; i <= 8; i += 3) {
+      ctx.beginPath();
+      ctx.moveTo(i, -3);
+      ctx.lineTo(i + 2, 3);
+      ctx.stroke();
+    }
+  } else {
+    // Steel pin and anything else: a thin pin.
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(11, 0);
+    ctx.stroke();
+    ctx.strokeStyle = '#d8dce8';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    circle(ctx, -11, 0, 2.4, '#d8dce8', 1);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// The walk-in Operating Room and the Supply Room's Implant Shelf
+// ---------------------------------------------------------------------------
+
+/**
+ * The operating table under a big ring lamp. `opts.drawPatientOnTable`
+ * draws whoever is on it (centered, feet at the given y); `opts.ready`
+ * glows the table when the kit is complete.
+ */
+export function drawOrTable(ctx, st, opts = {}) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const glow = ctx.createRadialGradient(0, -10, 10, 0, -10, hw + 30);
+  glow.addColorStop(0, opts.ready ? 'rgba(255,240,170,0.75)' : 'rgba(255,250,214,0.55)');
+  glow.addColorStop(1, 'rgba(255,250,214,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(-hw - 30, -hh - 30, st.w + 60, st.h + 60);
+  // Pedestal and table.
+  flat(ctx, -16, hh - 26, 32, 22, 4, '#9a96b8', 1.3);
+  block(ctx, -40, -hh + 14, 80, st.h - 40, 14, '#c9c3e6', 1.6);
+  flat(ctx, -34, -hh + 20, 68, st.h - 52, 10, '#f4fffb', 1.1);
+  flat(ctx, -18, -hh + 24, 36, 16, 8, '#ffffff', 1.1);
+  if (opts.drawPatientOnTable) {
+    opts.drawPatientOnTable(0, 12);
+    flat(ctx, -30, -10, 60, 66, 8, '#9fe0c8', 1.2);
+    ctx.strokeStyle = 'rgba(63,181,143,0.6)';
+    ctx.lineWidth = 1;
+    for (const y of [6, 22, 38]) {
+      ctx.beginPath();
+      ctx.moveTo(-26, y);
+      ctx.lineTo(26, y);
+      ctx.stroke();
+    }
+  }
+  // The ring lamp above.
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(0, -hh - 4, 26, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.stroke();
+  ctx.strokeStyle = ANIME.gold;
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+  for (let i = 0; i < 5; i++) circle(ctx, -16 + i * 8, -hh + 18, 2.6, '#fff8d6', 0.9);
+  if (opts.ready) sparkle(ctx, hw - 18, -hh + 26, 6, '#ffffff');
+}
+
+/** A rolling tray of instruments; the scalpel's spot is empty once you've taken it. */
+export function drawInstrumentTray(ctx, st, opts = {}) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 2;
+  for (const lx of [-hw + 16, hw - 16]) {
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx, hh - 8);
+    ctx.stroke();
+    circle(ctx, lx, hh - 6, 3.5, '#5a5a78', 1);
+  }
+  block(ctx, -hw + 8, -hh + 12, st.w - 16, 42, 8, '#e4e6f0', 1.5);
+  flat(ctx, -hw + 13, -hh + 17, st.w - 26, 32, 5, '#cfe8f2', 1);
+  if (!opts.hasScalpel) drawSurgeryItemIcon(ctx, -hw + 32, -hh + 33, 1.1, 'scalpel');
+  else {
+    ctx.strokeStyle = 'rgba(59,42,74,0.35)';
+    ctx.setLineDash([3, 3]);
+    ctx.strokeRect(-hw + 18, -hh + 28, 28, 10);
+    ctx.setLineDash([]);
+  }
+  drawSurgeryItemIcon(ctx, 2, -hh + 30, 0.9, 'forceps');
+  drawSurgeryItemIcon(ctx, hw - 28, -hh + 36, 0.85, 'scissors');
+}
+
+/**
+ * The Organ Cooler: a mint cooler with a frosty window showing organ jars
+ * (`opts.organs`: ids still in it) and a little snowflake.
+ */
+export function drawOrganCooler(ctx, st, opts = {}) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const organs = opts.organs ?? ['kidney', 'liver', 'heart'];
+  block(ctx, -hw + 8, -hh + 10, st.w - 16, st.h - 18, 10, '#bfeedd', 1.6);
+  flat(ctx, -hw + 14, -hh + 16, st.w - 28, 12, 4, '#ffffff', 1.1);
+  ctx.fillStyle = ANIME.mintDeep;
+  ctx.font = 'bold 7px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ORGANS', 0, -hh + 22.5);
+  flat(ctx, -hw + 14, -hh + 34, st.w - 28, st.h - 54, 6, '#e8fbff', 1.1);
+  organs.slice(0, 3).forEach((id, i) => {
+    const jx = -hw + 28 + i * ((st.w - 52) / 2);
+    const jy = 4;
+    flat(ctx, jx - 11, jy - 16, 22, 30, 6, 'rgba(201,236,255,0.9)', 1);
+    drawSurgeryItemIcon(ctx, jx, jy, 0.75, id);
+  });
+  glassShine(ctx, -hw + 14, -hh + 34, st.w - 28, st.h - 54);
+  sparkle(ctx, hw - 16, hh - 16, 5, '#ffffff');
+}
+
+/** The OR's double swing doors back to the ER, with round windows. */
+export function drawOrDoor(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  for (const dir of [-1, 1]) {
+    const x = dir < 0 ? -hw + 10 : 1;
+    block(ctx, x, -hh + 8, hw - 11, st.h - 14, 5, '#d4f5e8', 1.4);
+    circle(ctx, x + (hw - 11) / 2, -hh + 26, 8, '#c9ecff', 1.2);
+  }
+  flat(ctx, -22, -hh - 2, 44, 12, 4, ANIME.coral, 1.2);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 8px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('↓ ER', 0, -hh + 4.5);
+}
+
+/** The Supply Room's Implant Shelf: two shelves of mesh patches, bone plates and decoys. */
+export function drawImplantShelf(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  block(ctx, -hw + 6, -hh + 8, st.w - 12, st.h - 14, 8, '#e8d4f2', 1.6);
+  const rows = [['mesh', 'mesh patch', 'stent'], ['plate', 'steel pin', 'plate']];
+  rows.forEach((row, r) => {
+    const sy = -hh + 34 + r * 32;
+    ctx.fillStyle = tint('#c9b8ff', -0.15);
+    ctx.fillRect(-hw + 10, sy, st.w - 20, 3);
+    row.forEach((id, i) => drawSurgeryItemIcon(ctx, -hw + 26 + i * ((st.w - 44) / 2), sy - 10, 0.75, id));
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Decor (world coordinates; floor-plan.js's buildDecor)
 // ---------------------------------------------------------------------------
 
