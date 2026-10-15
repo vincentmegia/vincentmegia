@@ -931,7 +931,7 @@ test.describe('more characters', () => {
 		expect((await hooks(page, 'getTriageSlots')).some((x) => x.kind === 'lost-child')).toBe(false);
 	});
 
-	test('petting the hospital cat restores Sanity, then it needs a break', async ({ page }) => {
+	test('petting the hospital cat meows and restores Sanity, then it needs a break', async ({ page }) => {
 		await page.goto('/hospital-shift');
 		await startShift(page);
 		await hooks(page, 'spawnCatNow');
@@ -940,9 +940,11 @@ test.describe('more characters', () => {
 		await clickCanvasPoint(page, { x: cat.x, y: cat.y - 10 });
 		const first = (await shiftState(page)).sanity;
 		expect(first).toBeGreaterThan(54);
+		expect(await hooks(page, 'getMeowCount')).toBe(1); // it meows when petted
 		await clickCanvasPoint(page, { x: cat.x, y: cat.y - 10 });
 		expect((await shiftState(page)).sanity).toBeLessThan(first + 1);
 		await expect(page.locator('#hospital-toast')).toContainText('grooming');
+		expect(await hooks(page, 'getMeowCount')).toBe(1); // not while it's grooming
 	});
 });
 

@@ -134,6 +134,7 @@ import {
 } from './hospital/rules.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { patientProfileFor } from './hospital/patient-names.js';
+import { playMeow } from './hospital/cat-sound.js';
 import {
   ANIME,
   animeChip,
@@ -4349,8 +4350,24 @@ export function init(canvas, elements) {
     cat.cooldown = CAT_PET_COOLDOWN_SECONDS;
     cat.hearts = 1.6;
     cat.pause = 3;
+    meow();
     showToast('Purrr… petting the hospital cat calms you down. +Sanity');
   }
+  // The cat's meow (hospital/cat-sound.js). The AudioContext is made on the
+  // first pet — a click, so the browser allows sound — and reused.
+  let audio = null;
+  let meowCount = 0;
+  function meow() {
+    try {
+      audio ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      playMeow(audio);
+      meowCount++;
+    } catch {
+      // No Web Audio (or it's blocked): petting still works, just silently.
+    }
+  }
+
   function drawHospitalCat() {
     if (!cat || currentFloor !== FLOOR_1) return;
     const t = performance.now() / 1000;
@@ -5056,6 +5073,7 @@ export function init(canvas, elements) {
 
   function teardown() {
     running = false;
+    audio?.close?.().catch?.(() => {});
     if (rafHandle !== null) {
       window.cancelAnimationFrame(rafHandle);
       rafHandle = null;
@@ -5116,6 +5134,8 @@ export function init(canvas, elements) {
     bringLostChildNow() { if (shiftState) shiftState = lostChildArrives(shiftState); },
     getLostChildButtonRect: () => lostChildButtonRect(),
     getCat: () => (cat ? { ...cat } : null),
+    /** How many times the cat has meowed this page visit. */
+    getMeowCount: () => meowCount,
     spawnCatNow() { cat = { x: 380, y: 476, target: 0, pause: 999, dir: 1, cooldown: 0, hearts: 0 }; },
     getWetFloor: () => (wetFloor ? { ...wetFloor } : null),
     mopNow(x, y) { wetFloor = { x, y, seconds: WET_FLOOR_SECONDS }; },

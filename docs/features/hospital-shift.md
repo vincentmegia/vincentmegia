@@ -3,7 +3,7 @@
 ## Status
 
 `Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (151 `node --test` tests); `web/static/js/
+`web/static/js/hospital/` (155 `node --test` tests); `web/static/js/
 hospital-game.js` wires them to the canvas. Go: handler/service/validation
 tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
 Playwright: `e2e/hospital-shift.spec.js` (49 tests, Chromium + WebKit),
@@ -501,7 +501,15 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     mom's thanks, +25g and +15 Ward Mood (`lostChildArrives`/
     `helpLostChild`), and they sit on the chairs for the rest of the shift.
     On ~55% of shifts the **hospital cat** wanders the ER; clicking it pets
-    it for +6 Sanity, then it needs 30 s to itself (`petCat`). On ~30% of
+    it for +6 Sanity, then it needs 30 s to itself (`petCat`). Petting it
+    meows ("when you pet the cat i want there to be a meowing sound"): a
+    "mee-ow" synthesized with the Web Audio API in `hospital/cat-sound.js`
+    (`playMeow` — a sawtooth whose pitch rises then falls, through two
+    formant filters sweeping from "ee" to "ow", with vibrato and a soft
+    envelope; each pet varies the pitch and length), so there's no sound
+    file. The AudioContext is made on the first pet (a click, so the
+    browser allows it) and closed when the page is left; a click while the
+    cat is grooming doesn't meow, and without Web Audio petting is silent. On ~30% of
     shifts one patient is a **celebrity** (seeded in the Daily) with a
     stage name, a gold ★ chip, paparazzi flashes in line and a "★ VIP" bed
     tag; their discharge pays double (`CELEBRITY_DISCHARGE_MULTIPLIER`).
