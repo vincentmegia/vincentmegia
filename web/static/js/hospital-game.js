@@ -5141,6 +5141,8 @@ export function init(canvas, elements) {
     getCat: () => (cat ? { ...cat } : null),
     /** How many times the cat has meowed this page visit. */
     getMeowCount: () => meowCount,
+    /** The meow's AudioContext state ('running', 'suspended'…), or null before the first pet. */
+    getAudioState: () => audio?.state ?? null,
     spawnCatNow() { cat = { x: 380, y: 476, target: 0, pause: 999, dir: 1, cooldown: 0, hearts: 0 }; },
     getWetFloor: () => (wetFloor ? { ...wetFloor } : null),
     mopNow(x, y) { wetFloor = { x, y, seconds: WET_FLOOR_SECONDS }; },
