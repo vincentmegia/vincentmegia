@@ -405,9 +405,78 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     and a red silk tassel with a gold knot swaying below her hands. She's drawn 35% bigger than everyone else
     wherever she appears — in line, in bed, on the triage card ("make her
     bigger": the design's `sizeScale`, applied in `drawAnimePatient`); the
-    Triage Desk's label is redrawn over the queue so her taller hair
-    doesn't hide it. She's always named Hiko Maiko ("Hiko M." on
+    Triage Desk's label sits up on the desk (see the shiromuku
+    bride below) so her taller hair doesn't hide it. She's always named Hiko Maiko ("Hiko M." on
     her chip; "i want it to be hiko maiko").
+  * *The shiromuku bride* ("now add another very detailed character with
+    a white kimono"): a second showpiece, a Shinto bride in the all-white
+    wedding kimono, with her own renderers (`drawShiromuku`,
+    `drawShiromukuHair`) and Hiko Maiko's 35% `sizeScale`. A padded white
+    uchikake trailing at the hem with a satin sheen, its red beni-ura
+    lining curling at the hem and sleeve openings; a woven white-on-white
+    scene in silver (seigaiha waves, pine, plum, karakusa scrolls, cranes);
+    the inner kakeshita's sayagata weave in the front opening; a silver
+    brocade obi with a kaiken (a small dagger in a red-and-gold brocade bag,
+    tasselled) tucked in it; long red-lined furisode sleeves with gold
+    stitching; layered collars with a red line; a white-and-gold hakoseko;
+    a closed white-and-gold sensu in her hands; lacquered zori. Her updo
+    sits under the white tsunokakushi hood (woven diamonds, soft folds, a
+    red-lined front fold) with tortoiseshell pins fanning out behind it;
+    white makeup (later softened to her own bridal look) with small full
+    lips in a soft natural pink — no lipstick ("remove the lipstick"; `mouth: 'bride'`), and sakura
+    petals drift around her. Then made better ("make her better"): a
+    satin twill sheen across the silk (`satinTwill`), bigger cranes
+    embroidered in silver thread with gold-thread clouds
+    (`embroideredCrane`), the kakeshita's layered red-and-white hems at
+    her feet, a softer obi with a white shibori obiage, a braided gold
+    obijime fastened with a pearl obidome and tasselled ends, the kaiken
+    seated lower in the obi, a tortoiseshell kushi with gold maki-e under
+    the hood's edge, and pearl-tipped pins at the hood's sides. Then
+    "more beatifuller and detailed": the tsunokakushi's side drapes
+    folding down past her hair (woven diamonds, red inner edge), an
+    embroidered plum spray (silver branch, pink and white blossoms, gold
+    buds) on the kakeshita below her hands, gold-and-silver vines down the
+    uchikake's front edges, a line of tiny pearls along the outer collar,
+    silver bira dangles and a pearl on the hakoseko's second chain, and
+    red hanao on her zori. Then "more DETAILED": silver crane-in-a-circle
+    crests (`craneCrest`) on the hood's front and both sleeves, gold cord
+    trim along the hood, fine combed strands in her side wings, long red,
+    white and gold silk cords with tassels hanging from her fan, slender
+    fingers with pink tips, gold stitching along the padded hem, and
+    three-layer zori on a sole. Then "beatifuler": her own soft bridal
+    makeup instead of a maiko's (`extras.bridal`, `drawBridalEyeMakeup`) —
+    a peach-pink wash on the lids, fine rose liner with a gentle lift,
+    fluttery outer lashes, a whisper of pink on the lower lids, a soft
+    round rosy blush in place of the hatch-stroke blush, warmer brown eyes,
+    and the faintest smile at the corners of her lips. Then "more
+    detailed please": the uchikake's train spread on the floor round her
+    feet (white silk, silver waves, red lining and gold stitching at the
+    edge), a soft ring and fine radial lines in her irises (detail, no
+    highlights), a fringe of tiny pearls along the hood's front edge,
+    silver blossoms embroidered down the hood's drapes, silver flower
+    medallions on the obi, and little red silk tassels weighting each
+    sleeve's corner. Her closed fan became an open bridal sensu ("make
+    her hold a detailed fan"): `drawOpenSensu` now takes a style
+    (`SENSU_STYLES.hiko`/`.bride`), and hers is a pleated leaf shading
+    from white silk to gold leaf, painted (`paintCraneLeaf`) with silver
+    mist bands, a red rising sun, a pine on a gold-edged hill and two
+    cranes in flight, on white-lacquered sticks and guards with gold
+    inlay and a pearl rivet; her red, white and gold silk cords still hang
+    from it past her hands. Her eyes are red with gold pupils ("make her
+    eyes red with gold pupils and detailed"), then reworked when the user
+    found the first pass ugly ("make it more fitting with the outfit"): a
+    deep garnet iris (`#a8182c`, the family of her red lining) shading
+    darker under the upper lid and glowing rosier round the pupil, a fine
+    dark wine edge, and a small antique-gold pupil (`#d9a63a`, like her gold
+    accents; `eyes.pupil` and `eyes.pupilScale`, optional pupil color and
+    size in `drawEyes`) with a fine darker rim — no spokes, flecks or gold
+    frame, and still no highlights. Then "a little bit detailed": a few
+    soft rose fibers in the lower iris only and a hairline gold halo just
+    round the pupil. Names: Shirayuki Hanazono, Mashiro
+    Tsurugaoka, Yukino Shirakawa, Sayuri Hakuba. The Triage Desk's label
+    now sits on the desk's front panel like a nameplate
+    (`stationLabelOffset`), so the tall showpieces at the front of the line
+    neither cover it nor get covered; 65 patient designs in all.
   * *Ten more again* ("now i want to add EVEN more characters"): a cyclist
     in a vented helmet, a pageant queen in a tiara, a pirate cosplayer
     with a polka-dot bandana and an eyepatch, a red-haired rock star, a

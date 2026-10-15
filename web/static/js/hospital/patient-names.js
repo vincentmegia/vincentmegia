@@ -72,6 +72,7 @@ export const PATIENT_PROFILES = {
   ramenChef: { names: ['Taishō Menma', 'Hiroki Tonkotsu', 'Goemon Ishida', 'Shoyu Kanemoto'], ages: [35, 62] },
   ballerina: { names: ['Clara Shirotori', 'Odette Minami', 'Yume Kanzaki', 'Aurora Ishii'], ages: [5, 9] },
   gardenGrandma: { names: ['Kiku Nagano', 'Rose Whitfield', 'Botan Ueshima', 'Sumire Hattori'], ages: [68, 86] },
+  shiromukuBride: { names: ['Shirayuki Hanazono', 'Mashiro Tsurugaoka', 'Yukino Shirakawa', 'Sayuri Hakuba'], ages: [24, 32] },
   // The showpiece maiko always has the one name (the user: "i want it to
   // be hiko maiko").
   maiko: { names: ['Hiko Maiko'], ages: [16, 20] },

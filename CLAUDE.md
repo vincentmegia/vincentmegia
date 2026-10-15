@@ -92,8 +92,8 @@ touching that area rather than expecting this section to carry it:
   down); Karen, Coffee Pour, hallucinations; Hunger/Thirst (vending
   machine snacks for Gard, a walk-in Cafeteria where Auntie Yumi's meal is
   free, uncomfortable under 25%, collapse after 5 s at 0%); night shifts
-  (every 5th) with a dark ER and a battery flashlight (F); 64 patient
-  designs (incl. a highly detailed maiko, Hiko Maiko); extra staff
+  (every 5th) with a dark ER and a battery flashlight (F); 65 patient
+  designs (incl. two highly detailed showpieces: Hiko Maiko and a shiromuku bride); extra staff
   (janitor's wet floor, receptionist, Security for Karen, pharmacist) and
   visitors (a lost child, the hospital cat, celebrity patients); Security
   (a CCTV desk, a night guard, rowdy-visitor/thief incidents you send a

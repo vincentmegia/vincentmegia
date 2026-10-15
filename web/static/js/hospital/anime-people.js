@@ -552,6 +552,31 @@ PATIENT_DESIGNS.push(
   },
 );
 
+// A second showpiece (the user: "now add another very detailed character
+// with a white kimono"): a Shinto bride in shiromuku, the all-white
+// wedding kimono — drawn by drawShiromuku/drawShiromukuHair, and as big as
+// Hiko Maiko.
+PATIENT_DESIGNS.push({
+  key: 'shiromukuBride', label: 'Bride', age: 'adult', skin: '#fbf4ef',
+  sizeScale: 1.35,
+  // No back bun: the tsunokakushi covers the top of her updo.
+  hair: { color: '#14101a', back: 'none', fringe: 'parted' },
+  // Red eyes with gold pupils (the user: "make her eyes red with gold
+  // pupils and detailed").
+  // Then, as "too ugly — more fitting with the outfit": a deep garnet that
+  // matches her red lining, and a small antique-gold pupil.
+  eyes: { color: '#a8182c', pupil: '#d9a63a', pupilScale: 0.62, style: 'round', lashes: true }, brows: 'thin', mouth: 'bride',
+  outfit: {
+    kind: 'shiromuku',
+    // White on white: a warm silk white with silver-grey weave and the
+    // uchikake's red lining (beni-ura) at the hem and sleeve openings.
+    robe: '#fdfcf8', robeShade: '#e9e6ee', weave: '#cfd2de', silver: '#b8bccb',
+    lining: '#d8283a', inner: '#f7f5f0', obi: '#eef0f6', obiWeave: '#c8ccd8',
+  },
+  // Soft bridal makeup, not a maiko's (the user: "make her beatifuler").
+  extras: { shiromukuHair: true, bridal: true, petals: true },
+});
+
 export const PATIENT_DESIGN_KEYS = PATIENT_DESIGNS.map((d) => d.key);
 
 export function findPatientDesign(key) {
@@ -880,6 +905,10 @@ function drawBody(ctx, d) {
   }
   if (o.kind === 'maiko') {
     drawMaikoKimono(ctx, d);
+    return;
+  }
+  if (o.kind === 'shiromuku') {
+    drawShiromuku(ctx, d);
     return;
   }
   drawLegs(ctx, d);
@@ -1611,63 +1640,8 @@ function drawKimono(ctx, d) {
   }
 }
 
-/**
- * Hiko Maiko's open folding fan, pivot at (px, py), spreading up and to
- * the left. Back to front: bamboo inner sticks; the pleated paper leaf
- * (gold leaf shading to crimson at the edge, alternate pleats lit and
- * shaded) painted with a winding stream, a flowering sakura branch,
- * falling petals and gold flecks; gold borders along both edges of the
- * leaf; black-lacquered outer guard ribs inlaid with gold; a
- * mother-of-pearl rivet. Its swaying tassel is drawSensuTassel.
- */
-function drawOpenSensu(ctx, px, py) {
-  const R = 11;
-  const r0 = 3.8;
-  const a0 = -Math.PI * 0.93;
-  const a1 = -Math.PI * 0.07;
-  const pleats = 20;
-  const at = (i) => a0 + ((a1 - a0) * i) / pleats;
-  ctx.save();
-  ctx.translate(px, py);
-
-  // Bamboo sticks, fanned out between the pivot and the leaf.
-  ctx.strokeStyle = '#d9b77a';
-  ctx.lineWidth = 0.45;
-  for (let i = 1; i < pleats; i++) {
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(at(i)) * (r0 + 0.6), Math.sin(at(i)) * (r0 + 0.6));
-    ctx.stroke();
-  }
-
-  // The leaf: one sweep of gold-to-crimson, then pleat light and shade.
-  const leaf = () => {
-    ctx.beginPath();
-    ctx.arc(0, 0, R, a0, a1);
-    ctx.arc(0, 0, r0, a1, a0, true);
-    ctx.closePath();
-  };
-  const paper = ctx.createRadialGradient(0, 0, r0, 0, 0, R);
-  paper.addColorStop(0, '#fff3c4');
-  paper.addColorStop(0.55, '#f2c94c');
-  paper.addColorStop(0.85, '#e0603a');
-  paper.addColorStop(1, '#b8202e');
-  leaf();
-  ctx.fillStyle = paper;
-  ctx.fill();
-  for (let i = 0; i < pleats; i++) {
-    ctx.beginPath();
-    ctx.arc(0, 0, R, at(i), at(i + 1));
-    ctx.arc(0, 0, r0, at(i + 1), at(i), true);
-    ctx.closePath();
-    ctx.fillStyle = i % 2 ? 'rgba(90,40,20,0.12)' : 'rgba(255,255,255,0.12)';
-    ctx.fill();
-  }
-
-  // The painting, kept on the paper.
-  ctx.save();
-  leaf();
-  ctx.clip();
+/** Hiko Maiko's fan leaf: a winding stream, a sakura branch, falling petals. */
+function paintSakuraLeaf(ctx) {
   // A winding stream across the lower leaf.
   for (const [w, color] of [[1.4, 'rgba(120,180,230,0.75)'], [0.45, 'rgba(255,255,255,0.9)']]) {
     ctx.strokeStyle = color;
@@ -1707,6 +1681,149 @@ function drawOpenSensu(ctx, px, py) {
     ctx.fill();
     ctx.restore();
   }
+}
+
+/**
+ * The bride's fan leaf: silver mist bands, a red rising sun, a pine tree
+ * on a gold-edged hill, and two cranes flying across.
+ */
+function paintCraneLeaf(ctx) {
+  // The rising sun, low on the right.
+  const sun = ctx.createRadialGradient(5.2, -6.2, 0, 5.2, -6.2, 2.4);
+  sun.addColorStop(0, '#ff5a5a');
+  sun.addColorStop(1, '#d8283a');
+  ctx.beginPath();
+  ctx.arc(5.2, -6.2, 2.2, 0, Math.PI * 2);
+  ctx.fillStyle = sun;
+  ctx.fill();
+  // Silver mist bands drifting across.
+  for (const [mx, my, mw] of [[-11, -4, 9], [-2, -9.5, 10], [2, -3.2, 9]]) {
+    ctx.beginPath();
+    ctx.roundRect(mx, my, mw, 1.6, 0.8);
+    ctx.fillStyle = 'rgba(232,234,242,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(184,188,203,0.9)';
+    ctx.lineWidth = 0.18;
+    ctx.stroke();
+  }
+  // A pine on a little gold-edged hill at the left.
+  ctx.beginPath();
+  ctx.moveTo(-11.5, -1.2);
+  ctx.quadraticCurveTo(-8, -3.6, -4.5, -1.6);
+  ctx.lineTo(-4.5, 0);
+  ctx.lineTo(-11.5, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#7aa86a';
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.25;
+  ctx.stroke();
+  ctx.strokeStyle = '#4a2e22';
+  ctx.lineWidth = 0.45;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-8, -2.6);
+  ctx.quadraticCurveTo(-8.6, -5.4, -7.2, -7.6);
+  ctx.moveTo(-8.3, -4.6);
+  ctx.lineTo(-10, -5.6);
+  ctx.moveTo(-7.6, -6.4);
+  ctx.lineTo(-5.8, -7);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  for (const [nx, ny, nr] of [[-7.2, -8.2, 1.4], [-10.2, -6, 1.2], [-5.6, -7.2, 1.1]]) {
+    ctx.beginPath();
+    ctx.ellipse(nx, ny, nr * 1.3, nr * 0.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#3f7a4a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,60,30,0.6)';
+    ctx.lineWidth = 0.12;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(nx + i * nr * 0.45, ny - nr * 0.35);
+      ctx.lineTo(nx + i * nr * 0.5, ny + nr * 0.35);
+      ctx.stroke();
+    }
+  }
+  // Two cranes flying across the gold.
+  crane(ctx, -1.6, -7.6, 1.2, 1);
+  crane(ctx, 2.6, -10.2, 0.9, 1);
+}
+
+/**
+ * The open fans' looks: Hiko Maiko's gold-to-crimson leaf with bamboo
+ * sticks and black-lacquered guards; the bride's white-silk-to-gold leaf
+ * with white-lacquered sticks and guards.
+ */
+const SENSU_STYLES = {
+  hiko: {
+    sticks: '#d9b77a',
+    guard: '#1e1418',
+    paper: [[0, '#fff3c4'], [0.55, '#f2c94c'], [0.85, '#e0603a'], [1, '#b8202e']],
+    paint: paintSakuraLeaf,
+  },
+  bride: {
+    sticks: '#f2efe6',
+    guard: '#fbf8f2',
+    paper: [[0, '#ffffff'], [0.45, '#fbf6e6'], [0.8, '#f2d27a'], [1, '#d9a63a']],
+    paint: paintCraneLeaf,
+  },
+};
+
+/**
+ * An open folding fan (Hiko Maiko's, or the bride's via `style`), pivot at (px, py), spreading up and to
+ * the left. Back to front: bamboo inner sticks; the pleated paper leaf
+ * (gold leaf shading to crimson at the edge, alternate pleats lit and
+ * shaded) painted with a winding stream, a flowering sakura branch,
+ * falling petals and gold flecks; gold borders along both edges of the
+ * leaf; black-lacquered outer guard ribs inlaid with gold; a
+ * mother-of-pearl rivet. Its swaying tassel is drawSensuTassel.
+ */
+function drawOpenSensu(ctx, px, py, style = SENSU_STYLES.hiko) {
+  const R = 11;
+  const r0 = 3.8;
+  const a0 = -Math.PI * 0.93;
+  const a1 = -Math.PI * 0.07;
+  const pleats = 20;
+  const at = (i) => a0 + ((a1 - a0) * i) / pleats;
+  ctx.save();
+  ctx.translate(px, py);
+
+  // Bamboo sticks, fanned out between the pivot and the leaf.
+  ctx.strokeStyle = style.sticks;
+  ctx.lineWidth = 0.45;
+  for (let i = 1; i < pleats; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(at(i)) * (r0 + 0.6), Math.sin(at(i)) * (r0 + 0.6));
+    ctx.stroke();
+  }
+
+  // The leaf: one sweep of gold-to-crimson, then pleat light and shade.
+  const leaf = () => {
+    ctx.beginPath();
+    ctx.arc(0, 0, R, a0, a1);
+    ctx.arc(0, 0, r0, a1, a0, true);
+    ctx.closePath();
+  };
+  const paper = ctx.createRadialGradient(0, 0, r0, 0, 0, R);
+  for (const [stop, color] of style.paper) paper.addColorStop(stop, color);
+  leaf();
+  ctx.fillStyle = paper;
+  ctx.fill();
+  for (let i = 0; i < pleats; i++) {
+    ctx.beginPath();
+    ctx.arc(0, 0, R, at(i), at(i + 1));
+    ctx.arc(0, 0, r0, at(i + 1), at(i), true);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 ? 'rgba(90,40,20,0.12)' : 'rgba(255,255,255,0.12)';
+    ctx.fill();
+  }
+
+  // The painting, kept on the paper.
+  ctx.save();
+  leaf();
+  ctx.clip();
+  style.paint(ctx);
   // Gold-leaf flecks.
   ctx.fillStyle = 'rgba(255,240,170,0.95)';
   for (let i = 0; i < 18; i++) {
@@ -1743,7 +1860,7 @@ function drawOpenSensu(ctx, px, py) {
 
   // Black-lacquered guard ribs, inlaid with a gold line.
   for (const ang of [a0, a1]) {
-    ctx.strokeStyle = '#1e1418';
+    ctx.strokeStyle = style.guard;
     ctx.lineWidth = 1;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -1800,6 +1917,870 @@ function drawSensuTassel(ctx, px, py) {
   }
   rr(ctx, -0.25, 5, 1.3, 0.45, 0.2, GOLD, 0);
   ctx.restore();
+}
+
+/**
+ * A crane-in-a-circle crest (tsuru-maru) embroidered in silver: a ring,
+ * the crane's wings curving round inside it, its head and red crown at the
+ * top.
+ */
+function craneCrest(ctx, x, y, r, o) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = o.silver;
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 0.15;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+  ctx.stroke();
+  // Wings sweeping round from the head at the top.
+  ctx.lineWidth = 0.32;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 0.45);
+    ctx.bezierCurveTo(dir * r * 0.95, -r * 0.6, dir * r * 0.85, r * 0.55, dir * r * 0.15, r * 0.7);
+    ctx.stroke();
+    for (const k of [0.35, 0.55, 0.75]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * r * 0.55 * k * 1.4, r * (k - 0.5));
+      ctx.lineTo(dir * r * 0.72, r * (k - 0.4));
+      ctx.stroke();
+    }
+  }
+  ctx.beginPath();
+  ctx.arc(0, -r * 0.55, r * 0.14, 0, Math.PI * 2);
+  ctx.fillStyle = '#d8283a';
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Satin twill: faint diagonal lines giving white silk its sheen. */
+function satinTwill(ctx, x, y, w, h) {
+  ctx.strokeStyle = 'rgba(190,192,210,0.16)';
+  ctx.lineWidth = 0.25;
+  for (let i = -h; i < w; i += 1.2) {
+    ctx.beginPath();
+    ctx.moveTo(x + i, y + h);
+    ctx.lineTo(x + i + h * 0.6, y);
+    ctx.stroke();
+  }
+}
+
+/**
+ * A crane embroidered on white silk: the crane, outlined in silver thread
+ * with its feather lines stitched in, and a few gold-thread clouds.
+ */
+function embroideredCrane(ctx, x, y, r, dir, o) {
+  crane(ctx, x, y, r, dir);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(dir * r, r);
+  ctx.strokeStyle = o.silver;
+  ctx.lineWidth = 0.07;
+  for (const wing of [-1, 1]) {
+    for (const k of [0.35, 0.65, 0.9]) {
+      ctx.beginPath();
+      ctx.moveTo(-0.2 - k * 0.4, wing * -0.15);
+      ctx.lineTo(-0.5 - k * 1, wing * (-0.6 - k * 1.1));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(232,194,90,0.85)';
+  ctx.lineWidth = 0.3;
+  for (const [cx, cy] of [[x - dir * r * 1.6, y + r * 0.9], [x + dir * r * 1.2, y - r * 1.1]]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.35, Math.PI, 0);
+    ctx.arc(cx + r * 0.55, cy, r * 0.25, Math.PI, 0);
+    ctx.stroke();
+  }
+}
+
+/** Seigaiha waves in pale silver, filling (x, y, w, h). */
+function silverWaves(ctx, x, y, w, h, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.3;
+  const r = 2.4;
+  for (let row = 0, py = y; py < y + h + r; row++, py += r * 0.7) {
+    for (let px = x + (row % 2 ? r : 0); px < x + w + r; px += r * 2) {
+      for (const k of [1, 0.66, 0.33]) {
+        ctx.beginPath();
+        ctx.arc(px, py, r * k, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+/** A pine tuft woven in pale silver: a stem and fans of needles. */
+function silverPine(ctx, x, y, r, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.28;
+  ctx.beginPath();
+  ctx.moveTo(x - r * 1.2, y + r * 0.9);
+  ctx.quadraticCurveTo(x, y + r * 0.4, x + r * 1.3, y + r * 0.9);
+  ctx.stroke();
+  for (const [ox, oy] of [[-r * 0.8, 0], [0, -r * 0.35], [r * 0.85, 0.1]]) {
+    for (let i = 0; i < 9; i++) {
+      const a = Math.PI * (1.08 + i * 0.105);
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y + oy);
+      ctx.lineTo(x + ox + Math.cos(a) * r, y + oy + Math.sin(a) * r);
+      ctx.stroke();
+    }
+  }
+}
+
+/** The bride's woven white-on-white scene, inside a clip. */
+function shiromukuWeave(ctx, o, x, y, w, h, seed) {
+  // Waves along the bottom, pine and plum above, cranes in flight.
+  silverWaves(ctx, x, y + h * 0.78, w, h * 0.25, o.weave);
+  silverPine(ctx, x + w * 0.25, y + h * 0.58, 2.6, o.silver);
+  silverPine(ctx, x + w * 0.78, y + h * 0.3, 2.2, o.silver);
+  for (let i = 0; i < 7; i++) {
+    const bx = x + hash01(seed + i * 5) * w;
+    const by = y + h * (0.1 + hash01(seed + i * 5 + 2) * 0.6);
+    blossom(ctx, bx, by, 0.9 + hash01(seed + i) * 0.5, '#ffffff', o.silver);
+    ctx.strokeStyle = o.weave;
+    ctx.lineWidth = 0.2;
+    ctx.beginPath();
+    ctx.arc(bx, by, 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Silver-thread scrolls (karakusa) between the motifs.
+  ctx.strokeStyle = 'rgba(184,188,203,0.55)';
+  ctx.lineWidth = 0.25;
+  for (let i = 0; i < 5; i++) {
+    const sx = x + hash01(seed + i * 9 + 1) * w;
+    const sy = y + h * (0.15 + hash01(seed + i * 9 + 3) * 0.55);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 1.2, Math.PI * 0.2, Math.PI * 1.7);
+    ctx.arc(sx + 2.1, sy - 0.4, 0.8, Math.PI * 1.1, Math.PI * 2.4, true);
+    ctx.stroke();
+  }
+}
+
+/**
+ * A Shinto bride's shiromuku, back to front: lacquered zori over white
+ * tabi; the padded white uchikake (outer robe) trailing at the hem, its
+ * red beni-ura lining curling at the hem and sleeve openings; the woven
+ * white-on-white scene (seigaiha waves, pine, plum, karakusa scrolls,
+ * cranes); the inner kakeshita and its sayagata weave in the front
+ * opening; a silver brocade obi with a kaiken (a small ceremonial dagger in
+ * a brocade bag, tasselled) tucked in it; long furisode sleeves; layered
+ * collars (white, a red line, white); a hakoseko purse with a silver
+ * chain; and a folded white-and-gold sensu held in her hands.
+ */
+function drawShiromuku(ctx, d) {
+  const o = d.outfit;
+  // Zori: lacquered white-and-gold sandals over white tabi.
+  for (const dir of [-1, 1]) {
+    const fx = dir * 4.2;
+    // Zori: three stacked layers — white, gold brocade, white — on a sole.
+    rr(ctx, fx - 3.8, 7.4, 7.6, 1, 0.5, '#d8c9a8', 0.3);
+    rr(ctx, fx - 3.8, 5.4, 7.6, 2.2, 1.1, '#fdfcf8', 0.4);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(fx - 3.5, 6.5);
+    ctx.lineTo(fx + 3.5, 6.5);
+    ctx.stroke();
+    ctx.strokeStyle = '#fff0b8';
+    ctx.lineWidth = 0.2;
+    ctx.setLineDash([0.5, 0.5]);
+    ctx.beginPath();
+    ctx.moveTo(fx - 3.5, 6.5);
+    ctx.lineTo(fx + 3.5, 6.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    rr(ctx, fx - 2.9, 2.6, 5.8, 3.6, 2, '#ffffff', 0.4);
+    ctx.strokeStyle = o.lining;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(fx - 2.6, 5.8);
+    ctx.lineTo(fx, 3.8);
+    ctx.lineTo(fx + 2.6, 5.8);
+    ctx.stroke();
+  }
+  // The train (suso) spread on the floor round her feet: a wide padded
+  // ring of white silk, its red lining showing at the edge, silver waves
+  // woven along it.
+  ctx.beginPath();
+  ctx.ellipse(0, 4.8, 21, 4.6, 0, 0, Math.PI * 2);
+  fillPath(ctx, '#f7f5f0', 0.45);
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 4.8, 21, 4.6, 0, 0, Math.PI * 2);
+  ctx.clip();
+  silverWaves(ctx, -21, 2.4, 42, 7, 'rgba(200,204,216,0.8)');
+  ctx.restore();
+  ctx.strokeStyle = o.lining;
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.ellipse(0, 5.1, 20.6, 4.3, 0, 0.05 * Math.PI, 0.95 * Math.PI);
+  ctx.stroke();
+  goldStitches(ctx, () => {
+    ctx.ellipse(0, 4.6, 19.4, 3.6, 0, 0.08 * Math.PI, 0.92 * Math.PI);
+  });
+  // The uchikake: a wide padded robe trailing at the hem.
+  const robe = () => {
+    ctx.beginPath();
+    ctx.moveTo(-6, -40.5);
+    ctx.quadraticCurveTo(-13.4, -39.5, -13.4, -33);
+    ctx.quadraticCurveTo(-13.6, -12, -16.4, 2.6);
+    ctx.quadraticCurveTo(0, 6.4, 16.4, 2.6);
+    ctx.quadraticCurveTo(13.6, -12, 13.4, -33);
+    ctx.quadraticCurveTo(13.4, -39.5, 6, -40.5);
+    ctx.closePath();
+  };
+  const satin = ctx.createLinearGradient(-16, 0, 16, 0);
+  satin.addColorStop(0, o.robeShade);
+  satin.addColorStop(0.3, o.robe);
+  satin.addColorStop(0.55, '#ffffff');
+  satin.addColorStop(1, o.robeShade);
+  robe();
+  ctx.fillStyle = satin;
+  ctx.fill();
+  outline(ctx);
+  ctx.save();
+  robe();
+  ctx.clip();
+  satinTwill(ctx, -17, -41, 34, 48);
+  shiromukuWeave(ctx, o, -17, -40, 34, 46, 13);
+  embroideredCrane(ctx, -9, -9, 3, 1, o);
+  embroideredCrane(ctx, 10, -25, 2.3, -1, o);
+  ctx.restore();
+
+  // The front opening: the inner kakeshita between the uchikake's panels.
+  const opening = () => {
+    ctx.beginPath();
+    ctx.moveTo(-2.2, -30);
+    ctx.lineTo(2.2, -30);
+    ctx.quadraticCurveTo(5.4, -12, 6.6, 3.4);
+    ctx.quadraticCurveTo(0, 5, -6.6, 3.4);
+    ctx.quadraticCurveTo(-5.4, -12, -2.2, -30);
+    ctx.closePath();
+  };
+  opening();
+  fillPath(ctx, o.inner, 0.4);
+  ctx.save();
+  opening();
+  ctx.clip();
+  // Sayagata key-fret weave on the kakeshita.
+  ctx.strokeStyle = 'rgba(200,204,216,0.75)';
+  ctx.lineWidth = 0.22;
+  for (let gy = -30; gy < 5; gy += 2) {
+    for (let gx = -7 + ((gy / 2) % 2 ? 1 : 0); gx < 7; gx += 2) {
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(gx + 1, gy);
+      ctx.lineTo(gx + 1, gy + 1);
+      ctx.lineTo(gx + 2, gy + 1);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // An embroidered spray on the kakeshita below her hands: a silver plum
+  // branch with pale pink and white blossoms and gold-thread buds.
+  ctx.save();
+  opening();
+  ctx.clip();
+  ctx.strokeStyle = o.silver;
+  ctx.lineWidth = 0.45;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-5, -1);
+  ctx.quadraticCurveTo(-1.5, -6, 3.5, -9.5);
+  ctx.moveTo(-1.6, -5.2);
+  ctx.quadraticCurveTo(1, -4.6, 3.6, -2.6);
+  ctx.moveTo(1.2, -7.6);
+  ctx.lineTo(0.8, -10.6);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  for (const [bx, by, r, c] of [[-3.6, -2.6, 1.05, '#ffe6ee'], [-0.6, -6.2, 1.2, '#ffffff'], [2.6, -8.8, 1, '#ffd1e3'], [3.4, -3, 0.9, '#ffffff'], [0.8, -10.6, 0.7, '#ffe6ee']]) {
+    blossom(ctx, bx, by, r, c, GOLD);
+  }
+  for (const [ux, uy] of [[-4.8, -0.6], [1.9, -4.3], [4.2, -10.4]]) {
+    ctx.beginPath();
+    ctx.ellipse(ux, uy, 0.4, 0.55, 0.4, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.12);
+  }
+  ctx.restore();
+  // The kakeshita's layered hems at her feet: red under-layer, then white.
+  ctx.save();
+  opening();
+  ctx.clip();
+  for (const [hy, color, w] of [[2.2, o.lining, 1.1], [1.2, '#ffffff', 1], [0.4, o.weave, 0.25]]) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(-7, hy);
+    ctx.quadraticCurveTo(0, hy + 1.6, 7, hy);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // The uchikake's padded edges down the opening, red lining showing.
+  for (const dir of [-1, 1]) {
+    ctx.strokeStyle = o.lining;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(dir * 2.6, -30);
+    ctx.quadraticCurveTo(dir * 5.9, -12, dir * 7.1, 3.4);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(dir * 3.4, -30.5);
+    ctx.quadraticCurveTo(dir * 6.7, -12, dir * 8, 3.2);
+    ctx.stroke();
+    ctx.strokeStyle = o.silver;
+    ctx.lineWidth = 0.2;
+    ctx.stroke();
+  }
+  // Gold-and-silver embroidered vines with little blossoms down both front
+  // edges of the uchikake.
+  for (const dir of [-1, 1]) {
+    const at = (t) => {
+      const u = 1 - t;
+      return [
+        u * u * dir * 3.4 + 2 * u * t * dir * 6.7 + t * t * dir * 8,
+        u * u * -30.5 + 2 * u * t * -12 + t * t * 3.2,
+      ];
+    };
+    ctx.strokeStyle = 'rgba(232,194,90,0.9)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      const [vx, vy] = at(i / 24);
+      const wave = Math.sin(i * 1.3) * 0.9;
+      if (i === 0) ctx.moveTo(vx + dir * (1.6 + wave), vy);
+      else ctx.lineTo(vx + dir * (1.6 + wave), vy);
+    }
+    ctx.stroke();
+    for (let i = 1; i < 12; i++) {
+      const [vx, vy] = at(i / 12);
+      const off = dir * (1.6 + Math.sin(i * 2.6) * 0.9);
+      if (i % 2) {
+        blossom(ctx, vx + off, vy, 0.6, i % 4 === 1 ? '#ffffff' : '#ffd1e3', GOLD);
+      } else {
+        ctx.fillStyle = 'rgba(184,188,203,0.95)';
+        ctx.beginPath();
+        ctx.ellipse(vx + off + dir * 0.6, vy, 0.6, 0.28, dir * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  // Fuki: the thick padded hem, its red lining curling out underneath.
+  ctx.strokeStyle = o.lining;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-16, 3.6);
+  ctx.quadraticCurveTo(0, 7.4, 16, 3.6);
+  ctx.stroke();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-16.4, 2.4);
+  ctx.quadraticCurveTo(0, 6, 16.4, 2.4);
+  ctx.stroke();
+  ctx.strokeStyle = o.weave;
+  ctx.lineWidth = 0.25;
+  ctx.stroke();
+  goldStitches(ctx, () => {
+    ctx.moveTo(-15.6, 1.4);
+    ctx.quadraticCurveTo(0, 4.9, 15.6, 1.4);
+  });
+
+  // Furisode sleeves, long and padded, lined in red.
+  for (const dir of [-1, 1]) {
+    const sleeve = () => {
+      ctx.beginPath();
+      ctx.moveTo(dir * 9, -39.5);
+      ctx.quadraticCurveTo(dir * 17.4, -39, dir * 18, -30);
+      ctx.lineTo(dir * 18.4, -6);
+      ctx.quadraticCurveTo(dir * 18.2, -2, dir * 13.6, -2);
+      ctx.lineTo(dir * 8.8, -2);
+      ctx.quadraticCurveTo(dir * 6.6, -5.5, dir * 6, -15.5);
+      ctx.lineTo(dir * 4, -15.5);
+      ctx.lineTo(dir * 8, -33);
+      ctx.closePath();
+    };
+    sleeve();
+    ctx.fillStyle = satin;
+    ctx.fill();
+    outline(ctx);
+    ctx.save();
+    sleeve();
+    ctx.clip();
+    satinTwill(ctx, dir < 0 ? -19 : 4, -41, 16, 40);
+    shiromukuWeave(ctx, o, dir < 0 ? -19 : 4, -40, 15, 38, dir < 0 ? 31 : 47);
+    if (dir > 0) embroideredCrane(ctx, 13.5, -14, 2, -1, o);
+    craneCrest(ctx, dir * 13.4, -31.5, 2.2, o);
+    ctx.restore();
+    ctx.strokeStyle = o.lining;
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(dir * 18.6, -6);
+    ctx.quadraticCurveTo(dir * 18.6, -1.2, dir * 13.6, -1.2);
+    ctx.lineTo(dir * 8.6, -1.2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(dir * 18.4, -6);
+    ctx.quadraticCurveTo(dir * 18.2, -2, dir * 13.6, -2);
+    ctx.lineTo(dir * 8.8, -2);
+    ctx.stroke();
+    ctx.strokeStyle = o.lining;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(dir * 8.9, -3);
+    ctx.quadraticCurveTo(dir * 6.9, -6.5, dir * 6.3, -15);
+    ctx.stroke();
+    goldStitches(ctx, () => {
+      ctx.moveTo(dir * 17.2, -8);
+      ctx.quadraticCurveTo(dir * 17.1, -3.4, dir * 13.4, -3.4);
+      ctx.lineTo(dir * 9.4, -3.4);
+    });
+    // A little red silk tassel weighting the sleeve's corner.
+    const tx = dir * 17.6;
+    ctx.beginPath();
+    ctx.arc(tx, -1.6, 0.6, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.15);
+    ctx.strokeStyle = o.lining;
+    ctx.lineWidth = 0.22;
+    for (let k = -2; k <= 2; k++) {
+      ctx.beginPath();
+      ctx.moveTo(tx + k * 0.15, -1.1);
+      ctx.lineTo(tx + k * 0.3, 1.4);
+      ctx.stroke();
+    }
+  }
+
+  // Obiage: white shibori silk puffing above the obi, dotted in grey.
+  rr(ctx, -5.8, -31.2, 11.6, 2.2, 1.1, '#ffffff', 0.35);
+  ctx.fillStyle = 'rgba(184,188,203,0.9)';
+  for (let px = -5; px < 5.2; px += 1.1) {
+    ctx.beginPath();
+    ctx.arc(px, -30.1 + (Math.round(px * 2) % 2 ? 0.35 : -0.35), 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // The obi in the opening: silver brocade with a woven lozenge weave.
+  rr(ctx, -6.2, -29.5, 12.4, 9.5, 2.2, o.obi, 0.5);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-6.2, -29.5, 12.4, 9.5);
+  ctx.clip();
+  ctx.strokeStyle = o.obiWeave;
+  ctx.lineWidth = 0.25;
+  for (let gx = -8; gx < 8; gx += 2.2) {
+    ctx.beginPath();
+    ctx.moveTo(gx, -29.5);
+    ctx.lineTo(gx + 4.75, -20);
+    ctx.moveTo(gx + 4.75, -29.5);
+    ctx.lineTo(gx, -20);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // Silver flower medallions woven into the brocade.
+  for (const [mx, my] of [[-3.8, -27.6], [3.9, -22], [-3.6, -21.8]]) {
+    ctx.strokeStyle = '#a8aebc';
+    ctx.lineWidth = 0.2;
+    ctx.beginPath();
+    ctx.arc(mx, my, 1.35, 0, Math.PI * 2);
+    ctx.stroke();
+    blossom(ctx, mx, my, 0.95, '#ffffff', '#c8ccd8');
+  }
+  for (const py of [-29.1, -20.4]) {
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-6, py);
+    ctx.lineTo(6, py);
+    ctx.stroke();
+  }
+  // Obijime: a braided gold cord round the middle, fastened with a pearl
+  // obidome set in gold, its tasselled ends hanging at the left.
+  for (let i = 0; i < 2; i++) {
+    ctx.strokeStyle = i ? '#fff0b8' : GOLD;
+    ctx.lineWidth = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(-6.2, -25 + i * 0.5);
+    ctx.lineTo(6.2, -25 + i * 0.5);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.ellipse(-0.6, -24.75, 1.7, 1.25, 0, 0, Math.PI * 2);
+  fillPath(ctx, GOLD, 0.3);
+  const pearl = ctx.createRadialGradient(-0.9, -25.1, 0, -0.6, -24.75, 1.1);
+  pearl.addColorStop(0, '#ffffff');
+  pearl.addColorStop(1, '#d8dce8');
+  ctx.beginPath();
+  ctx.arc(-0.6, -24.75, 1, 0, Math.PI * 2);
+  ctx.fillStyle = pearl;
+  ctx.fill();
+  for (const [tx, len] of [[-4.6, 4.5], [-3.8, 5.4]]) {
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(-5.2, -24.6);
+    ctx.quadraticCurveTo(tx - 0.6, -22.4, tx, -24.6 + len);
+    ctx.stroke();
+    rr(ctx, tx - 0.4, -24.6 + len, 0.8, 1.8, 0.35, '#fff0b8', 0.15);
+  }
+  // Kaiken: a small dagger in a red-and-gold brocade bag, tucked upright
+  // in the obi, its cord tied in a bow with two tassels.
+  rr(ctx, 2.2, -31, 2.2, 8.5, 1, '#c8283a', 0.35);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.22;
+  for (let ky = -30.2; ky < -23.5; ky += 1.3) {
+    ctx.beginPath();
+    ctx.moveTo(2.4, ky);
+    ctx.lineTo(4.2, ky + 0.7);
+    ctx.stroke();
+  }
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(3.3 + dir * 1.3, -27.6, 1.2, 0.6, dir * 0.4, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.2);
+  }
+  for (const [tx, len] of [[2.7, 5], [3.9, 6]]) {
+    ctx.strokeStyle = '#e8c25a';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(3.3, -27.4);
+    ctx.lineTo(tx, -27.4 + len);
+    ctx.stroke();
+    rr(ctx, tx - 0.45, -27.4 + len, 0.9, 2, 0.4, '#d8283a', 0.15);
+  }
+
+  // An open bridal sensu held up before her (the user: "make her hold a
+  // detailed fan"), its silk cords hanging below her hands.
+  drawOpenSensu(ctx, 0.6, -15.4, SENSU_STYLES.bride);
+  for (const [hx, hy, rot] of [[-1.2, -16.2, 0.45], [2, -15.4, -0.3]]) {
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, 2.3, 1.35, rot, 0, Math.PI * 2);
+    fillPath(ctx, d.skin, 0.4);
+  }
+  // Long silk cords tied at the fan's rivet: red, white and gold, each
+  // ending in a tassel, falling past her hands.
+  ctx.save();
+  ctx.translate(0.6, -14.4);
+  for (const [cx, len, color] of [[-0.9, 9, '#d8283a'], [0, 10.5, '#ffffff'], [0.9, 9.6, GOLD]]) {
+    ctx.strokeStyle = color === '#ffffff' ? '#e8e6ee' : color;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0.4);
+    ctx.quadraticCurveTo(cx * 1.6, len * 0.5, cx * 1.2, len);
+    ctx.stroke();
+    rr(ctx, cx * 1.2 - 0.45, len, 0.9, 2, 0.4, color, 0.15);
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.2;
+    ctx.beginPath();
+    ctx.moveTo(cx * 1.2 - 0.45, len + 0.4);
+    ctx.lineTo(cx * 1.2 + 0.45, len + 0.4);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // Slender fingers folded over the fan, a soft pink at the tips.
+  ctx.strokeStyle = 'rgba(170,120,120,0.5)';
+  ctx.lineWidth = 0.18;
+  for (const fx of [-2.8, -2, -1.2, 0.6, 1.4, 2.2]) {
+    ctx.beginPath();
+    ctx.moveTo(fx, -16.8);
+    ctx.lineTo(fx + 0.25, -15.2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(240,170,180,0.6)';
+  for (const fx of [-2.6, -1.8, 0.8, 1.6]) {
+    ctx.beginPath();
+    ctx.ellipse(fx, -16.6, 0.3, 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawNeck(ctx, d);
+  // Layered collars: white, a thin red line, the white kakeshita, then the
+  // uchikake's padded collar.
+  for (const [color, width, inset] of [['#ffffff', 3.4, 0], [o.lining, 1.6, 0.4], ['#ffffff', 1.5, 0.9], [o.robe, 1.5, 2]]) {
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * (4.6 + inset), -41);
+      ctx.quadraticCurveTo(dir * (3.6 + inset), -35, dir * -1.2, -30.4 + inset * 0.5);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+  }
+  // A line of tiny pearls stitched along the outer collar.
+  for (const dir of [-1, 1]) {
+    for (let i = 0; i <= 7; i++) {
+      const t = i / 7;
+      const u = 1 - t;
+      const px = u * u * dir * 6.6 + 2 * u * t * dir * 5.6 + t * t * dir * -1.2;
+      const py = u * u * -41 + 2 * u * t * -35 + t * t * -29.4;
+      const pearl = ctx.createRadialGradient(px - 0.1, py - 0.1, 0, px, py, 0.34);
+      pearl.addColorStop(0, '#ffffff');
+      pearl.addColorStop(1, '#dcdfe8');
+      ctx.beginPath();
+      ctx.arc(px, py, 0.32, 0, Math.PI * 2);
+      ctx.fillStyle = pearl;
+      ctx.fill();
+    }
+  }
+  // Hakoseko: a white-and-gold brocade purse at the breast, with a silver
+  // chain and a red tassel.
+  rr(ctx, -10.2, -36.8, 5.6, 3.4, 0.8, '#f2f0f6', 0.4);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.3;
+  ctx.strokeRect(-9.7, -36.3, 4.6, 2.4);
+  blossom(ctx, -7.4, -35.1, 0.85, '#ffd1e3', GOLD);
+  ctx.strokeStyle = '#c8ccd8';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.moveTo(-10, -33.6);
+  ctx.quadraticCurveTo(-11.6, -30.8, -10.8, -29.2);
+  ctx.stroke();
+  rr(ctx, -11.4, -29.4, 1.2, 2.4, 0.5, o.lining, 0.2);
+  // Its bira: silver dangles and a pearl on a second, longer chain.
+  ctx.strokeStyle = '#c8ccd8';
+  ctx.lineWidth = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(-8.6, -33.4);
+  ctx.quadraticCurveTo(-9.6, -29.6, -8.8, -27.4);
+  ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const dx = -9.6 + i * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(dx, -27.6);
+    ctx.lineTo(dx + 0.1, -25.6 + (i % 2) * 0.8);
+    ctx.stroke();
+    ctx.fillStyle = '#e4e8f0';
+    ctx.fillRect(dx - 0.2, -25.8 + (i % 2) * 0.8, 0.5, 0.7);
+  }
+  ctx.beginPath();
+  ctx.arc(-8.8, -27.2, 0.5, 0, Math.PI * 2);
+  fillPath(ctx, '#fbf8f2', 0.15);
+}
+
+/**
+ * The bride's hair and tsunokakushi: the swept-out side wings (bin) of a
+ * bunkin takashimada; tortoiseshell kanzashi with gold tips crossing behind
+ * the hood; and the tsunokakushi itself — a white silk hood over the top
+ * of the updo, its woven weave and silver edge, its red lining showing at
+ * the front fold.
+ */
+function drawShiromukuHair(ctx, d) {
+  const c = d.hair.color;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 9, -12);
+    ctx.quadraticCurveTo(dir * 15.8, -10, dir * 14.4, -1);
+    ctx.quadraticCurveTo(dir * 13, 3.4, dir * 10.2, 2.6);
+    ctx.quadraticCurveTo(dir * 11.4, -4, dir * 8.6, -8);
+    ctx.closePath();
+    fillPath(ctx, c, 0.5);
+    // Fine combed strands swept back through the wing.
+    ctx.strokeStyle = 'rgba(90,84,110,0.55)';
+    ctx.lineWidth = 0.2;
+    for (const k of [0.25, 0.5, 0.75]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * (9 + k * 1.2), -11.4 + k);
+      ctx.quadraticCurveTo(dir * (13.6 + k), -8 + k * 2, dir * (11 + k * 2.4), 1.6 - k);
+      ctx.stroke();
+    }
+  }
+  // The hood's side drapes: the corners of the tsunokakushi folded down
+  // past the hair, woven like the hood, lined in red on the inner edge.
+  for (const dir of [-1, 1]) {
+    const drape = () => {
+      ctx.beginPath();
+      ctx.moveTo(dir * 11.4, -13.2);
+      ctx.lineTo(dir * 15.4, -12.6);
+      ctx.quadraticCurveTo(dir * 16.6, -4, dir * 15.8, 4);
+      ctx.lineTo(dir * 12.8, 3.4);
+      ctx.quadraticCurveTo(dir * 13.8, -4, dir * 11.4, -13.2);
+      ctx.closePath();
+    };
+    const sheen = ctx.createLinearGradient(dir * 11, 0, dir * 16.5, 0);
+    sheen.addColorStop(0, '#ffffff');
+    sheen.addColorStop(1, '#e4e1ea');
+    drape();
+    ctx.fillStyle = sheen;
+    ctx.fill();
+    outline(ctx, 0.45);
+    ctx.save();
+    drape();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(190,194,208,0.7)';
+    ctx.lineWidth = 0.18;
+    for (let gy = -12; gy < 4; gy += 2.4) {
+      const gx = dir * (14.2 + ((gy / 2.4) % 2 ? 0.6 : -0.4));
+      ctx.beginPath();
+      ctx.moveTo(gx, gy - 0.9);
+      ctx.lineTo(gx + 0.9, gy);
+      ctx.lineTo(gx, gy + 0.9);
+      ctx.lineTo(gx - 0.9, gy);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#d8283a';
+    ctx.lineWidth = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(dir * 11.8, -12.6);
+    ctx.quadraticCurveTo(dir * 14.1, -4, dir * 13.1, 3.2);
+    ctx.stroke();
+    // Silver-embroidered blossoms scattered down the drape.
+    for (const [bx, by] of [[14.6, -8.5], [15.1, -2.2], [14.4, 1.8]]) {
+      blossom(ctx, dir * bx, by, 0.7, '#ffffff', '#b8bccb');
+    }
+  }
+  // Tortoiseshell pins with gold tips, fanning out behind the hood.
+  for (const [ang, len] of [[-2.55, 20], [-2.75, 18], [-0.6, 20], [-0.4, 18]]) {
+    const ex = Math.cos(ang) * len;
+    const ey = -14 + Math.sin(ang) * len * 0.55;
+    const g = ctx.createLinearGradient(0, -14, ex, ey);
+    g.addColorStop(0, '#5a2e14');
+    g.addColorStop(0.6, '#b8742a');
+    g.addColorStop(1, '#6a3a1a');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 0.9;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang) * 8, -14 + Math.sin(ang) * 4);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.arc(ex, ey, 0.9, 0, Math.PI * 2);
+    fillPath(ctx, GOLD, 0.2);
+  }
+  // The tsunokakushi: a white silk hood draped over the top of the updo.
+  const hood = () => {
+    ctx.beginPath();
+    ctx.moveTo(-13.6, -11.8);
+    ctx.bezierCurveTo(-14.8, -23.6, 14.8, -23.6, 13.6, -11.8);
+    ctx.quadraticCurveTo(0, -15.2, -13.6, -11.8);
+    ctx.closePath();
+  };
+  const silk = ctx.createLinearGradient(-14, 0, 14, 0);
+  silk.addColorStop(0, '#e9e6ee');
+  silk.addColorStop(0.45, '#ffffff');
+  silk.addColorStop(1, '#e4e1ea');
+  hood();
+  ctx.fillStyle = silk;
+  ctx.fill();
+  outline(ctx, 0.5);
+  ctx.save();
+  hood();
+  ctx.clip();
+  // Its weave: little woven cranes-and-pine diamonds in pale grey.
+  ctx.strokeStyle = 'rgba(190,194,208,0.7)';
+  ctx.lineWidth = 0.2;
+  for (let gy = -25; gy < -11; gy += 2.6) {
+    for (let gx = -14 + ((gy / 2.6) % 2 ? 1.3 : 0); gx < 14; gx += 2.6) {
+      ctx.beginPath();
+      ctx.moveTo(gx, gy - 1);
+      ctx.lineTo(gx + 1, gy);
+      ctx.lineTo(gx, gy + 1);
+      ctx.lineTo(gx - 1, gy);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+  // Soft folds in the silk.
+  ctx.strokeStyle = 'rgba(170,170,190,0.45)';
+  ctx.lineWidth = 0.4;
+  for (const fx of [-7, 0, 7]) {
+    ctx.beginPath();
+    ctx.moveTo(fx * 1.3, -13.5);
+    ctx.quadraticCurveTo(fx, -19, fx * 0.7, -24);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // A silver crane-in-a-circle crest embroidered on the hood's front.
+  craneCrest(ctx, 0, -18.6, 2.6, { silver: '#a8aebc', weave: '#c8ccd8' });
+  // Gold cord trim along the hood's crown and sides.
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.35;
+  ctx.setLineDash([1.1, 0.5]);
+  ctx.beginPath();
+  ctx.moveTo(-13.3, -12.6);
+  ctx.bezierCurveTo(-14.4, -23, 14.4, -23, 13.3, -12.6);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Pearl-tipped pins at the hood's sides.
+  for (const dir of [-1, 1]) {
+    ctx.strokeStyle = '#d8dce4';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(dir * 10.8, -13.4);
+    ctx.lineTo(dir * 14.6, -16.2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(dir * 14.9, -16.4, 0.9, 0, Math.PI * 2);
+    fillPath(ctx, '#fbf8f2', 0.2);
+  }
+  // The front fold: a band turned back, its red lining peeking out, edged
+  // in silver.
+  ctx.beginPath();
+  ctx.moveTo(-13.6, -11.8);
+  ctx.quadraticCurveTo(0, -15.2, 13.6, -11.8);
+  ctx.lineTo(13.2, -10.6);
+  ctx.quadraticCurveTo(0, -13.8, -13.2, -10.6);
+  ctx.closePath();
+  fillPath(ctx, '#d8283a', 0.3);
+  ctx.strokeStyle = '#c8ccd8';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  ctx.moveTo(-13.6, -12.2);
+  ctx.quadraticCurveTo(0, -15.6, 13.6, -12.2);
+  ctx.stroke();
+  // A fringe of tiny pearls hanging from the hood's front edge.
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    const px = -12.4 + t * 24.8;
+    const py = -10.5 - Math.sin(t * Math.PI) * 2.6;
+    const pearl = ctx.createRadialGradient(px - 0.1, py + 0.6, 0, px, py + 0.7, 0.35);
+    pearl.addColorStop(0, '#ffffff');
+    pearl.addColorStop(1, '#dcdfe8');
+    ctx.strokeStyle = 'rgba(184,188,203,0.8)';
+    ctx.lineWidth = 0.12;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px, py + 0.4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px, py + 0.7, 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = pearl;
+    ctx.fill();
+  }
+  // A tortoiseshell kushi with gold maki-e just under the hood's edge.
+  ctx.beginPath();
+  ctx.moveTo(-6, -11.2);
+  ctx.quadraticCurveTo(0, -13.6, 6, -11.2);
+  ctx.lineTo(5.6, -10);
+  ctx.quadraticCurveTo(0, -12.2, -5.6, -10);
+  ctx.closePath();
+  const comb = ctx.createLinearGradient(-6, 0, 6, 0);
+  comb.addColorStop(0, '#5a2e14');
+  comb.addColorStop(0.5, '#c0802e');
+  comb.addColorStop(1, '#5a2e14');
+  ctx.fillStyle = comb;
+  ctx.fill();
+  outline(ctx, 0.3);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(-3.6, -11.4);
+  ctx.quadraticCurveTo(0, -12.6, 3.6, -11.4);
+  ctx.stroke();
+  for (const px of [-2.4, 0, 2.4]) blossom(ctx, px, -11.6 + Math.abs(px) * 0.12, 0.45, '#ffffff', GOLD);
 }
 
 /** Dashed gold embroidery along whatever path `trace` lays down. */
@@ -2588,7 +3569,7 @@ function drawHead(ctx, d, angryTint = false) {
   ctx.clip();
   const shadow = ctx.createLinearGradient(0, -9, 0, -3);
   // On white oshiroi a grey shadow looks ashen; warm it to a soft pink.
-  shadow.addColorStop(0, d.extras?.beni ? 'rgba(226,170,176,0.55)' : shade(skin, -0.16));
+  shadow.addColorStop(0, d.extras?.beni || d.extras?.bridal ? 'rgba(226,170,176,0.55)' : shade(skin, -0.16));
   shadow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = shadow;
   ctx.fillRect(-12, -14, 24, 11);
@@ -2614,25 +3595,39 @@ function drawHead(ctx, d, angryTint = false) {
     }
     drawMaikoEyeDetails(ctx);
   }
+  if (d.extras?.bridal) drawBridalEyeMakeup(ctx);
   drawBrows(ctx, d);
-  // Blush with a few anime hatch strokes, and a hint of nose.
-  ctx.fillStyle = 'rgba(240,120,140,0.3)';
-  for (const dir of [-1, 1]) {
-    ctx.beginPath();
-    ctx.ellipse(dir * 6.6, 3.6, 2.3, 1.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(220,90,110,0.4)';
-  ctx.lineWidth = 0.3;
-  for (const dir of [-1, 1]) {
-    for (const off of [-1, 0, 1]) {
+  if (d.extras?.bridal) {
+    // A bride's blush: a soft, round rosy glow high on each cheek.
+    for (const dir of [-1, 1]) {
+      const glow = ctx.createRadialGradient(dir * 6.6, 3.8, 0, dir * 6.6, 3.8, 3);
+      glow.addColorStop(0, 'rgba(255,150,170,0.45)');
+      glow.addColorStop(1, 'rgba(255,150,170,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.moveTo(dir * 6.6 + off * 0.9 - 0.3, 4.2);
-      ctx.lineTo(dir * 6.6 + off * 0.9 + 0.3, 3);
-      ctx.stroke();
+      ctx.ellipse(dir * 6.6, 3.8, 3.2, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Blush with a few anime hatch strokes, and a hint of nose.
+    ctx.fillStyle = 'rgba(240,120,140,0.3)';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(dir * 6.6, 3.6, 2.3, 1.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(220,90,110,0.4)';
+    ctx.lineWidth = 0.3;
+    for (const dir of [-1, 1]) {
+      for (const off of [-1, 0, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(dir * 6.6 + off * 0.9 - 0.3, 4.2);
+        ctx.lineTo(dir * 6.6 + off * 0.9 + 0.3, 3);
+        ctx.stroke();
+      }
     }
   }
-  if (d.extras?.beni) {
+  if (d.extras?.beni || d.extras?.bridal) {
     // A gentler nose on the white oshiroi: a small soft curve.
     ctx.strokeStyle = 'rgba(200,140,140,0.6)';
     ctx.lineWidth = 0.4;
@@ -2716,6 +3711,99 @@ function drawMaikoEyeDetails(ctx) {
   }
 }
 
+/**
+ * A bride's soft makeup: a peach-pink wash on the lids fading up to the
+ * brow, a fine rose liner with the gentlest lift at the outer corner,
+ * fluttery lashes, and a whisper of pink along the lower lid.
+ */
+function drawBridalEyeMakeup(ctx) {
+  for (const dir of [-1, 1]) {
+    const lid = ctx.createRadialGradient(dir * 5, -2.2, 0, dir * 5, -2.2, 3.8);
+    lid.addColorStop(0, 'rgba(255,175,170,0.4)');
+    lid.addColorStop(0.6, 'rgba(255,190,200,0.2)');
+    lid.addColorStop(1, 'rgba(255,190,200,0)');
+    ctx.fillStyle = lid;
+    ctx.beginPath();
+    ctx.ellipse(dir * 5, -2.2, 4, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Iris detail, kept quiet to suit the silk (no highlights): a soft
+    // shadow from the upper lid, a rosy glow round the pupil so the red
+    // shades like a garnet, a fine dark wine edge, and a thin darker rim
+    // round the small gold pupil.
+    const ix = dir * 4.75;
+    const iy = 1.2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(ix, iy, 2.26, 2.67, 0, 0, Math.PI * 2);
+    ctx.clip();
+    const glow = ctx.createRadialGradient(ix, iy + 0.5, 0.3, ix, iy + 0.5, 2.2);
+    glow.addColorStop(0, 'rgba(240,96,110,0.55)');
+    glow.addColorStop(1, 'rgba(240,96,110,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(ix - 2.4, iy - 2.8, 4.8, 5.6);
+    const lidShadow = ctx.createLinearGradient(0, iy - 2.7, 0, iy - 0.2);
+    lidShadow.addColorStop(0, 'rgba(50,4,14,0.65)');
+    lidShadow.addColorStop(1, 'rgba(50,4,14,0)');
+    ctx.fillStyle = lidShadow;
+    ctx.fillRect(ix - 2.4, iy - 2.8, 4.8, 2.6);
+    // A little texture: a few soft rose fibers in the lower iris only.
+    ctx.strokeStyle = 'rgba(255,170,180,0.2)';
+    ctx.lineWidth = 0.1;
+    for (let i = 0; i < 7; i++) {
+      const ang = Math.PI * (0.16 + i * 0.113);
+      ctx.beginPath();
+      ctx.moveTo(ix + Math.cos(ang) * 0.95, iy + Math.sin(ang) * 1.25);
+      ctx.lineTo(ix + Math.cos(ang) * 1.65, iy + Math.sin(ang) * 2.05);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(60,6,18,0.7)';
+    ctx.lineWidth = 0.22;
+    ctx.beginPath();
+    ctx.ellipse(ix, iy, 2.2, 2.6, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Redraw the small gold pupil over the glow, with a fine dark rim.
+    ctx.beginPath();
+    ctx.ellipse(ix, iy - 0.1, 0.56, 0.87, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#d9a63a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(110,60,10,0.85)';
+    ctx.lineWidth = 0.14;
+    ctx.stroke();
+    // A hairline gold halo just round the pupil.
+    ctx.strokeStyle = 'rgba(242,201,76,0.55)';
+    ctx.lineWidth = 0.1;
+    ctx.beginPath();
+    ctx.ellipse(ix, iy - 0.1, 0.8, 1.12, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Fine rose liner with a soft lift.
+    ctx.strokeStyle = 'rgba(190,70,90,0.7)';
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(dir * 6.6, -1.2);
+    ctx.quadraticCurveTo(dir * 8, -1.7, dir * 8.7, -2.6);
+    ctx.stroke();
+    // Fluttery lashes at the outer corner.
+    ctx.strokeStyle = 'rgba(42,26,46,0.8)';
+    ctx.lineWidth = 0.22;
+    ctx.lineCap = 'round';
+    for (const [lx, ly, ex, ey] of [[7, -2.2, 7.9, -2.9], [7.6, -1.8, 8.7, -2.3]]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * lx, ly);
+      ctx.quadraticCurveTo(dir * (lx + 0.5), ly - 0.6, dir * ex, ey);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    // A whisper of pink along the lower lid.
+    ctx.strokeStyle = 'rgba(240,140,160,0.45)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(dir * 3, 4.3);
+    ctx.quadraticCurveTo(dir * 5, 4.9, dir * 7.4, 3.8);
+    ctx.stroke();
+  }
+}
+
 /** Fine red liner tapering out from each eye's outer corner. */
 function drawBeniLines(ctx) {
   // Under the outer half of each eye, a whisper of red.
@@ -2769,9 +3857,12 @@ function drawEyes(ctx, d) {
     ctx.beginPath();
     ctx.ellipse(ex + dir * 0.15, ey + 0.2, w * 0.78, h * 0.92, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = shade(e.color, -0.6);
+    // The pupil: the iris's darkest shade, unless the design names a color
+    // (and, optionally, a smaller size).
+    const ps = e.pupilScale ?? 1;
+    ctx.fillStyle = e.pupil ?? shade(e.color, -0.6);
     ctx.beginPath();
-    ctx.ellipse(ex + dir * 0.15, ey + 0.1, 0.9, Math.min(1.4, h * 0.55), 0, 0, Math.PI * 2);
+    ctx.ellipse(ex + dir * 0.15, ey + 0.1, 0.9 * ps, Math.min(1.4, h * 0.55) * ps, 0, 0, Math.PI * 2);
     ctx.fill();
     // Upper lash line; longer with a corner flick when `lashes`.
     ctx.fillStyle = lineColor;
@@ -2885,6 +3976,34 @@ function drawMouth(ctx, d) {
     ctx.moveTo(-1.7, 5.5);
     ctx.quadraticCurveTo(0, 5.9, 1.7, 5.5);
     ctx.stroke();
+    ctx.restore();
+  } else if (d.mouth === 'bride') {
+    // A bride's lips: no lipstick (the user: "remove the lipstick") — small,
+    // full and a soft natural pink, set low like Hiko's.
+    ctx.save();
+    ctx.translate(0, MAIKO_MOUTH_DROP);
+    ctx.fillStyle = 'rgba(226,150,156,0.85)';
+    ctx.moveTo(-1.9, 5.6);
+    ctx.quadraticCurveTo(-1, 4.4, 0, 5);
+    ctx.quadraticCurveTo(1, 4.4, 1.9, 5.6);
+    ctx.quadraticCurveTo(0, 8.2, -1.9, 5.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(170,90,100,0.55)';
+    ctx.lineWidth = 0.28;
+    ctx.beginPath();
+    ctx.moveTo(-1.8, 5.6);
+    ctx.quadraticCurveTo(0, 6.1, 1.8, 5.6);
+    ctx.stroke();
+    // The faintest smile tucked into each corner.
+    ctx.strokeStyle = 'rgba(170,100,110,0.45)';
+    ctx.lineWidth = 0.22;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 1.9, 5.6);
+      ctx.quadraticCurveTo(dir * 2.4, 5.4, dir * 2.6, 5);
+      ctx.stroke();
+    }
     ctx.restore();
   } else if (d.mouth === 'flat') {
     ctx.moveTo(-1.4, 6.2);
@@ -3458,6 +4577,7 @@ function drawHeadExtras(ctx, d) {
     fillPath(ctx, shade(x.beanie, 0.3), 0.4);
   }
   if (x.maikoHair) drawMaikoHair(ctx, d);
+  if (x.shiromukuHair) drawShiromukuHair(ctx, d);
   if (x.kanzashi) {
     // A flower kanzashi pinned beside the bun, with a short dangle.
     blossom(ctx, 7.6, -12.2, 2.4, x.kanzashi, GOLD);

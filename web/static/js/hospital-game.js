@@ -3010,8 +3010,18 @@ export function init(canvas, elements) {
         && [...surgeryItemsNeeded(shiftState)].some((id) => SURGERY_ITEMS[id].source === st.kind && !kitHas(id)))
       || (st.kind === 'or-table' && shiftState && surgeryPatient(shiftState) && !surgeryMissing(shiftState).length);
     stationOutline(st, pulse ? `rgba(224,168,58,${0.55 + 0.45 * Math.sin(performance.now() / 180)})` : null);
-    drawLabelChip(ctx, 0, st.h / 2 + 13, labelForStation(st), 'bold 11px sans-serif');
+    drawLabelChip(ctx, 0, stationLabelOffset(st), labelForStation(st), 'bold 11px sans-serif');
     ctx.restore();
+  }
+
+  /**
+   * How far below a station's center its name chip sits. The Triage Desk's
+   * sits up on the desk's front panel, like a nameplate, so the tallest
+   * patients at the front of the line (Hiko Maiko, the shiromuku bride)
+   * don't cover it or get covered by it.
+   */
+  function stationLabelOffset(st) {
+    return st.kind === 'triage-desk' ? st.h / 2 - 3 : st.h / 2 + 13;
   }
 
   function drawBed(st) {
@@ -4862,7 +4872,7 @@ export function init(canvas, elements) {
       // The desk's label again on top: a tall patient at the front of the
       // line (Hiko Maiko's sizeScale) would otherwise cover it.
       const desk = stationOfKind('triage-desk');
-      if (desk) drawLabelChip(ctx, desk.x, desk.y + desk.h / 2 + 13, labelForStation(desk), 'bold 11px sans-serif');
+      if (desk) drawLabelChip(ctx, desk.x, desk.y + stationLabelOffset(desk), labelForStation(desk), 'bold 11px sans-serif');
     }
     drawAmbient();
     drawPlayer();
