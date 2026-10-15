@@ -4340,17 +4340,22 @@ export function init(canvas, elements) {
   function catAtPoint(x, y) {
     return cat && currentFloor === FLOOR_1 && Math.abs(x - cat.x) <= 22 && y >= cat.y - 30 && y <= cat.y + 8;
   }
+  /**
+   * Petting the cat: he can be petted any time — every click meows and
+   * shows hearts — but the Sanity bonus only comes once per
+   * CAT_PET_COOLDOWN_SECONDS, so clicking can't refill Sanity forever.
+   */
   function petTheCat() {
     if (!cat) return;
+    cat.hearts = 1.6;
+    cat.pause = 3;
+    meow();
     if (cat.cooldown > 0) {
-      showToast('The cat is happily grooming itself. Try again in a little while.');
+      showToast('Purrr… the cat loves the attention.');
       return;
     }
     shiftState = petCat(shiftState);
     cat.cooldown = CAT_PET_COOLDOWN_SECONDS;
-    cat.hearts = 1.6;
-    cat.pause = 3;
-    meow();
     showToast('Purrr… petting the hospital cat calms you down. +Sanity');
   }
   // The cat's meow (hospital/cat-sound.js). The AudioContext is made on the

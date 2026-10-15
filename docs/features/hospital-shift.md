@@ -500,16 +500,19 @@ The user asked for a new project, "hospital shift." When asked, they chose:
     line; walking them to the waiting chairs (their own scene) earns their
     mom's thanks, +25g and +15 Ward Mood (`lostChildArrives`/
     `helpLostChild`), and they sit on the chairs for the rest of the shift.
-    On ~55% of shifts the **hospital cat** wanders the ER; clicking it pets
-    it for +6 Sanity, then it needs 30 s to itself (`petCat`). Petting it
+    The **hospital cat** wanders the ER every shift (at first only ~55%
+    of shifts, until the user couldn't find him: "i cannot find the
+    cats"). He can be petted any time ("i cant pet him all timesss"):
+    every click meows and shows hearts, but the +6 Sanity (`petCat`) only
+    comes once per 30 s, so clicking can't refill Sanity forever. Petting it
     meows ("when you pet the cat i want there to be a meowing sound"): a
     "mee-ow" synthesized with the Web Audio API in `hospital/cat-sound.js`
     (`playMeow` — a sawtooth whose pitch rises then falls, through two
     formant filters sweeping from "ee" to "ow", with vibrato and a soft
     envelope; each pet varies the pitch and length), so there's no sound
     file. The AudioContext is made on the first pet (a click, so the
-    browser allows it) and closed when the page is left; a click while the
-    cat is grooming doesn't meow, and without Web Audio petting is silent. On ~30% of
+    browser allows it) and closed when the page is left; without Web Audio
+    petting is silent. On ~30% of
     shifts one patient is a **celebrity** (seeded in the Daily) with a
     stage name, a gold ★ chip, paparazzi flashes in line and a "★ VIP" bed
     tag; their discharge pays double (`CELEBRITY_DISCHARGE_MULTIPLIER`).
@@ -987,7 +990,7 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       the battery runs flat, then it dies; the vending machine sells a
       battery; day shifts have no flashlight); more characters (Call
       Security ends Karen's scene with no mistake, the lost child's scene
-      pays +25g, petting the cat restores Sanity then needs a break). The
+      pays +25g, petting the cat meows every time but restores Sanity only once per cooldown). The
       deep-cut and gurney-surgery flows, the suite's longest, have a 60 s
       timeout. Security: sending a guard walks a rowdy visitor out; a
       thief caught pays, one that escapes leaves the vending machine out

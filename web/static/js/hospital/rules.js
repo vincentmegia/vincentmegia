@@ -1139,8 +1139,12 @@ export const LOST_CHILD_MOOD = 15;
 export const LOST_CHILD_LINE = "I can't find my mama… she said to wait by the big desk. Can you help me?";
 
 /** The hospital cat: chance per shift it wanders in, and what petting does (once per cooldown). */
-export const CAT_CHANCE = 0.55;
+// The cat is in the ER every shift (the user couldn't find him on the
+// shifts he skipped: "i cannot find the cats").
+export const CAT_CHANCE = 1;
 export const CAT_PET_SANITY = 6;
+// He can be petted any time (meow and hearts every click — "i cant pet him
+// all timesss"); only the Sanity bonus waits this long between pets.
 export const CAT_PET_COOLDOWN_SECONDS = 30;
 
 /** A celebrity patient: chance a shift has one, and their discharge pays this many times over. */
