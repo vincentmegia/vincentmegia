@@ -144,6 +144,7 @@ import {
   CANVAS_HEIGHT,
 } from './library/floor-plan.js';
 import { READING_STORIES } from './library/stories.js';
+import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import {
   defaultFacingTowardCenter,
   projectScene,
@@ -343,23 +344,6 @@ export function drawLibraryPerson(ctx, x, y, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Book flavor titles (per-genre pools — decorative only, no gameplay stake)
-// ---------------------------------------------------------------------------
-
-const TITLE_POOLS = {
-  mystery: ['The Silent Clue', 'Midnight Ledger', 'The Locked Room', 'A Quiet Alibi', 'The Missing Hour', 'Footprints in Ash', 'The Third Witness', 'Cold Case Coffee'],
-  romance: ['Second Chances', 'The Letter Never Sent', 'Sunset in Gard', 'Two Left Umbrellas', 'A Promise Kept', 'Summer at the Pier', 'Ink and Roses', 'The Last Dance'],
-  scifi: ['The Last Signal', 'Orbit Drift', 'Colony Nine', 'The Glass Engine', 'Beyond the Static', 'Red Dust Rising', 'The Quiet Machine', 'Starlight Archive'],
-  kids: ['The Brave Little Fox', 'Bedtime for Dragons', 'The Cloud Garden', 'A Very Silly Day', 'The Tiny Explorer', 'Pip the Penguin', 'Moon Boots', 'The Lost Balloon'],
-  reference: ["The Gardener's Almanac", 'Complete Grammar Guide', 'World Atlas, Revised', 'Field Guide to Birds', 'The Home Repair Book', 'Kitchen Science', 'A History of Maps', 'Pocket Dictionary'],
-};
-
-function titleForGenre(genreId, random) {
-  const pool = TITLE_POOLS[genreId] || ['Untitled'];
-  return pool[Math.floor(random() * pool.length)];
-}
-
-// ---------------------------------------------------------------------------
 // Scattered-item scene helper (shared shape behind Coin Hunt / Fines Sort /
 // Find the Book — doc: "same 'search the scene' shape")
 // ---------------------------------------------------------------------------
@@ -377,11 +361,11 @@ const SCENE_Y = [205, 445];
  * until it fits. Returns the font size + lines; if even `minFont` can't
  * fit, returns that size's best effort (callers clip to the book's rect).
  */
-function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont) {
+function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont, bold = true) {
   const words = title.split(' ');
   let best = null;
   for (let size = maxFont; size >= minFont; size -= 0.5) {
-    ctx.font = `bold ${size}px sans-serif`;
+    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
     const lines = [];
     let fits = true;
     for (const word of words) {
@@ -409,20 +393,38 @@ function titleInkFor(hex) {
  * shrunk to fit, clipped to the cover rect so it can never bleed into a
  * neighboring book (v1.4's original overflow bug).
  */
+/**
+ * A book's title on its cover: the Korean title large, its English
+ * translation smaller underneath (library/book-titles.js); a title without
+ * a translation fills the cover on its own.
+ */
 function drawCoverTitle(ctx, title, x, y, w, h, coverColor, opts = {}) {
   const pad = opts.pad ?? 2;
-  const { size, lines } = fitTitleLines(ctx, title, w - pad * 2, opts.maxLines ?? 4, opts.maxFont ?? 8, opts.minFont ?? 5);
+  const maxFont = opts.maxFont ?? 8;
+  const minFont = opts.minFont ?? 5;
+  const { ko, en } = splitTitle(title);
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.fillStyle = titleInkFor(coverColor);
-  ctx.font = `bold ${size}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const lineH = size * 1.15;
-  const top = y + h / 2 - ((lines.length - 1) * lineH) / 2;
-  lines.forEach((line, i) => ctx.fillText(line, x + w / 2, top + i * lineH));
+  const block = (text, top, height, bold, maxLines, hi, lo) => {
+    const { size, lines } = fitTitleLines(ctx, text, w - pad * 2, maxLines, hi, lo, bold);
+    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
+    const lineH = size * 1.15;
+    const first = top + height / 2 - ((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, i) => ctx.fillText(line, x + w / 2, first + i * lineH));
+  };
+  if (en) {
+    const split = h * 0.56;
+    block(ko, y, split, true, 2, maxFont, minFont);
+    ctx.globalAlpha = 0.85;
+    block(en, y + split - 1, h - split, false, 2, Math.max(4, maxFont * 0.72), 4);
+  } else {
+    block(ko, y, h, true, opts.maxLines ?? 4, maxFont, minFont);
+  }
   ctx.restore();
 }
 
@@ -965,7 +967,7 @@ export function init(canvas, elements) {
     return shiftState.returnCart.slice(0, 5).map((book, i) => ({
       ...book,
       x: cart.x - 68 + (i % 5) * 34,
-      y: cart.y + cart.size / 2 + 34,
+      y: cart.y + cart.size / 2 + 40, // clear of the cart's label chip
     }));
   }
 
@@ -1080,13 +1082,13 @@ export function init(canvas, elements) {
 
   function openFindTheBookOverlay(genreId, correctTitle) {
     const genre = findGenre(genreId);
-    const points = scatterPoints(FIND_THE_BOOK_DECOY_COUNT + 1, random, 80);
+    const points = scatterPoints(FIND_THE_BOOK_DECOY_COUNT + 1, random, 90);
     const correctIndex = Math.floor(random() * points.length);
     // Decoys draw *distinct* titles that never match the requested one —
     // previously each decoy rolled independently from a 5-title pool, so a
     // decoy could carry the very title being searched for (bug report: "when
     // i try to get the book the costermer borrowed i couldnt").
-    const decoyTitles = (TITLE_POOLS[genreId] || []).filter((t) => t !== correctTitle);
+    const decoyTitles = titlesForGenre(genreId).filter((t) => t !== correctTitle);
     for (let i = decoyTitles.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));
       [decoyTitles[i], decoyTitles[j]] = [decoyTitles[j], decoyTitles[i]];
@@ -1096,6 +1098,7 @@ export function init(canvas, elements) {
     // "Looking for" header line (y≈194).
     const items = points.map((p, i) => ({
       ...p,
+      x: Math.min(828, Math.max(132, p.x)), // keep the wider covers inside the window
       y: 218 + ((p.y - SCENE_Y[0]) / (SCENE_Y[1] - SCENE_Y[0])) * (SCENE_Y[1] - 218),
       id: i,
       title: i === correctIndex ? correctTitle : (decoyTitles[decoyIndex++] ?? 'Untitled'),
@@ -1299,7 +1302,7 @@ export function init(canvas, elements) {
     overlay = {
       kind: 'reading',
       storyIndex,
-      title: READING_STORIES[storyIndex].title,
+      title: bookTitle({ ko: READING_STORIES[storyIndex].koTitle, en: READING_STORIES[storyIndex].title }),
       page: 0,
       progress: 0,
       nudge: 0,
@@ -1609,8 +1612,16 @@ export function init(canvas, elements) {
     }
   }
 
+  /** A Find the Book cover's rect, centered on the item. */
+  function findBookCoverRect(item) {
+    return { x: item.x - 34, y: item.y - 24, w: 68, h: 48 };
+  }
+
   function handleFindTheBookClick(x, y) {
-    const item = overlay.items.find((it) => Math.hypot(it.x - x, it.y - y) <= 20);
+    const item = overlay.items.find((it) => {
+      const r = findBookCoverRect(it);
+      return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    });
     if (!item) return;
     if (item.correct) {
       shiftState = resolveFindTheBook(shiftState, true);
@@ -2210,7 +2221,7 @@ export function init(canvas, elements) {
       drawBookcase(ctx, station, {
         color: genre?.color ?? ANIME.coral,
         sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
-        titles: TITLE_POOLS[station.genreId],
+        titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
       });
     },
     'return-cart': (station) => drawReturnCart(ctx, station),
@@ -2310,14 +2321,14 @@ export function init(canvas, elements) {
     }
     const cart = stations.find((s) => s.kind === 'return-cart');
     if (shiftState && shiftState.returnCart.length > 5) {
-      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 72, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 78, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
     }
     // v2.18: a messy cart drains Mood — say so, pulsing red.
     if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
       const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 200);
       ctx.save();
       ctx.globalAlpha = pulse;
-      const warnY = cart.y + cart.size / 2 + 94; // below the covers and the "+N more" chip
+      const warnY = cart.y + cart.size / 2 + 100; // below the covers and the "+N more" chip
       drawLabelChip(ctx, cart.x, warnY, 'Messy cart! Mood dropping', 'bold 10px sans-serif', ANIME.coralDeep, '#ffffff');
       ctx.restore();
     }
@@ -2378,7 +2389,18 @@ export function init(canvas, elements) {
         // neighboring slot's own chip, same class of overflow bug as the
         // Return Cart covers above. Truncated to a short, single-word-ish
         // snippet that reliably stays inside one slot's width instead.
-        if (entry?.title) drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, entry.title, 40, 'bold 9px sans-serif'), 'bold 9px sans-serif');
+        if (entry?.title) {
+          // The Korean title on the chip, its English meaning just below
+          // (under the patience bar), both cut to the slot's 46px pitch.
+          const { ko, en } = splitTitle(entry.title);
+          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, 40, 'bold 9px sans-serif'), 'bold 9px sans-serif');
+          if (en) {
+            ctx.font = 'bold 7.5px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            outlinedText(ctx, truncateForChip(ctx, en, 44, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
+          }
+        }
       } else if (slot.kind === 'karen') {
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
       }
@@ -2740,9 +2762,17 @@ export function init(canvas, elements) {
       ctx.fillStyle = '#c65f7c';
       ctx.fillText(`Looking for: “${wanted}”`, CANVAS_WIDTH / 2, 194);
     }
+    // Covers are big enough for the Korean title and its English translation.
     for (const item of overlay.items) {
-      drawRoundRect(ctx, item.x - 20, item.y - 14, 40, 28, 3, item.color);
-      drawCoverTitle(ctx, item.title, item.x - 20, item.y - 14, 40, 28, item.color, { maxLines: 3, maxFont: 9, minFont: 6 });
+      const { x: bx, y: by, w: bw, h: bh } = findBookCoverRect(item);
+      drawRoundRect(ctx, bx + 1.5, by + 2.5, bw, bh, 4, 'rgba(59,42,74,0.2)');
+      drawRoundRect(ctx, bx, by, bw, bh, 4, item.color);
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 4);
+      ctx.stroke();
+      drawCoverTitle(ctx, item.title, bx + 2, by + 2, bw - 4, bh - 4, item.color, { maxFont: 11, minFont: 6 });
     }
   }
 

@@ -54,11 +54,12 @@ describe('library anime furniture', () => {
     }
   });
 
-  test('every genre bookcase draws, with titles or without', () => {
+  test('every genre bookcase draws: bilingual titles, plain titles, or none', () => {
     for (const shelf of buildStations(GENRES).filter((st) => st.kind === 'bookshelf')) {
       const genre = GENRES.find((g) => g.id === shelf.genreId);
       const ctx = fakeContext();
-      drawBookcase(ctx, box(shelf), { color: genre.color, sign: genre.name, titles: ['The Silent Clue', 'Orbit Drift'] });
+      drawBookcase(ctx, box(shelf), { color: genre.color, sign: genre.name, titles: [{ ko: '침묵의 단서', en: 'The Silent Clue' }, { ko: '궤도 표류', en: 'Orbit Drift' }] });
+      drawBookcase(fakeContext(), box(shelf), { color: genre.color, sign: genre.name, titles: ['The Silent Clue'] });
       assert.ok(ctx.calls.count > 50, `${shelf.id} drew too little`);
       drawBookcase(fakeContext(), box(shelf), { color: genre.color, sign: genre.name, titles: [] });
     }

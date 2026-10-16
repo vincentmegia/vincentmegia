@@ -104,10 +104,11 @@ function inkFor(hex) {
 /**
  * A wide wooden bookcase: a glossy genre-colored sign across the top
  * (`opts.sign`, e.g. "추리 · Mystery"), two shelves of outlined spines in
- * tints of the genre's color carrying titles from its pool, and a sparkle.
+ * tints of the genre's color, each carrying a title from its pool (the
+ * Korean of a {ko, en} pair, or a plain string), and a sparkle.
  *
  * @param {{id: string, w: number, h: number}} st
- * @param {{color: string, sign: string, titles: string[]}} opts
+ * @param {{color: string, sign: string, titles: (string | {ko: string, en: string})[]}} opts
  */
 export function drawBookcase(ctx, st, opts) {
   const hw = st.w / 2;
@@ -144,29 +145,37 @@ export function drawBookcase(ctx, st, opts) {
       flat(ctx, x, spineTop, w, h, 2, c, 0.9);
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       ctx.fillRect(x + 1.5, spineTop + 2.5, w - 3, 1.2);
-      // Title running up the spine: the whole title if it fits, else its
-      // longest word, at the largest size (6 → 4.5px) that fits.
-      const title = titles[titleIndex++ % titles.length];
+      // Title running up the spine: the whole Korean title if it fits, else
+      // its longest word, at the largest size that fits.
+      const entry = titles[titleIndex++ % titles.length];
+      const ko = typeof entry === 'string' ? entry : entry.ko;
       const avail = h - 7;
-      const words = title.split(' ').filter((wd) => wd.length > 2).sort((p, q) => q.length - p.length);
-      let text = words.length ? words[(r + titleIndex) % words.length] : title;
-      let size = 6;
-      ctx.font = `bold ${size}px sans-serif`;
-      if (ctx.measureText(title).width <= avail) text = title;
-      while (size > 4.5 && ctx.measureText(text).width > avail) {
-        size -= 0.5;
+      const fitLine = (text, maxSize, minSize) => {
+        const words = text.split(' ').filter((wd) => wd.length > 1).sort((p, q) => q.length - p.length);
+        let line = text;
+        let size = maxSize;
         ctx.font = `bold ${size}px sans-serif`;
-      }
+        if (ctx.measureText(text).width > avail && words.length) line = words[(r + titleIndex) % words.length];
+        while (size > minSize && ctx.measureText(line).width > avail) {
+          size -= 0.5;
+          ctx.font = `bold ${size}px sans-serif`;
+        }
+        return { line, size };
+      };
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x, spineTop + 4, w, h - 7);
+      ctx.rect(x, spineTop + 3, w, h - 6);
       ctx.clip();
       ctx.translate(x + w / 2, spineTop + h / 2 + 1);
       ctx.rotate(-Math.PI / 2);
       ctx.fillStyle = inkFor(c);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, 0, 0.3);
+      // Korean only: a spine is too short for both titles, and cutting each
+      // to its longest word pairs Korean and English words that don't match.
+      const k = fitLine(ko, 6, 4.5);
+      ctx.font = `bold ${k.size}px sans-serif`;
+      ctx.fillText(k.line, 0, 0.3);
       ctx.restore();
       x += w + 0.6;
     }

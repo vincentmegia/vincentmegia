@@ -553,6 +553,21 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   to 3×), as Hospital's does; input mapping already used
   CANVAS_WIDTH/HEIGHT, so it's unaffected.
 
+* **Bilingual book titles** (the user: "make the books with korea titles
+  and english translates"): the title pools moved to
+  `web/static/js/library/book-titles.js` as Korean/English pairs. A book's
+  `title` is "침묵의 단서 · The Silent Clue" (`bookTitle`), so toasts and
+  overlay headers show both. Covers (`drawCoverTitle`) draw the Korean
+  large with the English smaller beneath (`splitTitle`). Front Desk
+  queue chips show the Korean title with its English meaning just below,
+  under the patience bar (the user: "on the below add english meaning").
+  Shelf spines stay Korean only: a spine is too short for both, and
+  cutting each to its longest word paired Korean and English words that
+  didn't match. Find the Book's covers grew to 68×48, with the whole cover
+  clickable, to fit both lines. The Return Cart covers sit 6 px lower,
+  clear of the cart's label. The Reading Nook stories have Korean titles
+  too (`koTitle` in stories.js).
+
 e2e changes: the Boss's Office closing-wait test gives the wait 4 s
 (the office is now about 2 s from the start, so a 2 s wait ended before
 arrival), and the First Person "toggle back to Top-Down" test checks
