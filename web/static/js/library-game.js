@@ -1497,12 +1497,17 @@ export function init(canvas, elements) {
     }
 
     if (station.kind === 'return-cart') {
-      if (pendingCartPickupId) {
-        const id = pendingCartPickupId;
-        pendingCartPickupId = null;
+      // A clicked cover picks that book; clicking the cart itself picks the
+      // next one in line (the user: "im not able to pick up the book" — the
+      // cart is the obvious thing to click, but it used to do nothing).
+      const id = pendingCartPickupId ?? shiftState.returnCart[0]?.id ?? null;
+      pendingCartPickupId = null;
+      if (id && !shiftState.carriedBook) {
         const before = shiftState;
         shiftState = pickUpBook(shiftState, id);
-        if (shiftState !== before) showToast('Picked up a book — take it to its shelf.');
+        if (shiftState !== before) showToast(`Picked up “${shiftState.carriedBook.title}” — take it to its shelf.`);
+      } else if (!shiftState.carriedBook) {
+        showToast('The Return Cart is empty.');
       }
       return;
     }

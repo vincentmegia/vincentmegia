@@ -271,6 +271,18 @@ test.describe('shelving books', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook)).toBe(null);
 	});
 
+	test('clicking the Return Cart itself picks up the next book in line', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBookNow());
+		const first = (await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots()))[0];
+
+		await walkToStation(page, 'return-cart');
+
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(first.id);
+		await expect(page.locator('#library-toast')).toContainText('Picked up');
+	});
+
 	test('a wrong-shelf arrival blocks the skill-check (no silent mistake)', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

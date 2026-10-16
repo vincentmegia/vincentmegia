@@ -568,6 +568,14 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   clear of the cart's label. The Reading Nook stories have Korean titles
   too (`koTitle` in stories.js).
 
+* **Clicking the Return Cart picks up a book**: the user couldn't pick up
+  a book, because only the small covers under the cart were clickable.
+  Clicking the cart itself just walked over and did nothing, even though
+  the cart (now drawn with books on it) is the obvious target. Arriving at
+  the cart now picks up the clicked cover's book, or else the next one in
+  line, and the toast names it. If the cart is empty, it says so. Covered
+  by the "clicking the Return Cart itself" e2e test.
+
 e2e changes: the Boss's Office closing-wait test gives the wait 4 s
 (the office is now about 2 s from the start, so a 2 s wait ended before
 arrival), and the First Person "toggle back to Top-Down" test checks
