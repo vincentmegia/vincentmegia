@@ -94,8 +94,8 @@ describe('defaultFacingTowardCenter', () => {
   });
 
   test('a player already exactly at the center faces 0 (north), not PI', () => {
-    // Regression: floor-plan.js's FLOOR_1_ENTRY_POINT/FLOOR_2_ENTRY_POINT
-    // are both exactly the canvas center (480, 300 on a 960x600 canvas), so
+    // Regression: floor-plan.js's FLOOR_2_ENTRY_POINT (and, before the
+    // Hospital-style relayout, FLOOR_1_ENTRY_POINT) is exactly the canvas center (480, 300 on a 960x600 canvas), so
     // "face toward the center" from a point that IS the center is a
     // degenerate atan2(0, -0) call, which JS defines as PI, not 0 — silently
     // leaving every floor-entry player facing exactly backward.

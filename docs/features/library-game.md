@@ -219,7 +219,7 @@ kitchen." Three changes, all rendering-only in `library-game.js`:
    badge, and the elevator shows its target floor. Drawn in each station's
    local space, so First Person billboards pick it up unchanged.
 3. The graph-paper grid floor became staggered wooden planks with a soft
-   vignette.
+   vignette (replaced by Hospital Shift's anime tiles in v2.21).
 
 Verified with Playwright screenshots of the full floor and of all four
 personalities at both player scale and the front desk's 0.62 scale.
@@ -484,6 +484,81 @@ What stays here:
 
 Unit 221/221 and every `e2e/library-game.spec.js` test pass unchanged on
 Chromium + WebKit.
+
+**v2.21 Hospital Shift's anime style** — the user asked for Library Shift
+to be "like hospital shift" (its anime look on `main`), Coral in a kimono
+"like kimono from hospital shift", and a Korean library. Everything is
+drawn with Hospital Shift's own anime kit rather than a copy of it:
+
+* **Characters**: `drawLibraryPerson` now dispatches to Hospital Shift's
+  renderers. Coral is drawn by `hospital/kimono-himura.js`'s
+  `drawKimonoHimura` with `cap: false, look: 'coral'`, at Hospital's
+  `PLAYER_ART_SCALE` (1.12) with its walking sway. The user first got an
+  exact copy of Kimono Himura, then asked for "the character different
+  rather than the same". So the `coral` look (`CORAL_PALETTE`) keeps the
+  anime style but has its own design: a chestnut jaw-length bob with a
+  pink ribbon (no bun or kanzashi), round glasses (her look from the
+  original game) and teal-green eyes. Her outfit went through a blue
+  furisode first; then the user asked for "the official outfit of
+  Koreans", since this is a Korean library. So she wears a **hanbok**
+  (`drawHanbok`): a pale-yellow jeogori with slim curved sleeves and red
+  kkeutdong cuffs, a purple git collar with the white dongjeong, a long
+  red goreum ribbon tied at the chest, a high-waisted rose chima belled
+  to the floor with a gold-leaf (geumbak) hem band, and pink kkotsin with
+  upturned toes. Her hands are folded in front. Patrons use Hospital's
+  anime patient designs (`PATRON_PERSONALITY_KEYS` is now
+  `anime-people.js`'s `PATIENT_DESIGN_KEYS`, still hashed from the patron
+  id); Karen and the Security guard use `STAFF_DESIGNS`; the 2nd-Floor
+  Volunteer is the `bookworm` design. `LIBRARY_PERSON_SCALE` (1.55) now
+  only sizes the coffee splash.
+* **HUD**: Hospital's anime gauges with heart/smile badges and outlined
+  labels for Sanity (mint) and Mood (sky), plated anime stars, and the
+  Gard counter on an anime plate with a gold G badge; label chips are
+  `animeChip`.
+* **Floor and wall**: Hospital's glossy pastel checker tiles (mint on the
+  1st Floor, cream on the 2nd, like the ER and Supply Room) with afternoon
+  sunbeams and pastel guide stripes; the cream-to-blush back wall with the
+  pink rail; a glossy sign button where the ER's EMERGENCY sign is
+  ("도서관 · LIBRARY 1F" / "열람실 · READING 2F"); a painted sakura
+  branch, a little wall shelf of books, and Hospital's pink bell clock;
+  stitched pastel rugs under the Coffee Machine and Reading Nook; and
+  decor from `hospital/anime-furniture.js`'s `drawDecor` (plants, a water
+  cooler, a library ladder, reading chairs).
+* **Stations**: every station is an `animeTile` with plum line art and
+  Hospital's pink (hover) / gold (target) glow ring. Library's fixtures
+  are drawn by the new `web/static/js/library/anime-furniture.js` in the
+  same kit: wide bookcases with a glossy Korean/English genre sign
+  ("추리 · Mystery") over two shelves of titled spines, the Front Desk,
+  the Return Cart, the Fines Counter as a small room like the ER's
+  Operating Room ("벌금 · FINES"), the Boss's door ("관장 · BOSS") and the
+  Reading Nook. Stairs and the Elevator are Hospital's own drawers; the
+  Coffee Machine keeps its original art, as Hospital's does. Return Cart
+  covers get line art and shadows.
+* **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
+  rectangles: every station has `w`/`h` (defaulting to `size`), read
+  through `stationExtents` by hit-testing, the walk-up standoff, the
+  queue offsets, `drawStation` and First Person's billboards. There's a
+  fixture row under the wall at y=110 (Boss's Office, a 124px-wide Front
+  Desk, Return Cart, Stairs), 124×100 bookcases at y=340, the Fines
+  Counter as a 130×130 room at (860, 320), and the Coffee Machine and
+  Elevator in the bottom corners. `PLAYER_START`/`FLOOR_1_ENTRY_POINT`
+  moved to the open lower aisle (480, 500).
+* **Background staff**: a Security guard on the 1st Floor and a Volunteer
+  on the 2nd walk fixed patrol loops around the furniture (random hops
+  cut across the shelves). They're drawn back-to-front around Coral.
+* **Overlays**: Hospital's `animeBackdrop` and `animeWindow` (a trim
+  color per minigame) behind every minigame, a `speechBubble` and
+  `animeButton`s for Karen, and an outlined anime skill-check bar.
+* **Crisp canvas**: the backing store tracks the device pixel ratio (up
+  to 3×), as Hospital's does; input mapping already used
+  CANVAS_WIDTH/HEIGHT, so it's unaffected.
+
+e2e changes: the Boss's Office closing-wait test gives the wait 4 s
+(the office is now about 2 s from the start, so a 2 s wait ended before
+arrival), and the First Person "toggle back to Top-Down" test checks
+that walking to the Coffee Machine opens its pour. It used to check for
+an instant Sanity refill on arrival, from before the Coffee Pour
+minigame, and only passed while the walk was short.
 
 ## Summary
 

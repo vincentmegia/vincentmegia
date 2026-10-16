@@ -44,6 +44,18 @@ export const CANVAS_HEIGHT = 600;
 export const STATION_BOX_SIZE = 84;
 
 /**
+ * Bigger, non-square furniture, in Hospital Shift's style (its triage desk
+ * and beds are wider/taller than its square fixtures): a wide Front Desk,
+ * wide bookcases, and a Fines Counter drawn as a small room like the ER's
+ * Operating Room. `size` stays the square fallback; `w`/`h` are the real
+ * box (see `stationExtents`).
+ */
+export const FRONT_DESK_WIDTH = 124;
+export const BOOKCASE_WIDTH = 124;
+export const BOOKCASE_HEIGHT = 100;
+export const FINES_ROOM_SIZE = 130;
+
+/**
  * How far outside a station's box edge the player stops when walking up to
  * interact with it — close enough to read as "at the shelf," far enough
  * that the player sprite never overlaps the station's box. Same value as
@@ -55,11 +67,11 @@ export const PLAYER_STOP_MARGIN = 28;
 export const FLOOR_1 = 1;
 export const FLOOR_2 = 2;
 
-/** The player's starting position every shift — 1st Floor, clear of both the top station row and the Front Desk's own patron-queue slots (drawn just below it). */
-export const PLAYER_START = { x: 480, y: 320 };
+/** The player's starting position every shift — 1st Floor's open lower aisle, clear of the top station row, the Front Desk's patron-queue slots and the shelf row. */
+export const PLAYER_START = { x: 480, y: 500 };
 
 /** Where the player lands after switching to 1st Floor (via Stairs, Elevator, or the HUD button) — clear of both fixtures, which sit at the same x/y on both floors. */
-export const FLOOR_1_ENTRY_POINT = { x: 480, y: 300 };
+export const FLOOR_1_ENTRY_POINT = { x: 480, y: 500 };
 
 /** Where the player lands after switching to 2nd Floor. */
 export const FLOOR_2_ENTRY_POINT = { x: 480, y: 300 };
@@ -89,19 +101,22 @@ export function buildStations(genres) {
   const size = STATION_BOX_SIZE;
   const stations = [
     // 1st Floor — every non-shelf station, plus some Bookshelves below.
-    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, x: 60, y: 90, size, targetFloor: FLOOR_2 },
-    { id: 'return-cart', kind: 'return-cart', floor: FLOOR_1, x: 260, y: 90, size },
-    { id: 'front-desk', kind: 'front-desk', floor: FLOOR_1, x: 480, y: 90, size },
-    { id: 'boss-office', kind: 'boss-office', floor: FLOOR_1, x: 700, y: 90, size },
-    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, x: 900, y: 90, size, targetFloor: FLOOR_2 },
-    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 840, y: 300, size },
-    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 150, y: 480, size },
+    // Laid out like Hospital Shift's ER (the user asked for its art style):
+    // a fixture row under the back wall (y=110, clear of the 58px wall band
+    // the HUD sits on), Elevator and Coffee Machine in the bottom corners.
+    { id: 'boss-office', kind: 'boss-office', floor: FLOOR_1, x: 80, y: 110, size },
+    { id: 'front-desk', kind: 'front-desk', floor: FLOOR_1, x: 330, y: 110, size, w: FRONT_DESK_WIDTH, h: size },
+    { id: 'return-cart', kind: 'return-cart', floor: FLOOR_1, x: 620, y: 110, size },
+    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, x: 880, y: 110, size, targetFloor: FLOOR_2 },
+    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 860, y: 320, size, w: FINES_ROOM_SIZE, h: FINES_ROOM_SIZE },
+    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 80, y: 530, size },
+    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, x: 880, y: 530, size, targetFloor: FLOOR_2 },
     // 2nd Floor — Stairs/Elevator at the same x/y as 1st Floor's, so the
     // player lands in a familiar spot regardless of which floor they came
     // from (real-building geometry: the stairwell/elevator shaft occupies
     // the same footprint on every floor).
-    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, x: 900, y: 90, size, targetFloor: FLOOR_1 },
-    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, x: 60, y: 90, size, targetFloor: FLOOR_1 },
+    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, x: 880, y: 110, size, targetFloor: FLOOR_1 },
+    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, x: 880, y: 530, size, targetFloor: FLOOR_1 },
     // v2.10: a cozy Reading Nook (armchair + lamp) — read a book to restore
     // Library Mood. Bottom-center of the 2nd Floor, clear of its shelves.
     { id: 'reading-nook', kind: 'reading-nook', floor: FLOOR_2, x: 480, y: 480, size },
@@ -110,16 +125,18 @@ export function buildStations(genres) {
   const floor1Genres = genres.slice(0, FLOOR_1_GENRE_COUNT);
   const floor2Genres = genres.slice(FLOOR_1_GENRE_COUNT);
 
-  const floor1ShelfXs = [150, 380, 610, 840];
+  const floor1ShelfXs = [180, 420, 660, 840];
   floor1Genres.forEach((genre, i) => {
     stations.push({
       id: `bookshelf-${genre.id}`,
       kind: 'bookshelf',
       floor: FLOOR_1,
       genreId: genre.id,
-      x: floor1ShelfXs[i] ?? (150 + i * 230),
-      y: 300,
+      x: floor1ShelfXs[i] ?? (180 + i * 240),
+      y: 340,
       size,
+      w: BOOKCASE_WIDTH,
+      h: BOOKCASE_HEIGHT,
     });
   });
 
@@ -133,10 +150,23 @@ export function buildStations(genres) {
       x: floor2ShelfXs[i] ?? (320 + i * 220),
       y: 300,
       size,
+      w: BOOKCASE_WIDTH,
+      h: BOOKCASE_HEIGHT,
     });
   });
 
-  return stations;
+  return stations.map((st) => ({ w: st.size, h: st.size, ...st }));
+}
+
+/**
+ * A station's half-width and half-height — `w`/`h` when it has them, else
+ * the square `size`.
+ *
+ * @param {{size?: number, w?: number, h?: number}} station
+ * @returns {{hw: number, hh: number}}
+ */
+export function stationExtents(station) {
+  return { hw: (station.w ?? station.size) / 2, hh: (station.h ?? station.size) / 2 };
 }
 
 /**
@@ -156,8 +186,8 @@ export function stationsOnFloor(stations, floor) {
 /**
  * The station whose box contains (x, y), if any — a rectangle hit-test used
  * for both click-to-target and mouse-hover tooltips. `null` if the point
- * isn't over any station. Every station's box here is a plain square,
- * symmetric around (x, y) by size/2 on every side (this game has no
+ * isn't over any station. Every station's box is a rectangle centered on
+ * (x, y) — `stationExtents` gives its half-width/height (this game has no
  * table-style sprite that overhangs its own box, so there's no
  * `hitExtendDown` equivalent).
  *
@@ -168,9 +198,9 @@ export function stationsOnFloor(stations, floor) {
  */
 export function stationAtPoint(x, y, stations) {
   for (const station of stations) {
-    const half = station.size / 2;
-    if (x >= station.x - half && x <= station.x + half
-      && y >= station.y - half && y <= station.y + half) {
+    const { hw, hh } = stationExtents(station);
+    if (x >= station.x - hw && x <= station.x + hw
+      && y >= station.y - hh && y <= station.y + hh) {
       return station;
     }
   }

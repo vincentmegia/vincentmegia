@@ -46,6 +46,12 @@ touching that area rather than expecting this section to carry it:
 - **Library Shift** (`/library-game`, two-floor canvas library-shift sim —
   shelving/fines/borrow-request minigames, a scripted Karen event, Postgres
   leaderboard, `localStorage` progress) — `docs/features/library-game.md`.
+  Drawn in Hospital Shift's anime style (v2.21): it imports Hospital's
+  `hospital/anime-ui.js`, `anime-people.js`, `anime-furniture.js` and
+  `kimono-himura.js` (Coral is that renderer's `look: 'coral'`: her own
+  hair and glasses, a Korean hanbok, no nurse cap), plus its own
+  `library/anime-furniture.js` for library fixtures, so a change to those
+  Hospital modules shows up in both games.
 - **Bus Stop Finder** (`/bus-stops`: geolocation or a 6-digit postal code
   (geocoded server-side via OneMap) → 5 nearest Singapore bus stops on a
   Google Map + live LTA DataMall arrivals, live bus positions and a
