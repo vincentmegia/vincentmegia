@@ -8,6 +8,15 @@
 // run`, migrations and all — there is no mocked backend here.
 const { defineConfig, devices } = require('@playwright/test');
 
+// E2E_BASE_URL points the suite at an already-running server (e.g.
+// `PORT=8090 go run ./cmd/server`, then
+// `E2E_BASE_URL=http://localhost:8090 npx playwright test -c e2e/playwright.config.js`).
+// When it's set, no webServer is started or reused, so nothing touches
+// :8080 (a developer's own server may be running there). The caller owns
+// that server, including the fake LTA if e2e/bus-stops.spec.js is in scope.
+// Unset, behavior is unchanged: :8080, started or reused below.
+const externalBaseURL = process.env.E2E_BASE_URL;
+
 module.exports = defineConfig({
 	testDir: '.',
 	fullyParallel: true,
@@ -15,7 +24,7 @@ module.exports = defineConfig({
 	retries: process.env.CI ? 2 : 0,
 	reporter: 'list',
 	use: {
-		baseURL: 'http://localhost:8080',
+		baseURL: externalBaseURL || 'http://localhost:8080',
 		trace: 'retain-on-failure',
 	},
 	projects: [
@@ -33,7 +42,7 @@ module.exports = defineConfig({
 	// — start it with `make run-e2e` (not `make run`) for
 	// e2e/bus-stops.spec.js to pass. See docs/features/bus-stop-finder.md's
 	// Testing Plan.
-	webServer: [
+	webServer: externalBaseURL ? undefined : [
 		{
 			command: 'go run ./cmd/fakelta',
 			cwd: '..',

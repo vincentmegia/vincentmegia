@@ -3,10 +3,10 @@
 ## Status
 
 `Shipped` — the page, route, template, and data model are implemented and
-visually verified in both light and dark mode. The grid currently has seven
+visually verified in both light and dark mode. The grid currently has eight
 cards, all real links into this site's own mini-games/demos (see Data Model
 for each entry): the Fishing Game, Kitchen Shift, Puzzle Solver, Library
-Shift, Bus Stop Finder, Bus Rush and Hospital Shift. The first three, in the order they
+Shift, Bus Stop Finder, Bus Rush, Hospital Shift and Easy Diagram. The first three, in the order they
 were added: the Fishing Game
 (`docs/features/fishing-game.md`) at `/fishing-game`, with a real
 screenshot (`ImagePath: "/static/images/fishing/screenshot.png"`) — a live
@@ -23,12 +23,14 @@ a live capture of a solved maze (a fully explored dead-end pocket shown in
 the "visited" amber tint, black wall cells, and the solved path threading
 out to the End marker). Library Shift (`docs/features/library-game.md`)
 followed with its own real screenshot; Bus Stop Finder
-(`docs/features/bus-stop-finder.md`) is the one `FullPageLoad` card (a
+(`docs/features/bus-stop-finder.md`) is a `FullPageLoad` card (a
 plain "Open" link, because its route sets its own CSP); Bus Rush
 (`docs/features/bus-rush.md`) has a staged gameplay capture (see Open
 Questions); Hospital Shift
-(`docs/features/hospital-shift.md`) has a real mid-shift screenshot. None
-of the seven is a mockup. The four fictional sample cards the pulled-in design
+(`docs/features/hospital-shift.md`) has a real mid-shift screenshot; Easy
+Diagram (`docs/features/easy-diagram.md`) is the second `FullPageLoad` card
+(a standalone full-viewport page with its own CSP) with a real capture of
+the editor. None of the eight is a mockup. The four fictional sample cards the pulled-in design
 mockup originally shipped with (Fieldnotes, Tidewatch, Loom UI,
 Nightlight) were deliberately removed rather than left sitting next to
 real projects — see Open Questions for the reasoning and what replaces
@@ -75,9 +77,9 @@ were removed rather than left in place until real replacements existed
 * A `Project` data shape (title, description, tags, tag tint, optional live
   URL, an `External` flag distinguishing an internal route from an off-site
   link, a `FullPageLoad` flag for routes that need a real document load,
-  and optional image) and a hardcoded list — currently seven real entries
+  and optional image) and a hardcoded list — currently eight real entries
   (Fishing Game, Kitchen Shift, Puzzle Solver, Library Shift, Bus Stop
-  Finder, Bus Rush, Hospital Shift).
+  Finder, Bus Rush, Hospital Shift, Easy Diagram).
 * Responsive card grid: 1 column on mobile, 2 on `sm`, 3 on `lg`.
 * Per-card: an image area (real screenshot if `ImagePath` is set, otherwise
   a "Screenshot coming soon" placeholder tile), title, description, tag
@@ -209,7 +211,7 @@ States this feature's UI must handle:
 | -------------------------------- | -------- |
 | Default                          | Grid renders all entries in `projectItems`. |
 | Card with `ImagePath` set         | Renders a real `<img>`, `object-cover`'d into the `aspect-[16/10]` tile — five of the six cards. |
-| Card with no `ImagePath`          | Renders the "Screenshot coming soon" placeholder tile instead of an `<img>` — no current card (all seven have screenshots). |
+| Card with no `ImagePath`          | Renders the "Screenshot coming soon" placeholder tile instead of an `<img>` — no current card (all eight have screenshots). |
 | Card with no `LiveURL`            | Omits the "Live demo"/"Play now" link entirely — no disabled/greyed-out link. |
 | Loading                          | Nav swap into `/projects` uses the shell's existing `#nav-loading` indicator — no new indicator needed. |
 | Empty (`projectItems` has zero entries) | Not currently exercised — `projectItems` always has at least one hardcoded entry; the template's `{{range}}` would simply render nothing, no empty-state message. |
@@ -323,6 +325,11 @@ grid order:
   "/static/images/bus/screenshot.png"`.
 * **Bus Rush** — `LiveURL: "/bus-rush"`, tags `Go`/`Canvas`/`PostgreSQL`,
   `TagTint: "primary"`, `ImagePath: "/static/images/busrush/screenshot.png"`.
+* **Easy Diagram** — `LiveURL: "/easy-diagram"`, `FullPageLoad: true`, tags
+  `JavaScript`/`SVG`/`Local-first` (no "draw.io" tag: trademark rule in
+  `docs/features/easy-diagram.md`), `TagTint: "primary"`, `ImagePath:
+  "/static/images/easydiagram/screenshot.png"` — a real 1120×700 capture of
+  the editor with a small flowchart built through the engine API.
 
 `projectItems` originally also had four fictional sample projects
 (Fieldnotes/Tidewatch/Loom UI/Nightlight, the pulled-in design mockup's own

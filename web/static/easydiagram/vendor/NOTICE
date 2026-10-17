@@ -1,0 +1,60 @@
+Easy Diagram - vendored diagram engine
+======================================
+
+This directory contains third-party software used by Easy Diagram's editor
+engine (web/static/easydiagram/js/engine.js).
+
+draw.io / mxGraph
+-----------------
+Copyright (c) 2006-2026, JGraph Holdings Ltd
+Copyright (c) 2006-2026, draw.io AG
+
+Licensed under the Apache License, Version 2.0 (see LICENSE in this
+directory). Source: https://github.com/jgraph/drawio, commit
+9034053fba80a435e27d68d374bc564b83917ae9 (version 32.4.1), from
+src/main/webapp/.
+
+Files taken from upstream WITHOUT modification (byte-identical):
+  mxgraph/mxClient.js         <- src/main/webapp/mxgraph/mxClient.js
+  grapheditor/Init.js         <- src/main/webapp/js/grapheditor/Init.js
+  grapheditor/Editor.js       <- src/main/webapp/js/grapheditor/Editor.js
+  grapheditor/Graph.js        <- src/main/webapp/js/grapheditor/Graph.js
+  grapheditor/Shapes.js       <- src/main/webapp/js/grapheditor/Shapes.js
+  deflate/base64.js           <- src/main/webapp/js/deflate/base64.js
+
+Files derived from upstream (modified):
+  grapheditor/stylesheet.js   Generated from src/main/webapp/styles/default.xml
+                              the way upstream's etc/build/build.xml generates
+                              Graph-Stylesheet.js (newlines and tabs removed,
+                              wrapped in mxUtils.parseXml). Registered as the
+                              'default' theme instead of 'default-style2'.
+
+Files written for Easy Diagram (not from upstream):
+  config.js                   Sets the globals mxClient/grapheditor read at
+                              load time so that nothing is fetched (no
+                              resource bundles, stylesheets, stencils or
+                              export server).
+
+engine.js does not modify the vendored files. At runtime it changes these
+upstream defaults on the prototypes: mxStencilRegistry.dynamicLoading and
+allowEval are set to false; mxVertexHandler rotation and custom handles are
+switched off; Graph.prototype.addForeignObjectWarning (which adds a
+link to drawio.com in SVG exports) is a no-op; the selection/handle colours and edge handle images are
+replaced. It also provides two functions that upstream defines in its
+diagramly layer, which is not vendored: Editor.guid and
+mxGraphView.prototype.redrawEnumerationState (a no-op).
+
+Easy Diagram is not affiliated with or endorsed by draw.io AG or JGraph Ltd.
+"draw.io" and "diagrams.net" are trademarks of their respective owners.
+
+Bundled by upstream, under their own licenses
+---------------------------------------------
+  sanitizer/purify.min.js     DOMPurify 3.4.16 (c) Cure53 and other
+                              contributors. Apache-2.0 OR MPL-2.0.
+                              https://github.com/cure53/DOMPurify
+                              <- src/main/webapp/js/sanitizer/purify.min.js
+  deflate/pako.min.js         pako 2.2.0 (c) Vitaly Puzrin, Andrei Tuputcyn.
+                              MIT AND Zlib. https://github.com/nodeca/pako
+                              <- src/main/webapp/js/deflate/pako.min.js
+  deflate/base64.js           Base64 encode/decode, after webtoolkit.info,
+                              as shipped by draw.io.

@@ -50,6 +50,14 @@ const PROJECTS = [
 		description: 'An ER-shift sim — triage arriving patients, then check vitals, pump oxygen, start IVs, bandage wounds, dispense meds and scrub in for surgery across a 30-shift run, with a public leaderboard.',
 		tags: ['Go', 'Canvas', 'PostgreSQL'],
 	},
+	{
+		title: 'Easy Diagram',
+		description: 'A local-first diagram editor in the browser — flowcharts with animated shapes and connectors, saved as standard .drawio files that never leave your device.',
+		tags: ['JavaScript', 'SVG', 'Local-first'],
+		// FullPageLoad: /easy-diagram is a standalone full-viewport document
+		// with its own route-scoped CSP (docs/features/easy-diagram.md).
+		fullPageLoad: true,
+	},
 ];
 
 test('direct page load renders heading, subhead, and all project cards', async ({ page }) => {
@@ -122,6 +130,31 @@ test('the Bus Stop Finder card opens /bus-stops with a full page load, not an HT
 	await open.click();
 	await expect(page).toHaveURL(/\/bus-stops$/);
 	await expect(page.getByRole('heading', { name: 'Bus Stop Finder', level: 1 })).toBeVisible();
+	expect(await page.evaluate(() => window.__sameDocumentMarker)).toBeUndefined();
+});
+
+test('the Easy Diagram card opens /easy-diagram with a full page load, not an HTMX swap', async ({ page }) => {
+	await page.goto('/projects');
+	const card = page.locator('.project-card').filter({ hasText: 'Easy Diagram' });
+	const open = card.getByRole('link', { name: 'Open' });
+	await expect(open).toBeVisible();
+	await expect(open).toHaveAttribute('href', '/easy-diagram');
+	expect(await open.getAttribute('hx-get')).toBeNull();
+	await expect(card.getByRole('link', { name: 'Play now' })).toHaveCount(0);
+	// A marker on window survives an HTMX swap but not a real document load.
+	await page.evaluate(() => { window.__sameDocumentMarker = true; });
+	const [response] = await Promise.all([
+		page.waitForResponse((r) => new URL(r.url()).pathname === '/easy-diagram'),
+		open.click(),
+	]);
+	await expect(page).toHaveURL(/\/easy-diagram$/);
+	expect(response.status()).toBe(200);
+	expect(response.headers()['content-security-policy']).toContain("script-src 'self'");
+	await expect(page).toHaveTitle(/Easy Diagram/);
+	await expect(page.locator('#easy-diagram-app')).toHaveCount(1);
+	// Standalone page: none of the site shell.
+	await expect(page.locator('#primary-nav')).toHaveCount(0);
+	await expect(page.locator('footer')).toHaveCount(0);
 	expect(await page.evaluate(() => window.__sameDocumentMarker)).toBeUndefined();
 });
 

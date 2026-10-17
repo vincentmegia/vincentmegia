@@ -1,0 +1,160 @@
+/*
+ * Easy Diagram engine styles (WP2): canvas overlays, selection frame, quick
+ * connect handles and the animation keyframes from the Precision prototype.
+ * Everything is scoped under .ed-engine (the class engine.js adds to the
+ * canvas container) and uses --ed-* custom properties that engine.js sets per
+ * theme, so it never collides with the shell's own tokens.
+ */
+
+.ed-engine {
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  outline: none;
+}
+.ed-engine.ed-tool-hand { cursor: grab; }
+.ed-engine.ed-tool-hand.ed-panning { cursor: grabbing; }
+.ed-engine.ed-tool-connector,
+.ed-engine.ed-tool-place { cursor: crosshair; }
+
+/* mxGraph's in-place label editor */
+.ed-engine .mxCellEditor {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ed-engine .mxRubberband {
+  position: absolute;
+  border: 1px solid var(--ed-accent);
+  background: var(--ed-accent-soft);
+  opacity: .6;
+}
+
+/* Overlay layer (selection frame, + handles) */
+.ed-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.ed-frame {
+  position: absolute;
+  border: 1px solid var(--ed-accent);
+  border-radius: 3px;
+  pointer-events: none;
+  box-sizing: border-box;
+  animation: edSelIn .2s cubic-bezier(.2,0,0,1) both;
+}
+.ed-corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--ed-surface);
+  border: 1.5px solid var(--ed-accent);
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+}
+/* Generous invisible hit area around each corner */
+.ed-corner::after { content: ''; position: absolute; inset: -7px; }
+.ed-corner[data-c="nw"] { left: -4px; top: -4px; cursor: nwse-resize; }
+.ed-corner[data-c="ne"] { right: -4px; top: -4px; cursor: nesw-resize; }
+.ed-corner[data-c="sw"] { left: -4px; bottom: -4px; cursor: nesw-resize; }
+.ed-corner[data-c="se"] { right: -4px; bottom: -4px; cursor: nwse-resize; }
+
+.ed-plus {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ed-surface);
+  border: 1.5px solid var(--ed-accent);
+  color: var(--ed-accent-text);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: edPlusIn .25s .08s cubic-bezier(.2,0,0,1) both;
+  transition: background .18s, color .18s;
+}
+.ed-plus:hover { background: var(--ed-accent); color: var(--ed-on-accent); }
+.ed-plus:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
+.ed-plus svg { width: 12px; height: 12px; pointer-events: none; }
+.ed-plus[data-side="r"] { left: calc(100% + 14px); top: calc(50% - 10px); }
+.ed-plus[data-side="b"] { top: calc(100% + 14px); left: calc(50% - 10px); }
+.ed-plus[data-side="l"] { right: calc(100% + 14px); top: calc(50% - 10px); }
+.ed-plus[data-side="t"] { bottom: calc(100% + 14px); left: calc(50% - 10px); }
+
+/* Precision shadow on shapes (the file stores shadow=1; this is how it looks) */
+.ed-engine .ed-shadow { filter: drop-shadow(0 4px 10px var(--ed-shadow)); }
+
+/* ---- Shape animations (classes on the cell's shape + label groups) ---- */
+.ed-na {
+  animation-duration: var(--ed-dur, 1.4s);
+  animation-iteration-count: var(--ed-iter, infinite);
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+  transform-box: view-box;
+}
+.ed-na.ed-hov { animation-play-state: paused; }
+.ed-na.ed-hov.ed-hovering { animation-play-state: running; }
+.ed-na-pulse { animation-name: edNPulse; }
+.ed-na-bounce { animation-name: edNBounce; }
+.ed-na-float { animation-name: edNFloat; }
+.ed-na-wiggle { animation-name: edNWiggle; }
+.ed-na-glow { animation-name: edNGlow; }
+.ed-na-blink { animation-name: edNBlink; }
+.ed-na-pop { animation-name: edNPop; animation-timing-function: cubic-bezier(.2,0,0,1); }
+
+/* ---- Edge animations (overlay paths, pathLength=100 for comet/draw) ---- */
+.ed-ea {
+  animation-duration: var(--ed-dur, 1s);
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-direction: var(--ed-dir, normal);
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ed-e-flow { stroke-dasharray: 1.5 11; animation-name: edEFlow; }
+.ed-e-dash { stroke-dasharray: 8 6; animation-name: edEDash; }
+.ed-e-comet { stroke-dasharray: 14 86; animation-name: edEComet; animation-timing-function: cubic-bezier(.45,0,.55,1); }
+.ed-e-pulse { animation-name: edEPulse; animation-timing-function: ease-in-out; }
+.ed-e-draw { stroke-dasharray: 100 100; animation-name: edEDraw; animation-timing-function: ease-in-out; }
+.ed-draw-base { opacity: .3; }
+
+/* Global pause (Motion off) */
+.ed-paused .ed-na,
+.ed-paused .ed-ea { animation-play-state: paused !important; }
+
+@keyframes edNPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes edNBounce { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-8px); } 55% { transform: translateY(0); } 70% { transform: translateY(-3px); } 85% { transform: translateY(0); } }
+@keyframes edNFloat { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-9px) rotate(1.2deg); } }
+@keyframes edNWiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 50% { transform: rotate(1.5deg); } 75% { transform: rotate(-1deg); } }
+@keyframes edNGlow { 0%, 100% { filter: drop-shadow(0 0 0 var(--ed-glow)); } 50% { filter: drop-shadow(0 0 14px var(--ed-glow)); } }
+@keyframes edNBlink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes edNPop { 0% { transform: scale(.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes edEFlow { to { stroke-dashoffset: -25; } }
+@keyframes edEDash { to { stroke-dashoffset: -28; } }
+@keyframes edEComet { from { stroke-dashoffset: 14; } to { stroke-dashoffset: -86; } }
+@keyframes edEPulse { 0%, 100% { opacity: .06; } 50% { opacity: .42; } }
+@keyframes edEDraw { 0% { stroke-dashoffset: 100; opacity: 1; } 65% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes edSelIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes edPlusIn { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+
+/* Reduced motion: no animation at all; overlays hidden, lines at full strength */
+@media (prefers-reduced-motion: reduce) {
+  .ed-engine .ed-na,
+  .ed-engine .ed-ea { animation: none !important; }
+  .ed-engine .ed-ea-overlay { display: none; }
+  .ed-engine .ed-draw-base { opacity: 1; }
+  .ed-engine .ed-e-dash { stroke-dasharray: none; }
+  .ed-frame, .ed-plus { animation: none; }
+}

@@ -201,6 +201,18 @@ var projectItems = []Project{
 		LiveURL:     "/hospital-shift",
 		ImagePath:   "/static/images/hospital/screenshot.png",
 	},
+	// Easy Diagram (docs/features/easy-diagram.md) is FullPageLoad like Bus
+	// Stop Finder: /easy-diagram is a standalone full-viewport document
+	// with its own route-scoped CSP, so it can't be HTMX-swapped in.
+	{
+		Title:        "Easy Diagram",
+		Description:  "A local-first diagram editor in the browser — flowcharts with animated shapes and connectors, saved as standard .drawio files that never leave your device.",
+		Tags:         []string{"JavaScript", "SVG", "Local-first"},
+		TagTint:      "primary",
+		LiveURL:      "/easy-diagram",
+		ImagePath:    "/static/images/easydiagram/screenshot.png",
+		FullPageLoad: true,
+	},
 }
 
 // PuzzleSolver renders GET /puzzle-solver. See docs/features/puzzle-solver.md.

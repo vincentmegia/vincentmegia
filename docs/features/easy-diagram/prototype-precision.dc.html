@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Easy Diagram editor, Precision</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.ed, .ed *{box-sizing:border-box}
+.ed{font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.ed button{font:inherit;color:inherit;cursor:pointer}
+.ed input{font:inherit;color:inherit}
+.ed :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accentText)}a:hover{color:var(--ink)}
+.disp{font-family:'IBM Plex Sans',sans-serif}
+.kbd{letter-spacing:.02em;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;line-height:1;padding:3px 5px;border-radius:3px;background:var(--surface2);border:1px solid var(--line);color:var(--ink2)}
+.reset{background:transparent;border:0;padding:0;margin:0}
+.ibtn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;border:0;background:transparent;color:var(--ink2);transition:background .18s,color .18s,transform .18s}
+.ibtn:hover{background:var(--surface2);color:var(--ink)}
+.ibtn:active{background:var(--line)}
+.ibtn:disabled{opacity:.35;cursor:default;transform:none;background:transparent}
+.tab{transition:background .2s,color .2s}
+.tab:hover{background:var(--surface2)}
+.chip{transition:background .2s,color .2s,border-color .2s}
+.chip:hover{border-color:var(--accent)}
+.tile{transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s,border-color .22s,background .22s}
+.tile:hover{border-color:var(--accent);background:var(--surface2)}
+.tile:active{background:var(--line)}
+.tile .tp{fill:var(--surface);stroke:var(--ink2);stroke-width:1.5;transition:stroke .22s,fill .22s}
+.tile:hover .tp{stroke:var(--accent);fill:var(--accentSoft)}
+.rowbtn{transition:background .18s}
+.rowbtn:hover{background:var(--surface2)}
+.accentbtn{transition:transform .18s,box-shadow .25s,filter .2s}
+.accentbtn:hover{filter:brightness(1.1)}
+.accentbtn:active{filter:brightness(.92)}
+.wrap{position:absolute;pointer-events:auto;transition:left .45s cubic-bezier(.2,.8,.2,1),top .45s cubic-bezier(.2,.8,.2,1),width .3s,height .3s}
+.node-in{animation:popIn .5s cubic-bezier(.2,0,0,1) both}
+.nodebtn{position:absolute;inset:0;display:block;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.nodebtn:hover{filter:brightness(1.12)}
+.sel-frame{animation:selIn .2s cubic-bezier(.2,0,0,1) both}
+.plus{position:absolute;width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1.5px solid var(--accent);color:var(--accentText);padding:0;animation:plusIn .25s .08s cubic-bezier(.2,0,0,1) both;transition:background .18s,color .18s}
+.plus:hover{background:var(--accent);color:var(--onAccent)}
+.edge-draw{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw 1.2s cubic-bezier(.6,0,.2,1) forwards}
+.na{animation-duration:var(--dur);animation-iteration-count:var(--iter);animation-timing-function:ease-in-out;animation-fill-mode:both;transform-origin:center}
+.na.hov{animation-play-state:paused}
+.nodebtn:hover .na.hov{animation-play-state:running}
+.na-pulse{animation-name:nPulse}.na-bounce{animation-name:nBounce}.na-float{animation-name:nFloat}.na-wiggle{animation-name:nWiggle}.na-glow{animation-name:nGlow}.na-blink{animation-name:nBlink}.na-pop{animation-name:nPop;animation-timing-function:cubic-bezier(.2,0,0,1)}
+.ea{animation-duration:var(--dur);animation-iteration-count:infinite;animation-timing-function:linear;animation-direction:var(--dir)}
+.e-flow{stroke-dasharray:1.5 11;animation-name:eFlow}
+.e-dash{stroke-dasharray:8 6;animation-name:eDash}
+.e-comet{stroke-dasharray:14 86;animation-name:eComet;animation-timing-function:cubic-bezier(.45,0,.55,1)}
+.e-pulse{animation-name:ePulse;animation-timing-function:ease-in-out}
+.e-draw{stroke-dasharray:100 100;animation-name:eDraw;animation-timing-function:ease-in-out}
+.paused .na,.paused .ea{animation-play-state:paused !important}
+.atile{transition:border-color .2s,background .2s,transform .2s cubic-bezier(.2,.8,.2,1)}
+.atile:hover{border-color:var(--accent)}
+.badge{animation:fadeIn .4s .5s both}
+@keyframes nPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes nBounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}55%{transform:translateY(0)}70%{transform:translateY(-3px)}85%{transform:translateY(0)}}
+@keyframes nFloat{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-9px) rotate(1.2deg)}}
+@keyframes nWiggle{0%,100%{transform:rotate(0)}25%{transform:rotate(-2deg)}50%{transform:rotate(1.5deg)}75%{transform:rotate(-1deg)}}
+@keyframes nGlow{0%,100%{filter:drop-shadow(0 0 0 var(--glow))}50%{filter:drop-shadow(0 0 14px var(--glow))}}
+@keyframes nBlink{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes nPop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes eFlow{to{stroke-dashoffset:-25}}
+@keyframes eDash{to{stroke-dashoffset:-28}}
+@keyframes eComet{from{stroke-dashoffset:14}to{stroke-dashoffset:-86}}
+@keyframes ePulse{0%,100%{opacity:.06}50%{opacity:.42}}
+@keyframes eDraw{0%{stroke-dashoffset:100;opacity:1}65%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+.head-in{animation:fadeIn .4s both}
+.panel-in{animation:slideIn .4s cubic-bezier(.2,.8,.2,1) both}
+.pop{animation:popMenu .2s cubic-bezier(.2,0,0,1) both;transform-origin:top right}
+.ctx{animation:ctxIn .22s cubic-bezier(.2,0,0,1) both}
+.backdrop{animation:fadeIn .2s both}
+.palette{animation:paletteIn .22s cubic-bezier(.2,0,0,1) both}
+.toast{animation:toastIn .3s cubic-bezier(.2,0,0,1) both}
+.spin{animation:spin .8s linear infinite}
+.breathe{animation:breathe 2.6s ease-in-out infinite}
+.floaty{animation:floaty 5s ease-in-out infinite}
+.floaty2{animation:floaty 6s ease-in-out .8s infinite}
+.tool{position:relative;z-index:1;transition:color .25s}
+.tool .tip{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translate(-50%,4px);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;white-space:nowrap;background:var(--ink);color:var(--bg);font-size:12px;font-weight:600;padding:5px 7px;border-radius:4px;display:flex;gap:8px;align-items:center;font-weight:500}
+.tool:hover .tip{opacity:1;transform:translate(-50%,0)}
+.tool:active{opacity:.7}
+.indicator{transition:left .3s cubic-bezier(.2,0,0,1)}
+.swatch{transition:transform .16s cubic-bezier(.2,.8,.2,1)}
+.swatch:hover{transform:scale(1.08)}
+.knob{transition:transform .22s cubic-bezier(.2,0,0,1)}
+.cmd{transition:background .15s}
+.cmd:hover{background:var(--accentSoft)}
+.field{transition:border-color .18s,box-shadow .18s}
+.field:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+.lib{transition:background .18s}
+.lib:hover{background:var(--surface2)}
+input[type=range]{accent-color:var(--accent)}
+@keyframes popIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes selIn{from{opacity:0}to{opacity:1}}
+@keyframes plusIn{from{opacity:0;scale:.4}to{opacity:1;scale:1}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes flow{to{stroke-dashoffset:-25}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+@keyframes popMenu{from{opacity:0;transform:translateY(-6px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes ctxIn{from{opacity:0;margin-top:8px}to{opacity:1;margin-top:0}}
+@keyframes paletteIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(31,157,85,.45)}50%{box-shadow:0 0 0 5px rgba(31,157,85,0)}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@media (prefers-reduced-motion: reduce){.ed *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
+</style>
+</helmet>
+<div class="ed {{pausedCls}}" style="{{themeVars}}">
+<div style="position: relative; min-height: 900px; display: flex; flex-direction: column; background: var(--bg); color: var(--ink)">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--line); position: relative; z-index: 20">
+<div style="display: flex; align-items: center; gap: 12px; flex: 1 1 280px; min-width: 0">
+<a href="Start.dc.html" aria-label="Easy Diagram home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink)">
+<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="var(--accent)"></rect><rect x="13" y="13" width="8" height="8" rx="1.5" fill="none" stroke="var(--ink)" stroke-width="1.5"></rect><path d="M5 9v8h8" fill="none" stroke="var(--ink2)" stroke-width="1.5"></path></svg>
+<span class="disp" style="font-size: 14px; font-weight: 600; letter-spacing: -0.005em">Easy Diagram</span>
+</a>
+<span aria-hidden="true" style="width: 1px; height: 22px; background: var(--line)"></span>
+<div style="display: flex; flex-direction: column; min-width: 0">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Onboarding.drawio</span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2)">
+<sc-if value="{{saving}}" hint-placeholder-val="{{false}}">
+<svg class="spin" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path></svg>
+<span>Saving…</span>
+</sc-if>
+<sc-if value="{{notSaving}}" hint-placeholder-val="{{true}}">
+<span style="width: 6px; height: 6px; border-radius: 99px; background: #2BB6A3"></span>
+<span>Saved on this device</span>
+</sc-if>
+</span>
+</div>
+</div>
+
+<nav aria-label="Pages" style="display: flex; align-items: stretch; gap: 2px; align-self: stretch; margin: -8px 0">
+<sc-for list="{{pageTabs}}" as="p" hint-placeholder-count="2">
+<button class="tab reset" onClick="{{p.go}}" aria-current="{{p.current}}" style="{{p.style}}">{{p.name}}</button>
+</sc-for>
+<button class="ibtn" onClick="{{addPage}}" aria-label="Add page" style="width: 28px; height: 28px; border-radius: 4px; align-self: center">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+</button>
+</nav>
+
+<div style="display: flex; align-items: center; gap: 6px; flex: 1 1 280px; justify-content: flex-end; flex-wrap: wrap">
+<button class="reset rowbtn" onClick="{{toggleMotion}}" aria-pressed="{{motion}}" style="{{motionStyle}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{motionIcon}}"></path></svg>
+<span>{{motionLabel}}</span>
+</button>
+<button class="ibtn" onClick="{{undo}}" disabled="{{cantUndo}}" aria-label="Undo">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
+</button>
+<button class="ibtn" onClick="{{redo}}" disabled="{{cantRedo}}" aria-label="Redo">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"></path></svg>
+</button>
+<button class="ibtn" onClick="{{toggleDark}}" aria-label="{{darkLabel}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{darkIcon}}"></path></svg>
+</button>
+<button class="reset rowbtn" onClick="{{openPalette}}" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 6px 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink2); font-size: 13px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg>
+<span>Search &amp; commands</span>
+<span class="kbd">⌘K</span>
+</button>
+<div style="position: relative">
+<button class="reset accentbtn" onClick="{{toggleExport}}" aria-expanded="{{exportOpen}}" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 5px; background: var(--accent); color: var(--onAccent); font-weight: 600; font-size: 13px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+Export
+</button>
+<sc-if value="{{exportOpen}}" hint-placeholder-val="{{false}}">
+<div class="pop" style="position: absolute; right: 0; top: calc(100% + 10px); width: 300px; padding: 16px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 24px 48px -20px var(--shadowc); display: flex; flex-direction: column; gap: 14px">
+<div class="disp" style="font-size: 14px; font-weight: 600">Export “{{pageName}}”</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{formats}}" as="f" hint-placeholder-count="4">
+<button class="reset chip" onClick="{{f.pick}}" aria-pressed="{{f.on}}" style="{{f.style}}">{{f.label}}</button>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{exportOpts}}" as="o" hint-placeholder-count="2">
+<button class="reset" onClick="{{o.toggle}}" aria-pressed="{{o.on}}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink); text-align: left">
+<span>{{o.label}}</span>
+<span style="{{o.track}}"><span class="knob" style="{{o.knob}}"></span></span>
+</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--ink2)">
+<span>Scale</span>
+<div style="display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<sc-for list="{{scales}}" as="sc" hint-placeholder-count="3">
+<button class="reset" onClick="{{sc.pick}}" aria-pressed="{{sc.on}}" style="{{sc.style}}">{{sc.label}}</button>
+</sc-for>
+</div>
+</div>
+<button class="reset accentbtn" onClick="{{doExport}}" style="height: 42px; border-radius: 6px; background: var(--accent); color: var(--onAccent); font-weight: 600; font-size: 14px">Download {{fmtLabel}}</button>
+<span style="font-size: 12px; color: var(--ink2); text-align: center">Rendered in your browser. Nothing is uploaded.</span>
+</div>
+</sc-if>
+</div>
+</div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; flex: 1 1 auto; min-height: 836px">
+
+<aside aria-label="Shapes" style="flex: 0 1 268px; min-width: 240px; background: var(--surface); border-right: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<label class="field" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); color: var(--ink2)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg>
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search shapes</span>
+<input value="{{dockQuery}}" onChange="{{onDockQuery}}" placeholder="Search shapes" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; color: var(--ink)">
+</label>
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<sc-for list="{{cats}}" as="c" hint-placeholder-count="3">
+<button class="reset chip" onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="{{c.style}}">{{c.label}}</button>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="9">
+<button class="reset tile" onClick="{{t.add}}" aria-label="Add {{t.name}}" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<svg width="44" height="30" viewBox="0 0 44 30" aria-hidden="true"><path class="tp" d="{{t.path}}" stroke-linejoin="round"></path></svg>
+<span style="font-size: 11px; color: var(--ink2); white-space: nowrap">{{t.name}}</span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{noTiles}}" hint-placeholder-val="{{false}}">
+<div style="font-size: 13px; color: var(--ink2); padding: 8px 2px">No shapes match “{{dockQuery}}”.</div>
+</sc-if>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink2); margin-top: 6px">Libraries</div>
+<div style="display: flex; flex-direction: column; gap: 2px; margin: 0 -6px">
+<sc-for list="{{libs}}" as="l" hint-placeholder-count="6">
+<button class="reset lib" onClick="{{l.toggle}}" aria-pressed="{{l.on}}" style="display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 6px; font-size: 13px; text-align: left; color: var(--ink)">
+<span style="{{l.dot}}"></span>
+<span style="flex: 1">{{l.name}}</span>
+<span style="{{l.badge}}">{{l.state}}</span>
+</button>
+</sc-for>
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; position: relative; overflow: hidden; min-height: 620px; {{stageBg}}">
+<button class="reset" onClick="{{clearSel}}" aria-label="Clear selection" tabindex="-1" style="position: absolute; inset: 0; cursor: default"></button>
+
+<div style="{{diagramStyle}}">
+<sc-for list="{{edges}}" as="e" hint-placeholder-count="5">
+<svg width="960" height="560" viewBox="0 0 960 560" aria-hidden="true" style="position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none">
+<path d="{{e.d}}" fill="none" stroke="transparent" stroke-width="18" onClick="{{e.pick}}" style="pointer-events: stroke; cursor: pointer"></path>
+<path d="{{e.d}}" fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" style="{{e.haloStyle}}"></path>
+<path d="{{e.d}}" class="{{e.cls}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="{{e.style}}"></path>
+<path d="{{e.d}}" class="{{e.o1cls}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="{{e.o1style}}"></path>
+<path d="{{e.d}}" pathLength="100" class="{{e.o2cls}}" fill="none" stroke-linecap="round" stroke-linejoin="round" style="{{e.o2style}}"></path>
+<polygon points="{{e.head}}" class="head-in" style="{{e.headStyle}}"></polygon>
+<circle cx="{{e.sx}}" cy="{{e.sy}}" r="5" style="{{e.endStyle}}"></circle>
+<circle cx="{{e.ex}}" cy="{{e.ey}}" r="5" style="{{e.endStyle}}"></circle>
+</svg>
+<sc-if value="{{e.hasLabel}}" hint-placeholder-val="{{false}}">
+<button class="reset head-in" onClick="{{e.pick}}" aria-label="Select connector {{e.label}}" style="{{e.labelStyle}}">{{e.label}}</button>
+</sc-if>
+</sc-for>
+
+<sc-for list="{{nodes}}" as="n" hint-placeholder-count="6">
+<div class="wrap node-in" style="{{n.wrapStyle}}">
+<button class="reset nodebtn" onClick="{{n.pick}}" aria-pressed="{{n.selected}}" aria-label="{{n.aria}}" style="{{n.btnStyle}}">
+<span class="{{n.animCls}}" style="{{n.skinStyle}}">
+<svg width="{{n.w}}" height="{{n.h}}" viewBox="{{n.vb}}" aria-hidden="true" style="{{n.svgStyle}}"><path d="{{n.path}}" fill="{{n.fill}}" stroke="{{n.stroke}}" stroke-width="{{n.sw}}" stroke-dasharray="{{n.dash}}" stroke-linejoin="round"></path></svg>
+<span style="{{n.labelStyle}}">{{n.label}}</span>
+<sc-if value="{{n.isSticky}}" hint-placeholder-val="{{false}}">
+<span style="position: absolute; left: 14px; bottom: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink2)">NOTE · {{n.author}}</span>
+</sc-if>
+</span>
+</button>
+<sc-if value="{{n.showBadge}}" hint-placeholder-val="{{false}}">
+<span class="badge" aria-hidden="true" style="position: absolute; right: -8px; top: -8px; width: 16px; height: 16px; border-radius: 3px; background: var(--accent); color: var(--onAccent); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--stage); pointer-events: none"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"></path></svg></span>
+</sc-if>
+<sc-if value="{{n.selected}}" hint-placeholder-val="{{false}}">
+<span class="sel-frame" aria-hidden="true" style="position: absolute; inset: -6px; border: 1px solid var(--accent); border-radius: 3px; pointer-events: none">
+<span style="position: absolute; left: -4px; top: -4px; width: 7px; height: 7px; border-radius: 1px; background: var(--surface); border: 1.5px solid var(--accent)"></span>
+<span style="position: absolute; right: -4px; top: -4px; width: 7px; height: 7px; border-radius: 1px; background: var(--surface); border: 1.5px solid var(--accent)"></span>
+<span style="position: absolute; left: -4px; bottom: -4px; width: 7px; height: 7px; border-radius: 1px; background: var(--surface); border: 1.5px solid var(--accent)"></span>
+<span style="position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; border-radius: 1px; background: var(--surface); border: 1.5px solid var(--accent)"></span>
+</span>
+<button class="plus" onClick="{{n.addR}}" aria-label="Add connected step to the right" style="left: calc(100% + 14px); top: calc(50% - 10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button class="plus" onClick="{{n.addB}}" aria-label="Add connected step below" style="top: calc(100% + 14px); left: calc(50% - 10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button class="plus" onClick="{{n.addL}}" aria-label="Add connected step to the left" style="right: calc(100% + 14px); top: calc(50% - 10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button class="plus" onClick="{{n.addT}}" aria-label="Add connected step above" style="bottom: calc(100% + 14px); left: calc(50% - 10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</sc-if>
+</div>
+</sc-for>
+
+<sc-if value="{{hasSel}}" hint-placeholder-val="{{false}}">
+<div class="ctx" onClick="{{stop}}" style="{{ctxStyle}}">
+<sc-for list="{{ctxSwatches}}" as="w" hint-placeholder-count="5">
+<button class="reset swatch" onClick="{{w.pick}}" aria-label="{{w.aria}}" style="{{w.style}}"></button>
+</sc-for>
+<span aria-hidden="true" style="width: 1px; height: 20px; background: var(--line); margin: 0 4px"></span>
+<button class="ibtn" onClick="{{duplicate}}" aria-label="Duplicate" style="width: 30px; height: 30px; border-radius: 5px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h11v11H9zM5 15H4V4h11v1"></path></svg>
+</button>
+<button class="ibtn" onClick="{{del}}" aria-label="Delete" style="width: 30px; height: 30px; border-radius: 5px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>
+</button>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; width: min(420px, 90%); z-index: 2">
+<div aria-hidden="true" style="position: relative; width: 200px; height: 110px">
+<span class="floaty" style="position: absolute; left: 10px; top: 30px; width: 70px; height: 44px; border-radius: 4px; border: 1px dashed var(--ink2)"></span>
+<span class="floaty2" style="position: absolute; left: 120px; top: 6px; width: 64px; height: 44px; border-radius: 4px; border: 1px solid var(--accent)"></span>
+<span style="position: absolute; left: 80px; top: 52px; width: 40px; height: 1px; background: var(--ink2)"></span>
+<span style="position: absolute; left: 100px; top: 70px; width: 70px; height: 34px; border-radius: 4px; border: 1px dashed var(--ink2)"></span>
+</div>
+<div class="disp" style="font-size: 20px; font-weight: 600; letter-spacing: -0.01em">This page is empty</div>
+<div style="font-size: 14px; color: var(--ink2); line-height: 1.5">Click a shape on the left, drop a .drawio, .vsdx or Mermaid file here, or press <span class="kbd">⌘K</span> to run any command.</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center">
+<button class="reset accentbtn" onClick="{{addFirst}}" style="height: 42px; padding: 0 16px; border-radius: 6px; background: var(--accent); color: var(--onAccent); font-weight: 600; font-size: 14px">Add a shape</button>
+<a href="Start.dc.html" style="display: inline-flex; align-items: center; height: 42px; padding: 0 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14px; text-decoration: none">Browse templates</a>
+</div>
+</div>
+</sc-if>
+
+<div role="toolbar" aria-label="Tools" style="position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 8px 24px -12px var(--shadowc); z-index: 5">
+<span class="indicator" aria-hidden="true" style="{{indicatorStyle}}"></span>
+<sc-for list="{{tools}}" as="tl" hint-placeholder-count="9">
+<button class="reset tool" onClick="{{tl.pick}}" aria-pressed="{{tl.on}}" aria-label="{{tl.name}}" style="{{tl.style}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tl.icon}}"></path></svg>
+<span class="tip">{{tl.name}} <span style="opacity: 0.6; font-family: 'IBM Plex Mono', monospace">{{tl.key}}</span></span>
+</button>
+</sc-for>
+</div>
+
+<div aria-live="polite" style="position: absolute; left: 16px; bottom: 22px; z-index: 5; display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 5px; background: var(--surface); border: 1px solid var(--line); font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink2); white-space: pre; max-width: calc(50% - 190px); overflow: hidden; text-overflow: ellipsis">{{readout}}</div>
+<div style="position: absolute; right: 16px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; z-index: 5">
+<div aria-hidden="true" style="position: relative; width: 168px; height: 98px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; box-shadow: none">
+<sc-for list="{{mini}}" as="m" hint-placeholder-count="6">
+<span style="{{m.style}}"></span>
+</sc-for>
+<span style="{{viewportStyle}}"></span>
+</div>
+<div style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); box-shadow: none">
+<button class="ibtn" onClick="{{zoomOut}}" aria-label="Zoom out" style="width: 32px; height: 32px; border-radius: 5px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg></button>
+<button class="reset rowbtn" onClick="{{zoomReset}}" aria-label="Reset zoom" style="min-width: 54px; height: 32px; border-radius: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500">{{zoomPct}}%</button>
+<button class="ibtn" onClick="{{zoomIn}}" aria-label="Zoom in" style="width: 32px; height: 32px; border-radius: 5px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+</div>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div class="toast" role="status" style="position: absolute; left: 50%; bottom: 96px; display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 12px; border-radius: 6px; background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 500; box-shadow: 0 18px 40px -16px var(--shadowc); z-index: 6; white-space: nowrap">
+<span style="width: 22px; height: 22px; border-radius: 99px; background: #1F9D55; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span>
+{{toastMsg}}
+</div>
+</sc-if>
+</main>
+
+<aside aria-label="Format" style="flex: 0 1 300px; min-width: 260px; background: var(--surface); border-left: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 20px">
+<sc-if value="{{hasSel}}" hint-placeholder-val="{{true}}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink2)">{{sel.kindName}}</span>
+<label class="field" style="display: flex; align-items: center; height: 42px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg)">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Label</span>
+<input value="{{sel.label}}" onChange="{{sel.onLabel}}" class="disp" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 15px; font-weight: 500">
+</label>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Fill</span>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<sc-for list="{{sel.swatches}}" as="w" hint-placeholder-count="6">
+<button class="reset swatch" onClick="{{w.pick}}" aria-label="{{w.aria}}" aria-pressed="{{w.on}}" style="{{w.style}}"></button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink)"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" aria-hidden="true"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"></path></svg> Animation</span>
+<button class="reset rowbtn" onClick="{{sel.replay}}" disabled="{{sel.notAnimated}}" style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--accentText)"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"></path></svg>Replay</button>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{sel.anims}}" as="a" hint-placeholder-count="8">
+<button class="reset atile" onClick="{{a.pick}}" aria-pressed="{{a.on}}" style="{{a.tileStyle}}">
+<span aria-hidden="true" style="height: 32px; display: flex; align-items: center; justify-content: center"><span class="{{a.cls}}" style="{{a.boxStyle}}"></span></span>
+{{a.label}}
+</button>
+</sc-for>
+</div>
+<sc-if value="{{sel.animated}}" hint-placeholder-val="{{false}}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Play</span>
+<div style="display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line)">
+<sc-for list="{{sel.trigs}}" as="o" hint-placeholder-count="3">
+<button class="reset" onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">{{o.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Speed</span>
+<div style="display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line)">
+<sc-for list="{{sel.speeds}}" as="sp" hint-placeholder-count="3">
+<button class="reset" onClick="{{sp.pick}}" aria-pressed="{{sp.on}}" style="{{sp.style}}">{{sp.label}}</button>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Stroke</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<sc-for list="{{sel.strokes}}" as="st" hint-placeholder-count="3">
+<button class="reset" onClick="{{st.pick}}" aria-pressed="{{st.on}}" aria-label="{{st.aria}}" style="{{st.style}}"><span style="{{st.line}}"></span></button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)"><label for="op-range">Opacity</label><span style="font-variant-numeric: tabular-nums; color: var(--ink)">{{sel.op}}%</span></div>
+<input id="op-range" type="range" min="20" max="100" step="5" value="{{sel.op}}" onChange="{{sel.onOp}}" style="width: 100%">
+</div>
+
+<button class="reset" onClick="{{sel.toggleShadow}}" aria-pressed="{{sel.shadow}}" style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--ink)">
+<span>Soft shadow</span>
+<span style="{{sel.track}}"><span class="knob" style="{{sel.knob}}"></span></span>
+</button>
+
+<sc-if value="{{sel.hasConns}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Connections</span>
+<sc-for list="{{sel.conns}}" as="cn" hint-placeholder-count="2">
+<button class="reset rowbtn" onClick="{{cn.pick}}" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); font-size: 13px; text-align: left; color: var(--ink)">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--ink2); flex: none"><path d="{{cn.icon}}"></path></svg>
+<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{cn.label}}</span>
+<span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--accentSoft); color: var(--accentText)">{{cn.anim}}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Position &amp; size</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{sel.geo}}" as="g" hint-placeholder-count="4">
+<label class="field" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg)">
+<span style="font-size: 12px; font-weight: 700; color: var(--ink2); width: 12px">{{g.k}}</span>
+<input type="number" step="10" value="{{g.v}}" onChange="{{g.set}}" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; font-variant-numeric: tabular-nums">
+</label>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; gap: 8px">
+<button class="reset rowbtn" onClick="{{duplicate}}" style="flex: 1; height: 38px; border-radius: 6px; border: 1px solid var(--line); font-size: 13px; font-weight: 600">Duplicate</button>
+<button class="reset rowbtn" onClick="{{del}}" style="flex: 1; height: 38px; border-radius: 6px; border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: #C2334D">Delete</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasEdgeSel}}" hint-placeholder-val="{{false}}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink2)">Connector</span>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink)">
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{es.from}}</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{es.to}}</span>
+</div>
+<label class="field" style="display: flex; align-items: center; height: 42px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg)">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Connector label</span>
+<input value="{{es.label}}" onChange="{{es.onLabel}}" placeholder="Add a label" class="disp" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 16px; font-weight: 600">
+</label>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink)"><svg width="13" height="13" viewBox="0 0 24 24" fill="var(--accent)" aria-hidden="true"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"></path></svg> Animation</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{es.anims}}" as="a" hint-placeholder-count="6">
+<button class="reset atile" onClick="{{a.pick}}" aria-pressed="{{a.on}}" style="{{a.tileStyle}}">
+<svg width="64" height="24" viewBox="0 0 64 24" aria-hidden="true" style="overflow: visible">
+<path d="M6 12 H50" fill="none" stroke-linecap="round" class="{{a.cls}}" style="{{a.style}}"></path>
+<path d="M6 12 H50" fill="none" stroke-linecap="round" class="{{a.o1cls}}" style="{{a.o1style}}"></path>
+<path d="M6 12 H50" pathLength="100" fill="none" stroke-linecap="round" class="{{a.o2cls}}" style="{{a.o2style}}"></path>
+<polygon points="58,12 50,7.5 50,16.5" fill="{{a.head}}"></polygon>
+</svg>
+{{a.label}}
+</button>
+</sc-for>
+</div>
+<sc-if value="{{es.animated}}" hint-placeholder-val="{{false}}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Speed</span>
+<div style="display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line)">
+<sc-for list="{{es.speeds}}" as="sp" hint-placeholder-count="3">
+<button class="reset" onClick="{{sp.pick}}" aria-pressed="{{sp.on}}" style="{{sp.style}}">{{sp.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Direction</span>
+<div style="display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line)">
+<sc-for list="{{es.dirs}}" as="dr" hint-placeholder-count="3">
+<button class="reset" onClick="{{dr.pick}}" aria-pressed="{{dr.on}}" style="{{dr.style}}">{{dr.label}}</button>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Line</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<sc-for list="{{es.styles}}" as="ls" hint-placeholder-count="3">
+<button class="reset" onClick="{{ls.pick}}" aria-pressed="{{ls.on}}" style="{{ls.style}}">{{ls.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Color</span>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<sc-for list="{{es.colors}}" as="w" hint-placeholder-count="6">
+<button class="reset swatch" onClick="{{w.pick}}" aria-label="{{w.aria}}" aria-pressed="{{w.on}}" style="{{w.style}}"></button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Width</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<sc-for list="{{es.widths}}" as="wd" hint-placeholder-count="3">
+<button class="reset" onClick="{{wd.pick}}" aria-pressed="{{wd.on}}" style="{{wd.style}}">{{wd.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<button class="reset rowbtn" onClick="{{es.del}}" style="height: 38px; border-radius: 6px; border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: #C2334D">Delete connector</button>
+</div>
+</sc-if>
+
+<sc-if value="{{noSel}}" hint-placeholder-val="{{false}}">
+<div class="panel-in" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink2)">Page</span>
+<label class="field" style="display: flex; align-items: center; height: 42px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg)">
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Page name</span>
+<input value="{{pageName}}" onChange="{{onPageName}}" class="disp" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 15px; font-weight: 500">
+</label>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Canvas grid</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<sc-for list="{{grids}}" as="gr" hint-placeholder-count="3">
+<button class="reset" onClick="{{gr.pick}}" aria-pressed="{{gr.on}}" style="{{gr.style}}">{{gr.label}}</button>
+</sc-for>
+</div>
+</div>
+<button class="reset" onClick="{{toggleSnap}}" aria-pressed="{{snap}}" style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--ink)">
+<span>Snap to grid</span>
+<span style="{{snapTrack}}"><span class="knob" style="{{snapKnob}}"></span></span>
+</button>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line)">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink2)">Shortcuts</span>
+<sc-for list="{{shortcuts}}" as="k" hint-placeholder-count="6">
+<div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px"><span>{{k.label}}</span><span class="kbd">{{k.key}}</span></div>
+</sc-for>
+</div>
+<div style="font-size: 13px; color: var(--ink2); line-height: 1.5">Select a shape or an arrow to style and animate it, or use the <span style="color: var(--accentText); font-weight: 600">+</span> handles on a selected shape to grow the flow.</div>
+</div>
+</sc-if>
+</aside>
+</div>
+
+<sc-if value="{{paletteOpen}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding: 110px 16px 16px">
+<button class="reset backdrop" onClick="{{closePalette}}" aria-label="Close command palette" style="position: absolute; inset: 0; background: rgba(10,12,18,.38); backdrop-filter: blur(3px); cursor: default"></button>
+<div class="palette" role="dialog" aria-label="Command palette" style="position: relative; width: min(560px, 100%); border-radius: 6px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 40px 80px -30px rgba(0,0,0,.45); overflow: hidden">
+<label style="display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); color: var(--ink2)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg>
+<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search commands</span>
+<input autofocus="{{true}}" value="{{query}}" onChange="{{onQuery}}" placeholder="Type a command or search…" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 17px; color: var(--ink)">
+<span class="kbd">esc</span>
+</label>
+<div style="padding: 8px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{cmds}}" as="cm" hint-placeholder-count="6">
+<button class="reset cmd" onClick="{{cm.run}}" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; text-align: left; font-size: 14px; color: var(--ink)">
+<span style="width: 30px; height: 30px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--ink2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{cm.icon}}"></path></svg></span>
+<span style="flex: 1">{{cm.label}}</span>
+<span class="kbd">{{cm.key}}</span>
+</button>
+</sc-for>
+<sc-if value="{{noCmds}}" hint-placeholder-val="{{false}}">
+<div style="padding: 24px; text-align: center; font-size: 14px; color: var(--ink2)">No commands match “{{query}}”.</div>
+</sc-if>
+</div>
+</div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"accent":{"editor":"color","default":"#4C8DFF","options":["#4C8DFF","#2BB6A3","#FF7A45","#C084FC"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      dark: null, tool: 'select', sel: 'n2', zoom: 1, page: 0,
+      pages: [
+        { name: 'Sign-up flow',
+          nodes: [
+            { id: 'n1', kind: 'pill', label: 'Visitor lands', x: 50, y: 240, w: 150, h: 64, color: 'slate', op: 100, shadow: true, sw: 1.5, delay: 0 },
+            { id: 'n2', kind: 'round', label: 'Sign-up form', x: 260, y: 236, w: 160, h: 72, color: 'blue', op: 100, shadow: true, sw: 1.5, delay: 90 },
+            { id: 'n3', kind: 'diamond', label: 'Email valid?', x: 470, y: 222, w: 140, h: 100, color: 'violet', op: 100, shadow: true, sw: 1.5, delay: 180, anim: 'glow', trig: 'loop', spd: 'normal' },
+            { id: 'n4', kind: 'round', label: 'Create account', x: 670, y: 110, w: 170, h: 72, color: 'green', op: 100, shadow: true, sw: 1.5, delay: 270, anim: 'pulse', trig: 'hover', spd: 'normal' },
+            { id: 'n5', kind: 'round', label: 'Show inline error', x: 670, y: 360, w: 170, h: 72, color: 'pink', op: 100, shadow: true, sw: 1.5, delay: 360 },
+            { id: 'n6', kind: 'sticky', label: 'Rate-limit sign-ups before launch', x: 262, y: 34, w: 190, h: 104, color: 'amber', op: 100, shadow: true, sw: 1, delay: 480, author: 'VM' }
+          ],
+          edges: [
+            { id: 'e1', from: 'n1', fs: 'r', to: 'n2', ts: 'l', anim: 'flow' },
+            { id: 'e2', from: 'n2', fs: 'r', to: 'n3', ts: 'l', anim: 'flow' },
+            { id: 'e3', from: 'n3', fs: 't', to: 'n4', ts: 'l', label: 'Yes', anim: 'comet', color: 'green' },
+            { id: 'e4', from: 'n3', fs: 'b', to: 'n5', ts: 'l', label: 'No', anim: 'dash' },
+            { id: 'e5', from: 'n5', fs: 'b', to: 'n2', ts: 'b', label: 'Retry', lstyle: 'dashed' }
+          ] },
+        { name: 'Data model', nodes: [], edges: [] }
+      ],
+      past: [], future: [], saving: false, paletteOpen: false, query: '',
+      exportOpen: false, fmt: 'png', scale: 2, transparent: false, embed: true,
+      toast: null, selEdge: null, motion: true, replay: null, grid: 'dots', snap: true, cat: 'all', dockQuery: '', libs: { uml: true }, added: 0
+    };
+  }
+
+  colors() {
+    return {
+      blue: { stroke: '#4C8DFF', name: 'Blue' },
+      green: { stroke: '#2BB6A3', name: 'Teal' },
+      violet: { stroke: '#9B87F5', name: 'Violet' },
+      pink: { stroke: '#F0607A', name: 'Rose' },
+      amber: { stroke: '#E5A93B', name: 'Amber' },
+      slate: { stroke: '#8B93A7', name: 'Slate' }
+    };
+  }
+
+  kinds() {
+    return {
+      rect: { label: 'Process', color: 'blue', w: 150, h: 64, name: 'Rectangle', cats: ['basic', 'flow'] },
+      round: { label: 'Step', color: 'blue', w: 150, h: 64, name: 'Rounded', cats: ['basic'] },
+      ellipse: { label: 'Event', color: 'green', w: 130, h: 72, name: 'Ellipse', cats: ['basic'] },
+      diamond: { label: 'Decision', color: 'violet', w: 130, h: 100, name: 'Decision', cats: ['basic', 'flow'] },
+      pill: { label: 'Start / End', color: 'slate', w: 150, h: 60, name: 'Terminator', cats: ['flow'] },
+      para: { label: 'Input', color: 'slate', w: 150, h: 64, name: 'Data', cats: ['flow'] },
+      hex: { label: 'Prepare', color: 'green', w: 150, h: 64, name: 'Hexagon', cats: ['basic'] },
+      cyl: { label: 'Database', color: 'slate', w: 110, h: 86, name: 'Database', cats: ['flow'] },
+      doc: { label: 'Report', color: 'pink', w: 140, h: 80, name: 'Document', cats: ['flow'] },
+      sticky: { label: 'New note', color: 'amber', w: 170, h: 100, name: 'Sticky', cats: ['basic'] }
+    };
+  }
+
+  shapePath(k, w, h) {
+    const i = 1.5;
+    const f = (v) => Math.round(v * 10) / 10;
+    const rr = (r) => `M${f(r + i)} ${i}H${f(w - r - i)}A${f(r)} ${f(r)} 0 0 1 ${f(w - i)} ${f(r + i)}V${f(h - r - i)}A${f(r)} ${f(r)} 0 0 1 ${f(w - r - i)} ${f(h - i)}H${f(r + i)}A${f(r)} ${f(r)} 0 0 1 ${i} ${f(h - r - i)}V${f(r + i)}A${f(r)} ${f(r)} 0 0 1 ${f(r + i)} ${i}Z`;
+    if (k === 'rect') return rr(Math.min(4, h / 4));
+    if (k === 'round') return rr(Math.min(14, h / 3));
+    if (k === 'pill') return rr(h / 2 - i);
+    if (k === 'ellipse') { const rx = f(w / 2 - i), ry = f(h / 2 - i); return `M${i} ${f(h / 2)}A${rx} ${ry} 0 1 0 ${f(w - i)} ${f(h / 2)}A${rx} ${ry} 0 1 0 ${i} ${f(h / 2)}Z`; }
+    if (k === 'diamond') return `M${f(w / 2)} ${i}L${f(w - i)} ${f(h / 2)}L${f(w / 2)} ${f(h - i)}L${i} ${f(h / 2)}Z`;
+    if (k === 'para') { const s = f(Math.min(18, w / 5)); return `M${f(s + i)} ${i}H${f(w - i)}L${f(w - s - i)} ${f(h - i)}H${i}Z`; }
+    if (k === 'hex') { const s = f(Math.min(16, w / 5)); return `M${f(s + i)} ${i}H${f(w - s - i)}L${f(w - i)} ${f(h / 2)}L${f(w - s - i)} ${f(h - i)}H${f(s + i)}L${i} ${f(h / 2)}Z`; }
+    if (k === 'cyl') { const ry = f(Math.min(10, h / 6)), rx = f(w / 2 - i); return `M${i} ${f(ry + i)}V${f(h - ry - i)}A${rx} ${ry} 0 0 0 ${f(w - i)} ${f(h - ry - i)}V${f(ry + i)}A${rx} ${ry} 0 0 0 ${i} ${f(ry + i)}A${rx} ${ry} 0 0 0 ${f(w - i)} ${f(ry + i)}`; }
+    if (k === 'doc') { const c = f(Math.min(12, h / 5)); return `M${i} ${i}H${f(w - i)}V${f(h - c - i)}Q${f(w * 0.75)} ${f(h - c * 2.4)} ${f(w / 2)} ${f(h - c - i)}T${i} ${f(h - c - i)}Z`; }
+    if (k === 'sticky') { const fo = f(Math.min(18, w / 6)); return `M${i} ${i}H${f(w - i)}V${f(h - fo - i)}L${f(w - fo - i)} ${f(h - i)}H${i}Z`; }
+    return rr(6);
+  }
+
+  mix(a, b, t) {
+    const p = (h) => [1, 3, 5].map((j) => parseInt(h.slice(j, j + 2), 16));
+    const x = p(a), y = p(b);
+    return '#' + x.map((v, j) => Math.round(v * (1 - t) + y[j] * t).toString(16).padStart(2, '0')).join('');
+  }
+
+  anchor(n, s) {
+    if (s === 'r') return { x: n.x + n.w, y: n.y + n.h / 2 };
+    if (s === 'l') return { x: n.x, y: n.y + n.h / 2 };
+    if (s === 't') return { x: n.x + n.w / 2, y: n.y };
+    return { x: n.x + n.w / 2, y: n.y + n.h };
+  }
+
+  route(a, as, b, bs) {
+    const hz = (s) => s === 'l' || s === 'r';
+    let pts;
+    if (as === 'b' && bs === 'b') { const y = Math.max(a.y, b.y) + 44; pts = [a, { x: a.x, y }, { x: b.x, y }, b]; }
+    else if (hz(as) && hz(bs)) { const mx = (a.x + b.x) / 2; pts = [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b]; }
+    else if (!hz(as) && !hz(bs)) { const my = (a.y + b.y) / 2; pts = [a, { x: a.x, y: my }, { x: b.x, y: my }, b]; }
+    else if (!hz(as)) pts = [a, { x: a.x, y: b.y }, b];
+    else pts = [a, { x: b.x, y: a.y }, b];
+    return pts.filter((p, j) => j === 0 || Math.abs(p.x - pts[j - 1].x) + Math.abs(p.y - pts[j - 1].y) > 0.5);
+  }
+
+  commit(fn, extra, noHistory) {
+    const pages = JSON.parse(JSON.stringify(this.state.pages));
+    fn(pages[this.state.page], pages);
+    const next = Object.assign({ pages, saving: true }, extra || {});
+    if (!noHistory) { next.past = this.state.past.concat([this.state.pages]).slice(-40); next.future = []; }
+    this.setState(next);
+    clearTimeout(this._sv);
+    this._sv = setTimeout(() => this.setState({ saving: false }), 900);
+  }
+
+  toast(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => this.setState({ toast: null }), 2600);
+  }
+
+  addNode(kind) {
+    const K = this.kinds()[kind];
+    const spots = [{ x: 60, y: 70 }, { x: 60, y: 430 }, { x: 480, y: 40 }, { x: 300, y: 420 }];
+    const n = this.state.added;
+    const s = spots[n % spots.length], off = Math.floor(n / spots.length) * 22;
+    const id = 'n' + Date.now();
+    const x = Math.min(960 - K.w - 10, s.x + off), y = Math.min(560 - K.h - 10, s.y + off);
+    this.commit((pg) => pg.nodes.push({ id, kind, label: K.label, x, y, w: K.w, h: K.h, color: K.color, op: 100, shadow: true, sw: kind === 'sticky' ? 1 : 1.5, delay: 0, author: 'VM' }),
+      { sel: id, added: n + 1, paletteOpen: false });
+  }
+
+  addConnected(src, side) {
+    const w = 150, h = 64;
+    let x = src.x + src.w / 2 - w / 2, y = src.y + src.h / 2 - h / 2;
+    if (side === 'r') x = src.x + src.w + 80;
+    if (side === 'l') x = src.x - 80 - w;
+    if (side === 'b') y = src.y + src.h + 70;
+    if (side === 't') y = src.y - 70 - h;
+    x = Math.max(10, Math.min(960 - w - 10, x));
+    y = Math.max(10, Math.min(560 - h - 10, y));
+    const opp = { r: 'l', l: 'r', t: 'b', b: 't' };
+    const id = 'n' + Date.now();
+    const color = src.kind === 'sticky' ? 'blue' : src.color;
+    this.commit((pg) => {
+      pg.nodes.push({ id, kind: 'round', label: 'Next step', x, y, w, h, color, op: 100, shadow: true, sw: 1.5, delay: 0 });
+      pg.edges.push({ id: 'e' + Date.now(), from: src.id, fs: side, to: id, ts: opp[side] });
+    }, { sel: id });
+  }
+
+  updateSel(patch, noHistory) {
+    const id = this.state.sel;
+    this.commit((pg) => { const n = pg.nodes.find((m) => m.id === id); if (n) Object.assign(n, patch); }, null, noHistory);
+  }
+
+  nodeAnim(n, glow, replaying) {
+    const anim = n.anim || 'none';
+    if (anim === 'none' || replaying) return { cls: '', vars: '' };
+    const durs = { pulse: 1.4, bounce: 1.2, float: 3, wiggle: 1, glow: 1.8, blink: 1.4, pop: 0.7 };
+    const mult = { slow: 1.8, normal: 1, fast: 0.55 }[n.spd || 'normal'];
+    const trig = n.trig || 'loop';
+    return {
+      cls: `na na-${anim}${trig === 'hover' ? ' hov' : ''}`,
+      vars: `--dur: ${(durs[anim] * mult).toFixed(2)}s; --iter: ${trig === 'once' ? 1 : 'infinite'}; --glow: ${glow};`
+    };
+  }
+
+  edgeColors(accent, t) {
+    return { default: t.edge, accent, blue: '#4C8DFF', green: '#2BB6A3', pink: '#F0607A', amber: '#E5A93B' };
+  }
+
+  edgeVisual(e, accent, t, opts) {
+    const EC = this.edgeColors(accent, t);
+    const anim = e.anim || 'none', ls = e.lstyle || 'solid', ew = e.ew || 1.8;
+    const custom = e.color && e.color !== 'default';
+    const base = custom ? EC[e.color] : (opts.highlight ? accent : t.edge);
+    const fx = custom ? EC[e.color] : accent;
+    const mult = { slow: 1.8, normal: 1, fast: 0.55 }[e.spd || 'normal'];
+    const durs = { flow: 0.8, dash: 0.9, comet: 1.8, pulse: 1.6, draw: 2.4 };
+    const vars = `--dur: ${((durs[anim] || 1) * mult).toFixed(2)}s; --dir: ${e.dir === 'reverse' ? 'reverse' : 'normal'};`;
+    let dash = ls === 'dashed' ? 'stroke-dasharray: 7 6;' : ls === 'dotted' ? 'stroke-dasharray: 0.1 7;' : '';
+    let cls = '';
+    if (anim === 'dash') { cls = 'ea e-dash'; dash = ''; }
+    else if (ls === 'solid' && opts.intro) cls = 'edge-draw';
+    const o1 = anim === 'flow' ? 'ea e-flow' : anim === 'pulse' ? 'ea e-pulse' : '';
+    const o2 = anim === 'comet' ? 'ea e-comet' : anim === 'draw' ? 'ea e-draw' : '';
+    return {
+      cls, o1, o2, head: base,
+      style: `stroke: ${base}; stroke-width: ${ls === 'dotted' ? ew + 1.2 : ew}px; opacity: ${anim === 'draw' ? 0.3 : 1}; transition: stroke .3s, opacity .3s; ${dash} ${vars} ${cls === 'edge-draw' && opts.delay != null ? `animation-delay: ${opts.delay}ms;` : ''}`,
+      o1style: `stroke: ${fx}; stroke-width: ${anim === 'pulse' ? ew + 7 : ew + 1.8}px; opacity: ${o1 ? 1 : 0}; ${vars}`,
+      o2style: `stroke: ${fx}; stroke-width: ${anim === 'comet' ? ew + 2.2 : ew}px; opacity: ${o2 ? 1 : 0}; ${vars}`
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const C = this.colors(), K = this.kinds();
+    const dark = s.dark != null ? s.dark : this.props.dark !== false;
+    const accent = this.props.accent || '#4C8DFF';
+    const t = dark
+      ? { bg: '#0A0B0D', surface: '#111215', surface2: '#1A1C20', ink: '#E6E7EA', ink2: '#8D919B', line: '#23252B', edge: '#5C616D', dot: '#2A2D34', major: '#16181C', stage: '#0D0E11', shadowc: 'rgba(0,0,0,.6)' }
+      : { bg: '#F4F4F2', surface: '#FFFFFF', surface2: '#F0F0EE', ink: '#141518', ink2: '#5D616B', line: '#E2E2DF', edge: '#9A9EA8', dot: '#CFD0CC', major: '#ECECE9', stage: '#FAFAF9', shadowc: 'rgba(20,21,24,.14)' };
+    const accentText = dark ? this.mix(accent, '#FFFFFF', 0.25) : this.mix(accent, '#000000', 0.3);
+    const accentSoft = this.mix(accent, t.surface, dark ? 0.84 : 0.9);
+    Object.keys(C).forEach((k) => { C[k].fill = this.mix(C[k].stroke, t.stage, dark ? 0.86 : 0.91); C[k].ink = t.ink; });
+    const themeVars = `--bg:${t.bg};--surface:${t.surface};--surface2:${t.surface2};--ink:${t.ink};--ink2:${t.ink2};--line:${t.line};--edge:${t.edge};--dot:${t.dot};--stage:${t.stage};--shadowc:${t.shadowc};--accent:${accent};--accentText:${accentText};--accentSoft:${accentSoft};--onAccent:#0A0B0D;color-scheme:${dark ? 'dark' : 'light'}`;
+
+    const page = s.pages[s.page];
+    const byId = {};
+    page.nodes.forEach((n) => { byId[n.id] = n; });
+    const selNode = byId[s.sel] || null;
+    const stop = (e) => { if (e && e.stopPropagation) e.stopPropagation(); };
+    const toggle = (on) => ({
+      track: `position: relative; flex: none; width: 38px; height: 22px; border-radius: 99px; background: ${on ? accent : t.line}; transition: background .25s`,
+      knob: `position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 99px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translateX(${on ? 16 : 0}px)`
+    });
+    const seg = (on) => `height: 28px; border-radius: 4px; font-size: 12.5px; font-weight: 500; display: flex; align-items: center; justify-content: center; padding: 0 10px; transition: background .2s, color .2s; background: ${on ? t.surface : 'transparent'}; color: ${on ? t.ink : t.ink2}; box-shadow: ${on ? `inset 0 0 0 1px ${t.line}` : 'none'}`;
+    const chip = (on) => `height: 28px; padding: 0 10px; border-radius: 4px; font-size: 12.5px; font-weight: 500; border: 1px solid ${on ? accent : t.line}; background: ${on ? accentSoft : 'transparent'}; color: ${on ? accentText : t.ink2}`;
+
+    const nodes = page.nodes.map((n) => {
+      const c = C[n.color];
+      const sticky = n.kind === 'sticky';
+      const pick = (e) => { stop(e); this.setState({ sel: n.id, selEdge: null, exportOpen: false }); };
+      const na = this.nodeAnim(n, c.stroke, s.replay === n.id);
+      const mk = (side) => (e) => { stop(e); this.addConnected(n, side); };
+      return {
+        id: n.id, w: n.w, h: n.h, label: n.label, author: n.author || '', isSticky: sticky,
+        selected: n.id === s.sel, aria: `${K[n.kind].name}: ${n.label}`,
+        vb: `0 0 ${n.w} ${n.h}`, path: this.shapePath(n.kind, n.w, n.h),
+        fill: c.fill, stroke: c.stroke, sw: n.sw, dash: sticky ? '4 4' : 'none',
+        wrapStyle: `left: ${n.x}px; top: ${n.y}px; width: ${n.w}px; height: ${n.h}px; animation-delay: ${n.delay || 0}ms; z-index: ${n.id === s.sel ? 3 : 2}`,
+        btnStyle: `opacity: ${n.op / 100}`,
+        skinStyle: `position: absolute; inset: 0; display: block; ${na.vars}`,
+        animCls: na.cls, showBadge: !!n.anim && n.anim !== 'none' && n.id !== s.sel,
+        svgStyle: `position: absolute; inset: 0; overflow: visible; ${n.shadow ? `filter: drop-shadow(0 4px 10px ${dark ? 'rgba(0,0,0,.5)' : 'rgba(20,21,24,.08)'});` : ''}`,
+        labelStyle: sticky
+          ? `position: absolute; left: 14px; right: 16px; top: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 400; line-height: 1.45; color: ${c.ink}; text-align: left`
+          : `position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 ${n.kind === 'diamond' ? 26 : 12}px; font-size: ${n.kind === 'diamond' ? 12 : 13}px; font-weight: 500; line-height: 1.25; color: ${c.ink}; text-align: center`,
+        pick, addR: mk('r'), addL: mk('l'), addT: mk('t'), addB: mk('b')
+      };
+    });
+
+    const edges = page.edges.filter((e) => byId[e.from] && byId[e.to]).map((e, idx) => {
+      const a = byId[e.from], b = byId[e.to];
+      const pts = this.route(this.anchor(a, e.fs), e.fs, this.anchor(b, e.ts), e.ts);
+      const end = pts[pts.length - 1], prev = pts[pts.length - 2];
+      const len = Math.hypot(end.x - prev.x, end.y - prev.y) || 1;
+      const dx = (end.x - prev.x) / len, dy = (end.y - prev.y) / len;
+      const base = { x: end.x - dx * 10, y: end.y - dy * 10 };
+      const head = [end, { x: base.x - dy * 5.5, y: base.y + dx * 5.5 }, { x: base.x + dy * 5.5, y: base.y - dx * 5.5 }].map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      const linePts = pts.slice(0, -1).concat([base]);
+      const d = 'M' + linePts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
+      let best = 0, lx = 0, ly = 0;
+      for (let j = 1; j < pts.length; j++) {
+        const L = Math.hypot(pts[j].x - pts[j - 1].x, pts[j].y - pts[j - 1].y);
+        if (L > best) { best = L; lx = (pts[j].x + pts[j - 1].x) / 2; ly = (pts[j].y + pts[j - 1].y) / 2; }
+      }
+      const highlight = !!selNode && (e.from === s.sel || e.to === s.sel);
+      const selected = s.selEdge === e.id;
+      const delay = 520 + idx * 110;
+      const v = this.edgeVisual(e, accent, t, { highlight: highlight || selected, intro: true, delay });
+      const first = pts[0];
+      const lit = highlight || selected;
+      return {
+        d, head, label: e.label || '', hasLabel: !!e.label,
+        pick: (ev) => { stop(ev); this.setState({ selEdge: e.id, sel: null, exportOpen: false }); },
+        cls: v.cls, style: v.style, o1cls: v.o1, o1style: v.o1style, o2cls: v.o2, o2style: v.o2style,
+        haloStyle: `stroke: ${accent}; opacity: ${selected ? 0.18 : 0}; transition: opacity .25s`,
+        headStyle: `fill: ${v.head}; transition: fill .3s; animation-delay: ${delay + 700}ms`,
+        sx: first.x, sy: first.y, ex: end.x, ey: end.y,
+        endStyle: `fill: ${t.surface}; stroke: ${accent}; stroke-width: 2; opacity: ${selected ? 1 : 0}; transition: opacity .2s`,
+        labelStyle: `position: absolute; left: ${lx}px; top: ${ly}px; transform: translate(-50%, -50%); padding: 2px 7px; border-radius: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; background: ${selected ? accentSoft : t.surface}; border: 1px solid ${lit ? accent : t.line}; color: ${lit ? accentText : t.ink2}; z-index: 1; pointer-events: auto; animation-delay: ${delay + 600}ms; transition: border-color .3s, color .3s, background .3s`
+      };
+    });
+
+    const z = s.zoom;
+    const diagramStyle = `position: absolute; left: 50%; top: 46%; width: 960px; height: 560px; transform: translate(-50%, -50%) scale(${z}); transition: transform .45s cubic-bezier(.2,.8,.2,1); z-index: 1; pointer-events: none`;
+    let grid = 'background-image: none;';
+    if (s.grid === 'dots') grid = `background-image: radial-gradient(${t.dot} 1px, transparent 1.2px), linear-gradient(${t.major} 1px, transparent 1px), linear-gradient(90deg, ${t.major} 1px, transparent 1px); background-size: ${20 * z}px ${20 * z}px, ${100 * z}px ${100 * z}px, ${100 * z}px ${100 * z}px; background-position: center;`;
+    if (s.grid === 'lines') grid = `background-image: linear-gradient(${t.line} 1px, transparent 1px), linear-gradient(90deg, ${t.line} 1px, transparent 1px); background-size: ${24 * z}px ${24 * z}px; background-position: center;`;
+    const stageBg = `background-color: ${t.stage}; ${grid} transition: background-size .45s`;
+
+    const atile = (on) => `display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px 8px; border-radius: 5px; border: 1px solid ${on ? accent : t.line}; background: ${on ? accentSoft : t.surface}; font-size: 11px; font-weight: 500; color: ${on ? accentText : t.ink2}`;
+    const mseg = (on) => seg(on) + '; height: 26px; font-size: 12px; padding: 0 9px';
+    const spdDefs = [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']];
+    const nodeAnimDefs = [['none', 'None'], ['pulse', 'Pulse'], ['bounce', 'Bounce'], ['float', 'Float'], ['wiggle', 'Wiggle'], ['glow', 'Glow'], ['blink', 'Blink'], ['pop', 'Pop']];
+    const edgeAnimDefs = [['none', 'None'], ['flow', 'Flow'], ['dash', 'March'], ['comet', 'Comet'], ['pulse', 'Pulse'], ['draw', 'Draw']];
+    const animName = (defs, id) => (defs.find((d) => d[0] === (id || 'none')) || defs[0])[1];
+    let ctxStyle = '', sel = null;
+    if (selNode) {
+      const below = selNode.y < 96;
+      ctxStyle = `position: absolute; left: ${selNode.x + selNode.w / 2}px; top: ${below ? selNode.y + selNode.h + 46 : selNode.y - 46}px; transform: translate(-50%, ${below ? '0' : '-100%'}); display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; background: ${t.surface}; border: 1px solid ${t.line}; box-shadow: 0 16px 36px -16px ${t.shadowc}; z-index: 4; pointer-events: auto; transition: left .45s cubic-bezier(.2,.8,.2,1), top .45s cubic-bezier(.2,.8,.2,1)`;
+      const tg = toggle(selNode.shadow);
+      const setNum = (key, min) => (e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) this.updateSel({ [key]: Math.max(min, v) }, true); };
+      sel = {
+        label: selNode.label, kindName: K[selNode.kind].name, op: selNode.op, shadow: selNode.shadow,
+        track: tg.track, knob: tg.knob,
+        onLabel: (e) => this.updateSel({ label: e.target.value }, true),
+        onOp: (e) => this.updateSel({ op: parseInt(e.target.value, 10) }, true),
+        toggleShadow: () => this.updateSel({ shadow: !selNode.shadow }),
+        swatches: Object.keys(C).map((k) => ({
+          on: selNode.color === k, aria: `Fill ${C[k].name}`,
+          pick: () => this.updateSel({ color: k }),
+          style: `width: 26px; height: 26px; border-radius: 4px; background: ${C[k].stroke}; box-shadow: ${selNode.color === k ? `0 0 0 2px ${t.surface}, 0 0 0 3.5px ${t.ink}` : 'none'}`
+        })),
+        strokes: [1, 1.5, 3].map((v, j) => ({
+          on: selNode.sw === v, aria: ['Thin', 'Regular', 'Bold'][j] + ' stroke',
+          pick: () => this.updateSel({ sw: v }),
+          style: seg(selNode.sw === v),
+          line: `display: block; width: 28px; height: ${v * 1.3}px; border-radius: 4px; background: ${selNode.sw === v ? t.ink : t.ink2}`
+        })),
+        animated: !!selNode.anim && selNode.anim !== 'none', notAnimated: !selNode.anim || selNode.anim === 'none',
+        anims: nodeAnimDefs.map(([id, label]) => {
+          const on = (selNode.anim || 'none') === id;
+          const pv = this.nodeAnim({ anim: id, trig: 'loop', spd: 'normal' }, C[selNode.color].stroke, false);
+          return { label, on, pick: () => this.updateSel({ anim: id }), tileStyle: atile(on), cls: pv.cls,
+            boxStyle: `display: block; width: 26px; height: 18px; border-radius: 3px; background: ${C[selNode.color].fill}; border: 1.5px solid ${C[selNode.color].stroke}; ${pv.vars}` };
+        }),
+        trigs: [['loop', 'Loop'], ['hover', 'On hover'], ['once', 'Once']].map(([id, label]) => ({ label, on: (selNode.trig || 'loop') === id, pick: () => this.updateSel({ trig: id }), style: mseg((selNode.trig || 'loop') === id) })),
+        speeds: spdDefs.map(([id, label]) => ({ label, on: (selNode.spd || 'normal') === id, pick: () => this.updateSel({ spd: id }), style: mseg((selNode.spd || 'normal') === id) })),
+        replay: () => { const id = selNode.id; this.setState({ replay: id }); setTimeout(() => this.setState({ replay: null }), 40); },
+        hasConns: page.edges.some((e) => (e.from === selNode.id || e.to === selNode.id) && byId[e.from] && byId[e.to]),
+        conns: page.edges.filter((e) => (e.from === selNode.id || e.to === selNode.id) && byId[e.from] && byId[e.to]).map((e) => ({
+          label: e.from === selNode.id ? `To ${byId[e.to].label}` : `From ${byId[e.from].label}`,
+          icon: e.from === selNode.id ? 'M5 12h14M13 6l6 6-6 6' : 'M19 12H5M11 6l-6 6 6 6',
+          anim: animName(edgeAnimDefs, e.anim),
+          pick: () => this.setState({ selEdge: e.id, sel: null })
+        })),
+        geo: [['X', 'x', 0], ['Y', 'y', 0], ['W', 'w', 40], ['H', 'h', 30]].map(([k, key, min]) => ({ k, v: selNode[key], set: setNum(key, min) }))
+      };
+    }
+    const edgeSel = page.edges.find((e) => e.id === s.selEdge && byId[e.from] && byId[e.to]) || null;
+    let es = null;
+    if (edgeSel) {
+      const EC = this.edgeColors(accent, t);
+      const cur = (k, d) => (edgeSel[k] != null ? edgeSel[k] : d);
+      const upd = (patch, noHistory) => { const id = edgeSel.id; this.commit((pg) => { const x = pg.edges.find((m) => m.id === id); if (x) Object.assign(x, patch); }, null, noHistory); };
+      const colorNames = { default: 'Default', accent: 'Accent', blue: 'Blue', green: 'Green', pink: 'Pink', amber: 'Amber' };
+      es = {
+        label: edgeSel.label || '', from: byId[edgeSel.from].label, to: byId[edgeSel.to].label,
+        onLabel: (e) => upd({ label: e.target.value }, true),
+        animated: cur('anim', 'none') !== 'none',
+        styles: [['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']].map(([id, label]) => ({ label, on: cur('lstyle', 'solid') === id, pick: () => upd({ lstyle: id }), style: seg(cur('lstyle', 'solid') === id) })),
+        widths: [[1.2, 'Thin'], [1.8, 'Regular'], [3, 'Bold']].map(([v, label]) => ({ label, on: cur('ew', 1.8) === v, pick: () => upd({ ew: v }), style: seg(cur('ew', 1.8) === v) })),
+        colors: Object.keys(EC).map((k) => ({ aria: `${colorNames[k]} connector`, on: cur('color', 'default') === k, pick: () => upd({ color: k }),
+          style: `width: 26px; height: 26px; border-radius: 4px; background: ${EC[k]}; box-shadow: ${cur('color', 'default') === k ? `0 0 0 2px ${t.surface}, 0 0 0 3.5px ${t.ink}` : 'none'}` })),
+        anims: edgeAnimDefs.map(([id, label]) => {
+          const on = cur('anim', 'none') === id;
+          const pv = this.edgeVisual(Object.assign({}, edgeSel, { anim: id, spd: 'normal', dir: 'normal', lstyle: 'solid', ew: 1.8 }), accent, t, { highlight: true, intro: false });
+          return { label, on, pick: () => upd({ anim: id }), tileStyle: atile(on), cls: pv.cls, style: pv.style, o1cls: pv.o1, o1style: pv.o1style, o2cls: pv.o2, o2style: pv.o2style, head: pv.head };
+        }),
+        speeds: spdDefs.map(([id, label]) => ({ label, on: cur('spd', 'normal') === id, pick: () => upd({ spd: id }), style: mseg(cur('spd', 'normal') === id) })),
+        dirs: [['normal', 'Forward'], ['reverse', 'Reverse']].map(([id, label]) => ({ label, on: cur('dir', 'normal') === id, pick: () => upd({ dir: id }), style: mseg(cur('dir', 'normal') === id) })),
+        del: () => { const id = edgeSel.id; this.commit((pg) => { pg.edges = pg.edges.filter((x) => x.id !== id); }, { selEdge: null }); this.toast('Connector deleted. Undo with ⌘Z'); }
+      };
+    }
+    const ctxSwatches = ['blue', 'green', 'violet', 'pink', 'slate'].map((k) => ({
+      aria: `Fill ${C[k].name}`,
+      pick: (e) => { stop(e); this.updateSel({ color: k }); },
+      style: `width: 16px; height: 16px; border-radius: 3px; background: ${C[k].stroke}; box-shadow: ${selNode && selNode.color === k ? `0 0 0 2px ${t.surface}, 0 0 0 3px ${t.ink}` : 'none'}`
+    }));
+
+    const toolDefs = [
+      ['select', 'Select', 'V', 'M5 3l14 7.5-6.2 1.8L10.5 18.5z'],
+      ['hand', 'Hand', 'H', 'M8 12V5.5a1.5 1.5 0 0 1 3 0V11M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5M14 10.5V5.5a1.5 1.5 0 0 1 3 0V12M17 11V9a1.5 1.5 0 0 1 3 0v5a7 7 0 0 1-7 7h-1.5a6 6 0 0 1-4.8-2.4L4 15.5a1.6 1.6 0 0 1 2.4-2L8 15'],
+      ['rect', 'Rectangle', 'R', 'M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'],
+      ['ellipse', 'Ellipse', 'O', 'M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z'],
+      ['diamond', 'Decision', 'D', 'M12 3l9 9-9 9-9-9z'],
+      ['connector', 'Connector', 'A', 'M5 19L19 5M11 5h8v8'],
+      ['text', 'Text', 'T', 'M5 7V5h14v2M12 5v14M9 19h6'],
+      ['pen', 'Freehand', 'P', 'M4 20l4-1L19 8a2.1 2.1 0 0 0-3-3L5 16zM14 7l3 3'],
+      ['sticky', 'Sticky note', 'N', 'M5 4h14v10l-6 6H5zM13 20v-6h6']
+    ];
+    const toolIdx = Math.max(0, toolDefs.findIndex((d) => d[0] === s.tool));
+    const tools = toolDefs.map(([id, name, key, icon]) => ({
+      name, key, icon, on: s.tool === id,
+      pick: () => { this.setState({ tool: id }); if (['rect', 'ellipse', 'diamond', 'sticky'].includes(id)) { this.addNode(id); this.setState({ tool: 'select' }); } },
+      style: `width: 34px; height: 34px; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: ${s.tool === id ? '#0A0B0D' : t.ink2}`
+    }));
+    const indicatorStyle = `position: absolute; top: 4px; left: ${4 + toolIdx * 38}px; width: 34px; height: 34px; border-radius: 4px; background: ${accent}`;
+
+    const cats = [['all', 'All'], ['basic', 'Basic'], ['flow', 'Flowchart']].map(([id, label]) => ({
+      label, on: s.cat === id, pick: () => this.setState({ cat: id }), style: chip(s.cat === id)
+    }));
+    const q = s.dockQuery.trim().toLowerCase();
+    const tiles = Object.keys(K)
+      .filter((k) => s.cat === 'all' || K[k].cats.includes(s.cat))
+      .filter((k) => !q || K[k].name.toLowerCase().includes(q) || K[k].label.toLowerCase().includes(q))
+      .map((k) => ({ name: K[k].name, path: this.shapePath(k, 44, k === 'diamond' ? 30 : 28), add: () => this.addNode(k) }));
+    const libDefs = [['uml', 'UML'], ['bpmn', 'BPMN'], ['er', 'Entity relation'], ['aws', 'AWS'], ['azure', 'Azure'], ['gcp', 'Google Cloud'], ['k8s', 'Kubernetes'], ['net', 'Network']];
+    const libColors = ['#2F6FEB', '#1F9D55', '#7C4DFF', '#D97706', '#0E7490', '#E0457B', '#2563EB', '#64748B'];
+    const libs = libDefs.map(([id, name], j) => {
+      const on = !!s.libs[id];
+      return {
+        name, on, state: on ? 'Added' : 'Add',
+        toggle: () => { this.setState({ libs: Object.assign({}, s.libs, { [id]: !on }) }); if (!on) this.toast(`${name} shapes added to the dock`); },
+        dot: `width: 10px; height: 10px; border-radius: 3px; background: ${libColors[j]}`,
+        badge: `font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500; padding: 2px 6px; border-radius: 3px; transition: background .2s, color .2s; background: ${on ? accentSoft : 'transparent'}; color: ${on ? accentText : t.ink2}; border: 1px solid ${on ? 'transparent' : t.line}`
+      };
+    });
+
+    const pageTabs = s.pages.map((p, j) => ({
+      name: p.name, current: j === s.page ? 'page' : 'false',
+      go: () => this.setState({ page: j, sel: null }),
+      style: `min-height: 48px; padding: 0 12px; border-radius: 0; font-size: 13px; font-weight: 500; background: transparent; color: ${j === s.page ? t.ink : t.ink2}; box-shadow: inset 0 -2px 0 ${j === s.page ? accent : 'transparent'}; transition: box-shadow .25s, color .2s`
+    }));
+
+    const fmts = [['png', 'PNG'], ['svg', 'SVG'], ['pdf', 'PDF'], ['drawio', '.drawio']];
+    const formats = fmts.map(([id, label]) => ({ label, on: s.fmt === id, pick: () => this.setState({ fmt: id }), style: `${chip(s.fmt === id)}; padding: 0; border-radius: 9px` }));
+    const exportOpts = [['transparent', 'Transparent background'], ['embed', 'Keep it editable (embed diagram)']].map(([key, label]) => {
+      const tg = toggle(s[key]);
+      return { label, on: s[key], toggle: () => this.setState({ [key]: !s[key] }), track: tg.track, knob: tg.knob };
+    });
+    const scales = [1, 2, 3].map((v) => ({ label: v + '×', on: s.scale === v, pick: () => this.setState({ scale: v }), style: seg(s.scale === v) + '; height: 26px' }));
+    const fmtLabel = fmts.find((f) => f[0] === s.fmt)[1];
+
+    const gridDefs = [['dots', 'Dots'], ['lines', 'Lines'], ['none', 'None']];
+    const grids = gridDefs.map(([id, label]) => ({ label, on: s.grid === id, pick: () => this.setState({ grid: id }), style: seg(s.grid === id) }));
+    const snapT = toggle(s.snap);
+
+    const cmdDefs = [
+      ['Add rectangle', 'R', 'M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', () => this.addNode('rect')],
+      ['Add decision', 'D', 'M12 3l9 9-9 9-9-9z', () => this.addNode('diamond')],
+      ['Add sticky note', 'N', 'M5 4h14v10l-6 6H5zM13 20v-6h6', () => this.addNode('sticky')],
+      ['Tidy up: vertical flow', '⌥⇧V', 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z', () => { this.setState({ paletteOpen: false }); this.toast('Layout applied'); }],
+      [dark ? 'Switch to light mode' : 'Switch to dark mode', '⇧D', dark ? 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2' : 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z', () => this.setState({ dark: !dark, paletteOpen: false })],
+      [s.motion ? 'Pause all animations' : 'Play all animations', '⇧M', s.motion ? 'M8 5v14M16 5v14' : 'M7 4l13 8-13 8z', () => this.setState({ motion: !s.motion, paletteOpen: false })],
+      ['Animate selection: Pulse', '⌥P', 'M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z', () => { if (selNode) this.updateSel({ anim: 'pulse' }); else this.toast('Select a shape first'); this.setState({ paletteOpen: false }); }],
+      ['Export as PNG', '⌘⇧E', 'M12 4v11M7 10l5 5 5-5M5 20h14', () => { this.setState({ paletteOpen: false }); this.toast(`Exported “${page.name}.png”`); }],
+      ['Insert from Mermaid', '⌘M', 'M8 6l-5 6 5 6M16 6l5 6-5 6', () => { this.setState({ paletteOpen: false }); this.toast('Paste Mermaid code to convert it'); }],
+      ['New page', '⇧N', 'M6 3h8l4 4v14H6zM14 3v4h4M12 11v6M9 14h6', () => this.addPageFn()],
+      ['Zoom to 100%', '⇧0', 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4M8 11h6', () => this.setState({ zoom: 1, paletteOpen: false })]
+    ];
+    const cq = s.query.trim().toLowerCase();
+    const cmds = cmdDefs.filter((c) => !cq || c[0].toLowerCase().includes(cq)).map(([label, key, icon, run]) => ({ label, key, icon, run }));
+
+    const mini = page.nodes.map((n) => ({
+      style: `position: absolute; left: ${n.x * 0.175}px; top: ${n.y * 0.175}px; width: ${Math.max(4, n.w * 0.175)}px; height: ${Math.max(4, n.h * 0.175)}px; border-radius: 2px; background: ${C[n.color].stroke}; opacity: ${n.id === s.sel ? 1 : 0.55}; transition: left .45s, top .45s, opacity .3s`
+    }));
+    const vw = Math.min(168, 168 / z), vh = Math.min(98, 98 / z);
+    const viewportStyle = `position: absolute; left: ${(168 - vw) / 2}px; top: ${(98 - vh) / 2}px; width: ${vw}px; height: ${vh}px; border-radius: 6px; border: 1.5px solid ${accent}; background: ${accentSoft}55; transition: all .45s cubic-bezier(.2,.8,.2,1)`;
+
+    return {
+      readout: selNode ? `${selNode.label}  ·  X ${selNode.x}  Y ${selNode.y}  ·  ${selNode.w}×${selNode.h}` : edgeSel ? `Connector  ·  ${byId[edgeSel.from].label} → ${byId[edgeSel.to].label}` : `${page.nodes.length} shapes  ·  ${page.edges.length} connectors  ·  ${s.snap ? 'snap 20' : 'free'}`,
+      themeVars, saving: s.saving, notSaving: !s.saving,
+      pageTabs, addPage: () => this.addPageFn(), pageName: page.name,
+      onPageName: (e) => { const v = e.target.value; this.commit((pg) => { pg.name = v; }, null, true); },
+      undo: () => { if (!s.past.length) return; const prev = s.past[s.past.length - 1]; this.setState({ pages: prev, past: s.past.slice(0, -1), future: [s.pages].concat(s.future), sel: null }); },
+      redo: () => { if (!s.future.length) return; const nx = s.future[0]; this.setState({ pages: nx, future: s.future.slice(1), past: s.past.concat([s.pages]), sel: null }); },
+      cantUndo: s.past.length === 0, cantRedo: s.future.length === 0,
+      toggleDark: () => this.setState({ dark: !dark }),
+      darkLabel: dark ? 'Switch to light mode' : 'Switch to dark mode',
+      darkIcon: dark ? 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4' : 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z',
+      openPalette: () => this.setState({ paletteOpen: true, query: '', exportOpen: false }),
+      closePalette: () => this.setState({ paletteOpen: false }),
+      paletteOpen: s.paletteOpen, query: s.query, onQuery: (e) => this.setState({ query: e.target.value }),
+      cmds, noCmds: cmds.length === 0,
+      exportOpen: s.exportOpen, toggleExport: () => this.setState({ exportOpen: !s.exportOpen }),
+      formats, exportOpts, scales, fmtLabel,
+      doExport: () => { this.setState({ exportOpen: false }); this.toast(`Exported “${page.name}${s.fmt === 'drawio' ? '' : '.'}${s.fmt === 'drawio' ? '.drawio' : s.fmt}” at ${s.scale}×`); },
+      dockQuery: s.dockQuery, onDockQuery: (e) => this.setState({ dockQuery: e.target.value }),
+      cats, tiles, noTiles: tiles.length === 0, libs,
+      stageBg, diagramStyle, clearSel: () => this.setState({ sel: null, selEdge: null, exportOpen: false }),
+      nodes, edges, hasSel: !!selNode, hasEdgeSel: !!edgeSel, noSel: !selNode && !edgeSel,
+      sel: sel || { swatches: [], strokes: [], geo: [], anims: [], trigs: [], speeds: [], conns: [] },
+      es: es || { styles: [], widths: [], colors: [], anims: [], speeds: [], dirs: [] },
+      motion: s.motion, pausedCls: s.motion ? '' : 'paused',
+      toggleMotion: () => { this.setState({ motion: !s.motion }); this.toast(s.motion ? 'Animations paused' : 'Animations playing'); },
+      motionLabel: s.motion ? 'Motion on' : 'Motion off',
+      motionIcon: s.motion ? 'M8 5v14M16 5v14' : 'M7 4l13 8-13 8z',
+      motionStyle: `display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 5px; font-size: 12.5px; font-weight: 500; border: 1px solid ${s.motion ? accent : t.line}; background: ${s.motion ? accentSoft : 'transparent'}; color: ${s.motion ? accentText : t.ink2}`,
+      ctxStyle, ctxSwatches, stop,
+      duplicate: (e) => { stop(e); if (!selNode) return; const id = 'n' + Date.now(); this.commit((pg) => pg.nodes.push(Object.assign({}, selNode, { id, x: Math.min(960 - selNode.w - 10, selNode.x + 24), y: Math.min(560 - selNode.h - 10, selNode.y + 24), delay: 0 })), { sel: id }); },
+      del: (e) => { stop(e); if (!selNode) return; const id = selNode.id; this.commit((pg) => { pg.nodes = pg.nodes.filter((n) => n.id !== id); pg.edges = pg.edges.filter((x) => x.from !== id && x.to !== id); }, { sel: null }); this.toast(`Deleted “${selNode.label}”. Undo with ⌘Z`); },
+      isEmpty: page.nodes.length === 0, addFirst: () => this.addNode('round'),
+      tools, indicatorStyle,
+      zoomPct: Math.round(z * 100),
+      zoomIn: () => this.setState({ zoom: Math.min(1.6, Math.round((z + 0.1) * 10) / 10) }),
+      zoomOut: () => this.setState({ zoom: Math.max(0.5, Math.round((z - 0.1) * 10) / 10) }),
+      zoomReset: () => this.setState({ zoom: 1 }),
+      mini, viewportStyle,
+      hasToast: !!s.toast, toastMsg: s.toast || '',
+      grids, snap: s.snap, toggleSnap: () => this.setState({ snap: !s.snap }), snapTrack: snapT.track, snapKnob: snapT.knob,
+      shortcuts: [['Command palette', '⌘K'], ['Select', 'V'], ['Rectangle', 'R'], ['Connector', 'A'], ['Duplicate', '⌘D'], ['Undo', '⌘Z']].map(([label, key]) => ({ label, key }))
+    };
+  }
+
+  addPageFn() {
+    const n = this.state.pages.length + 1;
+    const pages = this.state.pages.concat([{ name: 'Page ' + n, nodes: [], edges: [] }]);
+    this.setState({ pages, page: pages.length - 1, sel: null, paletteOpen: false, past: this.state.past.concat([this.state.pages]), future: [] });
+  }
+}
+</script>
+</body>
+</html>

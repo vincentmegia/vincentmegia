@@ -1,0 +1,45 @@
+{{/* /easy-diagram: a standalone, full-viewport document for the Easy
+     Diagram editor (docs/features/easy-diagram.md, docs/features/
+     easy-diagram/BUILD.md). Deliberately NOT built on layouts/base.html:
+     no site header/footer, no htmx, no Tailwind output.css. Rendered by
+     EasyDiagramHandler.Index via Renderer.RenderFragment, never wrapped in
+     "base". Dot is EasyDiagramPageData.
+
+     Load order matters and is the contract with WP2/WP3:
+       1. vendored engine classic scripts (EngineScripts, in the order WP2
+          documents at the top of web/static/easydiagram/js/engine.js);
+       2. the stylesheets (engine.css, then the shell's easy-diagram.css);
+       3. app.js as a module (deferred, so it runs after 1 and after the
+          DOM is parsed).
+     The route CSP (easy_diagram.go's easyDiagramCSP) forbids inline
+     scripts, so nothing here may be an inline <script>.
+
+     The body is only a mount point: WP3's app.js builds the whole shell
+     inside #easy-diagram-app. */}}
+{{define "easy-diagram-page"}}<!doctype html>
+<html lang="en" class="easy-diagram">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="dark light">
+	<meta name="referrer" content="no-referrer">
+	<title>{{.Title}}</title>
+	{{- range .FontPreloads}}
+	<link rel="preload" href="{{.}}" as="font" type="font/woff2" crossorigin>
+	{{- end}}
+	{{- range .EngineScripts}}
+	<script src="{{.}}"></script>
+	{{- end}}
+	{{- range .Stylesheets}}
+	<link rel="stylesheet" href="{{.}}">
+	{{- end}}
+	<script type="module" src="{{.AppScriptURL}}"></script>
+</head>
+<body class="easy-diagram-body">
+	<div id="easy-diagram-app"></div>
+	<noscript>
+		<p class="easy-diagram-noscript">Easy Diagram needs JavaScript to run. Please enable it and reload this page.</p>
+	</noscript>
+</body>
+</html>
+{{end}}

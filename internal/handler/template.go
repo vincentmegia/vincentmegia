@@ -288,6 +288,9 @@ func LoadTemplates(templatesDir string) (*template.Template, error) {
 		filepath.Join(templatesDir, "pages", "bus-rush.html"),
 		filepath.Join(templatesDir, "components", "hospital-leaderboard.html"),
 		filepath.Join(templatesDir, "pages", "hospital-shift.html"),
+		// Standalone document (no base.html shell), rendered via
+		// RenderFragment by EasyDiagramHandler — see easy_diagram.go.
+		filepath.Join(templatesDir, "pages", "easy-diagram.html"),
 	}
 	return template.New(filepath.Base(files[0])).Funcs(templateFuncs).ParseFiles(files...)
 }

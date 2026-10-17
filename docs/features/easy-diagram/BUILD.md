@@ -1,0 +1,314 @@
+# Easy Diagram: build brief (multi-agent)
+
+This is the shared brief every agent working on Easy Diagram reads first. The
+feature doc is `docs/features/easy-diagram.md`, which covers the
+reverse-engineering survey and the functionality inventory. Some of its
+"Implementation plan" and "Open Questions" were superseded by the decisions
+below. The approved visual design is
+`docs/features/easy-diagram/prototype-precision.dc.html`, the "Precision" look.
+It is a design-canvas file, so read it for tokens, layout and behavior; it is
+not code to ship.
+
+## Decisions (made by the user, 2026-10-13)
+
+1. **Lives inside this repo** and is served by this Go app at `/easy-diagram`.
+   No separate fork repo.
+2. **A new UI shell.** We build our own editor UI, matching the Precision
+   prototype, on top of draw.io's graph engine (mxGraph plus draw.io's
+   `grapheditor` `Graph`). We do **not** ship draw.io's own `EditorUi`/`App`
+   UI.
+3. **Local only.**
+   - No cloud storage, no export server, and no requests to draw.io,
+     diagrams.net, Google or any third party.
+   - Files stay on the user's device: File System Access API where the
+     browser has it, upload/download otherwise, and IndexedDB drafts.
+4. **Files stay real `.drawio`.** We write standard `<mxfile>` XML that opens
+   in upstream draw.io. Our extra features are stored as extra style keys
+   that upstream ignores:
+   - shape animation: `edAnim`, `edAnimTrigger`, `edAnimSpeed`;
+   - arrow animation: `edAnim`, `edAnimSpeed`, `edAnimDir`.
+5. **License.** draw.io core is Apache 2.0, so ship its `LICENSE` and a
+   `NOTICE` next to the vendored files. Never copy code from
+   `drawio-desktop`, which is GPL v3. Never show the "draw.io" name or logo in
+   the UI; the trademark rule is in `docs/features/easy-diagram.md`.
+
+Upstream source to vendor from: a shallow clone of `jgraph/drawio` at
+`9034053` exists at
+`/private/tmp/claude-501/-Users-vince-Repository-vincentmegia/674f025b-7432-48d1-a3d2-95f5876f99d5/scratchpad/src/drawio/`.
+The webapp is under `src/main/webapp/`. Vendor only what the engine needs
+(e.g. `mxgraph/mxClient.js`, the `js/grapheditor/` sources it requires, and
+any sanitizer, deflate or shape files those pull in). Do not vendor the
+109 MB webapp.
+
+## File layout and ownership
+
+Each work package (WP) owns its files. **Don't edit files another WP owns.**
+If you need a change in one, message that WP's agent, or record the need in
+your final report.
+
+```text
+internal/handler/easy_diagram.go, easy_diagram_test.go     WP1 Platform
+web/templates/pages/easy-diagram.html                       WP1 Platform (full-viewport page, no site chrome)
+cmd/server/main.go (one route line), pages.go (Projects card), e2e/projects.spec.js (card assertion)
+                                                            WP1 Platform; additive edits only, those files have unrelated uncommitted work
+web/static/easydiagram/vendor/**  (+ LICENSE, NOTICE)       WP2 Engine
+web/static/easydiagram/js/engine.js                         WP2 Engine (the contract below)
+web/static/easydiagram/js/animation.js                      WP2 Engine (renders edAnim* on the SVG)
+web/static/easydiagram/css/easy-diagram.css                 WP3 Shell
+web/static/easydiagram/js/app.js                            WP3 Shell (entry: boots engine + shell + io)
+web/static/easydiagram/js/shell/*.js                        WP3 Shell (topbar, dock, toolbar, inspector, statusbar, palette, export popover, toasts)
+web/static/easydiagram/js/io.js                             WP4 IO
+e2e/easy-diagram.spec.js                                    WP5 Verification (WP1–4 may add cases; coordinate via WP5)
+docs/features/easy-diagram.md (status/decisions/testing)    WP5 Verification
+```
+
+Script loading:
+- `easy-diagram.html` loads the vendored engine scripts as classic `<script>`
+  tags first, in the order WP2 documents at the top of `engine.js`.
+- Then it loads `/static/easydiagram/js/app.js` as `type="module"`.
+- All JS is plain browser JS: no build step and no npm runtime deps.
+
+## The page and its CSP (WP1)
+
+- `GET /easy-diagram` renders a full-viewport page without the site's
+  header and footer. On the `/projects` card, the link is a `FullPageLoad`,
+  like Bus Stop Finder (`internal/handler/pages.go`).
+- The global CSP (`internal/middleware/middleware.go`) is
+  `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'`.
+  It blocks inline `<script>` and `eval`, and **inline `style=` attributes in
+  parsed HTML/SVG markup**.
+  - mxGraph renders SVG through the DOM API (`setAttribute`/`el.style`),
+    which CSP allows.
+  - Anything that builds markup strings with `style="..."` (e.g. `innerHTML`)
+    needs `style-src 'self' 'unsafe-inline'`.
+- WP1 sets a **route-scoped CSP** on `/easy-diagram`, the way
+  `bus_stops.go`'s `busStopsMapsCSP` does. Use the strictest policy that
+  works:
+  - `script-src 'self'`, with no `unsafe-eval` unless WP2 proves the engine
+    needs it;
+  - `style-src 'self' 'unsafe-inline'`;
+  - `img-src 'self' data: blob:`;
+  - `font-src 'self'`;
+  - `connect-src 'self'`;
+  - `worker-src 'self' blob:`.
+- WP2 reports whether the engine needs `'unsafe-eval'` (e.g. `new Function`)
+  and avoids it if possible.
+- Fonts:
+  - IBM Plex Sans/Mono must be **self-hosted** under
+    `web/static/easydiagram/fonts/` (WP3). Google Fonts would break
+    `connect-src`/`font-src 'self'` and the "no third-party requests" rule.
+  - If the woff2 files can't be fetched, fall back to
+    `system-ui`/`ui-monospace` and say so.
+
+## Engine contract (WP2 implements; WP3/WP4 consume)
+
+`engine.js` is an ES module exporting `createEngine(container, options)`. It
+returns:
+
+```js
+{
+  // document
+  load(xml),            // accepts mxfile XML (compressed or not), one <diagram> per page
+  toXml(),              // uncompressed <mxfile> string of all pages
+  isEmpty(),
+  pages(),              // [{id, name}]
+  currentPage(),        // id
+  addPage(name),        // -> id, selects it
+  selectPage(id), renamePage(id, name), removePage(id),
+
+  // shapes & connectors
+  addShape(kind, props?),        // kind: rect|round|pill|ellipse|diamond|para|hex|cyl|doc|note|text; props: {x,y,w,h,label,color}; -> id (placed in free space if no x/y), selected
+  addConnected(sourceId, side),  // side: 'r'|'l'|'t'|'b' -> new shape id, connected by an edge, selected
+  connect(sourceId, targetId, props?), // -> edge id
+  getCell(id),          // ShapeModel | EdgeModel | null
+  update(id, patch),    // one undoable edit; patch uses model keys below
+  remove(ids), duplicate(ids),   // duplicate -> new ids
+
+  // selection
+  getSelection(),       // {type: 'none'|'shape'|'edge'|'multi', ids: []}
+  select(ids), clearSelection(),
+
+  // tools & view
+  setTool(name),        // select|hand|rect|ellipse|diamond|connector|text|note
+  getTool(),            // -> current tool name (added by WP2)
+  getZoom(), zoomTo(scale), zoomIn(), zoomOut(), fit(),
+  setGrid('dots'|'lines'|'none'), setSnap(bool),
+  setTheme('dark'|'light'),
+
+  // history
+  undo(), redo(), canUndo(), canRedo(),
+
+  // animation
+  setMotion(bool),      // global play/pause
+  replay(id),           // restart a shape's animation
+
+  // export (all client-side)
+  toSvg({transparent, embed}),        // -> string; embed=true stores the mxfile XML in the SVG `content` attribute (upstream-compatible)
+  toPngBlob({scale, transparent, embed}), // -> Promise<Blob>; embed=true writes the XML into a zTXt/tEXt `mxfile` chunk like upstream
+
+  // geometry helpers (added 2026-10-13 for WP3)
+  clientToModel(clientX, clientY), // -> {x, y} model coords for a viewport point (dock drag-to-canvas; addShape's x,y = top-left)
+  cells(),              // -> [ShapeModel|EdgeModel] for the current page
+  getScreenBounds(id),  // -> {x, y, w, h} | null, CSS px relative to the engine container
+
+  // events
+  on(event, fn), off(event, fn),      // 'change' | 'selection' | 'zoom' | 'page' | 'tool' | 'view' (pan/scroll/resize)
+  destroy()
+}
+```
+
+Options: `createEngine(container, {theme: 'dark'|'light', grid: 'dots'|'lines'|'none', snap: true, motion: true})`.
+The engine owns the stage background and grid inside its container.
+
+Models (`getCell` returns them and `update` patches them):
+
+```js
+ShapeModel { id, type: 'shape', kind, label, x, y, w, h,
+             color,          // blue|green|violet|pink|amber|slate (stroke hues from the prototype; fill = tint derived per theme)
+             strokeWidth,    // 1 | 1.5 | 3
+             opacity,        // 20..100
+             shadow,         // bool
+             anim: { name,   // none|pulse|bounce|float|wiggle|glow|blink|pop
+                     trigger,// loop|hover|once
+                     speed } // slow|normal|fast
+           }
+EdgeModel  { id, type: 'edge', source, target, label,
+             lineStyle,      // solid|dashed|dotted
+             color,          // default|accent|blue|green|pink|amber
+             width,          // 1.2 | 1.8 | 3
+             anim: { name,   // none|flow|dash|comet|pulse|draw
+                     speed, direction } // direction: normal|reverse
+           }
+```
+
+Engine rules:
+- Every `update`/`add*`/`remove`/`duplicate` is a single undo step.
+- `change` fires after every model change; WP4 drafts and the WP3 status bar
+  listen to it.
+- Shapes render in the Precision style:
+  - outlined in the colour's stroke, with a faint tint fill;
+  - small corner radius;
+  - IBM Plex label;
+  - dashed outline on `note`.
+- Edges render orthogonal with an arrowhead.
+- Selection shows the prototype's thin accent frame and the four `+`
+  quick-connect handles. These are DOM overlays drawn by WP2 that call
+  `addConnected`.
+- Animations match the prototype keyframes. Shapes animate via CSS classes on
+  the cell's SVG group; edges via overlay paths using
+  `stroke-dasharray`/`pathLength`.
+- `setMotion(false)` pauses everything, and `prefers-reduced-motion`
+  disables it.
+
+## IO contract (WP4 implements; WP3 consumes)
+
+`io.js` is an ES module exporting:
+
+```js
+openFile()                 // -> Promise<{name, xml, handle|null}>; accepts .drawio/.xml, plus .svg/.png with embedded diagram
+save(engine, file)         // file {name, handle|null} -> Promise<{name, handle|null}>; in place via handle, else showSaveFilePicker, else download
+saveAs(engine, file)
+exportFile(engine, {format: 'png'|'svg'|'drawio', scale, transparent, embed, name})  // triggers a download
+saveDraft(xml), loadDraft() -> Promise<{xml, savedAt}|null>, clearDraft()          // IndexedDB, wrapped in try/catch
+importDroppedFile(file: File) -> Promise<{name, xml}>
+```
+
+Also expose a test hook: `window.__easyDiagram = { engine, io }`. WP3 sets it
+in `app.js`, so Playwright can assert model state. This is the only global
+allowed.
+
+## Shell UI (WP3) must match the prototype
+
+- **Top bar:** logo + "Easy Diagram", file name, save status, page tabs
+  (underline style) with an add-page button, Motion on/off, undo/redo, theme
+  toggle, "Search & commands ⌘K", and an Export popover. The popover offers
+  PNG/SVG/.drawio, transparent, embed and scale 1×/2×/3×. PDF goes through
+  `window.print()` with a print stylesheet.
+- **Left dock:**
+  - search box and category chips (All/Basic/Flowchart);
+  - 3-column shape tiles; clicking one adds the shape;
+  - dragging a tile onto the canvas adds it at the drop point.
+  - The prototype's "Libraries" list is a disabled "coming soon" row; don't
+    fake it.
+- **Bottom tool pill:** a sliding indicator with tooltips. Keyboard shortcuts
+  V H R O D A T N, plus:
+  - ⌘Z / ⇧⌘Z, ⌘D, ⌘K;
+  - Delete/Backspace;
+  - Esc clears the selection or closes overlays.
+  - Shortcuts are ignored while typing in an input.
+- **Inspector**, changing with the selection:
+  - **Shape:** label, Fill, Animation (8 tiles with live previews,
+    Play/Speed, Replay), Stroke, Opacity, Shadow, Connections (each selects
+    its edge), X/Y/W/H, Duplicate/Delete.
+  - **Connector:** from → to, label, Animation (6 tiles with previews,
+    Speed/Direction), Line, Color, Width, Delete.
+  - **Nothing selected:** page name, Grid, Snap, Shortcuts.
+- **Bottom-left status readout and bottom-right zoom controls.** The minimap
+  is optional. If it isn't done, leave it out rather than faking it.
+- **Command palette:** filterable; runs real actions.
+- **Empty-page state** and **toasts**.
+- **Dark (default) and light themes**, via CSS custom properties.
+- **Accessibility:**
+  - real buttons and labels;
+  - `aria-pressed` on toggles;
+  - focus-visible rings;
+  - contrast ≥ 4.5:1 for text.
+- **At phone width** the dock and inspector collapse into toggleable
+  drawers. The canvas still works.
+
+## Testing and the evidence standard
+
+Never touch the user's server already listening on :8080. For browser tests,
+start your own server and point Playwright at it:
+
+```sh
+PORT=8090 go run ./cmd/server          # uses .env for DATABASE_URL
+E2E_BASE_URL=http://localhost:8090 npx playwright test -c e2e/playwright.config.js e2e/easy-diagram.spec.js
+```
+
+WP1 makes `e2e/playwright.config.js` honor `E2E_BASE_URL` (default
+`http://localhost:8080`, so existing behavior is unchanged). When that var is
+set, the `webServer` blocks must not start or reuse anything on :8080. Kill
+any server you started when you are done.
+
+"Proof that it works" means all of the following, saved under
+`Claude outputs/easy-diagram/evidence/`:
+
+- `go test ./...` output: all pass.
+- Playwright output for `e2e/easy-diagram.spec.js` on **Chromium and
+  WebKit**: all pass.
+- Screenshots of each key state, captured by the spec into the evidence
+  folder:
+  - empty page;
+  - flowchart built via the UI;
+  - shape selected with the inspector;
+  - connector selected with animations;
+  - command palette;
+  - export popover;
+  - light theme;
+  - phone width.
+- A **network log** from a full session (load, draw, save, export) showing
+  zero requests to any origin other than the test server.
+- A round-trip check: save `.drawio` → reload → identical model, plus
+  `edAnim*` keys present in the XML.
+- An exported PNG with an embedded diagram re-imports as an editable diagram.
+- A CSP check: no CSP violation console errors during the session.
+
+## Review protocol
+
+- Every WP is reviewed by a different agent before it counts as done:
+  - WP2 reviews WP3;
+  - WP3 reviews WP4;
+  - WP4 reviews WP1;
+  - WP1 reviews WP2.
+- A review means reading the diff, running it, and reporting concrete
+  defects with file:line and repro steps. The author fixes; the reviewer
+  re-checks.
+- WP5 (flow reviewer) then reviews the **entire flow** end to end against
+  this brief and the prototype. WP5 writes the evidence report
+  `Claude outputs/easy-diagram/evidence/REPORT.md`, listing:
+  - each requirement;
+  - its proof (test name, screenshot or log file);
+  - any open issue.
+- Done means no open issues, or each remaining one explicitly listed for the
+  user to decide.

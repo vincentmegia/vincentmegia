@@ -248,6 +248,7 @@ func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps, ho
 	mux.HandleFunc("GET /bus-stops/{code}/route/{service}", busStops.Route)
 	// See docs/features/puzzle-solver.md's Routes/Handlers table.
 	mux.HandleFunc("GET /puzzle-solver", pages.PuzzleSolver)
+	mux.HandleFunc("GET /easy-diagram", handler.NewEasyDiagramHandler(renderer).Index) // docs/features/easy-diagram.md
 	mux.HandleFunc("GET /blogs", pages.Blogs)
 	mux.HandleFunc("GET /about", pages.About)
 	mux.HandleFunc("GET /settings/profile", pages.Profile)
