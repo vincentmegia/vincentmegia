@@ -635,6 +635,52 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
     - Belt and vest: belt loops, holes and a buckle prong, plus soft
       shadows where his arms meet the vest.
     - Feet: navy ribbed socks above the sneakers, with tied lace bows.
+  - A third pass ("make min-jun more detailed"), adding new items rather
+    than more texture:
+    - Books: library call-number stickers with a coloured band, set
+      between each title and the gold foot band.
+    - A pencil tucked behind his right ear, the hair tuft falling back
+      over its tucked end.
+    - A keychain on a belt loop (ring, key, mint book charm) that swings
+      as he walks.
+    - Knit stitches (rows of tiny Vs) across the vest between the cables.
+    - Sneaker tongues and a small mint star logo on each shoe, and dashed
+      hem stitching on the slacks.
+    - Faint cheekbone shading low on the cheeks.
+  - A fourth pass ("a little more detailed"): a small beauty mark under
+    his left eye, inner-ear shading, his shirt hem slipping out under the
+    vest, a woven brand label on the vest's hem band, a tiny embroidered
+    crest on the tie, a holographic sticker on the ID card, holes in the
+    watch strap, and a plaster on one finger.
+  - "Make him more handsome" was tried (a clean lash line, bolder
+    straight brows, a natural half-smile, a defined nose, a jawline shadow
+    and a thicker neck). The user then picked the earlier face back: the
+    winged liner with extra lashes, the thin arched brows and the pink
+    lips. That is the face he has now; the body details below stayed.
+  - Another pass ("a little more detailed"), keeping the handsome face:
+    ribbed armhole bands on the vest, a faint forearm vein and a wrist
+    bone, his phone's outline pressing through the front pocket,
+    sticky-note tabs poking out of the tallest book, and silver aglets
+    on the lace ends.
+  - Another pass ("make him more detailed"), face unchanged: two silver
+    bobby pins over his side fringe, an inline remote with a mic on the
+    headphone cable, shoulder seams on the shirt sleeves, a welt pocket on
+    the vest with a pen clipped in, a violet beaded bracelet on his book
+    wrist (matching his eyes), and a soft shadow the books cast on his
+    side.
+  - Another pass ("a little more detailed"): a small taegeuk pin (the
+    Korean flag's red-and-blue swirl) below the book pin, a red second
+    hand and centre pin on his watch, notched metal sliders on the
+    headphone band, dimpled rubber toe caps and a heel seam on the
+    sneakers, and turned-up cuffs on his slacks.
+  - Another pass ("a little detailed"): dashed stitching along the belt's
+    edges, folds in the tie knot, a swivel clasp where the lanyard meets
+    the ID card, a library due-date slip sticking out of the side of the green book, and
+    engraved title lines on the keychain's book charm.
+  - The bobby pins were then detailed ("make the hair pins a little more
+    detailed"): each is now a real hair pin, a straight prong and a wavy
+    prong joined by a rounded bend, with rubber-dipped tips, a dark metal
+    edge and a thin highlight along the straight prong.
 
   He walks a loop around the 2nd Floor's Reference Shelf, kept clear of
   its label and the Reading Nook. He's set dressing, not clickable.
