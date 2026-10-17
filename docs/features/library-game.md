@@ -712,8 +712,9 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   two steps at the user's request to 0.8×1.0, just under the original, with the ring around
   them, the iris lines and the lower crescent resized to match). The
   sharp, winged look is unchanged.
-  He's drawn at 1.7× ("make min-jun bigger" took him from 1.05× to
-  1.35×, then "make him more bigger in game" to 1.7×, his path's shelf-side
+  He's drawn at 1.55× ("make min-jun bigger" took him from 1.05× to
+  1.35×, then "make him more bigger in game" to 1.7×, then "a bit too
+  big, make him a little smaller" to 1.55×; his path's shelf-side
   end nudged from x 740 to 755 so the tote clears the shelf) and paces
   the open aisle between the Reference Shelf and the Stairs/Elevator. At
   the bigger size his old loop around the shelf overlapped the Reading
