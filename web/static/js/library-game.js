@@ -298,10 +298,10 @@ const AMBIENT_STAFF = [
   { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
   // Kang Min-jun (library/minjun.js), the student assistant, drawn bigger
   // than the others (the user: "make min-jun bigger", then "more bigger"
-  // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55×), pacing the open aisle
+  // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55× → 1.4×), pacing the open aisle
   // between the Reference Shelf and the Stairs/Elevator — at 1.35× his old
   // loop around the shelf put him over the Reading Nook.
-  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.55, waypoints: [[755, 210], [805, 230], [805, 450], [755, 465]] },
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.4, waypoints: [[755, 210], [805, 230], [805, 450], [755, 465]] },
 ];
 const AMBIENT_SPEED = 60;
 
