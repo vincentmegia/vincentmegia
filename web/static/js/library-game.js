@@ -49,6 +49,7 @@ import {
 } from './hospital/anime-ui.js';
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
+import { drawMinjun } from './library/minjun.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from './hospital/anime-people.js';
 import {
@@ -295,6 +296,9 @@ const AMBIENT_STAFF = [
   // through it (random hops cut straight across the shelves).
   { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[260, 480], [560, 485], [700, 478], [640, 535], [300, 530]] },
   { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
+  // Kang Min-jun (library/minjun.js), the student assistant, carrying books
+  // in a loop around the 2nd Floor's Reference Shelf.
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.05, waypoints: [[540, 215], [800, 215], [800, 460], [540, 460]] },
 ];
 const AMBIENT_SPEED = 60;
 
@@ -335,6 +339,10 @@ function personalityForId(id) {
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
   const t = performance.now() / 1000;
   const scale = opts.scale ?? 1;
+  if (opts.personalityKey === 'minjun') {
+    drawMinjun(ctx, x, y, { scale, t, walking: Boolean(opts.walking) });
+    return;
+  }
   if (opts.personalityKey === 'librarian') {
     drawKimonoHimura(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, stress: opts.stress ?? 0, t, walking: Boolean(opts.walking), cap: false, look: 'coral' });
     return;
@@ -500,7 +508,7 @@ export function init(canvas, elements) {
   function drawAmbient(inFront) {
     for (const a of ambient) {
       if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
-      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: 0.8 });
+      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? 0.8, walking: a.pause <= 0 });
       drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
     }
   }

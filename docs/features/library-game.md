@@ -576,6 +576,69 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   line, and the toast names it. If the cart is empty, it says so. Covered
   by the "clicking the Return Cart itself" e2e test.
 
+* **Kang Min-jun (강민준)**: the user asked for "a VERY VERY detailed
+  character … a boy". A first attempt, Director Park, was removed as not
+  detailed enough. Min-jun is a student library assistant with his own
+  renderer, `web/static/js/library/minjun.js` (`drawMinjun`). He has
+  layered cel shading and line art but no eye highlights or hair shine,
+  which the user had removed from Hospital Shift's characters.
+  - Face: sharp, cool eyes (the user picked these over the first,
+    softer almond ones). They're narrow and tilted up at the outer
+    corners, with a heavy lash line ending in a pointed flick, a straight
+    lower lid, an angled crease, and a deep iris tucked under the lid.
+    They blink, now and then twice. Then the user asked to "adjust the
+    stuff near the eyes". The blush was removed; the brows
+    are slimmer and set higher; the crease and lower-lid lines are
+    lighter; and the fringe locks taper to points above the brows, over a
+    softly fading fringe shadow. Last, the eyes were made "a little bit
+    straighter": the outer corners rise less, and the lash flick is
+    flatter to match. The brows were relaxed too ("not like it's
+    angry"): instead of sloping down toward the nose, they're nearly
+    level with a soft arch. The head shape changed to a sharper anime
+    V-jaw, then made "a little round": the cheeks curve down to soft jaw
+    corners and taper to a gently rounded chin. Also relaxed, softly arched brows, a shaded nose, a small smile (no blush), ears with inner folds, a softly rounded V-jaw, and a jaw shadow.
+  - Hair: a tufted crown in two tones, seven pointed fringe locks
+    falling over the brows, side locks, strand lines and a bobbing ahoge.
+  - Clothes: a white shirt with collar points and rolled sleeves, a navy
+    cable-knit sweater vest with ribbed V-neck and hem, and a striped tie.
+    A mint lanyard holds a swinging ID card with a photo and barcode.
+    Headphones rest around his neck. He wears a wristwatch, slacks with a
+    belt and creases, and laced sneakers.
+  - Books: three under his arm, with Korean titles on the spines.
+  - Motion: a walking stride with arm swing, and breathing when idle.
+
+  - A further detail pass ("make him detailed"):
+    - Hair: each fringe lock shaded root-to-tip with a second strand
+      line, and tufts over the ears.
+    - Eyes: radial texture lines in the iris, a lighter lower crescent and
+      a pink inner corner. The iris is now a deep violet at the user's
+      request: near-black violet at the top, an amethyst lower crescent,
+      violet texture lines and a darker pupil.
+    - Face: a nose-bridge shadow, a lower-lip tint and a silver stud
+      earring.
+    - Shirt: sleeve wrinkles, cuff buttons, collar shadows and stitching.
+    - Vest and tie: a tie dimple and gold tie clip, vest side seams, and an
+      enamel open-book pin.
+    - Slacks: side seams, pockets and ankle folds.
+    - Sneakers: eyelets, heel tabs and dashed sole stitching.
+    - Hands and watch: fingernails and knuckle creases; the watch has a
+      crown and tick marks.
+    - Headphones: band stitching and logo rings.
+    - Books: page edges and a ribbon bookmark.
+  - One more pass ("a little more detailed"):
+    - Eyes: a darker ring around each pupil and two extra lashes at the
+      outer flick.
+    - Face: faint under-eye shading and an upper-lip line.
+    - Hair: more crown strands and two short flyaways.
+    - Lanyard and ID card: a woven pattern on the strap, and a card
+      printed with "LIBRARY · 도서관", 강민준 and "Assistant".
+    - Belt and vest: belt loops, holes and a buckle prong, plus soft
+      shadows where his arms meet the vest.
+    - Feet: navy ribbed socks above the sneakers, with tied lace bows.
+
+  He walks a loop around the 2nd Floor's Reference Shelf, kept clear of
+  its label and the Reading Nook. He's set dressing, not clickable.
+
 e2e changes: the Boss's Office closing-wait test gives the wait 4 s
 (the office is now about 2 s from the start, so a 2 s wait ended before
 arrival), and the First Person "toggle back to Top-Down" test checks
