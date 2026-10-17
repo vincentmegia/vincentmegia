@@ -167,9 +167,12 @@ async function waitForOverlay(page, kind) {
 	return getOverlay(page);
 }
 
-/** Resolves the shared Shelf/Checkout Skill-Check overlay as a success — sets the gauge into the success zone via the test hook, then clicks the canvas to sample it, the exact same click path a real player uses. */
+/** Resolves the shared Shelf/Checkout Skill-Check overlay as a success — sets (and freezes) the gauge in the success zone via the test hook, then clicks the canvas to sample it, the exact same click path a real player uses. */
 async function resolveSkillCheckSuccess(page) {
-	await page.evaluate(() => window.__libraryGameTestHooks.setSkillCheckGauge(0.5));
+	// Frozen until the click: setting the gauge and clicking are two round
+	// trips, and under parallel load the sweep could carry the marker out of
+	// the ±0.1 zone in between (a flake seen after the anime restyle).
+	await page.evaluate(() => window.__libraryGameTestHooks.setSkillCheckGauge(0.5, { freeze: true }));
 	await clickCanvasPoint(page, { x: 480, y: 300 });
 }
 

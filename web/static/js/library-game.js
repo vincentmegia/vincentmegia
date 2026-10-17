@@ -1455,6 +1455,7 @@ export function init(canvas, elements) {
       return;
     }
     if (overlay.kind === 'skill-check') {
+      if (overlay.frozen) return; // test hook: held in place until the next click
       const speed = skillCheckSweepSpeed(currentShiftNumber) * shakyHandsSweepMultiplier(currentIntensity());
       overlay.gaugePosition += overlay.direction * speed * deltaSeconds;
       if (overlay.gaugePosition >= 1) { overlay.gaugePosition = 1; overlay.direction = -1; }
@@ -1586,6 +1587,7 @@ export function init(canvas, elements) {
   // -- Overlay input ----------------------------------------------------------
 
   function resolveSkillCheck() {
+    overlay.frozen = false;
     const success = isSkillCheckSuccess(overlay.gaugePosition, skillCheckSuccessZone(shakyHandsZoneScale(currentIntensity())));
     if (overlay.context === 'shelf') {
       shiftState = resolveShelfSkillCheck(shiftState, success);
@@ -3516,7 +3518,13 @@ export function init(canvas, elements) {
       getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.map((g) => ({ ...g })), figures: halluc.figures.length, whispers: halluc.whispers.length }),
       spawnGhostPatronNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
       setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
-      setSkillCheckGauge(pos) { if (overlay?.kind === 'skill-check') overlay.gaugePosition = pos; },
+      // `freeze` holds the marker still until the next click resolves it, so
+      // a test's set-then-click can't race the sweep under load.
+      setSkillCheckGauge(pos, { freeze = false } = {}) {
+        if (overlay?.kind !== 'skill-check') return;
+        overlay.gaugePosition = pos;
+        overlay.frozen = freeze;
+      },
       skipToClosing() {
         if (!running || !shiftState || shiftState.phase !== 'playing') return;
         shiftState = tick(shiftState, shiftState.totalClockSeconds + 1);
