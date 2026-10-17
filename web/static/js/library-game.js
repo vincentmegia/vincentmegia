@@ -296,9 +296,11 @@ const AMBIENT_STAFF = [
   // through it (random hops cut straight across the shelves).
   { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[260, 480], [560, 485], [700, 478], [640, 535], [300, 530]] },
   { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
-  // Kang Min-jun (library/minjun.js), the student assistant, carrying books
-  // in a loop around the 2nd Floor's Reference Shelf.
-  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.05, waypoints: [[540, 215], [800, 215], [800, 460], [540, 460]] },
+  // Kang Min-jun (library/minjun.js), the student assistant, drawn bigger
+  // than the others (the user: "make min-jun bigger"), pacing the open aisle
+  // between the Reference Shelf and the Stairs/Elevator — at 1.35× his old
+  // loop around the shelf put him over the Reading Nook.
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.35, waypoints: [[740, 210], [805, 230], [805, 450], [740, 465]] },
 ];
 const AMBIENT_SPEED = 60;
 

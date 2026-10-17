@@ -682,8 +682,10 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
     prong joined by a rounded bend, with rubber-dipped tips, a dark metal
     edge and a thin highlight along the straight prong.
 
-  He walks a loop around the 2nd Floor's Reference Shelf, kept clear of
-  its label and the Reading Nook. He's set dressing, not clickable.
+  He's drawn at 1.35× ("make min-jun bigger"; it was 1.05×) and paces
+  the open aisle between the Reference Shelf and the Stairs/Elevator. At
+  the bigger size his old loop around the shelf overlapped the Reading
+  Nook. He's set dressing, not clickable.
 
 e2e changes: the Boss's Office closing-wait test gives the wait 4 s
 (the office is now about 2 s from the start, so a 2 s wait ended before
