@@ -182,7 +182,7 @@ function faceForAction(action, at) {
   return { mouth: null };
 }
 
-/** What Min-jun can stop to do: read a book, hum a tune, wave hello to Coral, or take her book to shelve it. */
+/** What Min-jun can stop to do: read a book, hum a tune, wave hello to Eun-mi, or take her book to shelve it. */
 export const MINJUN_ACTIONS = /** @type {const} */ (['read', 'hum', 'wave', 'help']);
 
 // -- Actions -------------------------------------------------------------------

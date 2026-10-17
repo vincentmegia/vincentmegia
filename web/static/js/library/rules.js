@@ -842,7 +842,7 @@ export const MESSY_CART_MOOD_DRAIN_PER_SECOND = 0.25;
 
 // ---------------------------------------------------------------------------
 // 18. Min-jun helps ("make him HELP the player") — the 2nd-floor student
-//     assistant takes the book Coral is carrying and shelves it for her
+//     assistant takes the book Eun-mi is carrying and shelves it for her
 //     (the usual shelving tip, no minigame, no Coin Hunt coins), then needs
 //     this long before he can take another.
 // ---------------------------------------------------------------------------

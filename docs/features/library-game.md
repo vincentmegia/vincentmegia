@@ -376,7 +376,10 @@ The per-spread timer is now a 2.5 s anti-skip minimum (was 1.4 s of auto
 "reading"), and ←/→ page back and forward. New `stories.test.js`
 enforces page count and length.
 
-**v2.12 more character designs + the player is Coral James** — the
+**v2.12 more character designs + the player is Coral James** (renamed
+**Eun-mi** later, "make corals name eun-mi": her name tag reads
+"Eun-mi · 은미", like Min-jun's, and the start screen says "You're
+Eun-mi (은미)"; the renderer key is still `look: 'coral'`) — the
 user: "make the characters have different designs" and "i want the
 player's name to be coral james". Six new `PERSONALITY_TEMPLATES`, each
 with its own hairstyle, outfit and accessory rather than a recolor:
@@ -465,7 +468,7 @@ covers. Unit 220/220, e2e 68/68 (new shelving-incentives test).
 drains 50 of your sanity." `COFFEE_SANITY_RESTORE.spilled` changed from
 +40 to −50 (clamped at 0). The pour overlay now shows coffee splashing
 out of the mug, the toast says "Ow! Hot coffee all over you — −50
-Sanity", and Coral wears steaming coffee stains for 6 s
+Sanity", and Eun-mi wears steaming coffee stains for 6 s
 (`drawCoffeeSplash`). Tests that encoded "every grade restores
 something" now cover the spill drain instead. Unit 221/221, e2e 68/68.
 
@@ -486,14 +489,55 @@ Unit 221/221 and every `e2e/library-game.spec.js` test pass unchanged on
 Chromium + WebKit.
 
 **v2.21 Hospital Shift's anime style** — the user asked for Library Shift
-to be "like hospital shift" (its anime look on `main`), Coral in a kimono
+to be "like hospital shift" (its anime look on `main`), Eun-mi in a kimono
 "like kimono from hospital shift", and a Korean library. Everything is
 drawn with Hospital Shift's own anime kit rather than a copy of it:
 
 * **Characters**: `drawLibraryPerson` now dispatches to Hospital Shift's
-  renderers. Coral is drawn by `hospital/kimono-himura.js`'s
-  `drawKimonoHimura` with `cap: false, look: 'coral'`, at Hospital's
-  `PLAYER_ART_SCALE` (1.12) with its walking sway. The user first got an
+  renderers. Eun-mi is drawn by `hospital/kimono-himura.js`'s
+  `drawKimonoHimura` with `cap: false, look: 'coral'`, at
+  `PLAYER_ART_SCALE` 1.5 (Hospital's 1.12 until "make her bigger in game to
+  see the detail"; the coffee stains and the carried book/fine badge scale
+  with her via `PLAYER_SIZE_RATIO`) with its walking sway. Then "just make
+  all characters like her size": every other character is drawn about as
+  tall as she is (~104px, `PERSON_HEIGHT`). Queued Front Desk and Fines
+  Counter patrons (0.62 before), Security and the Volunteer (0.8 before)
+  all use `LIBRARY_PERSON_SCALE` (1.55, Hospital's PERSON_SCALE), and
+  Min-jun went from 1.4× to 1.3× to match. To fit, the queues spread out
+  (`SLOT_PITCH` 60, was 46), the click box covers the taller patrons, the
+  fine star and wanted-book icons sit above their heads, title chips
+  truncate to the wider pitch, "+N waiting" moved down below the English
+  title line, and the Front Desk and Fines Counter name chips are drawn
+  again on top of the queue (`drawQueueStationLabels`). The Karen event
+  screen and First Person billboards keep their own scales.
+* **More characters** ("make 19 more newest character and 4 more staff"):
+  `web/static/js/library/library-people.js` holds Library Shift's own
+  designs, in Hospital's anime-people data format and drawn by its
+  `drawAnimePerson`, but kept out of `anime-people.js` so Hospital
+  Shift's roster is unchanged. Keys are prefixed `lib`.
+  - 19 new patrons (`LIBRARY_PATRON_DESIGNS`), modern Seoul
+    library-goers: a K-pop fan (lavender twintails, headphones), a
+    neighbourhood auntie (sun hat, handbag), an exam student (red
+    hachimaki), a webtoon artist (beanie), a café barista, a baduk
+    grandpa, a mint-dress twin, a scooter kid (bike helmet), a pilates
+    mom, a professor (beard, tweed suit), an all-nighter (face mask), a
+    cat lover (cat ears), a backpacker, a retired teacher (pearls), an
+    indie guitarist (blue streaks), a grad student, a florist (flower
+    crown), a chess-club kid and a book-club witch (witch hat). They're
+    added to `PATRON_PERSONALITY_KEYS`, so Front Desk and Fines Counter
+    patrons are hashed across 84 designs (65 + 19); `drawLibraryPerson`
+    checks `findLibraryDesign` before Hospital's designs.
+  - 4 new staff (`LIBRARY_STAFF_DESIGNS`) in `AMBIENT_STAFF`, set
+    dressing like Security and the Volunteer: on the 1st Floor, a Janitor
+    · 미화원 (bandana, vest) along the bottom aisle and a Shelver · 정리
+    담당 (mint cardigan) between the Front Desk and the Return Cart; on the
+    2nd Floor, a Storyteller · 동화 선생님 (pink beret and apron) by the
+    reading chairs and an Archivist · 기록관 (lab coat, glasses, mustache)
+    left of the Kids Shelf. Their routes keep clear of the furniture and
+    the queues.
+  - Covered by `library-people.test.js`: the counts, unique keys that
+    don't collide with Hospital's, complete designs that all draw, and
+    `findLibraryDesign`. The user first got an
   exact copy of Kimono Himura, then asked for "the character different
   rather than the same". So the `coral` look (`CORAL_PALETTE`) keeps the
   anime style but has its own design: a chestnut jaw-length bob with a
@@ -505,7 +549,70 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   kkeutdong cuffs, a purple git collar with the white dongjeong, a long
   red goreum ribbon tied at the chest, a high-waisted rose chima belled
   to the floor with a gold-leaf (geumbak) hem band, and pink kkotsin with
-  upturned toes. Her hands are folded in front. Patrons use Hospital's
+  upturned toes. Her hands are folded in front. A detail pass ("now make
+  her detailed", after her rename to Eun-mi) added, all behind
+  `LOOK === 'coral'` so Kimono Himura is unchanged: strand lines and
+  darker curled-under tips in her bob; small pink pearl drop earrings that
+  swing; a beaded gold-and-pink glasses chain looping from her temples to
+  her shoulders; fold creases, white dots and a highlight on her bow; a
+  dashed gold trim above the jeogori hem; an embroidered pink flower on
+  each shoulder; a brass librarian's badge reading "사서 은미" (librarian
+  Eun-mi); a norigae (a jade butterfly on a cord with a red knot, gold
+  cap and pink tassel) hanging from the goreum; a faint woven flower
+  pattern across the chima; embroidered leaves and a gold centre on the
+  kkotsin flowers; and pink-painted nails. A second pass ("more
+  detailed"), still Eun-mi only: a sprinkle of freckles across her nose
+  and cheeks; a hair clip shaped like a blue open book, opposite her bow;
+  an inner rim, gold hinge rivets and clear nose pads on her glasses; fine
+  running stitches along the git collar; soft elbow creases in both
+  sleeves; gold-leaf dots down the goreum tails, with notched swallowtail
+  ends; and a small gold flower on the goreum's bow loop. A third pass
+  ("make her super super detailed"), still Eun-mi only: fine radial lines
+  and a darker ring in her irises, two extra lashes at each outer flick
+  and two tiny lower lashes; feathered hairs along her brows; inner-ear
+  folds; a rosy tint under her smile; finer fringe strands, crown strands
+  and a small flyaway; a faint damask of tiny gold diamonds over the
+  jeogori and its sleeves; gold-leaf flowers stamped along the red cuffs;
+  the white sokchima underskirt peeking below the hem; the norigae made a
+  samjak (three pendants: a coral-bead cluster with a purple tassel and a
+  gold flower with a yellow one, either side of the jade butterfly); a
+  navy silk jumeoni (lucky pouch) at her side with a gold 福, gathered
+  pleats, a red drawstring and a pink tassel; and knuckle lines on her
+  hands. A fourth pass ("more DETAILED"), Eun-mi only: soft cel shading
+  down her far cheek and jaw; a faint blue tint in her glasses' lenses;
+  tiny gold caps on her pearl earrings; a short yellow pencil (pink
+  eraser) tucked into her hair above the book clip; a fine gold necklace
+  with a tiny pink heart at the base of her neck; fold creases in the
+  goreum bow; dashed stitching along the cuffs; three embroidered
+  butterflies on the chima and a gold vine scroll above its hem band; an
+  engraved border on her badge; and a ring of gold embroidery dots round
+  the jumeoni's 福. A fifth pass ("make her MORE MORE DETAILED"), Eun-mi
+  only: a soft peach-pink eyeshadow; a thin two-tone braid falling from
+  behind her right ear, tied with a pink band (her earring drawn over
+  it); three little pearl hairpins below her bow; a pearl in the bow's
+  knot and gold beads on its tail tips; gold dots stamped along the
+  purple git collar; the white inner lining showing at each cuff's edge;
+  alternating lighter and darker pleat panels down the chima; tiny white
+  dots between the hem band's gold flowers; and cross lines on the
+  norigae's knot. A sixth pass ("detail"), Eun-mi only: soft
+  double-eyelid creases; a shadow under her nose tip and a faint
+  upper-lip line; the darker underlayer of her bob showing at the nape;
+  a tiny gold star charm at each end of the glasses chain (her badge
+  moved down a little so the right-hand charm sits just above it rather
+  than over the text); a soft silk sheen down the chima and gathered
+  tucks where it's pleated into the waistband; folds at each underarm;
+  a drop shadow under the badge; a gold cap on the pouch's tassel; and
+  finger lines on her left hand. Then a hairpin ("now add a hair pin a
+  detailed one"): a tteoljam (떨잠, the Korean "trembling hairpin"), set
+  low and tilted on top of her head between the pencil and the bow
+  (`drawTteoljam`). An oval gold plate with a gradient, a filigree ring
+  of tiny dots and two scrolls, ten pearls round the rim and a jade
+  centre with a carved flower and a pink stone. Two enamel flowers (pink,
+  and white with a pink centre) and a jade butterfly sit on fine coiled
+  gold springs that quiver. Two pearl drops swing on chains below, and
+  the long gold pin, with a ball finial, slants back into her hair. A
+  first, taller version stood up like a tiara, so it was lowered and the
+  springs shortened. Patrons use Hospital's
   anime patient designs (`PATRON_PERSONALITY_KEYS` is now
   `anime-people.js`'s `PATIENT_DESIGN_KEYS`, still hashed from the patron
   id); Karen and the Security guard use `STAFF_DESIGNS`; the 2nd-Floor
@@ -545,7 +652,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   moved to the open lower aisle (480, 500).
 * **Background staff**: a Security guard on the 1st Floor and a Volunteer
   on the 2nd walk fixed patrol loops around the furniture (random hops
-  cut across the shelves). They're drawn back-to-front around Coral.
+  cut across the shelves). They're drawn back-to-front around Eun-mi.
 * **Overlays**: Hospital's `animeBackdrop` and `animeWindow` (a trim
   color per minigame) behind every minigame, a `speechBubble` and
   `animeButton`s for Karen, and an outlined anime skill-check bar.
@@ -725,7 +832,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   he stops for a few seconds and either reads (his free arm comes up
   across his chest holding an open blue book, a page turning over every
   ~2.4 s, his head dipped toward it; ~6 s), hums (his head bops and violet
-  and pink notes drift up beside it; ~4.5 s), or, when Coral is on his
+  and pink notes drift up beside it; ~4.5 s), or, when Eun-mi is on his
   floor within 260 px, waves (free arm raised and rocking, a "안녕!"
   speech bubble popping in; ~2.6 s). He never waves twice running and
   otherwise alternates reading and humming. The choice and durations live
@@ -741,7 +848,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   (`faceForAction`, `drawOpenMouth`, `drawEyes(ctx, 'happy')`).
 
   He helps ("make him HELP the player"), in the spirit of Hospital
-  Shift's Orderly: click him (2nd Floor, Top-Down) and Coral walks up
+  Shift's Orderly: click him (2nd Floor, Top-Down) and Eun-mi walks up
   beside him, following him if he's moving. He stops and waits while she
   comes. If she's carrying a book, he takes it and shelves it for her
   (`minjunShelveCarriedBook` in `engine-state.js`): the book is cleared,
@@ -1171,7 +1278,7 @@ established precedent.
     30% (`hallucinationPayMultiplier`, tracked in `zeroSanitySeconds`;
     only the part of a tick after Sanity actually hits 0 counts). The
     paycheck shows "−N% for hallucinating".
-  - **Coral's face:** the player's expression shifts with it (`opts.stress`
+  - **Eun-mi's face:** the player's expression shifts with it (`opts.stress`
     on `drawLibraryPerson`): worried brows, a frown, smaller pupils, eye
     bags and a sweat drop, plus stray hairs near 0.
   - **Recovery:** restoring Sanity (coffee) ends everything.
@@ -1195,7 +1302,7 @@ established precedent.
   +40. Spilled (reaching the brim, which ends the pour automatically)
   originally gave +40, per the user's first choice of "graded, never
   zero"; since v2.19 it splashes you for **−50 Sanity** instead, with
-  coffee stains steaming on Coral for 6 s. Still no cooldown or usage limit. The original instant full
+  coffee stains steaming on Eun-mi for 6 s. Still no cooldown or usage limit. The original instant full
   refill matched Kitchen Shift's Coffee Machine rule; the two games now
   differ here on purpose.
 * **Fines are Gard-only**: the Fines Sort minigame's clutter never

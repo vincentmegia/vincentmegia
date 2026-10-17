@@ -48,9 +48,11 @@ touching that area rather than expecting this section to carry it:
   leaderboard, `localStorage` progress) — `docs/features/library-game.md`.
   Drawn in Hospital Shift's anime style (v2.21): it imports Hospital's
   `hospital/anime-ui.js`, `anime-people.js`, `anime-furniture.js` and
-  `kimono-himura.js` (Coral is that renderer's `look: 'coral'`: her own
+  `kimono-himura.js` (Eun-mi, the player, is that renderer's `look: 'coral'` — the key
+  predates her rename from Coral James: her own
   hair and glasses, a Korean hanbok, no nurse cap), plus its own
-  `library/anime-furniture.js` for library fixtures, so a change to those
+  `library/anime-furniture.js` for library fixtures and `library/library-people.js`
+  for its own 19 patrons and 4 staff (anime-people data, Library-only), so a change to those
   Hospital modules shows up in both games.
 - **Bus Stop Finder** (`/bus-stops`: geolocation or a 6-digit postal code
   (geocoded server-side via OneMap) → 5 nearest Singapore bus stops on a

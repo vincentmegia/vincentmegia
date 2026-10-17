@@ -50,6 +50,7 @@ import {
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
+import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from './hospital/anime-people.js';
@@ -263,7 +264,7 @@ function drawLabelChip(ctx, x, y, text, font, fill = null, ink = LABEL_TEXT_COLO
   animeChip(ctx, x, y, text, font, fill, ink);
 }
 
-/** Truncates `text` (adding "…") to fit within `maxWidth` at `font`, measured via the same canvas context text will render in — used wherever a label chip's width must stay bounded (e.g. front-desk slots sitting only 46px apart) rather than auto-sizing to a title of arbitrary length. */
+/** Truncates `text` (adding "…") to fit within `maxWidth` at `font`, measured via the same canvas context text will render in — used wherever a label chip's width must stay bounded (e.g. front-desk slots sitting only SLOT_PITCH apart) rather than auto-sizing to a title of arbitrary length. */
 function truncateForChip(ctx, text, maxWidth, font) {
   ctx.save();
   ctx.font = font;
@@ -280,18 +281,30 @@ function truncateForChip(ctx, text, maxWidth, font) {
 }
 
 // ---------------------------------------------------------------------------
-// Characters — drawn in Hospital Shift's anime style: Coral uses Kimono
+// Characters — drawn in Hospital Shift's anime style: Eun-mi uses Kimono
 // Himura's renderer (hospital/kimono-himura.js) with her own `coral` look —
 // her own hair and glasses, and a Korean hanbok for this Korean library — and
 // patrons, Karen and the staff use Hospital Shift's anime designs
 // (hospital/anime-people.js).
 // ---------------------------------------------------------------------------
 
-/** The coffee splash's body scale — Hospital Shift's PERSON_SCALE (the anime renderers take their own `scale`). */
+/**
+ * Everyone else's body scale — Hospital Shift's PERSON_SCALE. At 1.55 an
+ * anime patron stands about as tall as Eun-mi at PLAYER_ART_SCALE 1.5
+ * (~104px), so queued patrons, Security and the Volunteer all use it ("just
+ * make all characters like her size"; patrons queued at 0.62 before).
+ */
 export const LIBRARY_PERSON_SCALE = 1.55;
+/** About how tall (px) a character is at that size — for placing icons over queued patrons' heads. */
+const PERSON_HEIGHT = 104;
 
-/** Coral's draw scale — Hospital Shift's PLAYER_ART_SCALE. */
-const PLAYER_ART_SCALE = 1.12;
+/**
+ * Eun-mi's draw scale: was Hospital Shift's PLAYER_ART_SCALE (1.12), drawn
+ * bigger so her detail shows ("make her bigger in game to see the detail").
+ */
+const PLAYER_ART_SCALE = 1.5;
+/** How much bigger she is than the 1.12 figure the coffee stains and carry badge were placed for. */
+const PLAYER_SIZE_RATIO = PLAYER_ART_SCALE / 1.12;
 
 /** Background staff (set dressing — Hospital Shift's ER has its own wandering staff); they can't be clicked. */
 const AMBIENT_STAFF = [
@@ -301,10 +314,19 @@ const AMBIENT_STAFF = [
   { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
   // Kang Min-jun (library/minjun.js), the student assistant, drawn bigger
   // than the others (the user: "make min-jun bigger", then "more bigger"
-  // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55× → 1.4×), pacing the open aisle
+  // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55× → 1.4×, then
+  // 1.3× to match Eun-mi's height with everyone else), pacing the open aisle
   // between the Reference Shelf and the Stairs/Elevator — at 1.35× his old
   // loop around the shelf put him over the Reading Nook.
-  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.4, waypoints: [[755, 210], [805, 230], [805, 450], [755, 465]] },
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.3, waypoints: [[755, 210], [805, 230], [805, 450], [755, 465]] },
+  // Four more staff ("make … 4 more staff", designs in library/library-
+  // people.js): a janitor along the 1st Floor's bottom aisle, a shelver in
+  // the gap between the Front Desk and the Return Cart, a storyteller by
+  // the 2nd Floor's reading chairs, and an archivist left of the Kids Shelf.
+  { key: 'libJanitor', name: 'Janitor · 미화원', floor: FLOOR_1, waypoints: [[180, 560], [400, 565], [600, 560], [400, 555]] },
+  { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[452, 255], [515, 255]] },
+  { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[110, 505], [250, 510]] },
+  { key: 'libArchivist', name: 'Archivist · 기록관', floor: FLOOR_2, waypoints: [[150, 240], [170, 410], [215, 330]] },
 ];
 const AMBIENT_SPEED = 60;
 
@@ -315,11 +337,15 @@ const SPECIAL_DESIGNS = {
   volunteer: () => findPatientDesign('bookworm'),
 };
 
-/** Every design a regular patron can have (not Karen, not the player) — Hospital Shift's patient designs. */
-export const PATRON_PERSONALITY_KEYS = PATIENT_DESIGN_KEYS;
+/**
+ * Every design a regular patron can have (not Karen, not the player):
+ * Hospital Shift's patient designs plus Library Shift's own 19
+ * (library/library-people.js).
+ */
+export const PATRON_PERSONALITY_KEYS = [...PATIENT_DESIGN_KEYS, ...LIBRARY_PATRON_DESIGN_KEYS];
 
 /** The player character's name (v2.12) — shown on a name tag under the sprite. */
-export const PLAYER_NAME = 'Coral James';
+export const PLAYER_NAME = 'Eun-mi · 은미';
 
 /**
  * Picks a patron's design from their id, so the same patron always looks
@@ -333,9 +359,9 @@ function personalityForId(id) {
 
 /**
  * Draws a Library Shift character, feet at (x, y). `personalityKey` is
- * 'librarian' (Coral, in her hanbok), 'karen', 'guard', 'volunteer', or a
+ * 'librarian' (Eun-mi, in her hanbok), 'karen', 'guard', 'volunteer', or a
  * patron's anime design key. `angryTint` is Karen's outburst; `stress`
- * (0..1) is the player's low-Sanity face; `walking` sways Coral's step.
+ * (0..1) is the player's low-Sanity face; `walking` sways Eun-mi's step.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x
@@ -354,7 +380,7 @@ export function drawLibraryPerson(ctx, x, y, opts = {}) {
     drawKimonoHimura(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, stress: opts.stress ?? 0, t, walking: Boolean(opts.walking), cap: false, look: 'coral' });
     return;
   }
-  const design = SPECIAL_DESIGNS[opts.personalityKey]?.() ?? findPatientDesign(opts.personalityKey);
+  const design = SPECIAL_DESIGNS[opts.personalityKey]?.() ?? findLibraryDesign(opts.personalityKey) ?? findPatientDesign(opts.personalityKey);
   drawAnimePerson(ctx, x, y, design, { scale, t, angryTint: Boolean(opts.angryTint) });
 }
 
@@ -493,7 +519,7 @@ export function init(canvas, elements) {
 
   function updateAmbient(dt) {
     for (const a of ambient) {
-      // Min-jun stands still while Coral is on her way to hand him a book.
+      // Min-jun stands still while Eun-mi is on her way to hand him a book.
       if (a.key === 'minjun' && moveTarget?.minjun && a.pause <= 0) {
         a.action = null;
         continue;
@@ -515,7 +541,7 @@ export function init(canvas, elements) {
         a.pause = 0.8 + random() * 2.2;
         a.target = (a.target + 1) % a.waypoints.length;
         if (a.key === 'minjun') {
-          // Min-jun stops to do something: read, hum, or wave at Coral when
+          // Min-jun stops to do something: read, hum, or wave at Eun-mi when
           // she's nearby on his floor.
           const coralNear = currentFloor === a.floor && Math.hypot(player.x - a.x, player.y - a.y) < 260;
           a.action = pickMinjunAction({ coralNear, last: a.lastAction, random });
@@ -530,7 +556,7 @@ export function init(canvas, elements) {
     }
   }
 
-  /** Min-jun's name chip says when he can take Coral's book, like Hospital Shift's Orderly. */
+  /** Min-jun's name chip says when he can take Eun-mi's book, like Hospital Shift's Orderly. */
   function ambientLabel(a) {
     if (a.key !== 'minjun' || !shiftState?.carriedBook || shiftState.phase !== 'playing') return a.name;
     const wait = Math.ceil(shiftState.minjunCooldownSeconds ?? 0);
@@ -545,7 +571,7 @@ export function init(canvas, elements) {
     return Math.abs(x - mj.x) <= 22 * k && y <= mj.y + 8 * k && y >= mj.y - 78 * k ? mj : null;
   }
 
-  /** Coral reached Min-jun: he takes the carried book and shelves it, if he can. */
+  /** Eun-mi reached Min-jun: he takes the carried book and shelves it, if he can. */
   function askMinjunForHelp() {
     const mj = ambient.find((a) => a.key === 'minjun');
     if (!shiftState || shiftState.phase !== 'playing' || !mj) return;
@@ -571,7 +597,7 @@ export function init(canvas, elements) {
   function drawAmbient(inFront) {
     for (const a of ambient) {
       if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
-      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? 0.8, walking: a.pause <= 0, action: a.action, actionT: a.actionT });
+      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking: a.pause <= 0, action: a.action, actionT: a.actionT });
       drawLabelChip(ctx, a.x, a.y + 20, ambientLabel(a), '9px sans-serif');
     }
   }
@@ -797,7 +823,7 @@ export function init(canvas, elements) {
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
     if (moveTarget.minjun) {
-      // Walk up beside him (on whichever side Coral's coming from).
+      // Walk up beside him (on whichever side Eun-mi's coming from).
       const mj = ambient.find((a) => a.key === 'minjun');
       if (!mj || mj.floor !== currentFloor) { moveTarget = null; return; }
       const side = player.x < mj.x ? -1 : 1;
@@ -965,6 +991,8 @@ export function init(canvas, elements) {
   // -- Front Desk / Return Cart queue slots ---------------------------------
 
   const SLOT_VISIBLE_MAX = 3;
+  /** Spacing between queued patrons — 46 until they were drawn full size. */
+  const SLOT_PITCH = 60;
   /** How far below a station's box its patron queue stands — far enough that patrons' heads clear the station's label chip. */
   const QUEUE_SLOT_OFFSET_Y = 72;
 
@@ -989,8 +1017,8 @@ export function init(canvas, elements) {
     halluc.ghosts.forEach((g) => slots.push({ kind: 'ghost', id: g.id }));
     return slots.map((slot, i) => {
       const desk = stations.find((s) => s.kind === 'front-desk');
-      const totalWidth = (slots.length - 1) * 46;
-      return { ...slot, x: desk.x - totalWidth / 2 + i * 46, y: desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y };
+      const totalWidth = (slots.length - 1) * SLOT_PITCH;
+      return { ...slot, x: desk.x - totalWidth / 2 + i * SLOT_PITCH, y: desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y };
     });
   }
 
@@ -1003,8 +1031,8 @@ export function init(canvas, elements) {
    * Hit-tests a queued patron's whole drawn body. Their slot (x, y) is
    * their *feet*; the old 26px radius around it missed clicks on the
    * head/torso entirely (user: "how do i take the book from the
-   * costermer?????"). The box spans head-top to shoes and half the 46px
-   * slot pitch on each side, so neighbours never overlap.
+   * costermer?????"). The box spans head-top to shoes and half the
+   * SLOT_PITCH on each side, so neighbours never overlap.
    */
   /** A queued patron's remaining wait as 0..1, or null if they have no wait timer. */
   function waitFractionOf(entry) {
@@ -1021,7 +1049,7 @@ export function init(canvas, elements) {
   }
 
   function isPointOnQueuedPatron(slot, x, y) {
-    return Math.abs(x - slot.x) <= 22 && y >= slot.y - 50 && y <= slot.y + 26;
+    return Math.abs(x - slot.x) <= SLOT_PITCH / 2 - 2 && y >= slot.y - PERSON_HEIGHT && y <= slot.y + 26;
   }
 
   /** Fine-paying patrons queue under the Fines Counter (v2.4), laid out the same way as the Front Desk's queue. */
@@ -1029,10 +1057,10 @@ export function init(canvas, elements) {
     if (!shiftState) return [];
     const counter = stations.find((s) => s.kind === 'fines-counter');
     const queue = shiftState.finesQueue.slice(0, SLOT_VISIBLE_MAX);
-    const totalWidth = (queue.length - 1) * 46;
+    const totalWidth = (queue.length - 1) * SLOT_PITCH;
     return queue.map((f, i) => ({
       kind: 'fine', id: f.id, amountGard: f.amountGard, waitFraction: waitFractionOf(f),
-      x: counter.x - totalWidth / 2 + i * 46,
+      x: counter.x - totalWidth / 2 + i * SLOT_PITCH,
       y: counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y,
     }));
   }
@@ -1441,13 +1469,13 @@ export function init(canvas, elements) {
     spilled: 'Ow! Hot coffee all over you — −50 Sanity.',
   };
 
-  // v2.19: after a spill, Coral wears coffee stains for a few seconds.
+  // v2.19: after a spill, Eun-mi wears coffee stains for a few seconds.
   const COFFEE_SPLASH_SECONDS = 6;
   let coffeeSplashSeconds = 0;
 
   function drawCoffeeSplash() {
     if (coffeeSplashSeconds <= 0) return;
-    const s = LIBRARY_PERSON_SCALE;
+    const s = LIBRARY_PERSON_SCALE * PLAYER_SIZE_RATIO;
     ctx.save();
     ctx.globalAlpha = Math.min(1, coffeeSplashSeconds / 1.5);
     ctx.fillStyle = 'rgba(106,74,48,0.85)';
@@ -2391,6 +2419,18 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  /**
+   * Full-size queued patrons stand over the Front Desk's and Fines
+   * Counter's name chips, so those two chips are drawn again on top.
+   */
+  function drawQueueStationLabels() {
+    for (const station of stationsOnFloor(stations, currentFloor)) {
+      if (station.kind !== 'front-desk' && station.kind !== 'fines-counter') continue;
+      const label = labelForStation(station);
+      if (label) drawLabelChip(ctx, station.x, station.y + stationExtents(station).hh + 13, label, 'bold 11px sans-serif');
+    }
+  }
+
   function drawReturnCartBooks() {
     if (currentFloor !== FLOOR_1) return;
     for (const book of returnCartSlots()) {
@@ -2438,15 +2478,15 @@ export function init(canvas, elements) {
   function drawFinesCounterSlots() {
     if (currentFloor !== FLOOR_1) return;
     finesCounterSlots().forEach((slot, i) => {
-      drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personalityForSlot(slot, i), scale: 0.62 });
-      drawStar(ctx, slot.x + 15, slot.y - 44, 6, 2.5, '#f2d98a');
+      drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personalityForSlot(slot, i), scale: LIBRARY_PERSON_SCALE });
+      drawStar(ctx, slot.x + 18, slot.y - PERSON_HEIGHT - 4, 6, 2.5, '#f2d98a');
       drawPatienceBar(slot, slot.waitFraction);
       drawLabelChip(ctx, slot.x, slot.y + 20, `${slot.amountGard}g`, 'bold 9px sans-serif');
     });
     const waiting = shiftState?.finesQueue.length || 0;
     if (waiting > SLOT_VISIBLE_MAX) {
       const counter = stations.find((s) => s.kind === 'fines-counter');
-      drawLabelChip(ctx, counter.x, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 50, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, counter.x, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 60, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2458,12 +2498,12 @@ export function init(canvas, elements) {
       if (slot.kind === 'ghost') {
         ctx.save();
         ctx.globalAlpha = 0.35 + 0.2 * Math.sin(performance.now() / 90);
-        drawLibraryPerson(ctx, slot.x + Math.sin(performance.now() / 140) * 2, slot.y, { personalityKey: personality, scale: 0.62 });
+        drawLibraryPerson(ctx, slot.x + Math.sin(performance.now() / 140) * 2, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE });
         ctx.restore();
         drawLabelChip(ctx, slot.x, slot.y + 20, '???', 'bold 9px sans-serif');
         return;
       }
-      drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personality, scale: 0.62, angryTint: slot.kind === 'karen' });
+      drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE, angryTint: slot.kind === 'karen' });
       if (slot.kind === 'borrow-active') {
         if (slot.stage === 'searching') {
           // Patience bar over their head, green -> amber -> red.
@@ -2476,8 +2516,8 @@ export function init(canvas, elements) {
         drawPatienceBar(slot, slot.waitFraction);
         const entry = bookCatalog.get(slot.bookId);
         const genre = entry ? findGenre(entry.genreId) : null;
-        drawRoundRect(ctx, slot.x + 11, slot.y - 52, 10, 14, 1, genre ? genre.color : '#8a6a4a');
-        // Front-desk slots sit only 46px apart (frontDeskSlots) — a full
+        drawRoundRect(ctx, slot.x + 12, slot.y - PERSON_HEIGHT - 14, 10, 14, 1, genre ? genre.color : '#8a6a4a');
+        // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
         // title's label chip (drawLabelChip auto-sizes to text width, no
         // wrapping) can run wider than that and spill into the
         // neighboring slot's own chip, same class of overflow bug as the
@@ -2485,14 +2525,14 @@ export function init(canvas, elements) {
         // snippet that reliably stays inside one slot's width instead.
         if (entry?.title) {
           // The Korean title on the chip, its English meaning just below
-          // (under the patience bar), both cut to the slot's 46px pitch.
+          // (under the patience bar), both cut to the slot's SLOT_PITCH.
           const { ko, en } = splitTitle(entry.title);
-          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, 40, 'bold 9px sans-serif'), 'bold 9px sans-serif');
+          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, SLOT_PITCH - 6, 'bold 9px sans-serif'), 'bold 9px sans-serif');
           if (en) {
             ctx.font = 'bold 7.5px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            outlinedText(ctx, truncateForChip(ctx, en, 44, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
+            outlinedText(ctx, truncateForChip(ctx, en, SLOT_PITCH - 2, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
           }
         }
       } else if (slot.kind === 'karen') {
@@ -2503,7 +2543,7 @@ export function init(canvas, elements) {
     const shown = Math.min(total, SLOT_VISIBLE_MAX);
     if (total > shown) {
       const desk = stations.find((s) => s.kind === 'front-desk');
-      drawLabelChip(ctx, desk.x, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 50, `+${total - shown} waiting`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, desk.x, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 60, `+${total - shown} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2537,8 +2577,9 @@ export function init(canvas, elements) {
     drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     const badge = currentPlayerBadge();
     if (badge) {
-      if (badge.kind === 'book') drawRoundRect(ctx, player.x + 16, player.y - 86, 12, 16, 2, badge.color);
-      else drawStar(ctx, player.x + 20, player.y - 82, 7, 3, badge.color);
+      const r = PLAYER_SIZE_RATIO;
+      if (badge.kind === 'book') drawRoundRect(ctx, player.x + 16 * r, player.y - 86 * r, 12, 16, 2, badge.color);
+      else drawStar(ctx, player.x + 20 * r, player.y - 82 * r, 7, 3, badge.color);
     }
   }
 
@@ -3358,6 +3399,7 @@ export function init(canvas, elements) {
       drawReturnCartBooks();
       drawFrontDeskSlots();
       drawFinesCounterSlots();
+      drawQueueStationLabels();
       drawAmbient(false);
       drawPlayer();
       drawAmbient(true);

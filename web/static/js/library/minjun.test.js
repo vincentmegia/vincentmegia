@@ -66,7 +66,7 @@ describe('Min-jun actions', () => {
     assert.equal(acting.calls.count, still.calls.count);
   });
 
-  test('he waves when Coral is near, but not twice in a row', () => {
+  test('he waves when Eun-mi is near, but not twice in a row', () => {
     assert.equal(pickMinjunAction({ coralNear: true, last: null }), 'wave');
     assert.equal(pickMinjunAction({ coralNear: true, last: 'read' }), 'wave');
     assert.notEqual(pickMinjunAction({ coralNear: true, last: 'wave', random: () => 0 }), 'wave');

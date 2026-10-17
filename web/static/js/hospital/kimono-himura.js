@@ -48,7 +48,7 @@ export const HIMURA_PALETTE = {
 };
 
 /**
- * Library Shift's librarian, Coral James, drawn by this same renderer but
+ * Library Shift's librarian, Eun-mi, drawn by this same renderer but
  * as her own character (the user: "make the character different rather
  * than the same"): chestnut hair in a jaw-length bob with a ribbon, round
  * glasses, teal-green eyes — and, since Library Shift is a Korean library
@@ -257,6 +257,32 @@ function drawBackHair(ctx, walk) {
     ctx.closePath();
     ctx.fill();
     outline(ctx, 0.5);
+    // Strand lines curving down to the ends, and darker tips curling under.
+    ctx.strokeStyle = P.hairStrandSoft;
+    ctx.lineWidth = 0.35;
+    for (const dir of [-1, 1]) {
+      for (const [x0, x1] of [[10.6, 12.6], [12, 10.4], [9.4, 8.2]]) {
+        ctx.beginPath();
+        ctx.moveTo(dir * x0, -58);
+        ctx.quadraticCurveTo(dir * (x0 + 2.2), -50, dir * x1 + w, -42.6);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = 'rgba(40,18,10,0.3)';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(dir * 9.6 + w, -42, 3.2, 0.9, dir * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // The darker underlayer showing at the nape, between the ends.
+    ctx.fillStyle = 'rgba(40,18,10,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(-6, -41.2);
+    ctx.quadraticCurveTo(0, -44, 6, -41.2);
+    ctx.lineTo(5, -41);
+    ctx.lineTo(-5, -41);
+    ctx.closePath();
+    ctx.fill();
     return;
   }
   // Long straight hair falling behind the shoulders to the obi.
@@ -580,6 +606,15 @@ function drawHead(ctx, stress, t, cap) {
     ctx.ellipse(dir * 10.4, HEAD_Y + 0.5, 1.6, 2.4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (LOOK === 'coral') {
+    ctx.strokeStyle = 'rgba(190,120,100,0.6)';
+    ctx.lineWidth = 0.3;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(dir * 10.5, HEAD_Y + 0.5, 0.9, dir < 0 ? 0.6 * Math.PI : -0.4 * Math.PI, dir < 0 ? 1.4 * Math.PI : 0.4 * Math.PI);
+      ctx.stroke();
+    }
+  }
   facePath(ctx);
   ctx.fillStyle = P.skin;
   ctx.fill();
@@ -590,8 +625,29 @@ function drawHead(ctx, stress, t, cap) {
   ctx.clip();
   ctx.fillStyle = 'rgba(200,130,120,0.18)';
   ctx.fillRect(-11, HEAD_Y - 9, 22, 4);
+  if (LOOK === 'coral') {
+    // Soft cel shading down the far cheek and along the jaw.
+    ctx.fillStyle = 'rgba(214,150,130,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(7.4, HEAD_Y - 4);
+    ctx.quadraticCurveTo(9.8, HEAD_Y + 3, 5.4, HEAD_Y + 9.6);
+    ctx.quadraticCurveTo(3, HEAD_Y + 11.6, 0, HEAD_Y + 12.2);
+    ctx.lineTo(11, HEAD_Y + 13);
+    ctx.lineTo(11, HEAD_Y - 4);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 
+  if (LOOK === 'coral') {
+    // A soft peach-pink eyeshadow above each eye.
+    ctx.fillStyle = 'rgba(240,140,150,0.22)';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(dir * 4.8, EYE_Y - 2.4, 3.4, 1.2, dir * -0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   drawEyes(ctx, stress);
   // Brows: thin and high; worried (inner ends raised) under stress.
   ctx.strokeStyle = P.hair;
@@ -603,6 +659,30 @@ function drawHead(ctx, stress, t, cap) {
     ctx.moveTo(dir * 2.4, EYE_Y - 6.4 + inner * 0.5);
     ctx.quadraticCurveTo(dir * 5, EYE_Y - 7.6 - stress * 0.4, dir * 7.4, EYE_Y - 6.4 + stress * 0.6);
     ctx.stroke();
+  }
+  if (LOOK === 'coral') {
+    // A soft double-eyelid crease above each eye.
+    ctx.strokeStyle = 'rgba(170,100,90,0.45)';
+    ctx.lineWidth = 0.25;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 2.2, EYE_Y - 2.6);
+      ctx.quadraticCurveTo(dir * 4.6, EYE_Y - 4, dir * 7.4, EYE_Y - 2.8);
+      ctx.stroke();
+    }
+    // Fine hairs feathered along each brow.
+    ctx.strokeStyle = 'rgba(107,58,38,0.6)';
+    ctx.lineWidth = 0.22;
+    for (const dir of [-1, 1]) {
+      for (let i = 0; i < 6; i++) {
+        const bx = dir * (2.9 + i * 0.85);
+        const by = EYE_Y - 6.6 - Math.sin((i / 5) * Math.PI) * 0.9 - stress * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(bx, by + 0.4);
+        ctx.lineTo(bx + dir * 0.55, by - 0.35);
+        ctx.stroke();
+      }
+    }
   }
   // Blush with fine hatching.
   ctx.fillStyle = P.blush;
@@ -636,12 +716,41 @@ function drawHead(ctx, stress, t, cap) {
     ctx.arc(0, HEAD_Y + 5.4, 1.8, 0.2 * Math.PI, 0.8 * Math.PI);
   }
   ctx.stroke();
+  if (LOOK === 'coral') {
+    // A soft shadow under the nose tip, and a faint upper-lip line.
+    ctx.fillStyle = 'rgba(200,120,110,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(-0.1, HEAD_Y + 4.1, 0.9, 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (LOOK === 'coral' && stress <= 0.4) {
+    ctx.strokeStyle = 'rgba(216,112,124,0.35)';
+    ctx.lineWidth = 0.25;
+    ctx.beginPath();
+    ctx.moveTo(-1.1, HEAD_Y + 5.6);
+    ctx.quadraticCurveTo(-0.5, HEAD_Y + 5.2, 0, HEAD_Y + 5.5);
+    ctx.quadraticCurveTo(0.5, HEAD_Y + 5.2, 1.1, HEAD_Y + 5.6);
+    ctx.stroke();
+    // A soft rosy tint under the smile.
+    ctx.fillStyle = 'rgba(216,112,124,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(0, HEAD_Y + 7.7, 1.2, 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.lineCap = 'butt';
 
   drawFrontHair(ctx);
   if (LOOK === 'coral') {
+    drawFreckles(ctx);
+    drawSideBraid(ctx, t);
+    drawEarrings(ctx, t);
+    drawHairPencil(ctx);
+    drawBookClip(ctx);
     drawGlasses(ctx);
+    drawGlassesChain(ctx);
     drawRibbon(ctx, t);
+    drawPearlPins(ctx);
+    drawTteoljam(ctx, t);
   }
   if (cap) drawNurseCap(ctx);
 
@@ -697,6 +806,23 @@ function drawEyes(ctx, stress) {
     ctx.strokeStyle = 'rgba(40,8,30,0.55)';
     ctx.lineWidth = 0.3;
     ctx.stroke();
+    if (LOOK === 'coral') {
+      // Fine radial lines in the iris and a darker ring round its edge.
+      ctx.strokeStyle = 'rgba(160,240,215,0.35)';
+      ctx.lineWidth = 0.18;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(px + Math.cos(a) * 1.2, EYE_Y + 0.3 + Math.sin(a) * 1.9);
+        ctx.lineTo(px + Math.cos(a) * 2.2, EYE_Y + 0.4 + Math.sin(a) * (h - 0.8));
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(8,30,26,0.6)';
+      ctx.lineWidth = 0.35;
+      ctx.beginPath();
+      ctx.ellipse(px, EYE_Y + 0.4, 2.5, h - 0.4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     // No highlight sparkles — the user asked to remove the shine.
     // Upper lash line: thick, sweeping out to a flick at the outer corner.
     ctx.fillStyle = P.eyeDark;
@@ -715,6 +841,26 @@ function drawEyes(ctx, stress) {
     ctx.moveTo(ex - dir * 1, EYE_Y + h + 0.3);
     ctx.lineTo(ex + dir * 2.4, EYE_Y + h - 0.4);
     ctx.stroke();
+    if (LOOK === 'coral') {
+      // Two extra lashes fanning off the outer flick, and two tiny lower ones.
+      ctx.strokeStyle = P.eyeDark;
+      ctx.lineWidth = 0.4;
+      ctx.lineCap = 'round';
+      for (const [dx, dy] of [[4.2, -2.2], [5.2, -1.2]]) {
+        ctx.beginPath();
+        ctx.moveTo(ex + dir * 3.4, EYE_Y - h + 0.9);
+        ctx.lineTo(ex + dir * dx, EYE_Y - h + dy);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 0.3;
+      for (const lx of [1.2, 2.2]) {
+        ctx.beginPath();
+        ctx.moveTo(ex + dir * lx, EYE_Y + h - 0.1);
+        ctx.lineTo(ex + dir * (lx + 0.5), EYE_Y + h + 1.1);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    }
     ctx.restore();
   }
 }
@@ -755,6 +901,30 @@ function drawFrontHair(ctx) {
     ctx.beginPath();
     ctx.moveTo(sx * 0.9, HEAD_Y - 7.5);
     ctx.quadraticCurveTo(sx, HEAD_Y - 4.5, sx * 1.04, HEAD_Y - 2.6);
+    ctx.stroke();
+  }
+  if (LOOK === 'coral') {
+    // Finer strands between the clumps, crown strands, and two flyaways.
+    ctx.lineWidth = 0.22;
+    for (const sx of [-8.8, -4.5, 0, 4.5, 8.8]) {
+      ctx.beginPath();
+      ctx.moveTo(sx * 0.85, HEAD_Y - 8.4);
+      ctx.quadraticCurveTo(sx * 0.98, HEAD_Y - 5, sx, HEAD_Y - 2.4);
+      ctx.stroke();
+    }
+    for (const sx of [-5, -1.5, 2, 5.5]) {
+      ctx.beginPath();
+      ctx.moveTo(sx * 0.5, HEAD_Y - 12.6);
+      ctx.quadraticCurveTo(sx * 0.9, HEAD_Y - 11.2, sx * 1.15, HEAD_Y - 9);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = P.hair;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-1.4, HEAD_Y - 13.2);
+    ctx.quadraticCurveTo(-2.4, HEAD_Y - 14.9, -1, HEAD_Y - 15.2);
+    ctx.moveTo(3.6, HEAD_Y - 12.9);
+    ctx.quadraticCurveTo(4.8, HEAD_Y - 14.3, 5.8, HEAD_Y - 13.8);
     ctx.stroke();
   }
   // Side locks framing the face, falling to the collar.
@@ -830,7 +1000,7 @@ function drawKanzashi(ctx, t) {
   }
 }
 
-/** Coral's round glasses: thin frames, a bridge and a glint on each lens. */
+/** Eun-mi's round glasses: thin frames, a bridge and a glint on each lens. */
 function drawGlasses(ctx) {
   ctx.strokeStyle = P.glasses;
   ctx.lineWidth = 0.6;
@@ -855,9 +1025,366 @@ function drawGlasses(ctx) {
   ctx.moveTo(8.2, EYE_Y - 0.4);
   ctx.lineTo(10.4, EYE_Y - 1.2);
   ctx.stroke();
+  if (LOOK !== 'coral') return;
+  // A faint blue tint in the lenses, deeper toward the top.
+  for (const dir of [-1, 1]) {
+    const tint = ctx.createLinearGradient(0, EYE_Y - 2.9, 0, EYE_Y + 3.1);
+    tint.addColorStop(0, 'rgba(140,190,240,0.18)');
+    tint.addColorStop(1, 'rgba(140,190,240,0.03)');
+    ctx.fillStyle = tint;
+    ctx.beginPath();
+    ctx.ellipse(dir * 4.6, EYE_Y + 0.2, 3.3, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Frame depth: a lighter inner rim, gold hinge rivets and clear nose pads.
+  ctx.strokeStyle = 'rgba(160,110,130,0.55)';
+  ctx.lineWidth = 0.22;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(dir * 4.6, EYE_Y + 0.2, 3.25, 2.55, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = P.gold;
+    ctx.beginPath();
+    ctx.arc(dir * 8.2, EYE_Y - 0.4, 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(dir * 1.3, EYE_Y + 1.5, 0.35, 0.55, dir * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.15);
+  }
 }
 
-/** Coral's pink ribbon bow on the side of her head, its tails swaying. */
+/** A light sprinkle of freckles across her nose and cheeks. */
+function drawFreckles(ctx) {
+  ctx.fillStyle = 'rgba(170,96,70,0.45)';
+  for (const [fx, fy] of [[-1.6, 2.6], [-2.7, 3.2], [-3.6, 2.7], [1.7, 2.7], [2.8, 3.3], [3.8, 2.8], [-2.2, 3.9], [2.3, 4]]) {
+    ctx.beginPath();
+    ctx.arc(fx, HEAD_Y + fy, 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** A thin braid falling from behind her right ear, tied with a pink band. */
+function drawSideBraid(ctx, t) {
+  const sway = Math.sin(t * 1.8) * 0.25;
+  const x0 = 10.2;
+  const y0 = HEAD_Y - 1;
+  const segs = 7;
+  for (let i = 0; i < segs; i++) {
+    const u = i / segs;
+    const x = x0 + Math.sin(u * 2) * 0.6 + sway * u;
+    const y = y0 + i * 1.6;
+    const side = i % 2 ? 1 : -1;
+    ctx.fillStyle = i % 2 ? P.hair : '#7e4630';
+    ctx.beginPath();
+    ctx.ellipse(x + side * 0.35, y, 1.05 - u * 0.25, 0.95, side * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.25);
+  }
+  const ex = x0 + Math.sin(2) * 0.6 + sway;
+  const ey = y0 + segs * 1.6 - 0.4;
+  ctx.fillStyle = P.ribbonDeep;
+  ctx.fillRect(ex - 0.7, ey - 0.3, 1.4, 0.7);
+  ctx.fillStyle = P.hair;
+  ctx.beginPath();
+  ctx.moveTo(ex - 0.6, ey + 0.4);
+  ctx.lineTo(ex - 0.9, ey + 2.2);
+  ctx.lineTo(ex, ey + 1.6);
+  ctx.lineTo(ex + 0.8, ey + 2.2);
+  ctx.lineTo(ex + 0.6, ey + 0.4);
+  ctx.closePath();
+  ctx.fill();
+  outline(ctx, 0.2);
+}
+
+/**
+ * A tteoljam (떨잠), the "trembling hairpin": an oval gold plate with a jade
+ * centre ringed by filigree and pearls, three jewelled ornaments (two enamel
+ * flowers and a jade butterfly) on fine coiled gold springs that quiver as
+ * she moves, two pearl drops on chains below, and the long pin pushed into
+ * her hair.
+ */
+function drawTteoljam(ctx, t) {
+  ctx.save();
+  ctx.translate(-3.2, HEAD_Y - 11.6);
+  ctx.rotate(-0.32);
+
+  // The pin's shaft, slanting back into her hair.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = P.goldDeep;
+  ctx.lineWidth = 0.55;
+  ctx.beginPath();
+  ctx.moveTo(-3.4, 0.9);
+  ctx.lineTo(3.6, 1.6);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,240,190,0.8)';
+  ctx.lineWidth = 0.18;
+  ctx.beginPath();
+  ctx.moveTo(-3.2, 0.75);
+  ctx.lineTo(3.4, 1.45);
+  ctx.stroke();
+  // Its ball finial.
+  ctx.fillStyle = P.gold;
+  ctx.beginPath();
+  ctx.arc(-3.6, 0.9, 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.15);
+
+  // Springs and their ornaments, behind the plate's top edge.
+  const ornaments = [
+    { x: -1.5, h: 2.4, kind: 'flower', petal: '#ff9fbf', core: P.gold },
+    { x: 0.2, h: 3.1, kind: 'butterfly' },
+    { x: 1.8, h: 2.2, kind: 'flower', petal: '#fff6f0', core: '#ff8fb8' },
+  ];
+  ornaments.forEach((o, i) => {
+    const wob = Math.sin(t * 7 + i * 1.7) * 0.35;
+    const topX = o.x + wob;
+    const topY = -1.2 - o.h;
+    // A fine coiled spring: a tight zigzag climbing to the ornament.
+    ctx.strokeStyle = P.goldDeep;
+    ctx.lineWidth = 0.14;
+    ctx.beginPath();
+    const turns = 7;
+    for (let k = 0; k <= turns * 2; k++) {
+      const u = k / (turns * 2);
+      const cx = o.x + (topX - o.x) * u + (k % 2 ? 0.22 : -0.22);
+      const cy = -1.2 + (topY - -1.2) * u;
+      if (k === 0) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+    if (o.kind === 'flower') {
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.fillStyle = o.petal;
+        ctx.beginPath();
+        ctx.ellipse(topX + Math.cos(a) * 0.55, topY + Math.sin(a) * 0.55, 0.42, 0.3, a, 0, Math.PI * 2);
+        ctx.fill();
+        outline(ctx, 0.12);
+      }
+      ctx.fillStyle = o.core;
+      ctx.beginPath();
+      ctx.arc(topX, topY, 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // The jade butterfly: four wings, gold body and antennae.
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = '#7fd1b9';
+        ctx.beginPath();
+        ctx.ellipse(topX + side * 0.7, topY - 0.25, 0.75, 0.5, side * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        outline(ctx, 0.12);
+        ctx.fillStyle = '#a8e6d2';
+        ctx.beginPath();
+        ctx.ellipse(topX + side * 0.55, topY + 0.45, 0.48, 0.34, side * -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        outline(ctx, 0.12);
+      }
+      ctx.strokeStyle = P.goldDeep;
+      ctx.lineWidth = 0.2;
+      ctx.beginPath();
+      ctx.moveTo(topX, topY - 0.6);
+      ctx.lineTo(topX, topY + 0.7);
+      ctx.moveTo(topX, topY - 0.6);
+      ctx.lineTo(topX - 0.4, topY - 1.2);
+      ctx.moveTo(topX, topY - 0.6);
+      ctx.lineTo(topX + 0.4, topY - 1.2);
+      ctx.stroke();
+    }
+  });
+
+  // The oval gold plate.
+  const plate = ctx.createLinearGradient(0, -1.8, 0, 1.8);
+  plate.addColorStop(0, '#ffe39a');
+  plate.addColorStop(1, P.goldDeep);
+  ctx.fillStyle = plate;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 2.5, 1.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.25);
+  // Filigree: a ring of tiny gold dots and fine scrolls.
+  ctx.fillStyle = '#a8781e';
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * 1.55, Math.sin(a) * 1.05, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(140,96,20,0.7)';
+  ctx.lineWidth = 0.12;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(side * 1.75, 0, 0.35, 0, Math.PI * 1.5);
+    ctx.stroke();
+  }
+  // Pearls set round the rim.
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    ctx.fillStyle = '#fff6f0';
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * 2.35, Math.sin(a) * 1.62, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.1);
+  }
+  // The jade centre, with a carved flower and a darker setting.
+  ctx.fillStyle = '#5fbfa0';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 1.15, 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#a8781e';
+  ctx.lineWidth = 0.22;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(220,255,240,0.65)';
+  ctx.lineWidth = 0.12;
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.ellipse(Math.cos(a) * 0.35, Math.sin(a) * 0.25, 0.28, 0.16, a, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ff8fb8';
+  ctx.beginPath();
+  ctx.arc(0, 0, 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Two pearl drops on fine chains, swinging below the plate.
+  for (const [dx, len] of [[-1, 1.6], [1, 2.1]]) {
+    const sw = Math.sin(t * 3 + dx) * 0.25;
+    ctx.strokeStyle = P.goldDeep;
+    ctx.lineWidth = 0.12;
+    ctx.beginPath();
+    ctx.moveTo(dx, 1.5);
+    ctx.lineTo(dx + sw, 1.5 + len);
+    ctx.stroke();
+    ctx.fillStyle = '#fff6f0';
+    ctx.beginPath();
+    ctx.ellipse(dx + sw, 1.5 + len + 0.35, 0.28, 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.1);
+  }
+  ctx.lineCap = 'butt';
+  ctx.restore();
+}
+
+/** Three little pearl hairpins in a row below her bow. */
+function drawPearlPins(ctx) {
+  for (let i = 0; i < 3; i++) {
+    const x = 4.4 + i * 1.5;
+    const y = HEAD_Y - 9.2 + i * 0.5;
+    ctx.fillStyle = '#fff6f0';
+    ctx.beginPath();
+    ctx.arc(x, y, 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.2);
+  }
+}
+
+/** A yellow pencil tucked into her hair above the book clip, eraser end out. */
+function drawHairPencil(ctx) {
+  ctx.save();
+  ctx.translate(-7.4, HEAD_Y - 10.4);
+  ctx.rotate(-0.6);
+  ctx.fillStyle = '#ffd166';
+  ctx.fillRect(-2.6, -0.45, 3.6, 0.9);
+  ctx.fillStyle = '#e0a020';
+  ctx.fillRect(-2.6, 0.15, 3.6, 0.3);
+  ctx.fillStyle = '#c8ccd4'; // ferrule
+  ctx.fillRect(-3.3, -0.45, 0.7, 0.9);
+  ctx.fillStyle = '#ff8fb8'; // eraser
+  ctx.beginPath();
+  ctx.roundRect(-4.2, -0.45, 0.95, 0.9, 0.3);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.rect(-4.2, -0.45, 5.2, 0.9);
+  outline(ctx, 0.2);
+  ctx.restore();
+}
+
+/** A little hair clip shaped like an open book, on the side opposite her bow. */
+function drawBookClip(ctx) {
+  ctx.save();
+  ctx.translate(-8.4, HEAD_Y - 7.4);
+  ctx.rotate(-0.35);
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0.4);
+    ctx.quadraticCurveTo(dir * 1.1, -0.5, dir * 2.2, -0.2);
+    ctx.lineTo(dir * 2.2, 1.6);
+    ctx.quadraticCurveTo(dir * 1.1, 1.3, 0, 2);
+    ctx.closePath();
+    ctx.fillStyle = '#4fa8e0';
+    ctx.fill();
+    outline(ctx, 0.25);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 0.18;
+    for (const ly of [0.5, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 0.5, ly + 0.1);
+      ctx.lineTo(dir * 1.8, ly - 0.1);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = P.gold;
+  ctx.fillRect(-0.15, 0.2, 0.3, 1.9);
+  ctx.restore();
+}
+
+/** Little pink pearl drops hanging from her ears, swinging gently. */
+function drawEarrings(ctx, t) {
+  const swing = Math.sin(t * 2.2) * 0.3;
+  for (const dir of [-1, 1]) {
+    const x = dir * 10.5;
+    const y = HEAD_Y + 2.6;
+    ctx.strokeStyle = P.goldDeep;
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + swing, y + 1.4);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd6e2';
+    ctx.beginPath();
+    ctx.arc(x + swing, y + 2.1, 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    outline(ctx, 0.25);
+    // A tiny gold cap on each pearl.
+    ctx.fillStyle = P.gold;
+    ctx.beginPath();
+    ctx.ellipse(x + swing, y + 1.45, 0.42, 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** A librarian's beaded glasses chain, looping from each temple down to her shoulders. */
+function drawGlassesChain(ctx) {
+  for (const dir of [-1, 1]) {
+    const p0 = [dir * 10.4, EYE_Y - 1.2];
+    const c = [dir * 14.2, EYE_Y + 6];
+    const p1 = [dir * 8.4, EYE_Y + 15];
+    for (let i = 1; i <= 14; i++) {
+      const u = i / 14;
+      const x = (1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * c[0] + u ** 2 * p1[0];
+      const y = (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * c[1] + u ** 2 * p1[1];
+      ctx.fillStyle = i % 3 === 0 ? P.ribbonDeep : P.gold;
+      ctx.beginPath();
+      ctx.arc(x, y, i % 3 === 0 ? 0.42 : 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // A tiny gold star charm where each side of the chain ends.
+    ctx.fillStyle = P.gold;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const r = k % 2 ? 0.3 : 0.7;
+      ctx.lineTo(p1[0] + Math.cos(a) * r, p1[1] + 0.9 + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    outline(ctx, 0.15);
+  }
+}
+
+/** Eun-mi's pink ribbon bow on the side of her head, its tails swaying. */
 function drawRibbon(ctx, t) {
   const cx = 8.6;
   const cy = HEAD_Y - 11.5;
@@ -880,14 +1407,46 @@ function drawRibbon(ctx, t) {
     ctx.fill();
     outline(ctx, 0.4);
   }
+  // Fold creases in each loop, and a white polka-dot or two.
+  ctx.strokeStyle = 'rgba(200,60,110,0.55)';
+  ctx.lineWidth = 0.3;
+  for (const dir of [-1, 1]) {
+    for (const dy of [-1.2, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + dir * 1.2, cy + dy * 0.3);
+      ctx.quadraticCurveTo(cx + dir * 2.8, cy + dy * 1.4, cx + dir * 4, cy + dy * 0.8);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath();
+    ctx.arc(cx + dir * 3.2, cy - 1.2, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.fillStyle = P.ribbonDeep;
   ctx.beginPath();
   ctx.arc(cx, cy, 1.3, 0, Math.PI * 2);
   ctx.fill();
   outline(ctx, 0.35);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(cx - 0.6, cy - 0.7);
+  ctx.lineTo(cx + 0.6, cy + 0.7);
+  ctx.stroke();
+  // A pearl set in the knot, and gold beads weighting the tail tips.
+  ctx.fillStyle = '#fff6f0';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = P.gold;
+  for (const [dx, len] of [[-1, 6], [1.2, 5]]) {
+    ctx.beginPath();
+    ctx.arc(cx + dx * 2 + sway, cy + len, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
-// -- Hanbok (Coral's look) ---------------------------------------------------------
+// -- Hanbok (Eun-mi's look) ---------------------------------------------------------
 
 /** The chima: a high-waisted skirt from the chest, belling out to the floor. */
 function chimaPath(ctx) {
@@ -932,6 +1491,17 @@ function drawHanbok(ctx, walk) {
     ctx.beginPath();
     ctx.arc(fx + 0.6, 5.6, 0.9, 0, Math.PI * 2);
     ctx.fill();
+    // Embroidered leaves either side of the flower, and a yellow centre.
+    ctx.fillStyle = '#5fbf8a';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(fx + 0.6 + side * 1.5, 5.8, 0.75, 0.35, side * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = P.gold;
+    ctx.beginPath();
+    ctx.arc(fx + 0.6, 5.6, 0.35, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // Chima.
@@ -959,6 +1529,85 @@ function drawHanbok(ctx, walk) {
     ctx.quadraticCurveTo(px * 1.15, -12, px * 1.6, 5);
     ctx.stroke();
   }
+  // A faint woven flower pattern across the skirt.
+  for (let row = 0; row < 5; row++) {
+    for (let col = -3; col <= 3; col++) {
+      const fx = col * 4.2 + (row % 2) * 2.1;
+      const fy = -25 + row * 4.8;
+      sakura(ctx, fx, fy, 0.9, 'rgba(255,255,255,0.16)', 'rgba(255,220,120,0.35)');
+    }
+  }
+  // A soft silk sheen down the left of the skirt.
+  const sheen = ctx.createLinearGradient(-12, 0, -4, 0);
+  sheen.addColorStop(0, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.5, 'rgba(255,255,255,0.12)');
+  sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(-12, -30, 8, 36);
+  // Gathered tucks where the skirt is pleated into its waistband.
+  ctx.strokeStyle = 'rgba(110,10,40,0.35)';
+  ctx.lineWidth = 0.3;
+  for (let gx = -9; gx <= 9; gx += 1.5) {
+    ctx.beginPath();
+    ctx.moveTo(gx, -29.4);
+    ctx.lineTo(gx * 1.04, -26.6);
+    ctx.stroke();
+  }
+  // Alternating lighter and darker pleat panels.
+  for (let i = -4; i < 4; i++) {
+    if (i % 2 === 0) continue;
+    ctx.fillStyle = 'rgba(120,10,40,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(i * 2.6, -30);
+    ctx.lineTo((i + 1) * 2.6, -30);
+    ctx.lineTo((i + 1) * 3.9, 6);
+    ctx.lineTo(i * 3.9, 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Embroidered butterflies fluttering across the skirt.
+  for (const [bx, by, rot] of [[-5.6, -7.2, -0.3], [6.6, -9.4, 0.35], [1.4, -6.4, 0.1]]) {
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(rot);
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = 'rgba(255,230,150,0.75)';
+      ctx.beginPath();
+      ctx.ellipse(side * 0.9, -0.4, 0.95, 0.7, side * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.ellipse(side * 0.7, 0.6, 0.6, 0.45, side * -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(120,40,40,0.6)';
+    ctx.lineWidth = 0.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -0.9);
+    ctx.lineTo(0, 1);
+    ctx.moveTo(0, -0.9);
+    ctx.lineTo(-0.4, -1.6);
+    ctx.moveTo(0, -0.9);
+    ctx.lineTo(0.4, -1.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // A gold vine scroll running just above the hem band.
+  ctx.strokeStyle = 'rgba(255,209,102,0.7)';
+  ctx.lineWidth = 0.35;
+  ctx.beginPath();
+  for (let vx = -15; vx <= 15; vx += 0.5) {
+    const vy = -4.4 + Math.sin(vx * 0.9) * 0.6 + Math.abs(vx) * 0.03;
+    if (vx === -15) ctx.moveTo(vx, vy);
+    else ctx.lineTo(vx, vy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,209,102,0.7)';
+  for (let vx = -13.3; vx <= 14; vx += 3.5) {
+    ctx.beginPath();
+    ctx.ellipse(vx, -5.2 + Math.abs(vx) * 0.03, 0.55, 0.25, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // Geumbak: a band of gold-leaf flowers and lines along the hem.
   ctx.fillStyle = 'rgba(255,209,102,0.25)';
   ctx.fillRect(-16, -2.6, 32, 4.6);
@@ -971,7 +1620,28 @@ function drawHanbok(ctx, walk) {
     ctx.stroke();
   }
   for (let fx = -12; fx <= 12; fx += 4) sakura(ctx, fx, -0.2 + Math.abs(fx) * 0.04, 1.3, P.gold, '#ffffff');
+  // Tiny white dots between the gold flowers.
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  for (let fx = -14; fx <= 14; fx += 4) {
+    ctx.beginPath();
+    ctx.arc(fx, -0.2 + Math.abs(fx) * 0.04, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
+
+  // The white underskirt (sokchima) just peeking below the hem.
+  ctx.strokeStyle = '#fbf6ee';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(-14.2, 5.3);
+  ctx.quadraticCurveTo(0, 8.1, 14.2, 5.3);
+  ctx.stroke();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(-13.8, 5.8);
+  ctx.quadraticCurveTo(0, 8.6, 13.8, 5.8);
+  ctx.stroke();
 
   // Jeogori: a short jacket over the shoulders, ending above the chima band.
   ctx.fillStyle = 'rgba(60,30,40,0.18)';
@@ -995,6 +1665,34 @@ function drawHanbok(ctx, walk) {
   ctx.fillStyle = jacket;
   ctx.fill();
   outline(ctx);
+  // A faint damask of tiny gold diamonds woven through the jacket.
+  ctx.save();
+  jacketPath();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(212,166,64,0.28)';
+  for (let row = 0; row < 5; row++) {
+    for (let col = -6; col <= 6; col++) {
+      const dx = col * 2 + (row % 2);
+      const dy = -39.2 + row * 2;
+      ctx.beginPath();
+      ctx.moveTo(dx, dy - 0.45);
+      ctx.lineTo(dx + 0.35, dy);
+      ctx.lineTo(dx, dy + 0.45);
+      ctx.lineTo(dx - 0.35, dy);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  // A thin gold-leaf trim just above the jacket's hem.
+  ctx.strokeStyle = P.goldDeep;
+  ctx.lineWidth = 0.4;
+  ctx.setLineDash([0.9, 0.5]);
+  ctx.beginPath();
+  ctx.moveTo(-11.4, -30.6);
+  ctx.quadraticCurveTo(0, -28.7, 11.4, -30.6);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
   // Sleeves: slim, the classic curved underside (baerae), red cuffs (kkeutdong).
   for (const dir of [-1, 1]) {
@@ -1009,8 +1707,40 @@ function drawHanbok(ctx, walk) {
     ctx.save();
     jeogoriSleevePath(ctx, dir, sway);
     ctx.clip();
+    ctx.fillStyle = 'rgba(212,166,64,0.28)';
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 5; col++) {
+        const dx = dir * (6.5 + col * 2 + (row % 2));
+        const dy = -38 + row * 2;
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 0.45);
+        ctx.lineTo(dx + 0.35, dy);
+        ctx.lineTo(dx, dy + 0.45);
+        ctx.lineTo(dx - 0.35, dy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
     ctx.fillStyle = P.cuff;
     ctx.fillRect(dir < 0 ? -18 : 4, -18.6, 14, 5.4);
+    ctx.strokeStyle = 'rgba(255,220,180,0.55)';
+    ctx.lineWidth = 0.2;
+    ctx.setLineDash([0.45, 0.35]);
+    ctx.beginPath();
+    ctx.moveTo(dir * 5, -17.8);
+    ctx.lineTo(dir * 17, -17.8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // The white inner lining showing at the cuff's edge.
+    ctx.strokeStyle = '#fbf6ee';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(dir * 6, -13.9);
+    ctx.lineTo(dir * 10 + sway * 0.6, -13.85);
+    ctx.quadraticCurveTo(dir * 13.8 + sway, -13.7, dir * 14.2 + sway, -16);
+    ctx.stroke();
+    // Gold-leaf flowers stamped along the red cuff.
+    for (const cx of [7.4, 9.8, 12.2, 14.4]) sakura(ctx, dir * cx + sway, -16, 0.75, P.gold, P.cuff);
     ctx.strokeStyle = P.gold;
     ctx.lineWidth = 0.5;
     ctx.beginPath();
@@ -1028,6 +1758,32 @@ function drawHanbok(ctx, walk) {
     ctx.moveTo(dir * 8.4, -33);
     ctx.lineTo(dir * 7.4, -20);
     ctx.stroke();
+    // Folds gathering at the underarm.
+    ctx.strokeStyle = 'rgba(160,110,30,0.3)';
+    ctx.lineWidth = 0.3;
+    for (const dy of [0, 1.4]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 8.6, -33 + dy);
+      ctx.quadraticCurveTo(dir * 10, -32.2 + dy, dir * 11.6, -32.8 + dy);
+      ctx.stroke();
+    }
+    // Soft creases where the sleeve bends at the elbow.
+    ctx.strokeStyle = 'rgba(160,110,30,0.35)';
+    ctx.lineWidth = 0.35;
+    for (const [y0, y1] of [[-26, -24.6], [-23.6, -22.4]]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 14.2 + sway, y0);
+      ctx.quadraticCurveTo(dir * 12.4 + sway * 0.8, y0 + 0.2, dir * 10.6, y1);
+      ctx.stroke();
+    }
+    // An embroidered pink flower on each shoulder with a gold centre.
+    sakura(ctx, dir * 11.8, -35.4, 1.4, P.ribbon, P.gold);
+    ctx.strokeStyle = 'rgba(95,191,138,0.8)';
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(dir * 11.8, -34.2);
+    ctx.quadraticCurveTo(dir * 12.6, -32.6, dir * 13.4, -32.4);
+    ctx.stroke();
   }
 
   // Neck, then the git collar crossing to the wearer's right with its white
@@ -1039,6 +1795,19 @@ function drawHanbok(ctx, walk) {
   ctx.lineTo(2.6, -41);
   ctx.lineTo(0, -36.5);
   ctx.closePath();
+  ctx.fill();
+  // A fine gold chain with a tiny pink heart, resting at the base of her neck.
+  ctx.strokeStyle = P.gold;
+  ctx.lineWidth = 0.22;
+  ctx.beginPath();
+  ctx.moveTo(-2.5, -41.6);
+  ctx.quadraticCurveTo(0, -38.8, 2.5, -41.6);
+  ctx.stroke();
+  ctx.fillStyle = P.ribbonDeep;
+  ctx.beginPath();
+  ctx.moveTo(0, -38.2);
+  ctx.bezierCurveTo(-0.9, -38.9, -0.6, -39.9, 0, -39.4);
+  ctx.bezierCurveTo(0.6, -39.9, 0.9, -38.9, 0, -38.2);
   ctx.fill();
   ctx.lineCap = 'round';
   for (const dir of [1, -1]) {
@@ -1054,6 +1823,25 @@ function drawHanbok(ctx, walk) {
     ctx.strokeStyle = P.dongjeong;
     ctx.lineWidth = 1.1;
     ctx.stroke();
+    // Small gold dots stamped along the purple collar.
+    ctx.fillStyle = 'rgba(255,209,102,0.85)';
+    for (let i = 1; i <= 5; i++) {
+      const u = i / 6;
+      const x = (1 - u) ** 2 * dir * 4.6 + 2 * (1 - u) * u * dir * 3.4 + u ** 2 * dir * -2.4;
+      const y = (1 - u) ** 2 * -41 + 2 * (1 - u) * u * -35.4 + u ** 2 * -30.6;
+      ctx.beginPath();
+      ctx.arc(x + dir * 0.6, y + 0.3, 0.22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Fine running stitches along the collar.
+    ctx.setLineDash([0.5, 0.4]);
+    ctx.beginPath();
+    ctx.moveTo(dir * 5.4, -40.6);
+    ctx.quadraticCurveTo(dir * 4.2, -34.8, dir * -1.6, -29.8);
+    ctx.strokeStyle = 'rgba(255,220,255,0.6)';
+    ctx.lineWidth = 0.2;
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
   ctx.lineCap = 'butt';
 
@@ -1068,6 +1856,20 @@ function drawHanbok(ctx, walk) {
     ctx.beginPath();
     ctx.roundRect(-0.9, 0, 1.8, len, 0.6);
     outline(ctx, 0.35);
+    // Gold-leaf dots down the ribbon, and a notched (swallowtail) end.
+    ctx.fillStyle = P.gold;
+    for (let d = 2; d < len - 2; d += 2.6) {
+      ctx.beginPath();
+      ctx.arc(0, d, 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = P.chimaTop;
+    ctx.beginPath();
+    ctx.moveTo(-0.95, len + 0.05);
+    ctx.lineTo(0, len - 1.1);
+    ctx.lineTo(0.95, len + 0.05);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
   ctx.fillStyle = P.goreum;
@@ -1075,11 +1877,184 @@ function drawHanbok(ctx, walk) {
   ctx.ellipse(kx - 3.4, ky - 0.2, 3.4, 1.5, -0.15, 0, Math.PI * 2);
   ctx.fill();
   outline(ctx, 0.4);
+  ctx.strokeStyle = 'rgba(120,10,30,0.45)';
+  ctx.lineWidth = 0.3;
+  for (const dy of [-0.7, 0.7]) {
+    ctx.beginPath();
+    ctx.moveTo(kx - 1.2, ky + dy * 0.3);
+    ctx.quadraticCurveTo(kx - 3, ky + dy * 1.2, kx - 5.6, ky + dy * 0.6 - 0.3);
+    ctx.stroke();
+  }
+  sakura(ctx, kx - 3.6, ky - 0.2, 0.8, P.gold, '#ffffff');
   ctx.fillStyle = P.goreumDeep;
   ctx.beginPath();
   ctx.arc(kx, ky, 1.2, 0, Math.PI * 2);
   ctx.fill();
   outline(ctx, 0.35);
+
+  // Norigae: a jade butterfly pendant on a knotted cord with a long tassel,
+  // hanging from the bow.
+  {
+    const nx = 1.6;
+    ctx.strokeStyle = P.goreumDeep;
+    ctx.lineWidth = 0.45;
+    ctx.beginPath();
+    ctx.moveTo(kx + 0.8, ky + 0.8);
+    ctx.quadraticCurveTo(nx - 0.4, ky + 1.6, nx, -27.6);
+    ctx.stroke();
+    // The jade butterfly.
+    ctx.fillStyle = '#7fd1b9';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(nx + side * 1, -26.6, 1.1, 0.8, side * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      outline(ctx, 0.25);
+      ctx.beginPath();
+      ctx.ellipse(nx + side * 0.8, -25.4, 0.7, 0.55, side * -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      outline(ctx, 0.25);
+    }
+    ctx.fillStyle = P.goldDeep;
+    ctx.fillRect(nx - 0.2, -27.6, 0.4, 2.8);
+    // A decorative knot (maedeup), then the gold cap and pink tassel.
+    ctx.fillStyle = P.goreum;
+    ctx.beginPath();
+    ctx.moveTo(nx, -24.4);
+    ctx.lineTo(nx + 0.9, -23.4);
+    ctx.lineTo(nx, -22.4);
+    ctx.lineTo(nx - 0.9, -23.4);
+    ctx.closePath();
+    ctx.fill();
+    outline(ctx, 0.25);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 0.15;
+    ctx.beginPath();
+    ctx.moveTo(nx - 0.45, -23.4);
+    ctx.lineTo(nx + 0.45, -23.4);
+    ctx.moveTo(nx, -23.85);
+    ctx.lineTo(nx, -22.95);
+    ctx.stroke();
+    roundRect(ctx, nx - 0.6, -22.2, 1.2, 0.9, 0.3, P.gold);
+    ctx.strokeStyle = P.ribbon;
+    ctx.lineWidth = 0.3;
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(nx + i * 0.16, -21.3);
+      ctx.lineTo(nx + i * 0.32, -16.4);
+      ctx.stroke();
+    }
+    // Made a samjak (three-pendant) norigae: a coral-bead cluster and a gold
+    // flower hang either side of the jade, each with its own shorter tassel.
+    for (const [side, kind, tassel] of [[-1, 'coral', '#a06ad0'], [1, 'gold', '#ffd166']]) {
+      const sx = nx + side * 2.4;
+      ctx.strokeStyle = P.goreumDeep;
+      ctx.lineWidth = 0.35;
+      ctx.beginPath();
+      ctx.moveTo(nx, -27.6);
+      ctx.quadraticCurveTo(sx, -27.4, sx, -25.8);
+      ctx.stroke();
+      if (kind === 'coral') {
+        ctx.fillStyle = '#e8505a';
+        for (const [bx, by] of [[0, -25.3], [-0.5, -24.6], [0.5, -24.6], [0, -23.9]]) {
+          ctx.beginPath();
+          ctx.arc(sx + bx, by, 0.42, 0, Math.PI * 2);
+          ctx.fill();
+          outline(ctx, 0.15);
+        }
+      } else {
+        sakura(ctx, sx, -24.6, 1, P.gold, P.goldDeep);
+      }
+      roundRect(ctx, sx - 0.45, -23.2, 0.9, 0.7, 0.25, P.goldDeep);
+      ctx.strokeStyle = tassel;
+      ctx.lineWidth = 0.25;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(sx + i * 0.14, -22.5);
+        ctx.lineTo(sx + i * 0.28, -19);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // A jumeoni (silk lucky pouch) hanging at her side below the sleeve: navy
+  // with a gold 福 (good fortune), a red drawstring knot and a small tassel.
+  {
+    const px = -10.8;
+    const py = -9.6;
+    ctx.strokeStyle = P.goreumDeep;
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(px + 1.4, -13.4);
+    ctx.lineTo(px, py - 2.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px - 1.8, py - 1.6);
+    ctx.quadraticCurveTo(px - 2.6, py + 1.8, px, py + 2.4);
+    ctx.quadraticCurveTo(px + 2.6, py + 1.8, px + 1.8, py - 1.6);
+    ctx.quadraticCurveTo(px, py - 2.2, px - 1.8, py - 1.6);
+    ctx.closePath();
+    ctx.fillStyle = '#2d3a7a';
+    ctx.fill();
+    outline(ctx, 0.3);
+    // Gathered pleats at the neck, the drawstring and its knot.
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 0.18;
+    for (const dx of [-1, 0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(px + dx * 0.9, py - 1.7);
+      ctx.lineTo(px + dx * 1.1, py - 0.7);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = P.goreum;
+    ctx.lineWidth = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(px - 1.7, py - 1.2);
+    ctx.quadraticCurveTo(px, py - 0.7, px + 1.7, py - 1.2);
+    ctx.stroke();
+    ctx.fillStyle = P.goreum;
+    ctx.beginPath();
+    ctx.arc(px, py - 2.6, 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = P.gold;
+    ctx.font = 'bold 1.9px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('福', px, py + 0.6);
+    // A ring of gold embroidery dots round the 福.
+    ctx.fillStyle = 'rgba(255,209,102,0.8)';
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(px + Math.cos(a) * 1.35, py + 0.6 + Math.sin(a) * 1.25, 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = P.ribbon;
+    ctx.lineWidth = 0.22;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(px + i * 0.15, py + 2.4);
+      ctx.lineTo(px + i * 0.3, py + 4.4);
+      ctx.stroke();
+    }
+    roundRect(ctx, px - 0.4, py + 2.2, 0.8, 0.6, 0.2, P.gold);
+  }
+
+  // A small brass librarian's badge pinned on her jacket: "사서 은미".
+  roundRect(ctx, 5.45, -34.2, 4.8, 2.4, 0.5, 'rgba(90,60,20,0.25)');
+  roundRect(ctx, 5.2, -34.5, 4.8, 2.4, 0.5, P.gold);
+  ctx.beginPath();
+  ctx.roundRect(5.2, -34.5, 4.8, 2.4, 0.5);
+  outline(ctx, 0.3);
+  ctx.strokeStyle = 'rgba(120,80,20,0.6)';
+  ctx.lineWidth = 0.15;
+  ctx.beginPath();
+  ctx.roundRect(5.5, -34.2, 4.2, 1.8, 0.35);
+  ctx.stroke();
+  ctx.fillStyle = '#5a3a1a';
+  ctx.font = 'bold 1.25px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('사서 은미', 7.6, -33.3);
 
   // Hands folded in front, peeking from the cuffs.
   ctx.fillStyle = P.skin;
@@ -1092,4 +2067,25 @@ function drawHanbok(ctx, walk) {
   ctx.ellipse(1.6, -14.8, 2.4, 1.35, -0.2, 0, Math.PI * 2);
   ctx.fill();
   outline(ctx, 0.4);
+  ctx.strokeStyle = P.skinShade;
+  ctx.lineWidth = 0.3;
+  for (const fx of [2.2, 3.1]) {
+    ctx.beginPath();
+    ctx.moveTo(fx, -15.5);
+    ctx.lineTo(fx + 0.4, -14.1);
+    ctx.stroke();
+  }
+  for (const fx of [-2.6, -3.4]) {
+    ctx.beginPath();
+    ctx.moveTo(fx, -15.9);
+    ctx.lineTo(fx - 0.3, -14.6);
+    ctx.stroke();
+  }
+  // Pink-painted nails.
+  ctx.fillStyle = '#ff9fbf';
+  for (const [nx, ny] of [[3.4, -14.6], [3.1, -13.9], [-3.4, -15.3]]) {
+    ctx.beginPath();
+    ctx.ellipse(nx, ny, 0.35, 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }

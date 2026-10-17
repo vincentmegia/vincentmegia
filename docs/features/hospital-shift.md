@@ -253,7 +253,7 @@ The user asked for a new project, "hospital shift." When asked, they chose:
   better than library game and kitchen game" — she moved off `people.js`
   to her own anime-style renderer, `web/static/js/hospital/
   kimono-himura.js` (`drawKimonoHimura`, anchored at her feet like
-  `drawPerson`; Library Shift draws its librarian, Coral James, with the
+  `drawPerson`; Library Shift draws its librarian, Eun-mi (originally Coral James), with the
   same renderer: `cap: false` drops the nurse cap and `look: 'coral'`
   swaps in `CORAL_PALETTE`, her own hair, glasses and ribbon, and a
   Korean hanbok body (`drawHanbok`) in place of the kimono.
