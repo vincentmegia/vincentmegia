@@ -719,7 +719,38 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   end nudged from x 740 to 755 so the tote clears the shelf) and paces
   the open aisle between the Reference Shelf and the Stairs/Elevator. At
   the bigger size his old loop around the shelf overlapped the Reading
-  Nook. He's set dressing, not clickable.
+  Nook. He was set dressing until "make him HELP the player"; see below.
+
+  He does things now ("make min-jun do smth"): at each corner of his walk
+  he stops for a few seconds and either reads (his free arm comes up
+  across his chest holding an open blue book, a page turning over every
+  ~2.4 s, his head dipped toward it; ~6 s), hums (his head bops and violet
+  and pink notes drift up beside it; ~4.5 s), or, when Coral is on his
+  floor within 260 px, waves (free arm raised and rocking, a "안녕!"
+  speech bubble popping in; ~2.6 s). He never waves twice running and
+  otherwise alternates reading and humming. The choice and durations live
+  in `web/static/js/library/minjun-actions.js` (`pickMinjunAction`,
+  `MINJUN_ACTION_SECONDS`), the poses in `drawMinjun`'s `action`/`actionT`
+  options; both are unit-tested in `minjun.test.js`.
+
+  He helps ("make him HELP the player"), in the spirit of Hospital
+  Shift's Orderly: click him (2nd Floor, Top-Down) and Coral walks up
+  beside him, following him if he's moving. He stops and waits while she
+  comes. If she's carrying a book, he takes it and shelves it for her
+  (`minjunShelveCarriedBook` in `engine-state.js`): the book is cleared,
+  she gets the usual SHELVED_BOOK_TIP_GARD shelving tip with no minigame
+  and no mistake risk, a Coin Hunt book's coins are skipped, and the toast
+  reads `Min-jun: "제가 할게요!"` ("I'll do it!"). He raises his arm with a
+  "제가 할게요!" bubble (the `help` action), then can't take another book
+  for MINJUN_HELP_COOLDOWN_SECONDS (60, `rules.js` §18). Empty-handed, he
+  asks her to bring him a book from the Return Cart; on cooldown, the
+  toast says how long is left. While she's carrying a book, his name chip
+  reads "(click: shelve it)" or "(busy Ns)". It's a trade-off rather than
+  a free pass: he's upstairs, so a 1st-floor book still means a trip up
+  the stairs. Not available in First Person Mode, where a canvas click is
+  the interact action. State fields: `minjunCooldownSeconds`,
+  `minjunHelps`. Covered by `engine-state.test.js` and two e2e tests
+  (shelving a carried book; asking empty-handed).
 
 e2e changes: the Boss's Office closing-wait test gives the wait 4 s
 (the office is now about 2 s from the start, so a 2 s wait ended before

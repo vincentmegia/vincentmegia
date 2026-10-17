@@ -50,6 +50,7 @@ import {
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
+import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import { drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from './hospital/anime-people.js';
 import {
@@ -126,6 +127,8 @@ import {
   brewCoffee,
   canReadBook,
   finishReading,
+  canMinjunHelp,
+  minjunShelveCarriedBook,
   dropCarriedBook,
   startleFromHallucination,
 } from './library/engine-state.js';
@@ -337,13 +340,14 @@ function personalityForId(id) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x
  * @param {number} y
- * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number, walking?: boolean}} [opts]
+ * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number, walking?: boolean, action?: string|null, actionT?: number}} [opts]
+ *   `action`/`actionT` are Min-jun's: what he's doing while stopped, and for how long.
  */
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
   const t = performance.now() / 1000;
   const scale = opts.scale ?? 1;
   if (opts.personalityKey === 'minjun') {
-    drawMinjun(ctx, x, y, { scale, t, walking: Boolean(opts.walking) });
+    drawMinjun(ctx, x, y, { scale, t, walking: Boolean(opts.walking), action: opts.action ?? null, actionT: opts.actionT ?? 0 });
     return;
   }
   if (opts.personalityKey === 'librarian') {
@@ -483,13 +487,23 @@ export function init(canvas, elements) {
   function resetAmbient() {
     ambient = AMBIENT_STAFF.map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
-      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2 };
+      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null };
     });
   }
 
   function updateAmbient(dt) {
     for (const a of ambient) {
-      if (a.pause > 0) { a.pause -= dt; continue; }
+      // Min-jun stands still while Coral is on her way to hand him a book.
+      if (a.key === 'minjun' && moveTarget?.minjun && a.pause <= 0) {
+        a.action = null;
+        continue;
+      }
+      if (a.pause > 0) {
+        a.pause -= dt;
+        a.actionT += dt;
+        if (a.pause <= 0) a.action = null;
+        continue;
+      }
       const [tx, ty] = a.waypoints[a.target];
       const dx = tx - a.x;
       const dy = ty - a.y;
@@ -500,6 +514,15 @@ export function init(canvas, elements) {
         a.y = ty;
         a.pause = 0.8 + random() * 2.2;
         a.target = (a.target + 1) % a.waypoints.length;
+        if (a.key === 'minjun') {
+          // Min-jun stops to do something: read, hum, or wave at Coral when
+          // she's nearby on his floor.
+          const coralNear = currentFloor === a.floor && Math.hypot(player.x - a.x, player.y - a.y) < 260;
+          a.action = pickMinjunAction({ coralNear, last: a.lastAction, random });
+          a.lastAction = a.action;
+          a.actionT = 0;
+          a.pause = MINJUN_ACTION_SECONDS[a.action] * (0.85 + random() * 0.3);
+        }
       } else {
         a.x += (dx / dist) * step;
         a.y += (dy / dist) * step;
@@ -507,12 +530,49 @@ export function init(canvas, elements) {
     }
   }
 
+  /** Min-jun's name chip says when he can take Coral's book, like Hospital Shift's Orderly. */
+  function ambientLabel(a) {
+    if (a.key !== 'minjun' || !shiftState?.carriedBook || shiftState.phase !== 'playing') return a.name;
+    const wait = Math.ceil(shiftState.minjunCooldownSeconds ?? 0);
+    return wait > 0 ? `${a.name} (busy ${wait}s)` : `${a.name} (click: shelve it)`;
+  }
+
+  /** Min-jun on the current floor, if (x, y) is on him (his drawn figure, tote and books included). */
+  function minjunAtPoint(x, y) {
+    const mj = ambient.find((a) => a.key === 'minjun' && a.floor === currentFloor);
+    if (!mj) return null;
+    const k = mj.scale ?? 1;
+    return Math.abs(x - mj.x) <= 22 * k && y <= mj.y + 8 * k && y >= mj.y - 78 * k ? mj : null;
+  }
+
+  /** Coral reached Min-jun: he takes the carried book and shelves it, if he can. */
+  function askMinjunForHelp() {
+    const mj = ambient.find((a) => a.key === 'minjun');
+    if (!shiftState || shiftState.phase !== 'playing' || !mj) return;
+    if (!shiftState.carriedBook) {
+      showToast('Min-jun: "Bring me a book from the Return Cart and I\'ll shelve it for you!"');
+      return;
+    }
+    if (!canMinjunHelp(shiftState)) {
+      if (shiftState.minjunCooldownSeconds > 0) showToast(`Min-jun is still shelving the last one — ask again in ${Math.ceil(shiftState.minjunCooldownSeconds)}s.`);
+      return;
+    }
+    const title = shiftState.carriedBook.title;
+    const coins = shiftState.carriedBook.isCoinHunt;
+    shiftState = minjunShelveCarriedBook(shiftState);
+    mj.action = 'help';
+    mj.lastAction = 'help';
+    mj.actionT = 0;
+    mj.pause = MINJUN_ACTION_SECONDS.help;
+    showToast(`Min-jun: "제가 할게요!" — he shelves “${title}” for you. +${SHELVED_BOOK_TIP_GARD}g${coins ? ' (no time to hunt its coins)' : ''}`, 3.5);
+  }
+
   /** `inFront` picks the staff drawn after the player (lower on screen), so people overlap back-to-front. */
   function drawAmbient(inFront) {
     for (const a of ambient) {
       if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
-      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? 0.8, walking: a.pause <= 0 });
-      drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
+      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? 0.8, walking: a.pause <= 0, action: a.action, actionT: a.actionT });
+      drawLabelChip(ctx, a.x, a.y + 20, ambientLabel(a), '9px sans-serif');
     }
   }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -736,6 +796,14 @@ export function init(canvas, elements) {
 
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
+    if (moveTarget.minjun) {
+      // Walk up beside him (on whichever side Coral's coming from).
+      const mj = ambient.find((a) => a.key === 'minjun');
+      if (!mj || mj.floor !== currentFloor) { moveTarget = null; return; }
+      const side = player.x < mj.x ? -1 : 1;
+      moveTarget.x = mj.x + side * 46;
+      moveTarget.y = mj.y;
+    }
     const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
     const step = 240 * sanityMultiplier * deltaSeconds;
     const dx = moveTarget.x - player.x;
@@ -746,8 +814,10 @@ export function init(canvas, elements) {
       player.x = clamped.x;
       player.y = clamped.y;
       const arrivedStation = moveTarget.station;
+      const toMinjun = moveTarget.minjun;
       moveTarget = null;
       if (arrivedStation) handleArrival(arrivedStation);
+      else if (toMinjun) askMinjunForHelp();
     } else {
       const next = clampToCanvas(player.x + (dx / dist) * step, player.y + (dy / dist) * step);
       player.x = next.x;
@@ -1715,6 +1785,12 @@ export function init(canvas, elements) {
         return;
       }
 
+      if (minjunAtPoint(x, y)) {
+        waitingAtBossOffice = false;
+        moveTarget = { x: player.x, y: player.y, station: null, minjun: true };
+        return;
+      }
+
       const finePatron = finesCounterSlotAtPoint(x, y);
       if (finePatron) {
         commitStationTarget(stations.find((s) => s.kind === 'fines-counter'), null);
@@ -1742,7 +1818,7 @@ export function init(canvas, elements) {
     hoverStation = stationAtPoint(x, y, stationsOnFloor(stations, currentFloor));
     // A hand cursor over anything clickable (stations, queued patrons,
     // Return Cart books), so it's clear patrons can be clicked.
-    const clickable = hoverStation || frontDeskSlotAtPoint(x, y) || finesCounterSlotAtPoint(x, y) || returnCartSlotAtPoint(x, y);
+    const clickable = hoverStation || frontDeskSlotAtPoint(x, y) || finesCounterSlotAtPoint(x, y) || returnCartSlotAtPoint(x, y) || minjunAtPoint(x, y);
     canvas.style.cursor = clickable ? 'pointer' : '';
   }
 
@@ -3497,6 +3573,10 @@ export function init(canvas, elements) {
       attemptInteractNow: () => attemptInteract(),
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
       getShiftState: () => shiftState,
+      getMinjun() {
+        const mj = ambient.find((a) => a.key === 'minjun');
+        return mj ? { x: mj.x, y: mj.y, floor: mj.floor, scale: mj.scale ?? 1, action: mj.action } : null;
+      },
       isBossOfficeReady: () => shiftState && isBossOfficeReady(shiftState),
       spawnBookNow(isCoinHunt) { if (shiftState?.phase === 'playing') spawnBook(Boolean(isCoinHunt)); },
       spawnFineNow(amount) { if (shiftState?.phase === 'playing') spawnFine(amount); },

@@ -28,6 +28,8 @@ import {
   dropCarriedBook,
   startleFromHallucination,
   finishReading,
+  canMinjunHelp,
+  minjunShelveCarriedBook,
   LIBRARY_MOOD_MAX,
   SANITY_MAX,
 } from './engine-state.js';
@@ -58,6 +60,7 @@ import {
   UNSHELVED_BOOK_PENALTY_GARD,
   MESSY_CART_THRESHOLD,
   MESSY_CART_MOOD_DRAIN_PER_SECOND,
+  MINJUN_HELP_COOLDOWN_SECONDS,
 } from './rules.js';
 
 const SHIFT_1 = 1;
@@ -845,5 +848,43 @@ describe('Shelving incentives (v2.18)', () => {
     state = tick(state, CLOSING_WAIT_SECONDS);
     state = enterBossOffice({ ...state, zeroSanitySeconds: 0, zeroMoodSeconds: 0, complaints: 0 });
     assert.equal(state.payout, shiftPaycheck(0) - 3 * UNSHELVED_BOOK_PENALTY_GARD);
+  });
+});
+
+describe('Min-jun shelving for you', () => {
+  const BOOK = { id: 'mj1', genreId: 'mystery', isCoinHunt: false };
+  const carrying = (book = BOOK, overrides = {}) => pickUpBook(addBookToCart(playingState(overrides), book), book.id);
+
+  test('he takes the carried book, shelves it with the usual tip, and starts his cooldown', () => {
+    const before = carrying();
+    assert.equal(canMinjunHelp(before), true);
+    const after = minjunShelveCarriedBook(before);
+    assert.equal(after.carriedBook, null);
+    assert.equal(after.bonusGard, before.bonusGard + SHELVED_BOOK_TIP_GARD);
+    assert.equal(after.minjunCooldownSeconds, MINJUN_HELP_COOLDOWN_SECONDS);
+    assert.equal(after.minjunHelps, 1);
+    assert.equal(after.mistakeCount, before.mistakeCount);
+  });
+
+  test('a Coin Hunt book gets shelved too, but without its coins', () => {
+    const after = minjunShelveCarriedBook(carrying({ id: 'mj2', genreId: 'scifi', isCoinHunt: true }));
+    assert.equal(after.carriedBook, null);
+    assert.equal(after.bonusGard, SHELVED_BOOK_TIP_GARD);
+  });
+
+  test("he can't help with empty hands, mid-minigame, or on cooldown, until the cooldown ticks down", () => {
+    assert.equal(canMinjunHelp(playingState()), false);
+    const atShelf = arriveAtShelf(carrying(), 'mystery');
+    assert.equal(minjunShelveCarriedBook(atShelf), atShelf);
+
+    let state = minjunShelveCarriedBook(carrying());
+    state = pickUpBook(addBookToCart(state, { id: 'mj3', genreId: 'kids', isCoinHunt: false }), 'mj3');
+    assert.equal(canMinjunHelp(state), false);
+    assert.equal(minjunShelveCarriedBook(state), state);
+    state = tick(state, MINJUN_HELP_COOLDOWN_SECONDS - 1);
+    assert.equal(canMinjunHelp(state), false);
+    state = tick(state, 1.5);
+    assert.equal(state.minjunCooldownSeconds, 0);
+    assert.equal(canMinjunHelp(state), true);
   });
 });

@@ -1,7 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { drawMinjun, isBlinkingAt, MINJUN_BOOKS } from './minjun.js';
+import { drawMinjun, isBlinkingAt, MINJUN_BOOKS, MINJUN_ACTIONS } from './minjun.js';
+import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './minjun-actions.js';
 
 /** A canvas 2D context stand-in: every method is a no-op that counts calls. */
 function fakeContext() {
@@ -43,5 +44,39 @@ describe('Min-jun', () => {
   test('his books have Korean titles', () => {
     assert.equal(MINJUN_BOOKS.length, 3);
     for (const title of MINJUN_BOOKS) assert.match(title, /[가-힣]/);
+  });
+});
+
+describe('Min-jun actions', () => {
+  test('draws reading, humming and waving, mid-action', () => {
+    for (const action of MINJUN_ACTIONS) {
+      for (const actionT of [0, 0.3, 2.5]) {
+        const ctx = fakeContext();
+        drawMinjun(ctx, 100, 200, { t: 1, action, actionT });
+        assert.ok(ctx.calls.count > 500, `too little drawn for ${action} at ${actionT}`);
+      }
+    }
+  });
+
+  test('walking overrides an action', () => {
+    const still = fakeContext();
+    drawMinjun(still, 100, 200, { t: 2.3, walking: true });
+    const acting = fakeContext();
+    drawMinjun(acting, 100, 200, { t: 2.3, walking: true, action: 'read', actionT: 1 });
+    assert.equal(acting.calls.count, still.calls.count);
+  });
+
+  test('he waves when Coral is near, but not twice in a row', () => {
+    assert.equal(pickMinjunAction({ coralNear: true, last: null }), 'wave');
+    assert.equal(pickMinjunAction({ coralNear: true, last: 'read' }), 'wave');
+    assert.notEqual(pickMinjunAction({ coralNear: true, last: 'wave', random: () => 0 }), 'wave');
+  });
+
+  test('otherwise he alternates reading and humming', () => {
+    assert.equal(pickMinjunAction({ coralNear: false, last: 'read' }), 'hum');
+    assert.equal(pickMinjunAction({ coralNear: false, last: 'hum' }), 'read');
+    assert.equal(pickMinjunAction({ coralNear: false, last: null, random: () => 0.1 }), 'read');
+    assert.equal(pickMinjunAction({ coralNear: false, last: 'wave', random: () => 0.9 }), 'hum');
+    for (const a of ['read', 'hum', 'wave']) assert.ok(MINJUN_ACTION_SECONDS[a] > 0);
   });
 });

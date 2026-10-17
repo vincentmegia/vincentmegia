@@ -26,6 +26,8 @@
 //     complaints: number,           // v2.17: complaint letters this shift (COMPLAINT_GARD each, off the payout)
 //     zeroSanitySeconds: number,    // v2.16: seconds spent at 0 Sanity this shift (cuts pay — rules.js's hallucinationPayMultiplier)
 //     readingCooldownSeconds: number, // v2.10: seconds until the Reading Nook can be used again (0 = ready)
+//     minjunCooldownSeconds: number, // seconds until Min-jun can shelve another book for you (0 = ready)
+//     minjunHelps: number,          // books Min-jun shelved for you this shift
 //     walkouts: number,             // v2.9: patrons who left after waiting too long this shift
 //     (queued Fine/BorrowRequest entries carry waitRemainingSeconds/waitMaxSeconds — null = no wait timer)
 //
@@ -110,6 +112,7 @@ import {
   COMPLAINT_INTERVAL_SECONDS,
   COMPLAINT_GARD,
   SHELVED_BOOK_TIP_GARD,
+  MINJUN_HELP_COOLDOWN_SECONDS,
   UNSHELVED_BOOK_PENALTY_GARD,
   MESSY_CART_THRESHOLD,
   MESSY_CART_MOOD_DRAIN_PER_SECOND,
@@ -141,6 +144,8 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     rating: RATING_MAX,
     walkouts: 0,
     readingCooldownSeconds: 0,
+    minjunCooldownSeconds: 0,
+    minjunHelps: 0,
     zeroSanitySeconds: 0,
     zeroMoodSeconds: 0,
     unshelvedAtClose: 0,
@@ -668,6 +673,7 @@ export function tick(state, deltaSeconds, { pauseBorrowPatience = false } = {}) 
     ...state,
     sanity: clampSanity(state.sanity - SANITY_DRAIN_PER_SECOND * delta),
     readingCooldownSeconds: Math.max(0, (state.readingCooldownSeconds ?? 0) - delta),
+    minjunCooldownSeconds: Math.max(0, (state.minjunCooldownSeconds ?? 0) - delta),
   };
   if (next.sanity <= 0) {
     // Only the part of this tick after Sanity actually reached 0 counts.
@@ -847,4 +853,37 @@ export function dropCarriedBook(state) {
 export function startleFromHallucination(state) {
   if (state.phase !== 'playing') return state;
   return { ...state, sanity: clampSanity(state.sanity - HALLUCINATION_STARTLE_SANITY) };
+}
+
+/**
+ * Whether Min-jun can shelve the carried book for you right now: the shift
+ * is 'playing', you're carrying a book with no shelf minigame underway, and
+ * his cooldown has run out.
+ *
+ * @param {ShiftState} state
+ * @returns {boolean}
+ */
+export function canMinjunHelp(state) {
+  return state.phase === 'playing' && Boolean(state.carriedBook) && !state.shelfCheck && (state.minjunCooldownSeconds ?? 0) <= 0;
+}
+
+/**
+ * Min-jun takes the carried book and shelves it for you: the book is
+ * cleared, you get the usual SHELVED_BOOK_TIP_GARD (a Coin Hunt book's
+ * coins are skipped — he doesn't search it), and his
+ * MINJUN_HELP_COOLDOWN_SECONDS cooldown starts. A no-op unless
+ * `canMinjunHelp`.
+ *
+ * @param {ShiftState} state
+ * @returns {ShiftState}
+ */
+export function minjunShelveCarriedBook(state) {
+  if (!canMinjunHelp(state)) return state;
+  return {
+    ...state,
+    carriedBook: null,
+    bonusGard: state.bonusGard + SHELVED_BOOK_TIP_GARD,
+    minjunCooldownSeconds: MINJUN_HELP_COOLDOWN_SECONDS,
+    minjunHelps: (state.minjunHelps ?? 0) + 1,
+  };
 }

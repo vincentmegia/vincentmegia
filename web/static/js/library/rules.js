@@ -839,3 +839,13 @@ export const UNSHELVED_BOOK_PENALTY_GARD = 10;
 export const MESSY_CART_THRESHOLD = 8;
 /** ...draining this much Library Mood per second while it stays that way. */
 export const MESSY_CART_MOOD_DRAIN_PER_SECOND = 0.25;
+
+// ---------------------------------------------------------------------------
+// 18. Min-jun helps ("make him HELP the player") — the 2nd-floor student
+//     assistant takes the book Coral is carrying and shelves it for her
+//     (the usual shelving tip, no minigame, no Coin Hunt coins), then needs
+//     this long before he can take another.
+// ---------------------------------------------------------------------------
+
+/** Seconds after Min-jun shelves a book before he can take another. */
+export const MINJUN_HELP_COOLDOWN_SECONDS = 60;

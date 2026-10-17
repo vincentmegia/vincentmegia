@@ -109,11 +109,15 @@ function rr(ctx, x, y, w, h, r) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x - feet center
  * @param {number} y - feet line
- * @param {{scale?: number, t?: number, walking?: boolean}} [opts]
+ * @param {{scale?: number, t?: number, walking?: boolean, action?: MinjunAction|null, actionT?: number}} [opts]
+ *   `action` is what he's doing while stopped (see MINJUN_ACTIONS), and
+ *   `actionT` how many seconds he's been at it.
  */
 export function drawMinjun(ctx, x, y, opts = {}) {
   const k = opts.scale ?? 1;
   const t = opts.t ?? 0;
+  const action = opts.walking ? null : opts.action ?? null;
+  const at = opts.actionT ?? 0;
   const stride = opts.walking ? Math.sin(t * 8) : 0;
   const bob = opts.walking ? Math.abs(Math.sin(t * 8)) * 1.1 : 0;
   const breathe = opts.walking ? 0 : Math.sin(t * 1.7) * 0.35;
@@ -130,15 +134,137 @@ export function drawMinjun(ctx, x, y, opts = {}) {
   ctx.translate(0, -bob);
   drawLegs(ctx, stride);
   drawTote(ctx, stride, t);
-  drawFreeArm(ctx, stride, t);
+  // Reading, the free arm comes across in front of the vest, so it's drawn
+  // after the torso; waving or hanging, it's behind.
+  const armUp = action === 'wave' || action === 'help';
+  if (action !== 'read') drawFreeArm(ctx, stride, t, armUp ? at : null);
   drawTorso(ctx, breathe, t);
+  if (action === 'read') drawReadingArm(ctx);
   drawToteStrap(ctx, stride);
   drawKeychain(ctx, t, stride);
   drawWalletChain(ctx, t, stride);
   drawArmShadows(ctx);
   drawBookArm(ctx, stride);
+  if (action === 'read') drawOpenBook(ctx, at);
   drawNeckAndPhones(ctx, t);
+  ctx.save();
+  if (action === 'hum') {
+    // Bopping his head to the tune, pivoting at the neck.
+    ctx.translate(0, -46);
+    ctx.rotate(Math.sin(at * 5) * 0.07);
+    ctx.translate(0, 46 - Math.abs(Math.sin(at * 5)) * 0.5);
+  } else if (action === 'read') {
+    ctx.translate(0, 0.8); // head dipped toward the page
+  }
   drawHead(ctx, t, stride);
+  ctx.restore();
+  if (action === 'hum') drawMusicNotes(ctx, at);
+  if (action === 'wave') drawSpeechBubble(ctx, '안녕!', at);
+  if (action === 'help') drawSpeechBubble(ctx, '제가 할게요!', at); // "I'll do it!"
+  ctx.restore();
+}
+
+/** @typedef {'read' | 'hum' | 'wave' | 'help'} MinjunAction */
+
+/** What Min-jun can stop to do: read a book, hum a tune, wave hello to Coral, or take her book to shelve it. */
+export const MINJUN_ACTIONS = /** @type {const} */ (['read', 'hum', 'wave', 'help']);
+
+// -- Actions -------------------------------------------------------------------
+
+/** His free arm bent up across his chest, holding an open book. */
+function drawReadingArm(ctx) {
+  drawArm(ctx, [-10.6, -38], [-13.4, -27.5], [-7.4, -26.8], { watch: true });
+}
+
+/** The open book in his free hand, a page turning every couple of seconds. */
+function drawOpenBook(ctx, at) {
+  const cx = -1.2;
+  const cy = -27.6;
+  const w = 6; // half width
+  const h = 7.4;
+  // Cover peeking out round the pages.
+  rr(ctx, cx - w - 0.5, cy - h / 2 - 0.4, (w + 0.5) * 2, h + 0.9, 0.5);
+  fillPath(ctx, '#4fa8e0', 0.4);
+  // Two pages, bowing up from the spine.
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h / 2 + 0.6);
+    ctx.quadraticCurveTo(cx + dir * w * 0.5, cy - h / 2 - 0.3, cx + dir * w, cy - h / 2);
+    ctx.lineTo(cx + dir * w, cy + h / 2);
+    ctx.quadraticCurveTo(cx + dir * w * 0.5, cy + h / 2 - 0.3, cx, cy + h / 2 + 0.4);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(cx, 0, cx + dir * w, 0);
+    g.addColorStop(0, '#e6dcc4');
+    g.addColorStop(0.25, '#fbf6ea');
+    g.addColorStop(1, '#fbf6ea');
+    fillPath(ctx, g, 0.3);
+    // Lines of text.
+    ctx.fillStyle = 'rgba(60,60,80,0.4)';
+    for (let i = 0; i < 6; i++) {
+      const ly = cy - h / 2 + 1.1 + i * 0.85;
+      const len = i === 5 ? 0.5 : 0.85;
+      const x0 = dir < 0 ? cx - w + 0.7 : cx + 0.8;
+      ctx.fillRect(x0, ly, (w - 1.5) * len, 0.22);
+    }
+  }
+  // A page turning over: its free edge sweeps from right to left.
+  const phase = at % 2.4;
+  if (phase < 0.6) {
+    const ex = cx + Math.cos((phase / 0.6) * Math.PI) * w;
+    const lift = Math.sin((phase / 0.6) * Math.PI) * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h / 2 + 0.6);
+    ctx.quadraticCurveTo((cx + ex) / 2, cy - h / 2 - 0.3 - lift, ex, cy - h / 2 - lift * 0.5);
+    ctx.lineTo(ex, cy + h / 2 - lift * 0.5);
+    ctx.quadraticCurveTo((cx + ex) / 2, cy + h / 2 - 0.3 - lift, cx, cy + h / 2 + 0.4);
+    ctx.closePath();
+    fillPath(ctx, '#f3ecda', 0.25);
+  }
+  // His thumb and fingers over the book's left edge.
+  drawHand(ctx, cx - w - 0.3, cy + 0.6, -1.6, 0.6);
+}
+
+/** Little violet notes drifting up and fading as he hums. */
+function drawMusicNotes(ctx, at) {
+  for (let i = 0; i < 3; i++) {
+    const u = ((at + i * 0.7) % 2.1) / 2.1;
+    const x = 13 + i * 1.6 + Math.sin(u * 6 + i) * 1.2;
+    const y = -62 - u * 14;
+    ctx.globalAlpha = Math.min(1, (1 - u) * 2.5) * Math.min(1, u * 6);
+    ctx.fillStyle = i % 2 ? '#e8558f' : '#7c4cb4';
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 0.95, 0.7, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 0.85, y - 0.2);
+    ctx.lineTo(x + 0.85, y - 3.6);
+    ctx.quadraticCurveTo(x + 2.2, y - 2.8, x + 2, y - 1.6);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A small speech bubble above his head that pops in. */
+function drawSpeechBubble(ctx, text, at) {
+  const pop = Math.min(1, at * 5);
+  ctx.save();
+  ctx.translate(10, -84);
+  ctx.scale(pop, pop);
+  ctx.font = 'bold 3.6px sans-serif';
+  const w = ctx.measureText(text).width + 3.2;
+  rr(ctx, -w / 2, -3.4, w, 6, 2.4);
+  fillPath(ctx, '#ffffff', 0.4);
+  ctx.beginPath();
+  ctx.moveTo(-2.2, 2.4);
+  ctx.lineTo(-4.2, 5.2);
+  ctx.lineTo(-0.4, 2.5);
+  fillPath(ctx, '#ffffff', 0);
+  ctx.fillStyle = '#5a2c96';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, -0.3);
   ctx.restore();
 }
 
@@ -1276,17 +1402,25 @@ function drawHand(ctx, x, y, rot, curl = 0) {
 }
 
 /** His right arm (viewer's left) hangs free and swings opposite the stride, watch on the wrist. */
-function drawFreeArm(ctx, stride, t) {
+function drawFreeArm(ctx, stride, t, waveT = null) {
   const swing = -stride * 2.4 + Math.sin(t * 1.7) * 0.15;
   const shoulder = [-10.6, -38];
-  const elbow = [-12.6 + swing * 0.35, -27];
-  const wrist = [-12.4 + swing, -17.4];
+  let elbow = [-12.6 + swing * 0.35, -27];
+  let wrist = [-12.4 + swing, -17.4];
+  let rot = swing * 0.04;
+  if (waveT !== null) {
+    // Raised to wave: elbow out, forearm up, the hand rocking side to side.
+    const wag = Math.sin(waveT * 11);
+    elbow = [-17, -33.5];
+    wrist = [-17.6 + wag * 1.2, -43.5];
+    rot = Math.PI + wag * 0.25;
+  }
   drawArm(ctx, shoulder, elbow, wrist, { watch: true });
-  drawHand(ctx, wrist[0], wrist[1], swing * 0.04);
+  drawHand(ctx, wrist[0], wrist[1], rot);
   // A little plaster wrapped round one finger (paper cuts come with the job).
   ctx.save();
   ctx.translate(wrist[0], wrist[1]);
-  ctx.rotate(swing * 0.04);
+  ctx.rotate(rot);
   rr(ctx, 0.25, 2.1, 1.2, 0.75, 0.3);
   fillPath(ctx, '#f2d2a8', 0.2);
   ctx.fillStyle = 'rgba(160,110,70,0.6)';

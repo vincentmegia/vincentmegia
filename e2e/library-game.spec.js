@@ -291,6 +291,39 @@ test.describe('shelving books', () => {
 		await expect(page.locator('#library-toast')).toContainText('Picked up');
 	});
 
+	test('Min-jun shelves the carried book for you when you click him upstairs', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBookNow());
+		await walkToStation(page, 'return-cart');
+		const book = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook);
+		expect(book).not.toBe(null);
+
+		await page.locator('#library-floor-button').click();
+		const mj = await page.evaluate(() => window.__libraryGameTestHooks.getMinjun());
+		expect(mj.floor).toBe(2);
+		await clickCanvasPoint(page, { x: mj.x, y: mj.y - 40 * mj.scale });
+		await waitUntilArrived(page);
+
+		await expect(page.locator('#library-toast')).toContainText('제가 할게요');
+		await expect(page.locator('#library-toast')).toContainText(book.title);
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.carriedBook).toBe(null);
+		expect(state.minjunHelps).toBe(1);
+		expect(state.minjunCooldownSeconds).toBeGreaterThan(0);
+		expect((await page.evaluate(() => window.__libraryGameTestHooks.getMinjun())).action).toBe('help');
+	});
+
+	test('Min-jun asks for a book when you click him empty-handed', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-floor-button').click();
+		const mj = await page.evaluate(() => window.__libraryGameTestHooks.getMinjun());
+		await clickCanvasPoint(page, { x: mj.x, y: mj.y - 40 * mj.scale });
+		await waitUntilArrived(page);
+		await expect(page.locator('#library-toast')).toContainText('Bring me a book');
+	});
+
 	test('a wrong-shelf arrival blocks the skill-check (no silent mistake)', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
