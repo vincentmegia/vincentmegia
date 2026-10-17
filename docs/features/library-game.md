@@ -681,8 +681,40 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
     detailed"): each is now a real hair pin, a straight prong and a wavy
     prong joined by a rounded bend, with rubber-dipped tips, a dark metal
     edge and a thin highlight along the straight prong.
+  - Another pass ("make him more detailed"), face unchanged: a thin silver
+    hoop through the upper rim of his left ear (above the stud), a plain
+    silver ring on his free hand, a faded blue date stamp on the back of
+    that hand (from testing the desk stamp), and a small yellow star
+    sticker on one headphone cup.
+  - Another pass ("make him even more detailed"), sized to read in the game:
+    a canvas library tote on his right shoulder (viewer's left), hanging
+    behind his free arm and swinging as he walks. It has a canvas weave,
+    a stitched top hem, X-box stitching where the straps are sewn on, a
+    navy open-book logo printed over "도서관", a mint patch pocket with a
+    pen, and an enamel cat pin. A rolled poster with a pink band and an
+    orange book poke out of the top. The front strap runs up over his
+    upper arm to the shoulder; the back strap shows as a sliver behind the
+    arm. (His path was later nudged so it clears the Reference Shelf; see
+    below.)
+  - Another pass ("make him more detailed"), at his new 1.7× size: a mint
+    plush bear charm (pink inner ears, bow tie, stitched tummy) dangling on
+    a chain from the tote's top corner and swinging as he walks; a yellow
+    sticky note on the tote reading "반납" (returns); and a silver wallet
+    chain of alternating links from his right-hip belt loop, sagging round
+    to a back pocket.
 
-  He's drawn at 1.35× ("make min-jun bigger"; it was 1.05×) and paces
+  His eyes were opened up so they read at game size (the user: "I can
+  barely see his eyes"; they were near-black slits): the eye opening is
+  a little taller, the lash line follows it, the violet is a step
+  brighter, and the lid shadow is lighter. A bigger iris was tried and
+  then set back to its original size at the user's request; the pupils
+  were then enlarged instead (0.85×1.05 → 1.15×1.35, then shrunk in
+  two steps at the user's request to 0.8×1.0, just under the original, with the ring around
+  them, the iris lines and the lower crescent resized to match). The
+  sharp, winged look is unchanged.
+  He's drawn at 1.7× ("make min-jun bigger" took him from 1.05× to
+  1.35×, then "make him more bigger in game" to 1.7×, his path's shelf-side
+  end nudged from x 740 to 755 so the tote clears the shelf) and paces
   the open aisle between the Reference Shelf and the Stairs/Elevator. At
   the bigger size his old loop around the shelf overlapped the Reading
   Nook. He's set dressing, not clickable.

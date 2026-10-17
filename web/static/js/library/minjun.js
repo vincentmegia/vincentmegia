@@ -42,8 +42,9 @@ export const MINJUN_PALETTE = {
   hairStrand: 'rgba(90,70,80,0.55)',
   // Deep violet eyes (the user's pick).
   irisDark: '#150a22',
-  iris: '#3f1c66',
-  irisLight: '#7c4cb4',
+  // Brightened a step so the violet shows at game size.
+  iris: '#5a2c96',
+  irisLight: '#a476e0',
   irisTexture: 'rgba(176,130,230,0.45)',
   irisCrescent: 'rgba(196,150,246,0.6)',
   pupil: '#0b0614',
@@ -128,9 +129,12 @@ export function drawMinjun(ctx, x, y, opts = {}) {
 
   ctx.translate(0, -bob);
   drawLegs(ctx, stride);
+  drawTote(ctx, stride, t);
   drawFreeArm(ctx, stride, t);
   drawTorso(ctx, breathe, t);
+  drawToteStrap(ctx, stride);
   drawKeychain(ctx, t, stride);
+  drawWalletChain(ctx, t, stride);
   drawArmShadows(ctx);
   drawBookArm(ctx, stride);
   drawNeckAndPhones(ctx, t);
@@ -340,6 +344,276 @@ function drawSneaker(ctx, sx, lift) {
   ctx.lineTo(sx + 4, y0 + 5.2);
   ctx.stroke();
   ctx.restore();
+}
+
+// -- Tote bag -------------------------------------------------------------------
+
+// A canvas library tote hanging from his right shoulder (viewer's left),
+// behind the free arm, swinging a little as he walks.
+const TOTE = { l: -21, r: -11.6, top: -21.5, bottom: -6.5 };
+
+function drawTote(ctx, stride, t) {
+  const sw = stride * 0.6;
+  const { l, r, top, bottom } = TOTE;
+  ctx.save();
+  ctx.translate(sw, 0);
+  // The back strap, behind the arm and body, showing only as a sliver.
+  ctx.beginPath();
+  ctx.moveTo(l + 1.1, top + 0.6);
+  ctx.quadraticCurveTo(-18, -28, -14, -34);
+  ctx.lineTo(-13.3, -34);
+  ctx.quadraticCurveTo(-17.2, -28, l + 2.1, top + 0.6);
+  ctx.closePath();
+  fillPath(ctx, '#d9cfb8', 0.3);
+  // Things poking out of the top: a rolled poster with a rubber band and
+  // the corner of a book.
+  ctx.save();
+  ctx.translate(l + 2.4, top + 0.5);
+  ctx.rotate(-0.25);
+  rr(ctx, -0.9, -6.2, 1.8, 7, 0.9);
+  fillPath(ctx, '#bfe0f2', 0.3);
+  ctx.strokeStyle = 'rgba(60,110,150,0.45)';
+  ctx.lineWidth = 0.2;
+  ctx.beginPath();
+  ctx.ellipse(0, -6.2, 0.9, 0.35, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#e8558f';
+  ctx.fillRect(-0.9, -3.6, 1.8, 0.35);
+  ctx.restore();
+  rr(ctx, l + 4.2, top - 2.6, 3.4, 4, 0.4);
+  fillPath(ctx, '#f2a541', 0.3);
+  ctx.fillStyle = '#fbf3e0';
+  ctx.fillRect(l + 4.4, top - 2.4, 0.5, 3.6);
+  // The bag itself: slightly wider at the bottom, sagging under its load.
+  ctx.beginPath();
+  ctx.moveTo(l + 0.6, top);
+  ctx.lineTo(r - 0.6, top);
+  ctx.lineTo(r, bottom - 0.6);
+  ctx.quadraticCurveTo((l + r) / 2, bottom + 0.6, l, bottom - 0.6);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(l, 0, r, 0);
+  g.addColorStop(0, '#d9cfb8');
+  g.addColorStop(0.35, '#efe6d2');
+  g.addColorStop(1, '#e4d9c1');
+  fillPath(ctx, g, 0.5);
+  // Canvas weave: faint crossing lines, clipped to the bag.
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(150,130,100,0.16)';
+  ctx.lineWidth = 0.12;
+  for (let y = top + 0.8; y < bottom; y += 0.7) {
+    ctx.beginPath();
+    ctx.moveTo(l, y);
+    ctx.lineTo(r, y);
+    ctx.stroke();
+  }
+  for (let x = l + 0.5; x < r; x += 0.7) {
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  }
+  // A soft fold down the middle where the load pulls it.
+  ctx.fillStyle = 'rgba(120,100,70,0.12)';
+  ctx.beginPath();
+  ctx.ellipse((l + r) / 2 - 1, top + 7, 0.6, 5.5, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // The hemmed top band with dashed stitching.
+  ctx.fillStyle = 'rgba(150,130,100,0.25)';
+  ctx.fillRect(l + 0.6, top, r - l - 1.2, 1.1);
+  ctx.strokeStyle = 'rgba(110,90,60,0.55)';
+  ctx.lineWidth = 0.15;
+  ctx.setLineDash([0.4, 0.3]);
+  ctx.beginPath();
+  ctx.moveTo(l + 0.8, top + 1.4);
+  ctx.lineTo(r - 0.8, top + 1.4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // The printed library logo: a navy open book over "도서관".
+  const cx = (l + r) / 2 - 1.4;
+  const cy = top + 5.6;
+  ctx.fillStyle = P.vest;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 0.4);
+    ctx.quadraticCurveTo(cx + dir * 1, cy - 0.5, cx + dir * 2, cy - 0.2);
+    ctx.lineTo(cx + dir * 2, cy + 1.6);
+    ctx.quadraticCurveTo(cx + dir * 1, cy + 1.3, cx, cy + 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#efe6d2';
+  ctx.lineWidth = 0.14;
+  for (const dir of [-1, 1]) {
+    for (const k of [0.4, 0.85]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + dir * 0.4, cy + k + 0.1);
+      ctx.lineTo(cx + dir * 1.6, cy + k - 0.1);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = P.vest;
+  ctx.font = 'bold 1.5px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('도서관', cx, cy + 3.3);
+  ctx.fillRect(cx - 1.9, cy + 4.3, 3.8, 0.18);
+  // A mint patch pocket low on the front, with a pen clipped in.
+  rr(ctx, l + 1.2, bottom - 4.6, 4.2, 3.2, 0.4);
+  fillPath(ctx, '#8fe3c8', 0.3);
+  ctx.strokeStyle = 'rgba(30,110,85,0.5)';
+  ctx.lineWidth = 0.13;
+  ctx.setLineDash([0.35, 0.25]);
+  ctx.beginPath();
+  ctx.moveTo(l + 1.5, bottom - 4.1);
+  ctx.lineTo(r - 4.5, bottom - 4.1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  rr(ctx, l + 2, bottom - 5.1, 0.6, 1.9, 0.25);
+  fillPath(ctx, '#e8558f', 0.2);
+  // An enamel cat pin near the top corner.
+  {
+    const px = l + 2;
+    const py = top + 3;
+    ctx.beginPath();
+    ctx.moveTo(px - 0.75, py - 0.2);
+    ctx.lineTo(px - 0.6, py - 1);
+    ctx.lineTo(px - 0.2, py - 0.55);
+    ctx.lineTo(px + 0.2, py - 0.55);
+    ctx.lineTo(px + 0.6, py - 1);
+    ctx.lineTo(px + 0.75, py - 0.2);
+    ctx.arc(px, py - 0.1, 0.78, 0, Math.PI);
+    ctx.closePath();
+    fillPath(ctx, '#2a2028', 0.15);
+    ctx.fillStyle = '#ffd166';
+    for (const dx of [-0.3, 0.3]) {
+      ctx.beginPath();
+      ctx.arc(px + dx, py - 0.15, 0.14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // A yellow sticky note slapped on the front: "반납" (returns).
+  ctx.save();
+  ctx.translate(r - 2.8, bottom - 4.4);
+  ctx.rotate(0.12);
+  rr(ctx, -1.5, -1.4, 3, 2.8, 0.15);
+  fillPath(ctx, '#ffe58a', 0.18);
+  ctx.fillStyle = 'rgba(200,160,40,0.35)';
+  ctx.fillRect(-1.5, -1.4, 3, 0.6);
+  ctx.fillStyle = '#c0392b';
+  ctx.font = 'bold 1.15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('반납', 0, 0.25);
+  ctx.strokeStyle = 'rgba(192,57,43,0.7)';
+  ctx.lineWidth = 0.12;
+  ctx.beginPath();
+  ctx.moveTo(-0.9, 0.95);
+  ctx.lineTo(0.9, 0.95);
+  ctx.stroke();
+  ctx.restore();
+  // A little mint plush bear dangling on a chain from the top corner.
+  {
+    const swing = Math.sin(t * 2.4) * 0.18 + stride * 0.3;
+    ctx.save();
+    ctx.translate(l + 0.4, top + 0.6);
+    ctx.rotate(swing);
+    ctx.strokeStyle = '#c0c4cc';
+    ctx.lineWidth = 0.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.5, 0, Math.PI * 2);
+    ctx.moveTo(0, 0.5);
+    ctx.lineTo(0, 2);
+    ctx.stroke();
+    const by = 3.3;
+    // Ears, head, body, arms.
+    for (const dx of [-0.9, 0.9]) {
+      ctx.beginPath();
+      ctx.arc(dx, by - 1, 0.5, 0, Math.PI * 2);
+      fillPath(ctx, '#8fe3c8', 0.15);
+      ctx.fillStyle = '#ffc2d4';
+      ctx.beginPath();
+      ctx.arc(dx, by - 1, 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.ellipse(0, by + 2, 1.1, 1.2, 0, 0, Math.PI * 2);
+    fillPath(ctx, '#8fe3c8', 0.2);
+    ctx.beginPath();
+    ctx.arc(0, by, 1.3, 0, Math.PI * 2);
+    fillPath(ctx, '#8fe3c8', 0.2);
+    ctx.beginPath();
+    ctx.ellipse(0, by + 0.45, 0.6, 0.45, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#f6efe0';
+    ctx.fill();
+    ctx.fillStyle = '#1c1420';
+    for (const dx of [-0.5, 0.5]) {
+      ctx.beginPath();
+      ctx.arc(dx, by - 0.2, 0.17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.ellipse(0, by + 0.3, 0.2, 0.14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // A pink bow tie and a stitched seam down the tummy.
+    ctx.fillStyle = '#e8558f';
+    ctx.beginPath();
+    ctx.moveTo(0, by + 1.05);
+    ctx.lineTo(-0.55, by + 0.75);
+    ctx.lineTo(-0.55, by + 1.35);
+    ctx.closePath();
+    ctx.moveTo(0, by + 1.05);
+    ctx.lineTo(0.55, by + 0.75);
+    ctx.lineTo(0.55, by + 1.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,110,85,0.5)';
+    ctx.lineWidth = 0.1;
+    ctx.setLineDash([0.2, 0.15]);
+    ctx.beginPath();
+    ctx.moveTo(0, by + 1.5);
+    ctx.lineTo(0, by + 2.9);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  // Where the strap is sewn on: a stitched box with an X.
+  for (const sx of [l + 1.6, r - 2]) {
+    ctx.strokeStyle = 'rgba(110,90,60,0.6)';
+    ctx.lineWidth = 0.12;
+    ctx.strokeRect(sx - 0.55, top + 0.15, 1.1, 1.1);
+    ctx.beginPath();
+    ctx.moveTo(sx - 0.55, top + 0.15);
+    ctx.lineTo(sx + 0.55, top + 1.25);
+    ctx.moveTo(sx + 0.55, top + 0.15);
+    ctx.lineTo(sx - 0.55, top + 1.25);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** The tote's front strap, up over his shoulder (drawn over the shirt). */
+function drawToteStrap(ctx, stride) {
+  const sw = stride * 0.6;
+  const { l, r, top } = TOTE;
+  for (const [x0, w] of [[r - 2 + sw, 1.1]]) {
+    ctx.beginPath();
+    ctx.moveTo(x0 - w / 2, top + 0.6);
+    ctx.quadraticCurveTo(-12.6, -31, -8.8, -41.6);
+    ctx.lineTo(-7.4, -41.6);
+    ctx.quadraticCurveTo(-11.2, -31, x0 + w / 2, top + 0.6);
+    ctx.closePath();
+    fillPath(ctx, '#e4d9c1', 0.35);
+    ctx.strokeStyle = 'rgba(110,90,60,0.45)';
+    ctx.lineWidth = 0.12;
+    ctx.setLineDash([0.35, 0.25]);
+    ctx.beginPath();
+    ctx.moveTo(x0, top + 0.4);
+    ctx.quadraticCurveTo(-11.9, -31, -8.1, -41.2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
 // -- Torso ----------------------------------------------------------------------
@@ -738,6 +1012,32 @@ function drawTorso(ctx, breathe, t) {
   ctx.restore();
 }
 
+/** A silver wallet chain from his right-hip belt loop, sagging round to a back pocket. */
+function drawWalletChain(ctx, t, stride) {
+  const sag = Math.sin(t * 2.6 + 1) * 0.25 + stride * 0.4;
+  const p0 = [8, -16.4];
+  const c = [7.6 + sag * 0.5, -10.6 + Math.abs(sag) * 0.3];
+  const p1 = [10.3, -13.2];
+  // Oval links along the curve, alternating flat and edge-on.
+  for (let i = 0; i <= 12; i++) {
+    const u = i / 12;
+    const x = (1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * c[0] + u ** 2 * p1[0];
+    const y = (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * c[1] + u ** 2 * p1[1];
+    ctx.beginPath();
+    if (i % 2) ctx.ellipse(x, y, 0.18, 0.18, 0, 0, Math.PI * 2);
+    else ctx.ellipse(x, y, 0.42, 0.26, u * 1.6 - 0.6, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(30,30,40,0.7)';
+    ctx.lineWidth = 0.32;
+    ctx.stroke();
+    ctx.strokeStyle = '#d6dae4';
+    ctx.lineWidth = 0.18;
+    ctx.stroke();
+  }
+  // The clip on the belt loop.
+  rr(ctx, p0[0] - 0.45, p0[1] - 0.9, 0.9, 1.1, 0.3);
+  fillPath(ctx, '#c0c4cc', 0.2);
+}
+
 /** A keychain clipped to a belt loop: a ring, a small key and a mint book charm, swinging as he walks. */
 function drawKeychain(ctx, t, stride) {
   const swing = Math.sin(t * 2.6) * 0.12 + stride * 0.25;
@@ -995,6 +1295,16 @@ function drawFreeArm(ctx, stride, t) {
     ctx.arc(px, 2.48, 0.07, 0, Math.PI * 2);
     ctx.fill();
   }
+  // A plain silver ring on another finger.
+  rr(ctx, -1.25, 2.15, 0.9, 0.38, 0.15);
+  fillPath(ctx, '#d6dae4', 0.15);
+  // A faded blue date stamp on the back of his hand, from testing the
+  // desk stamp: a box outline with a smudged line of "date" inside.
+  ctx.strokeStyle = 'rgba(52,96,190,0.5)';
+  ctx.lineWidth = 0.18;
+  ctx.strokeRect(-1.1, -0.85, 1.6, 0.95);
+  ctx.fillStyle = 'rgba(52,96,190,0.4)';
+  ctx.fillRect(-0.85, -0.5, 1.1, 0.22);
   ctx.restore();
 }
 
@@ -1139,6 +1449,17 @@ function drawNeckAndPhones(ctx, t) {
     ctx.beginPath();
     ctx.arc(dir < 0 ? -0.9 : 0.9, 1.4, 0.55, 0, Math.PI * 2);
     ctx.stroke();
+    if (dir < 0) {
+      // A little yellow star sticker stuck on one cup.
+      ctx.beginPath();
+      for (let s = 0; s < 10; s++) {
+        const a = -Math.PI / 2 + (s * Math.PI) / 5;
+        const r = s % 2 ? 0.3 : 0.7;
+        ctx.lineTo(-0.9 + Math.cos(a) * r, -1.2 + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      fillPath(ctx, '#ffd166', 0.15);
+    }
     rr(ctx, dir < 0 ? 0.4 : -2.2, -2.2, 1.8, 4.4, 0.8);
     fillPath(ctx, P.phonesCushion, 0.3);
     ctx.fillStyle = 'rgba(143,227,200,0.6)';
@@ -1252,6 +1573,15 @@ function drawHead(ctx, t, stride) {
   ctx.beginPath();
   ctx.arc(10.1, HEAD_Y + 2.6, 0.5, 0, Math.PI * 2);
   fillPath(ctx, '#d6dae4', 0.25);
+  // And a thin silver hoop through the upper rim of the same ear.
+  ctx.strokeStyle = '#3a3440';
+  ctx.lineWidth = 0.55;
+  ctx.beginPath();
+  ctx.arc(10.9, HEAD_Y - 1.1, 0.6, -0.6 * Math.PI, 0.75 * Math.PI);
+  ctx.stroke();
+  ctx.strokeStyle = '#d6dae4';
+  ctx.lineWidth = 0.3;
+  ctx.stroke();
   facePath(ctx);
   fillPath(ctx, P.skin, 0.55);
   ctx.save();
@@ -1389,8 +1719,10 @@ function drawEyes(ctx, blinking) {
     const shape = () => {
       ctx.beginPath();
       ctx.moveTo(inner[0], inner[1]);
-      ctx.quadraticCurveTo(ex - dir * 0.4, EYE_Y - 2, outer[0], outer[1]);
-      ctx.quadraticCurveTo(ex + dir * 1, EYE_Y + 1.5, inner[0], inner[1]);
+      // Opened a little taller so the eyes read at game size (the user:
+      // "I can barely see his eyes").
+      ctx.quadraticCurveTo(ex - dir * 0.4, EYE_Y - 2.5, outer[0], outer[1]);
+      ctx.quadraticCurveTo(ex + dir * 1, EYE_Y + 1.9, inner[0], inner[1]);
       ctx.closePath();
     };
     shape();
@@ -1401,22 +1733,27 @@ function drawEyes(ctx, blinking) {
     ctx.clip();
     const cx = ex + dir * 0.15;
     const cy = EYE_Y - 0.1;
-    const g = ctx.createLinearGradient(0, cy - 2.1, 0, cy + 2.1);
+    // The original iris size; only the eye opening was enlarged.
+    const IRIS_R = 2.05;
+    const g = ctx.createLinearGradient(0, cy - IRIS_R, 0, cy + IRIS_R);
     g.addColorStop(0, P.irisDark);
     g.addColorStop(0.55, P.iris);
     g.addColorStop(1, P.irisLight);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(cx, cy, 2.05, 0, Math.PI * 2);
+    ctx.arc(cx, cy, IRIS_R, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = P.pupil;
     ctx.beginPath();
-    ctx.ellipse(cx, cy - 0.1, 0.85, 1.05, 0, 0, Math.PI * 2);
+    // Pupils enlarged (the user: "make it bigger now the pupils"), then
+    // shrunk twice ("make his pupils smaller", "make it smaller") to just
+    // under their original size.
+    ctx.ellipse(cx, cy - 0.1, 0.8, 1.0, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = 'rgba(12,6,22,0.6)';
     ctx.lineWidth = 0.28;
     ctx.beginPath();
-    ctx.arc(cx, cy, 2.05, 0, Math.PI * 2);
+    ctx.arc(cx, cy, IRIS_R, 0, Math.PI * 2);
     ctx.stroke();
     // Iris texture: fine radial lines and a lighter lower crescent.
     ctx.strokeStyle = P.irisTexture;
@@ -1424,26 +1761,26 @@ function drawEyes(ctx, blinking) {
     for (let i = 0; i < 10; i++) {
       const a = (i / 10) * Math.PI * 2;
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * 1.05, cy + Math.sin(a) * 1.2);
-      ctx.lineTo(cx + Math.cos(a) * 1.9, cy + Math.sin(a) * 1.95);
+      ctx.moveTo(cx + Math.cos(a) * 1.0, cy + Math.sin(a) * 1.15);
+      ctx.lineTo(cx + Math.cos(a) * (IRIS_R - 0.15), cy + Math.sin(a) * (IRIS_R - 0.1));
       ctx.stroke();
     }
     ctx.strokeStyle = P.irisCrescent;
     ctx.lineWidth = 0.35;
     ctx.beginPath();
-    ctx.arc(cx, cy, 1.6, 0.2 * Math.PI, 0.8 * Math.PI);
+    ctx.arc(cx, cy, IRIS_R - 0.5, 0.2 * Math.PI, 0.8 * Math.PI);
     ctx.stroke();
     // A darker ring hugging the pupil.
     ctx.strokeStyle = 'rgba(12,6,22,0.55)';
     ctx.lineWidth = 0.25;
     ctx.beginPath();
-    ctx.ellipse(cx, cy - 0.1, 1.15, 1.35, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy - 0.1, 1.1, 1.3, 0, 0, Math.PI * 2);
     ctx.stroke();
     // The upper lid's shadow across the top of the iris.
-    ctx.fillStyle = 'rgba(30,14,14,0.3)';
+    ctx.fillStyle = 'rgba(30,14,14,0.2)';
     ctx.beginPath();
-    ctx.moveTo(inner[0], inner[1] - 1.4);
-    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 1.2, outer[0], outer[1] + 0.6);
+    ctx.moveTo(inner[0], inner[1] - 1.6);
+    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 1.6, outer[0], outer[1] + 0.45);
     ctx.lineTo(outer[0], outer[1] - 3);
     ctx.lineTo(inner[0], inner[1] - 3);
     ctx.closePath();
@@ -1453,10 +1790,10 @@ function drawEyes(ctx, blinking) {
     ctx.fillStyle = '#140d0e';
     ctx.beginPath();
     ctx.moveTo(inner[0] - dir * 0.2, inner[1] + 0.1);
-    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 2.6, outer[0], outer[1] - 0.5);
+    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 3.1, outer[0], outer[1] - 0.5);
     ctx.lineTo(outer[0] + dir * 1.5, outer[1] - 0.9); // the flick
     ctx.lineTo(outer[0] + dir * 0.2, outer[1] + 0.5);
-    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 1.5, inner[0] - dir * 0.2, inner[1] + 0.6);
+    ctx.quadraticCurveTo(ex - dir * 0.6, EYE_Y - 2, inner[0] - dir * 0.2, inner[1] + 0.6);
     ctx.closePath();
     ctx.fill();
     // Two small extra lashes fanning from the outer flick.
