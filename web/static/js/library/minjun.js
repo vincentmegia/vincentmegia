@@ -156,7 +156,7 @@ export function drawMinjun(ctx, x, y, opts = {}) {
   } else if (action === 'read') {
     ctx.translate(0, 0.8); // head dipped toward the page
   }
-  drawHead(ctx, t, stride);
+  drawHead(ctx, t, stride, faceForAction(action, at));
   ctx.restore();
   if (action === 'hum') drawMusicNotes(ctx, at);
   if (action === 'wave') drawSpeechBubble(ctx, '안녕!', at);
@@ -165,6 +165,22 @@ export function drawMinjun(ctx, x, y, opts = {}) {
 }
 
 /** @typedef {'read' | 'hum' | 'wave' | 'help'} MinjunAction */
+
+/**
+ * His face while he's doing something: talking (reading aloud, saying
+ * hello, offering to help) opens and closes his mouth; singing holds it in
+ * a rounder open "o" with his eyes closed. `mouth` is how open (0..1), or
+ * null for his usual closed smile.
+ *
+ * @returns {{mouth: number|null, round?: boolean, eyesClosed?: boolean}}
+ */
+function faceForAction(action, at) {
+  if (action === 'hum') return { mouth: 0.6 + 0.4 * Math.abs(Math.sin(at * 3.2)), round: true, eyesClosed: true };
+  if (action === 'read' || action === 'wave' || action === 'help') {
+    return { mouth: 0.25 + 0.75 * Math.abs(Math.sin(at * 9)) };
+  }
+  return { mouth: null };
+}
 
 /** What Min-jun can stop to do: read a book, hum a tune, wave hello to Coral, or take her book to shelve it. */
 export const MINJUN_ACTIONS = /** @type {const} */ (['read', 'hum', 'wave', 'help']);
@@ -1679,7 +1695,7 @@ function facePath(ctx) {
   ctx.closePath();
 }
 
-function drawHead(ctx, t, stride) {
+function drawHead(ctx, t, stride, face = { mouth: null }) {
   // Short undercut at the back/sides, behind the ears.
   ctx.fillStyle = P.hairShade;
   for (const dir of [-1, 1]) {
@@ -1761,7 +1777,7 @@ function drawHead(ctx, t, stride) {
     ctx.ellipse(dir * 4.8, EYE_Y + 1.8, 2, 0.45, dir * -0.1, 0, Math.PI * 2);
     ctx.fill();
   }
-  drawEyes(ctx, isBlinkingAt(t));
+  drawEyes(ctx, face.eyesClosed ? 'happy' : isBlinkingAt(t));
 
   // Brows: relaxed — nearly level with a soft arch, thicker at the inner
   // end and tapering out (they used to slope down toward the nose, which
@@ -1799,6 +1815,13 @@ function drawHead(ctx, t, stride) {
   ctx.quadraticCurveTo(0, EYE_Y + 6.1, 0.8, EYE_Y + 5.6);
   ctx.stroke();
 
+  if (face.mouth != null) {
+    drawOpenMouth(ctx, face.mouth, Boolean(face.round));
+    ctx.lineCap = 'butt';
+    drawHair(ctx, t, stride);
+    return;
+  }
+
   // Mouth: a small, slightly lopsided smile.
   ctx.strokeStyle = P.lips;
   ctx.lineWidth = 0.65;
@@ -1832,6 +1855,52 @@ function drawHead(ctx, t, stride) {
  * angular upper lash line ending in a pointed flick; a straight lower lid;
  * an angled crease; and a deep iris tucked partly under the upper lid.
  */
+/**
+ * His mouth open: talking (`round` false) it's a wide, smiling opening with
+ * a line of top teeth; singing (`round`) it's a rounder "o". `open` 0..1.
+ */
+function drawOpenMouth(ctx, open, round) {
+  const w = round ? 1.25 : 1.9;
+  const h = 0.55 + (round ? 1.9 : 1.6) * open;
+  const cx = 0.15;
+  const top = EYE_Y + 7.1;
+  const path = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - w, top + (round ? 0.5 : 0.2));
+    ctx.quadraticCurveTo(cx, top - (round ? 0.35 : 0.15), cx + w, top + (round ? 0.5 : 0));
+    ctx.quadraticCurveTo(cx + w * (round ? 1.05 : 0.8), top + h, cx, top + h + 0.15);
+    ctx.quadraticCurveTo(cx - w * (round ? 1.05 : 0.8), top + h, cx - w, top + (round ? 0.5 : 0.2));
+    ctx.closePath();
+  };
+  path();
+  ctx.fillStyle = '#6e2633';
+  ctx.fill();
+  ctx.save();
+  path();
+  ctx.clip();
+  // Tongue at the bottom, top teeth when talking.
+  ctx.fillStyle = '#e07a86';
+  ctx.beginPath();
+  ctx.ellipse(cx, top + h + 0.1, w * 0.75, h * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (!round) {
+    ctx.fillStyle = '#fbf8f2';
+    ctx.fillRect(cx - w, top - 0.3, w * 2, 0.55);
+  }
+  ctx.restore();
+  path();
+  ctx.strokeStyle = P.lips;
+  ctx.lineWidth = 0.4;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  // The faint lower-lip tint, under the opening.
+  ctx.fillStyle = 'rgba(214,140,130,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(cx, top + h + 0.55, w * 0.6, 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** `blinking` is true for a blink, or 'happy' for closed, upturned eyes (singing). */
 function drawEyes(ctx, blinking) {
   for (const dir of [-1, 1]) {
     const ex = dir * 4.5;
@@ -1839,6 +1908,19 @@ function drawEyes(ctx, blinking) {
     // straighter" than the first, steeper version).
     const inner = [ex - dir * 3, EYE_Y + 0.5];
     const outer = [ex + dir * 3.3, EYE_Y - 0.7];
+    if (blinking === 'happy') {
+      // Closed and arched up, lost in the song, with the lash flick kept.
+      ctx.strokeStyle = '#1a1214';
+      ctx.lineWidth = 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(inner[0], inner[1] + 0.3);
+      ctx.quadraticCurveTo(ex, EYE_Y - 1.8, outer[0], outer[1] + 0.2);
+      ctx.lineTo(outer[0] + dir * 1.1, outer[1] - 0.4);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      continue;
+    }
     if (blinking) {
       ctx.strokeStyle = '#1a1214';
       ctx.lineWidth = 0.85;

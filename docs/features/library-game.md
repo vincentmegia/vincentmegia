@@ -732,6 +732,13 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   in `web/static/js/library/minjun-actions.js` (`pickMinjunAction`,
   `MINJUN_ACTION_SECONDS`), the poses in `drawMinjun`'s `action`/`actionT`
   options; both are unit-tested in `minjun.test.js`.
+  His face moves with it ("when he reads and says hello and sings make
+  his mouth open, for singing he closes his eyes"): reading (aloud),
+  waving hello and offering to help, his mouth opens and closes as he
+  talks (a wide opening with top teeth and a tongue); humming is singing,
+  with a rounder "o" mouth and his eyes closed in happy, upturned arcs
+  (lash flicks kept). Otherwise he has his usual closed smile
+  (`faceForAction`, `drawOpenMouth`, `drawEyes(ctx, 'happy')`).
 
   He helps ("make him HELP the player"), in the spirit of Hospital
   Shift's Orderly: click him (2nd Floor, Top-Down) and Coral walks up
