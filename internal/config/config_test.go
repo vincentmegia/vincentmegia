@@ -52,8 +52,8 @@ func TestLoad_MissingFileIsNotAnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() with no config file: %v", err)
 	}
-	if cfg.Port != "8080" {
-		t.Errorf("Port = %q, want default 8080", cfg.Port)
+	if cfg.Port != "8081" {
+		t.Errorf("Port = %q, want default 8081 (changed in 61a2199)", cfg.Port)
 	}
 	if cfg.DBMaxOpenConns != 10 {
 		t.Errorf("DBMaxOpenConns = %d, want default 10", cfg.DBMaxOpenConns)
@@ -157,8 +157,8 @@ func TestLoad_EmptyFileIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() with an empty/comments-only config file: %v", err)
 	}
-	if cfg.Port != "8080" {
-		t.Errorf("Port = %q, want default 8080", cfg.Port)
+	if cfg.Port != "8081" {
+		t.Errorf("Port = %q, want default 8081 (changed in 61a2199)", cfg.Port)
 	}
 }
 
