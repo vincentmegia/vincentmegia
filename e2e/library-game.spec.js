@@ -58,7 +58,12 @@ async function deleteTestScore(playerName) {
 	const client = new Client({ connectionString });
 	await client.connect();
 	try {
-		await client.query('DELETE FROM library_scores WHERE player_name = $1', [playerName]);
+		// In whichever schema the e2e server wrote it to: `make run-e2e` runs the
+		// server with search_path=bus_e2e, so a bare table name here (public)
+		// silently deleted nothing and test rows piled up (bus-rush.spec.js's way).
+		for (const t of ['bus_e2e.library_scores', 'public.library_scores']) {
+			await client.query(`DELETE FROM ${t} WHERE player_name = $1`, [playerName]).catch(() => {});
+		}
 	} finally {
 		await client.end();
 	}

@@ -31,7 +31,12 @@ async function deleteTestScore(playerName) {
 	const client = new Client({ connectionString: databaseURL() });
 	await client.connect();
 	try {
-		await client.query('DELETE FROM hospital_scores WHERE player_name = $1', [playerName]);
+		// In whichever schema the e2e server wrote it to: `make run-e2e` runs the
+		// server with search_path=bus_e2e, so a bare table name here (public)
+		// silently deleted nothing and test rows piled up (bus-rush.spec.js's way).
+		for (const t of ['bus_e2e.hospital_scores', 'public.hospital_scores']) {
+			await client.query(`DELETE FROM ${t} WHERE player_name = $1`, [playerName]).catch(() => {});
+		}
 	} finally {
 		await client.end();
 	}
@@ -712,18 +717,28 @@ test.describe('hunger, thirst and the Cafeteria', () => {
 		await seedSave(page, 1, 100);
 		await page.goto('/hospital-shift');
 		await startShift(page);
-		await hooks(page, 'setThirst', 10);
-		await hooks(page, 'setHunger', 50);
 		await walkTo(page, 'vending-machine');
 		await waitForOverlay(page, 'vending');
+		// Set the bars on arrival, not before the walk: they drain as you walk
+		// (Thirst ~0.24/s), so a slow walk under load left Thirst at 43.76
+		// after +35 water and flaked the old ">= 44" check.
+		await hooks(page, 'setThirst', 10);
+		await hooks(page, 'setHunger', 50);
+		const before = await shiftState(page);
 		const cards = await hooks(page, 'getVendingCardRects');
 		const water = cards.find((c) => c.id === 'water');
 		await clickCanvasPoint(page, { x: water.x + water.w / 2, y: water.y + 20 });
 		const onigiri = cards.find((c) => c.id === 'onigiri');
 		await clickCanvasPoint(page, { x: onigiri.x + onigiri.w / 2, y: onigiri.y + 20 });
 		const s = await shiftState(page);
-		expect(s.thirst).toBeGreaterThanOrEqual(44);
-		expect(s.hunger).toBeGreaterThanOrEqual(84);
+		// Water +35 Thirst and onigiri +35 Hunger, less exactly the drain over
+		// the game time that passed between the two reads (the shift clock
+		// counts down by the same delta the bars drain by: Thirst 100/420 and
+		// Hunger 100/540 per second — hospital/rules.js) — so a slow,
+		// loaded machine can't flake it.
+		const elapsed = before.clockSeconds - s.clockSeconds;
+		expect(s.thirst).toBeCloseTo(before.thirst + 35 - (100 / 420) * elapsed, 1);
+		expect(s.hunger).toBeCloseTo(before.hunger + 35 - (100 / 540) * elapsed, 1);
 		expect(s.bonusGard).toBe(-30);
 		// The × closes the shop (in fullscreen, WebKit's Escape leaves fullscreen instead).
 		const close = await hooks(page, 'getCloseRect');
@@ -737,10 +752,15 @@ test.describe('hunger, thirst and the Cafeteria', () => {
 		await walkTo(page, 'vending-machine');
 		await waitForOverlay(page, 'vending');
 		await clickCanvasPoint(page, { x: water.x + water.w / 2, y: water.y + 20 });
-		const broke = await shiftState(page);
+		// One read for the state and the flash: the flash fades on a timer,
+		// so a separate, later round trip could find it gone under load.
+		const { broke, flash } = await page.evaluate(() => ({
+			broke: window.__hospitalShiftTestHooks.getShiftState(),
+			flash: window.__hospitalShiftTestHooks.getOverlay()?.flash?.text ?? null,
+		}));
 		expect(broke.bonusGard).toBe(0);
 		expect(broke.thirst).toBeLessThan(11);
-		expect((await hooks(page, 'getOverlay')).flash.text).toContain('Not enough Gard');
+		expect(flash).toContain('Not enough Gard');
 	});
 
 	test("the Cafeteria: walk in, Auntie Yumi's free meal fills both bars, then leave", async ({ page }) => {
