@@ -6,6 +6,22 @@ import {
   I, COLORS, EDGE_COLORS, KIND_NAMES, NODE_ANIMS, EDGE_ANIMS, TRIGGERS, SPEEDS,
   NODE_DUR, EDGE_DUR, SPEED_MULT, animName,
 } from './defs.js';
+import { AWS_SERVICES, AWS_CATEGORIES, awsService } from '../aws-icons.js';
+
+// [value, name, glyph: [line, marker, filled]]
+const ARROW_ENDS = [
+  ['end', 'End', ['M3 8h13', 'M21 8l-5.5-3.5v7z', true]],
+  ['both', 'Both', ['M8 8h8', 'M21 8l-5.5-3.5v7zM3 8l5.5-3.5v7z', true]],
+  ['start', 'Start', ['M8 8h13', 'M3 8l5.5-3.5v7z', true]],
+  ['none', 'None', ['M3 8h18']],
+];
+const ARROW_HEADS = [
+  ['block', 'Arrow', ['M3 8h12', 'M21 8l-6-4v8z', true]],
+  ['open', 'Open', ['M3 8h17', 'M15 3.5l5.5 4.5-5.5 4.5']],
+  ['oval', 'Dot', ['M3 8h13', 'M17.5 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', true]],
+  ['diamond', 'Diamond', ['M3 8h11', 'M21 8l-3.5-3.5L14 8l3.5 3.5z', true]],
+];
+const ROUTES = [['elbow', 'Elbow', 'M4 18h8V6h8'], ['straight', 'Straight', 'M4 18L20 6'], ['curved', 'Curved', 'M4 18C13 18 11 6 20 6']];
 
 const label = (text, wide) => h('span.mono-label' + (wide ? '.wide' : ''), { text });
 const sparkTitle = () => h('span.ed-card-title', null,
@@ -50,6 +66,15 @@ export function buildInspector(ctx) {
 
     const sw = COLORS.map(([c, name]) => h('button.swatch', { 'aria-label': `Fill ${name}`, 'aria-pressed': 'false', vars: { '--sw': `var(--c-${c})` }, onclick: () => upd({ color: c }) }));
     const fill = h('div.ed-group', null, label('Fill'), h('div.swatches', { role: 'group', 'aria-label': 'Fill' }, sw));
+
+    // AWS icons pick a service instead of a fill colour (grouped by category).
+    const svcSel = h('select.ed-select', { 'aria-label': 'AWS service' },
+      Object.entries(AWS_CATEGORIES).map(([cid, cat]) => {
+        const list = AWS_SERVICES.filter((v) => v.category === cid);
+        return list.length ? h('optgroup', { label: cat.name }, list.map((v) => h('option', { value: v.id, text: v.name }))) : null;
+      }));
+    svcSel.addEventListener('change', () => upd({ service: svcSel.value }));
+    const service = h('div.ed-group', { hidden: true }, label('Service'), svcSel);
 
     // animation card
     const replay = h('button.ed-replay.rowbtn', { onclick: () => engine.replay(id) },
@@ -104,13 +129,18 @@ export function buildInspector(ctx) {
       h('button.rowbtn', { text: 'Duplicate', title: `Duplicate (${MOD}D)`, onclick: () => actions.duplicate() }),
       h('button.rowbtn.danger', { text: 'Delete', onclick: () => actions.remove() }));
 
-    const el = h('div.ed-panel', { 'data-panel': 'shape' }, head, fill, animCard, strokeG, opG, shadow.el, connList, geoG, acts);
+    const el = h('div.ed-panel', { 'data-panel': 'shape' }, head, service, fill, animCard, strokeG, opG, shadow.el, connList, geoG, acts);
 
     function update() {
       const c = get();
       if (!c) return;
       const a = anim();
-      kindName.textContent = KIND_NAMES[c.kind] || 'Shape';
+      const isAws = c.kind === 'aws';
+      kindName.textContent = isAws ? `AWS · ${(awsService(c.service) || {}).name || 'Service'}` : (KIND_NAMES[c.kind] || 'Shape');
+      service.hidden = !isAws;
+      fill.hidden = isAws;
+      strokeG.hidden = isAws;
+      if (isAws && document.activeElement !== svcSel) svcSel.value = c.service;
       setValue(labelIn, c.label || '');
       COLORS.forEach(([col], i) => setPressed(sw[i], c.color === col));
       el.style.setProperty('--pv-stroke', `var(--c-${c.color || 'blue'})`);
@@ -172,8 +202,14 @@ export function buildInspector(ctx) {
     const line = segmented([['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']], (v) => upd({ lineStyle: v }), { ariaLabel: 'Line' });
     const colors = EDGE_COLORS.map(([c, name, css]) => h('button.swatch', { 'aria-label': `${name} connector`, 'aria-pressed': 'false', vars: { '--sw': css }, onclick: () => upd({ color: c }) }));
     const width = segmented([[1.2, 'Thin'], [1.8, 'Regular'], [3, 'Bold']], (v) => upd({ width: v }), { ariaLabel: 'Width' });
+    const arrows = segmented(ARROW_ENDS.map(([v, name, g]) => [v, name, `Arrowheads: ${name}`, glyph(g)]), (v) => upd({ arrows: v }), { cls: 'seg four', ariaLabel: 'Arrowheads' });
+    const headPick = segmented(ARROW_HEADS.map(([v, name, g]) => [v, name, `Arrowhead shape: ${name}`, glyph(g)]), (v) => upd({ head: v }), { cls: 'seg four', ariaLabel: 'Arrowhead shape' });
+    const route = segmented(ROUTES.map(([v, name, d]) => [v, name, `Route: ${name}`, h('span.ed-seg-ic', null, icon(d, { size: 15, sw: 1.8 }), name)]), (v) => upd({ route: v }), { ariaLabel: 'Route' });
 
     const el = h('div.ed-panel', { 'data-panel': 'edge' }, head, animCard,
+      h('div.ed-group', null, label('Arrowheads'), arrows.el),
+      h('div.ed-group', null, label('Head'), headPick.el),
+      h('div.ed-group', null, label('Route'), route.el),
       h('div.ed-group', null, label('Line'), line.el),
       h('div.ed-group', null, label('Color'), h('div.swatches', { role: 'group', 'aria-label': 'Connector color' }, colors)),
       h('div.ed-group', null, label('Width'), width.el),
@@ -192,6 +228,9 @@ export function buildInspector(ctx) {
       speed.set(a.speed);
       dir.set(a.direction);
       line.set(e.lineStyle || 'solid');
+      arrows.set(e.arrows || 'end');
+      headPick.set(e.head || 'block');
+      route.set(e.route || 'elbow');
       EDGE_COLORS.forEach(([c], i) => setPressed(colors[i], (e.color || 'default') === c));
       width.set(e.width == null ? 1.8 : e.width);
       // Previews follow the connector's colour, like the prototype.
@@ -199,6 +238,14 @@ export function buildInspector(ctx) {
       el.style.setProperty('--pv-edge', e.color && e.color !== 'default' ? col : 'var(--accent)');
     }
     return { el, update };
+  }
+
+  // A connector-end glyph: a line plus an optional filled/stroked marker.
+  function glyph([d, mark, filled]) {
+    const svg = s('svg', { width: 24, height: 16, viewBox: '0 0 24 16', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false' }, s('path', { d }));
+    if (mark) svg.append(s('path', { d: mark, fill: filled ? 'currentColor' : 'none' }));
+    return svg;
   }
 
   // Preview SVG for an edge animation tile (prototype edgeVisual, at Regular width).

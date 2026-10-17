@@ -87,9 +87,13 @@
 .ed-plus:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
 .ed-plus svg { width: 12px; height: 12px; pointer-events: none; }
 .ed-plus[data-side="r"] { left: calc(100% + 14px); top: calc(50% - 10px); }
-.ed-plus[data-side="b"] { top: calc(100% + 14px); left: calc(50% - 10px); }
+.ed-plus[data-side="b"] { top: calc(100% + var(--ed-plus-b, 14px)); left: calc(50% - 10px); }
 .ed-plus[data-side="l"] { right: calc(100% + 14px); top: calc(50% - 10px); }
 .ed-plus[data-side="t"] { bottom: calc(100% + 14px); left: calc(50% - 10px); }
+.ed-plus[data-side="l"][data-shift],
+.ed-plus[data-side="r"][data-shift] { translate: 0 -26px; }
+.ed-plus[data-side="t"][data-shift],
+.ed-plus[data-side="b"][data-shift] { translate: 30px 0; }
 
 /* Precision shadow on shapes (the file stores shadow=1; this is how it looks) */
 .ed-engine .ed-shadow { filter: drop-shadow(0 4px 10px var(--ed-shadow)); }

@@ -52,7 +52,7 @@ const PROJECTS = [
 	},
 	{
 		title: 'Easy Diagram',
-		description: 'A local-first diagram editor in the browser — flowcharts with animated shapes and connectors, saved as standard .drawio files that never leave your device.',
+		description: 'A local-first diagram editor in the browser — flowcharts and AWS architecture diagrams with animated shapes, icons and connectors, saved as .ed files that never leave your device.',
 		tags: ['JavaScript', 'SVG', 'Local-first'],
 		// FullPageLoad: /easy-diagram is a standalone full-viewport document
 		// with its own route-scoped CSP (docs/features/easy-diagram.md).

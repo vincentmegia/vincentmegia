@@ -39,7 +39,7 @@ function boot() {
     exportOpen: false,
     paletteOpen: false,
     drawer: null, // 'dock' | 'insp' on phone width
-    file: { name: 'Untitled.drawio', handle: null },
+    file: { name: 'Untitled.ed', handle: null },
     status: 'new', // new | saving | saved | draft
   });
 

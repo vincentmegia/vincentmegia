@@ -16,8 +16,9 @@ export function buildStage(ctx) {
       if (sel.type === 'shape') engine.update(sel.ids[0], { color: c });
     } });
   });
+  const ctxSep = h('span.vsep', { 'aria-hidden': 'true' });
   const ctxBar = h('div.ed-ctx', { role: 'toolbar', 'aria-label': 'Selection', hidden: true },
-    ctxSw, h('span.vsep', { 'aria-hidden': 'true' }),
+    ctxSw, ctxSep,
     h('button.ibtn', { 'aria-label': 'Duplicate', title: `Duplicate (${MOD}D)`, onclick: () => actions.duplicate() }, icon(I.dup)),
     h('button.ibtn', { 'aria-label': 'Delete', title: 'Delete', onclick: () => actions.remove() }, icon(I.trash)));
   let ctxFor = null;
@@ -29,10 +30,22 @@ export function buildStage(ctx) {
     if (!b) { ctxBar.hidden = true; ctxFor = null; return; }
     const c = engine.getCell(id);
     ctxSw.forEach((el) => setPressed(el, c && c.color === el.dataset.color));
+    // AWS icons keep their category colour, so they get no fill swatches.
+    const noFill = !!(c && c.kind === 'aws');
+    ctxSw.forEach((el) => { el.hidden = noFill; });
+    ctxSep.hidden = noFill;
     if (ctxFor !== id) { ctxBar.hidden = true; void ctxBar.offsetWidth; } // restart the intro animation
     ctxFor = id;
     ctxBar.hidden = false;
-    const below = b.y < 96;
+    // Sit below the shape when there's no room above, or when a connector
+    // comes in from above (the bar would hide its arrowhead), unless one
+    // also leaves from below.
+    const near = (side) => engine.cells().some((e) => {
+      if (e.type !== 'edge' || (e.source !== id && e.target !== id)) return false;
+      const o = engine.getScreenBounds(e.source === id ? e.target : e.source);
+      return o && (side === 'top' ? o.y + o.h <= b.y : o.y >= b.y + b.h);
+    });
+    const below = b.y < 96 || (near('top') && !near('bottom'));
     const W = stage.clientWidth;
     const bw = ctxBar.offsetWidth || 220;
     const cx = Math.max(bw / 2 + 8, Math.min(W - bw / 2 - 8, b.x + b.w / 2));
@@ -46,7 +59,7 @@ export function buildStage(ctx) {
     h('div.ed-empty-art', { 'aria-hidden': 'true' }, h('span.a'), h('span.b'), h('span.c'), h('span.d')),
     h('div.ed-empty-title', { role: 'heading', 'aria-level': '2', text: 'This page is empty' }),
     h('div.ed-empty-text', null,
-      h('span.only-wide', { text: 'Click a shape on the left, drop a .drawio file here, or press ' }),
+      h('span.only-wide', { text: 'Click a shape on the left, drop a .ed or .drawio file here, or press ' }),
       h('span.only-phone', { text: 'Open the Shapes panel (top left) to add a shape, or press ' }), h('span.kbd', { text: MOD + 'K' }), ' to run any command.'),
     h('div.ed-empty-actions', null,
       h('button.accentbtn', { text: 'Add a shape', onclick: () => actions.addShape('round') }),

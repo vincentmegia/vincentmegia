@@ -21,7 +21,7 @@ export function commandList(ctx) {
     ['Open…', MOD + 'O', I.open, () => actions.open()],
     ['Export as PNG', MOD + SHIFT + 'E', I.download, () => actions.exportAs('png')],
     ['Export as SVG', '', I.download, () => actions.exportAs('svg')],
-    ['Download .drawio', '', I.file, () => actions.exportAs('drawio')],
+    ['Download .ed', '', I.file, () => actions.exportAs('ed')],
     ['Print / Save as PDF', MOD + 'P', I.print, () => actions.print()],
     ['New page', SHIFT + 'N', I.page, () => actions.newPage()],
     ['Delete page', '', I.pageX, () => actions.deletePage()],

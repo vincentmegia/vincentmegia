@@ -2,9 +2,13 @@
 
 ## Status
 
-`Proposed`
+`Implemented` at `/easy-diagram`, with a new UI shell built on draw.io's
+graph engine. The build decisions in `docs/features/easy-diagram/BUILD.md`
+superseded this doc's original "fork the whole editor" plan. Three later
+changes are described below: [The `.ed` file extension](#the-ed-file-extension),
+[AWS icons](#aws-icons) and [Connector arrowheads](#connector-arrowheads).
 
-Nothing is implemented yet. This doc is a reverse-engineering survey of
+The rest of this doc started as a reverse-engineering survey of
 draw.io's desktop and core repositories, plus a plan for turning them into a
 self-hosted browser diagram editor. Every claim below comes from reading the
 upstream source at these commits, not from running either app:
@@ -58,7 +62,9 @@ diagram traffic to their servers.
 * A fork of `jgraph/drawio`, rebranded as "Easy Diagram", served as static
   files.
 * Local-only operation:
-  - open and save `.drawio`/`.xml` files through the File System Access API,
+  - open and save `.ed` files (Easy Diagram's extension, holding standard
+    draw.io XML; `.drawio`/`.xml` still open) through the File System Access
+    API,
     falling back to upload/download where the API isn't supported;
   - browser-storage drafts and autosave;
   - client-side PNG/SVG/HTML/XML export;
@@ -143,6 +149,119 @@ diagrams:
   `electron.js`).
 * SVG: a `content` attribute (`readSvgXml`).
 * PDF: an attachment or annotation (`readPdfXml`, `mergePdfs`).
+
+### The `.ed` file extension
+
+The user asked for `.ed` in place of `.drawio` ("for easy-diagram instead of
+.drawio extension change it to .ed"). Only the name changed; the bytes are
+the same `<mxfile>` XML, so this reverses BUILD.md decision 4's "files stay
+real `.drawio`" for the name only. In `web/static/easydiagram/js/io.js`
+(`EXT`, `diagramName`):
+
+* **Save / Save as:** suggest `<name>.ed`, and the save picker's type is
+  "Easy Diagram (.ed)". An opened file that has a write handle (for example
+  an old `.drawio` opened through the picker) is still saved in place under
+  its own name. Easy Diagram never renames a file on disk.
+* **Export:** the popover's diagram option is `.ed` (`Untitled.ed`). PNG and
+  SVG with the diagram embedded are named `<name>-<page>.ed.png` and
+  `.ed.svg`; plain ones stay `.png`/`.svg`.
+* **Open / drop / import:** `.ed`, `.drawio` and `.xml` all open, as do
+  `.png`/`.svg` with an embedded diagram. An image import, or a dropped file
+  without a handle, saves as `<name>.ed`; a legacy `x.drawio` dropped in
+  saves as `x.ed`. Both `x.ed.png` and the older `x.drawio.png` import as
+  `x.ed`.
+* The new-document name is `Untitled.ed`, and drafts are keyed by it.
+* Unchanged: the MIME type (`application/xml`) and the content. The
+  `edAnim*`/`edAws` style keys are ignored by upstream draw.io.
+
+### AWS icons
+
+The user asked to "add AWS icons that optionally be animated as well".
+
+* **What they are:** 24 AWS services in 9 categories, from
+  `web/static/easydiagram/js/aws-icons.js`:
+  - Compute: EC2, Lambda, ECS, EKS
+  - Storage: S3, EFS
+  - Database: RDS, DynamoDB, Aurora
+  - Networking: VPC, CloudFront, Route 53, Load Balancer
+  - App integration: API Gateway, SQS, SNS, Step Functions, EventBridge
+  - Security: IAM, Cognito, KMS
+  - Management: CloudWatch
+  - Analytics: Kinesis
+  - Machine learning: SageMaker
+
+  Each icon is a rounded tile in the AWS category colour (Compute orange
+  `#ED7100`, Storage green `#7AA116`, Database `#C925D1`, and so on) with a
+  white line-art glyph. **These glyphs are original drawings, not AWS's
+  official Architecture Icons:** no AWS artwork is copied or bundled, and
+  the service names are used only to say what a shape stands for. If the
+  official icon set is wanted later, it can replace the glyphs behind the
+  same `awsIconSvg(id)` function, subject to AWS's terms for those icons.
+* **Dock:** a new **AWS** category chip lists one tile per service, showing
+  the icon itself. Search matches the short name, the full name ("Amazon
+  DynamoDB") and the category ("security" finds IAM, Cognito and KMS).
+  Click to add, or drag onto the canvas to drop at the pointer, like the
+  other tiles.
+* **Engine:** a new shape kind `aws` (64×64, with the label underneath).
+  `addShape('aws', {service})`, `update(id, {service})`, and the
+  `ShapeModel` gains a `service` field. A shape stores:
+  - `edAws=<service id>`;
+  - standard draw.io image keys (`shape=image`, `image=data:image/svg+xml,…`,
+    `verticalLabelPosition=bottom`, `imageAspect=0`, `aspect=fixed`).
+  The image is a **URL-encoded** SVG data URI, so there's no raw `;` or `=`
+  to break the style string, and upstream draw.io shows the icon too. It's
+  inline (`data:`), so it never makes a network request and passes the
+  route CSP's `img-src 'self' data: blob:`.
+* **Changing the service:** this swaps `edAws` and the picture. The label
+  follows the new service's name unless the user renamed the shape. An AWS
+  shape can't change to an outline kind or back, and the Fill colour
+  doesn't apply to it.
+* **Canvas:** the floating context bar above a selected icon has no fill
+  swatches (Duplicate and Delete only). Because the label sits under the
+  icon, the bottom "+" quick-connect handle is pushed below the label
+  (`--ed-plus-b` on the selection frame) so it doesn't cover the text.
+* **Inspector:** for an AWS shape the header reads "AWS · Amazon RDS".
+  A **Service** dropdown (grouped by category) replaces Fill, and Stroke
+  is hidden. Label, Animation, Opacity, Shadow, Connections and
+  Position & size work as for any shape.
+* **Animation (optional, off by default):** AWS shapes use the same 7 shape
+  animations (pulse, bounce, float, wiggle, glow, blink, pop), triggers
+  (loop, on hover, once), speeds, Replay and the global Motion switch. The
+  animation classes go on the cell's SVG group, which holds the icon's
+  `<image>`, so the whole icon moves. Glow uses the service's category
+  colour. Connectors between AWS icons animate as before (flow, march,
+  comet, pulse, draw).
+* **Export:** SVG/PNG export draws the icons, and an embedded PNG/SVG
+  re-imports with the services intact.
+
+### Connector arrowheads
+
+The user reported "somehow i dont see arrows connectors". Connectors did
+have an arrowhead, but it was hard to see: a 6px head in `#5C616D` on the
+near-black dark canvas. Also, the context bar above a selected shape and
+the shape's side "+" handles sat right on top of incoming arrowheads.
+
+* **Visibility:** the default connector colour is lighter in the dark
+  theme (`#8A8F9B`) and darker in the light theme (`#6E737E`), in both
+  `THEMES` and the `--edge` token. The head size now follows the line
+  width (`arrowSize(width)`: 9/10/12 for Thin/Regular/Bold). Older files
+  that saved our 6px head are drawn at the new size (render-time only, for
+  edges with `edColor`).
+* **Inspector:** the connector panel gains three controls:
+  - **Arrowheads**: End (default), Both, Start or None;
+  - **Head**: Arrow (`block`), Open (`open`), Dot (`oval`) or Diamond;
+  - **Route**: Elbow (default, `orthogonalEdgeStyle`), Straight
+    (`edgeStyle=none`) or Curved (`orthogonalEdgeStyle` + `curved=1`).
+  These are standard draw.io keys (`startArrow`/`endArrow`, `*Fill`,
+  `*Size`, `edgeStyle`, `curved`), so upstream draw.io shows them as well.
+* **Engine:** `EdgeModel` gains `arrows`, `head` and `route`, which
+  `update()` and `connect(a, b, {arrows, head, route})` accept. When a file
+  has no `endArrow`, the connector reads as `arrows: 'end'`, because
+  draw.io draws a classic arrow by default.
+* **Canvas:** the context bar moves below the shape when a connector comes
+  in from above (and none leaves from below). A "+" handle on a side where
+  a connector attaches near the middle slides along that side
+  (`data-shift`), so it doesn't cover the arrowhead.
 
 ---
 
@@ -251,7 +370,7 @@ external images or fonts, and opening it fetches them.
 5. Save:
    - Chromium: the first save shows a native save picker, and later saves
      write in place.
-   - Firefox/Safari: each save downloads a .drawio file.
+   - Firefox/Safari: each save downloads a .ed file.
 6. Export: File > Export as PNG/SVG/HTML/XML, generated in the browser.
    PDF opens the browser's print dialog.
 7. Reopening the app offers to restore unsaved drafts.
@@ -332,8 +451,10 @@ browser storage.
   enforced by CSP (`connect-src 'self'`, no external `script-src`). The only
   exceptions are images or fonts referenced by the user's own diagram, and
   Google Fonts, which are off by default.
-* Saved files stay standard `.drawio` (mxfile) XML, so they open in real
-  draw.io and the reverse is also true. Don't change the format.
+* Saved files use the `.ed` extension, but their contents stay standard
+  draw.io `<mxfile>` XML. An `.ed` file renamed to `.drawio` opens in real
+  draw.io, and `.drawio`/`.xml` files open in Easy Diagram. Don't change the
+  format, only the name.
 * Track the upstream version. Record the forked commit in the fork's README
   and in this doc's Status table.
 
@@ -379,6 +500,28 @@ browser storage.
 * [ ] Draft recovery after closing the tab with unsaved changes.
 * [ ] No "draw.io" branding is visible in the UI (grep the built output).
 * [ ] The `/projects` card links to it (Playwright, `e2e/projects.spec.js`).
+* [x] `.ed` extension (`e2e/easy-diagram.spec.js`, the `io` and `aws icons`
+      groups):
+  - Save downloads `Untitled.ed` and the file is `<mxfile>` XML.
+  - Export names are `.ed`, `.ed.png` and `.ed.svg`.
+  - `.ed` and legacy `.drawio` files both open, and a legacy file then
+    saves as `.ed`.
+  - The draft is keyed `Untitled.ed`.
+* [x] AWS icons (the `aws icons` group; unit tests in
+      `web/static/easydiagram/js/aws-icons.test.js`):
+  - Adding: the dock's AWS category adds icons by click and by drag, and
+    the canvas draws each icon as an `<image>` in its category colour.
+  - Inspector: the Service picker swaps the icon and the label (a renamed
+    label is kept), with one undo step per change.
+  - Animation: each of the 7 animations applies to the group holding the
+    icon, glow uses the category colour, Motion pauses and resumes it, and
+    the On hover trigger and None work.
+  - Saving: an AWS diagram with animated icons and connectors saves to
+    `.ed` and reopens identical, with an upstream-readable `image=` value.
+  - Export: the PNG actually paints the icon colours, and an embedded PNG
+    re-imports with the services intact.
+  - Unit tests: icons are self-contained, the data URIs are safe in a style
+    string, and unknown ids fall back to Lambda.
 
 ---
 

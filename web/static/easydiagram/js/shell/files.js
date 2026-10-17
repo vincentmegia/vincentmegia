@@ -5,7 +5,7 @@
 import { h } from './dom.js';
 
 const isCancel = (io, err) => (typeof io.isCancel === 'function' ? io.isCancel(err) : err && err.name === 'AbortError');
-const baseName = (name) => String(name || 'Untitled').replace(/\.(drawio|xml)(\.(png|svg))?$/i, '').replace(/\.(png|svg)$/i, '') || 'Untitled';
+const baseName = (name) => String(name || 'Untitled').replace(/\.(ed|drawio|xml)(\.(png|svg))?$/i, '').replace(/\.(png|svg)$/i, '') || 'Untitled';
 
 export function installFiles(ctx) {
   const { engine, io, store, actions, root } = ctx;
@@ -86,7 +86,7 @@ export function installFiles(ctx) {
   actions.exportAs = (format, opts = {}) => {
     store.set({ paletteOpen: false, exportOpen: false });
     const page = actions.currentPageName();
-    const name = format === 'drawio' ? baseName(store.get().file.name) : `${baseName(store.get().file.name)}-${page}`;
+    const name = format === 'ed' ? baseName(store.get().file.name) : `${baseName(store.get().file.name)}-${page}`;
     const o = { format, scale: opts.scale || 2, transparent: !!opts.transparent, embed: opts.embed !== false, name };
     let p;
     try { p = io.exportFile(engine, o); } catch (err) { fail(err); return; }
@@ -133,7 +133,7 @@ export function installFiles(ctx) {
     prompt = h('div.ed-draft', { role: 'alertdialog', 'aria-label': 'Restore draft', 'data-testid': 'draft-prompt' },
       h('span', { text: `You have an unsaved draft${draft.name ? ` of “${draft.name}”` : ''} from ${stamp}.` }),
       h('button.accentbtn', { text: 'Restore', onclick: () => {
-        load(draft.xml, { name: draft.name || 'Untitled.drawio', handle: null }, 'draft');
+        load(draft.xml, { name: draft.name || 'Untitled.ed', handle: null }, 'draft');
         dismissDraftPrompt();
         toast('Draft restored');
       } }),

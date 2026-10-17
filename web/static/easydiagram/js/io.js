@@ -53,7 +53,12 @@ export function isCancel(err) {
 // ---------------------------------------------------------------------------
 // Names
 
-const KNOWN_EXT = /(\.drawio)?\.(drawio|xml|png|svg)$/i;
+// Easy Diagram's own extension is `.ed` (the user asked for it in place of
+// `.drawio`). The contents are still standard draw.io `<mxfile>` XML, so
+// `.drawio`/`.xml` files keep opening, and an `.ed` file renamed to `.drawio`
+// opens in upstream draw.io.
+export const EXT = '.ed';
+const KNOWN_EXT = /(\.(ed|drawio))?\.(ed|drawio|xml|png|svg)$/i;
 
 function cleanName(name) {
   let n = String(name == null ? '' : name)
@@ -65,14 +70,14 @@ function cleanName(name) {
   return n;
 }
 
-// "flow.drawio.png" -> "flow", "My diagram" -> "My diagram"
+// "flow.ed.png" / "flow.drawio" -> "flow", "My diagram" -> "My diagram"
 export function baseName(name) {
   const n = cleanName(name).replace(KNOWN_EXT, '').trim();
   return n || DEFAULT_NAME;
 }
 
-function drawioName(name) {
-  return baseName(name) + '.drawio';
+export function diagramName(name) {
+  return baseName(name) + EXT;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +416,7 @@ function addSvgContent(svg, xml) {
 // ---------------------------------------------------------------------------
 // Format detection (shared by openFile and importDroppedFile)
 
-const UNSUPPORTED = 'Unsupported file. Open a .drawio or .xml diagram, or a .png/.svg exported with the diagram embedded.';
+const UNSUPPORTED = 'Unsupported file. Open a .ed, .drawio or .xml diagram, or a .png/.svg exported with the diagram embedded.';
 
 // bytes: Uint8Array. Returns {kind: 'xml'|'png'|'svg', xml}.
 export async function parseDiagramBytes(name, bytes) {
@@ -459,7 +464,7 @@ async function readFileObject(file) {
 async function fileToDiagram(file) {
   const parsed = await parseDiagramBytes(file.name, await readFileObject(file));
   // An image keeps its pixels: saving must never overwrite it with XML.
-  const name = parsed.kind === 'xml' ? cleanName(file.name) || drawioName(file.name) : drawioName(file.name);
+  const name = parsed.kind === 'xml' ? cleanName(file.name) || diagramName(file.name) : diagramName(file.name);
   return { name, xml: parsed.xml, kind: parsed.kind };
 }
 
@@ -471,7 +476,7 @@ export async function importDroppedFile(file) {
 // ---------------------------------------------------------------------------
 // Open
 
-const OPEN_ACCEPT = '.drawio,.xml,.svg,.png,application/xml,text/xml,image/svg+xml,image/png';
+const OPEN_ACCEPT = '.ed,.drawio,.xml,.svg,.png,application/xml,text/xml,image/svg+xml,image/png';
 
 function hasOpenPicker() {
   return typeof window.showOpenFilePicker === 'function';
@@ -491,7 +496,7 @@ async function openWithPicker() {
       types: [{
         description: 'Diagrams',
         accept: {
-          'application/xml': ['.drawio', '.xml'],
+          'application/xml': ['.ed', '.drawio', '.xml'],
           'image/svg+xml': ['.svg'],
           'image/png': ['.png'],
         },
@@ -620,7 +625,7 @@ async function saveWithPickerOrDownload(xml, name) {
     try {
       handle = await window.showSaveFilePicker({
         suggestedName: name,
-        types: [{ description: 'Diagram', accept: { 'application/xml': ['.drawio'] } }],
+        types: [{ description: 'Easy Diagram', accept: { 'application/xml': [EXT] } }],
       });
     } catch (e) {
       if (isCancel(e)) throw abortError();
@@ -647,19 +652,19 @@ export async function save(engine, file) {
   if (handle) {
     try {
       await writeToHandle(handle, new Blob([xml], { type: XML_BLOB_TYPE }));
-      return { name: handle.name || drawioName(f.name), handle };
+      return { name: handle.name || diagramName(f.name), handle };
     } catch (e) {
       if (isCancel(e)) throw abortError();
       // Permission denied, file moved/deleted, read-only volume...:
       // ask where to save instead of losing the work.
     }
   }
-  return saveWithPickerOrDownload(xml, drawioName(f.name));
+  return saveWithPickerOrDownload(xml, diagramName(f.name));
 }
 
 export async function saveAs(engine, file) {
   const xml = engineXml(engine);
-  return saveWithPickerOrDownload(xml, drawioName((file || {}).name));
+  return saveWithPickerOrDownload(xml, diagramName((file || {}).name));
 }
 
 // ---------------------------------------------------------------------------
@@ -682,8 +687,8 @@ export async function exportFile(engine, opts) {
   const embed = !!o.embed;
   if (!engine) throw new IoError('Nothing to export.');
 
-  if (format === 'drawio') {
-    const name = base + '.drawio';
+  if (format === 'ed') {
+    const name = base + EXT;
     downloadBlob(new Blob([engineXml(engine)], { type: XML_BLOB_TYPE }), name);
     return { name };
   }
@@ -698,7 +703,7 @@ export async function exportFile(engine, opts) {
     if (typeof svg !== 'string' || !/<svg[\s>]/.test(svg)) throw new IoError('The SVG export failed.');
     if (embed && !/<svg[^>]*\scontent=/.test(svg)) svg = addSvgContent(svg, engineXml(engine));
     if (!/^\s*<\?xml/.test(svg)) svg = '<?xml version="1.0" encoding="UTF-8"?>\n' + svg;
-    const name = base + (embed ? '.drawio.svg' : '.svg');
+    const name = base + (embed ? EXT + '.svg' : '.svg');
     downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), name);
     return { name };
   }
@@ -712,7 +717,7 @@ export async function exportFile(engine, opts) {
     }
     if (!(blob instanceof Blob) || blob.size === 0) throw new IoError('The PNG export failed.');
     if (embed && !(await pngHasDiagram(blob))) blob = await embedXmlInPng(blob, engineXml(engine));
-    const name = base + (embed ? '.drawio.png' : '.png');
+    const name = base + (embed ? EXT + '.png' : '.png');
     downloadBlob(blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' }), name);
     return { name };
   }
@@ -724,7 +729,7 @@ export async function exportFile(engine, opts) {
 // Drafts (IndexedDB). Never rejects; private mode / blocked storage just
 // means no drafts.
 //
-// One draft per (tab, document name): two tabs both editing "Untitled.drawio",
+// One draft per (tab, document name): two tabs both editing "Untitled.ed",
 // or two different files that share a name, never overwrite each other. The
 // tab id lives in sessionStorage, so it survives a reload of the same tab.
 // The public API is name-based and unchanged:

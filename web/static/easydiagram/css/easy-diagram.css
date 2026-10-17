@@ -19,7 +19,7 @@ body.easy-diagram-body { background: #0A0B0D; }
 /* ---------- Tokens ---------- */
 .ed {
   --bg: #0A0B0D; --surface: #111215; --surface2: #1A1C20; --ink: #E6E7EA; --ink2: #8D919B;
-  --line: #23252B; --edge: #5C616D; --dot: #2A2D34; --major: #16181C; --stage: #0D0E11;
+  --line: #23252B; --edge: #8A8F9B; --dot: #2A2D34; --major: #16181C; --stage: #0D0E11;
   --shadowc: rgba(0,0,0,.6); --nodeShadow: rgba(0,0,0,.5);
   --accent: #4C8DFF; --accentText: #79AAFF; --accentSoft: #1A263A; --onAccent: #0A0B0D;
   --danger: #F0607A; --ok: #1F9D55; --saved: #2BB6A3; --unsaved: #E5A93B;
@@ -31,7 +31,7 @@ body.easy-diagram-body { background: #0A0B0D; }
 }
 .ed[data-theme="light"] {
   --bg: #F4F4F2; --surface: #FFFFFF; --surface2: #F0F0EE; --ink: #141518; --ink2: #5D616B;
-  --line: #E2E2DF; --edge: #9A9EA8; --dot: #CFD0CC; --major: #ECECE9; --stage: #FAFAF9;
+  --line: #E2E2DF; --edge: #6E737E; --dot: #CFD0CC; --major: #ECECE9; --stage: #FAFAF9;
   --shadowc: rgba(20,21,24,.14); --nodeShadow: rgba(20,21,24,.08);
   --accentText: #3563B3; --accentSoft: #EDF4FF; --danger: #C2334D;
   --f-blue: #EAF0FA; --f-green: #E7F4F1; --f-violet: #F1F0F9; --f-pink: #F9ECEE; --f-amber: #F8F3E8; --f-slate: #F0F1F2;
@@ -243,6 +243,15 @@ body.easy-diagram-body:has(.ed[data-theme="light"]) { background: #F4F4F2; }
 .ed-tile .tp { fill: var(--surface); stroke: var(--ink2); stroke-width: 1.5; transition: stroke .22s, fill .22s; }
 .ed-tile:hover .tp { stroke: var(--accent); fill: var(--accentSoft); }
 .ed-tile-name { font-size: 11px; color: var(--ink2); white-space: nowrap; }
+/* AWS service tiles show the icon itself; long names truncate. */
+.ed-tile-aws { display: block; width: 30px; height: 30px; border-radius: 5px; pointer-events: none; }
+.ed-tile[data-kind="aws"] .ed-tile-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* Inspector select (AWS service). */
+.ed .ed-select {
+  width: 100%; padding: 7px 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); font: inherit; font-size: 13px;
+}
+.ed .ed-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ed-tiles-empty { font-size: 13px; color: var(--ink2); padding: 8px 2px; }
 .ed-libs-title { margin-top: 6px; letter-spacing: .08em; }
 .ed-lib {
@@ -549,3 +558,8 @@ body.easy-diagram-body:has(.ed[data-theme="light"]) { background: #F4F4F2; }
     animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important;
   }
 }
+
+/* ---------- Connector arrowhead / route pickers ---------- */
+.ed .seg.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ed .seg.four > button { padding: 0 4px; }
+.ed .ed-seg-ic { display: inline-flex; align-items: center; gap: 5px; }

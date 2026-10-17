@@ -2,6 +2,9 @@
 // drag onto the canvas to drop at a point) and a disabled "Libraries" row.
 import { h, s, icon, setPressed, srOnly } from './dom.js';
 import { I, KINDS, CATS, shapePath } from './defs.js';
+import { AWS_SERVICES, AWS_CATEGORIES, awsIconDataUri } from '../aws-icons.js';
+
+const AWS_SIZE = 64;
 
 function tileSvg(kind) {
   return s('svg', { width: 44, height: 30, viewBox: '0 0 44 30', 'aria-hidden': 'true', focusable: 'false' },
@@ -20,11 +23,22 @@ export function buildDock(ctx) {
   const chips = CATS.map(([id, label]) => h('button.chip', { 'aria-pressed': 'false', text: label, onclick: () => { cat = id; renderTiles(); } }));
   const chipRow = h('div.ed-cats', { role: 'group', 'aria-label': 'Shape category' }, chips);
 
-  const tiles = Object.keys(KINDS).map((kind) => {
-    const k = KINDS[kind];
-    const el = h('button.ed-tile', { 'aria-label': `Add ${k.name}`, 'data-kind': kind, title: `${k.name} (click, or drag onto the canvas)` },
-      tileSvg(kind), h('span.ed-tile-name', { text: k.name }));
-    wireDrag(el, kind);
+  // Every dock entry: the outline shapes, then one tile per AWS service.
+  const entries = Object.keys(KINDS).map((kind) => ({
+    kind, props: null, name: KINDS[kind].name, cats: KINDS[kind].cats, words: [KINDS[kind].label],
+    w: KINDS[kind].w, h: KINDS[kind].h, art: () => tileSvg(kind),
+  })).concat(AWS_SERVICES.map((svc) => ({
+    kind: 'aws', props: { service: svc.id }, name: svc.label, cats: ['aws'],
+    words: [svc.name, AWS_CATEGORIES[svc.category].name, 'aws'], w: AWS_SIZE, h: AWS_SIZE,
+    art: () => h('img.ed-tile-aws', { src: awsIconDataUri(svc.id), alt: '', width: 30, height: 30, draggable: 'false' }),
+  })));
+
+  const tiles = entries.map((e) => {
+    const full = e.kind === 'aws' ? `${e.words[0]}` : e.name;
+    const el = h('button.ed-tile', { 'aria-label': `Add ${full}`, 'data-kind': e.kind, 'data-service': e.props ? e.props.service : null,
+      title: `${full} (click, or drag onto the canvas)` },
+      e.art(), h('span.ed-tile-name', { text: e.name }));
+    wireDrag(el, e);
     return el;
   });
   const grid = h('div.ed-tiles', null, tiles);
@@ -35,16 +49,16 @@ export function buildDock(ctx) {
     h('button.ed-lib', { disabled: true, 'aria-disabled': 'true', title: 'Shape libraries are coming soon' },
       h('span.dots', { 'aria-hidden': 'true' },
         ['#2F6FEB', '#1F9D55', '#7C4DFF', '#D97706'].map((c) => { const d = h('span'); d.style.background = c; return d; })),
-      h('span', { text: 'UML, BPMN, cloud & more' }),
+      h('span', { text: 'UML, BPMN, Azure & more' }),
       h('span.badge', { text: 'Coming soon' })));
 
   function renderTiles() {
     CATS.forEach(([id], i) => setPressed(chips[i], cat === id));
     const q = query.trim().toLowerCase();
     let shown = 0;
-    Object.keys(KINDS).forEach((kind, i) => {
-      const k = KINDS[kind];
-      const ok = (cat === 'all' || k.cats.includes(cat)) && (!q || k.name.toLowerCase().includes(q) || k.label.toLowerCase().includes(q));
+    entries.forEach((e, i) => {
+      const ok = (cat === 'all' || e.cats.includes(cat))
+        && (!q || e.name.toLowerCase().includes(q) || e.words.some((w) => w.toLowerCase().includes(q)));
       tiles[i].hidden = !ok;
       if (ok) shown++;
     });
@@ -53,11 +67,11 @@ export function buildDock(ctx) {
   }
 
   // Pointer-driven drag so it works with mouse, pen and touch alike.
-  function wireDrag(tile, kind) {
+  function wireDrag(tile, entry) {
     let start = null, ghost = null, suppressClick = false;
     tile.addEventListener('click', () => {
       if (suppressClick) { suppressClick = false; return; }
-      actions.addShape(kind);
+      actions.addShape(entry.kind, entry.props ? Object.assign({}, entry.props) : undefined);
     });
     tile.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -69,7 +83,7 @@ export function buildDock(ctx) {
       if (!start || e.pointerId !== start.id) return;
       if (!ghost) {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
-        ghost = h('div.ed-drag-ghost', { 'aria-hidden': 'true' }, tileSvg(kind), h('span.ed-tile-name', { text: KINDS[kind].name }));
+        ghost = h('div.ed-drag-ghost', { 'aria-hidden': 'true' }, entry.art(), h('span.ed-tile-name', { text: entry.name }));
         ctx.root.append(ghost);
       }
       ghost.style.transform = `translate(${e.clientX - 36}px, ${e.clientY - 30}px)`;
@@ -85,7 +99,7 @@ export function buildDock(ctx) {
       if (!wasDrag) return;
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 0);
-      if (e.type === 'pointerup' && overStage(e)) dropAt(kind, e.clientX, e.clientY);
+      if (e.type === 'pointerup' && overStage(e)) dropAt(entry, e.clientX, e.clientY);
     };
     tile.addEventListener('pointerup', end);
     tile.addEventListener('pointercancel', end);
@@ -96,13 +110,13 @@ export function buildDock(ctx) {
     return !!(el && el.closest('.ed-stage') && !el.closest('.ed-tools, .ed-zoom, .ed-readout'));
   }
 
-  function dropAt(kind, cx, cy) {
-    const k = KINDS[kind];
+  function dropAt(entry, cx, cy) {
+    const base = entry.props ? Object.assign({}, entry.props) : {};
     if (typeof engine.clientToModel === 'function') {
       const p = engine.clientToModel(cx, cy);
-      actions.addShape(kind, { x: Math.round(p.x - k.w / 2), y: Math.round(p.y - k.h / 2) });
+      actions.addShape(entry.kind, Object.assign(base, { x: Math.round(p.x - entry.w / 2), y: Math.round(p.y - entry.h / 2) }));
     } else {
-      actions.addShape(kind);
+      actions.addShape(entry.kind, entry.props ? base : undefined);
     }
   }
 

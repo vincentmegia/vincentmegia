@@ -32,6 +32,7 @@
 // ---------------------------------------------------------------------------
 
 import { createAnimator, shapeAnimOf, edgeAnimOf, SHAPE_ANIMS, EDGE_ANIMS, TRIGGERS, SPEEDS } from './animation.js';
+import { awsService, awsIconDataUri, DEFAULT_AWS_SERVICE } from './aws-icons.js';
 
 /* global Graph, mxGraph, mxGraphModel, mxCodec, mxUtils, mxEvent, mxConstants, mxUndoManager,
    mxRubberband, mxRectangle, mxPoint, mxGeometry, mxCell, mxStencilRegistry, mxVertexHandler,
@@ -51,8 +52,8 @@ const EDGE_COLORS = { blue: '#4C8DFF', green: '#2BB6A3', pink: '#F0607A', amber:
 const ACCENT = '#4C8DFF';
 
 const THEMES = {
-  dark: { bg: '#0A0B0D', surface: '#111215', surface2: '#1A1C20', ink: '#E6E7EA', ink2: '#8D919B', line: '#23252B', edge: '#5C616D', dot: '#2A2D34', major: '#16181C', stage: '#0D0E11', shadow: 'rgba(0,0,0,.5)' },
-  light: { bg: '#F4F4F2', surface: '#FFFFFF', surface2: '#F0F0EE', ink: '#141518', ink2: '#5D616B', line: '#E2E2DF', edge: '#9A9EA8', dot: '#CFD0CC', major: '#ECECE9', stage: '#FAFAF9', shadow: 'rgba(20,21,24,.08)' },
+  dark: { bg: '#0A0B0D', surface: '#111215', surface2: '#1A1C20', ink: '#E6E7EA', ink2: '#8D919B', line: '#23252B', edge: '#8A8F9B', dot: '#2A2D34', major: '#16181C', stage: '#0D0E11', shadow: 'rgba(0,0,0,.5)' },
+  light: { bg: '#F4F4F2', surface: '#FFFFFF', surface2: '#F0F0EE', ink: '#141518', ink2: '#5D616B', line: '#E2E2DF', edge: '#6E737E', dot: '#CFD0CC', major: '#ECECE9', stage: '#FAFAF9', shadow: 'rgba(20,21,24,.08)' },
 };
 
 const KINDS = {
@@ -67,6 +68,8 @@ const KINDS = {
   doc: { label: 'Report', color: 'pink', w: 140, h: 80 },
   note: { label: 'New note', color: 'amber', w: 170, h: 100 },
   text: { label: 'Text', color: 'slate', w: 120, h: 40 },
+  // An AWS service icon (aws-icons.js); the service is the `service` prop.
+  aws: { label: 'Lambda', color: 'slate', w: 64, h: 64 },
 };
 
 // Standard draw.io style fragments per kind, so files open in upstream draw.io.
@@ -83,15 +86,25 @@ const KIND_STYLE = {
   note: { shape: 'note', size: '18', flipV: '1', dashed: '1', dashPattern: '4 4', align: 'left', verticalAlign: 'top',
     spacingLeft: '14', spacingTop: '12', spacingRight: '16', fontFamily: 'IBM Plex Mono', fontSize: '12' },
   text: { text: true, strokeColor: 'none', fillColor: 'none' },
+  // An image shape with its label underneath, like draw.io's AWS icons.
+  aws: { shape: 'image', verticalLabelPosition: 'bottom', labelPosition: 'center', verticalAlign: 'top', align: 'center',
+    imageAspect: '0', aspect: 'fixed', fontSize: '12' },
 };
 // Every key any kind sets, so switching kinds removes the old ones.
 const KIND_KEYS = ['rounded', 'absoluteArcSize', 'arcSize', 'shape', 'perimeter', 'fixedSize', 'size', 'boundedLbl',
   'backgroundOutline', 'flipV', 'dashed', 'dashPattern', 'align', 'verticalAlign', 'spacingLeft', 'spacingTop',
-  'spacingRight', 'fontFamily', 'fontSize'];
+  'spacingRight', 'fontFamily', 'fontSize', 'verticalLabelPosition', 'labelPosition', 'imageAspect', 'aspect',
+  'image', 'edAws'];
 
 const STROKE_WIDTHS = [1, 1.5, 3];
 const EDGE_WIDTHS = [1.2, 1.8, 3];
 const LINE_STYLES = ['solid', 'dashed', 'dotted'];
+// Which ends of a connector get an arrowhead, and its shape (draw.io marker names).
+const ARROW_ENDS = ['end', 'both', 'start', 'none'];
+const ARROW_HEADS = { block: { arrow: 'block', fill: '1' }, open: { arrow: 'open', fill: '0' }, oval: { arrow: 'oval', fill: '1' }, diamond: { arrow: 'diamond', fill: '1' } };
+const ROUTES = ['elbow', 'straight', 'curved'];
+// Arrowhead size grows with the line so a bold connector doesn't get a pin-head.
+function arrowSize(width) { return String(Math.round(7 + (Number(width) || 1.8) * 1.7)); }
 const TOOLS = ['select', 'hand', 'connector', 'text', 'rect', 'ellipse', 'diamond', 'note'];
 const PLACE_TOOLS = { text: 'text', rect: 'rect', ellipse: 'ellipse', diamond: 'diamond', note: 'note' };
 const EVENTS = ['change', 'selection', 'zoom', 'page', 'tool', 'view'];
@@ -458,7 +471,12 @@ export function createEngine(container, options) {
       const colorName = style.edColor && COLORS[style.edColor] ? style.edColor : colorNameFromHex(style.strokeColor, COLORS);
       style.edShadow = exporting ? '0' : (style.shadow == '1' ? '1' : '0');
       if (!exporting) style.shadow = '0';
-      if (kind === 'text') {
+      if (kind === 'aws') {
+        const svc = awsService(style.edAws) || awsService(DEFAULT_AWS_SERVICE);
+        // The stroke isn't drawn for an image; it's what the glow animation uses.
+        style.strokeColor = svc.color;
+        style.fontColor = t.ink;
+      } else if (kind === 'text') {
         if (style.edColor || colorName) style.fontColor = t.ink;
       } else if (colorName) {
         style.strokeColor = COLORS[colorName];
@@ -470,6 +488,11 @@ export function createEngine(container, options) {
       const lit = !exporting && highlight.has(cell);
       if (name === 'default' || name === 'accent' || EDGE_COLORS[name]) {
         style.strokeColor = name === 'default' ? (lit ? tok.accent : t.edge) : name === 'accent' ? tok.accent : EDGE_COLORS[name];
+      }
+      // Diagrams saved before arrowheads scaled with width kept a 6px head.
+      if (style.edColor) {
+        if (style.endSize == '6') style.endSize = arrowSize(style.strokeWidth);
+        if (style.startSize == '6') style.startSize = arrowSize(style.strokeWidth);
       }
       style.fontColor = lit ? tok.accentText : t.ink2;
       style.labelBackgroundColor = lit && graph.isCellSelected(cell) ? tok.accentSoft : t.surface;
@@ -511,6 +534,7 @@ export function createEngine(container, options) {
   function kindOf(style) {
     const k = style.edKind;
     if (k && KINDS[k]) return k;
+    if (style.edAws) return 'aws';
     const shape = style.shape;
     if (style.text === true || style.text === '1' || shape === 'text') return 'text';
     if (style.ellipse === true || shape === 'ellipse') return 'ellipse';
@@ -559,6 +583,7 @@ export function createEngine(container, options) {
       opacity: clamp(Math.round(op), 20, 100),
       shadow: st.shadow == '1',
       anim: shapeAnimOf(st),
+      ...(kind === 'aws' ? { service: awsService(st.edAws) ? st.edAws : DEFAULT_AWS_SERVICE } : {}),
     };
   }
 
@@ -574,6 +599,16 @@ export function createEngine(container, options) {
     else color = colorNameFromHex(st.strokeColor, EDGE_COLORS) || 'default';
     let width = parseFloat(st.strokeWidth);
     if (!(width > 0)) width = 1;
+    // draw.io draws a classic arrow at the end when endArrow is unset.
+    const endA = st.endArrow == null ? 'classic' : String(st.endArrow);
+    const startA = st.startArrow == null ? 'none' : String(st.startArrow);
+    const hasEnd = endA !== 'none' && endA !== '';
+    const hasStart = startA !== 'none' && startA !== '';
+    const arrows = hasEnd && hasStart ? 'both' : hasEnd ? 'end' : hasStart ? 'start' : 'none';
+    const marker = hasEnd ? endA : hasStart ? startA : 'block';
+    const head = /^open/.test(marker) ? 'open' : marker === 'oval' || marker === 'dot' ? 'oval' : /^diamond/.test(marker) ? 'diamond' : 'block';
+    const orth = st.edgeStyle != null && st.edgeStyle !== 'none' && st.edgeStyle !== '';
+    const route = st.curved == '1' ? 'curved' : orth ? 'elbow' : 'straight';
     return {
       id: cell.id,
       type: 'edge',
@@ -583,6 +618,9 @@ export function createEngine(container, options) {
       lineStyle,
       color,
       width,
+      arrows,
+      head,
+      route,
       anim: edgeAnimOf(st),
     };
   }
@@ -596,7 +634,21 @@ export function createEngine(container, options) {
 
   // Style builders ---------------------------------------------------------
 
+  function awsStyle(service) {
+    const id = awsService(service) ? service : DEFAULT_AWS_SERVICE;
+    let s = 'whiteSpace=wrap;html=1;';
+    s = setStyleKeys(s, KIND_STYLE.aws);
+    return setStyleKeys(s, {
+      edKind: 'aws',
+      edAws: id,
+      image: awsIconDataUri(id),
+      fontFamily: 'IBM Plex Sans',
+      fontColor: THEMES.light.ink,
+    });
+  }
+
   function shapeStyle(kind, colorName, extra) {
+    if (kind === 'aws') return awsStyle(extra && extra.edAws);
     const c = COLORS[colorName] || COLORS.blue;
     let s = 'whiteSpace=wrap;html=1;';
     const ks = KIND_STYLE[kind];
@@ -620,7 +672,7 @@ export function createEngine(container, options) {
   }
 
   function edgeStyle(colorName, extra) {
-    let s = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;';
+    let s = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;';
     s = setStyleKeys(s, {
       strokeWidth: '1.8',
       fontFamily: 'IBM Plex Mono',
@@ -630,8 +682,25 @@ export function createEngine(container, options) {
       labelBorderColor: THEMES.light.line,
     });
     s = setStyleKeys(s, edgeColorKeys(colorName || 'default'));
+    s = setStyleKeys(s, arrowKeys('end', 'block', 1.8));
     if (extra) s = setStyleKeys(s, extra);
     return s;
+  }
+
+  function arrowKeys(ends, head, width) {
+    const hd = ARROW_HEADS[head] || ARROW_HEADS.block;
+    const size = arrowSize(width);
+    const atEnd = ends === 'end' || ends === 'both';
+    const atStart = ends === 'start' || ends === 'both';
+    return {
+      endArrow: atEnd ? hd.arrow : 'none', endFill: atEnd ? hd.fill : null, endSize: atEnd ? size : null,
+      startArrow: atStart ? hd.arrow : 'none', startFill: atStart ? hd.fill : null, startSize: atStart ? size : null,
+    };
+  }
+
+  function routeKeys(route) {
+    if (route === 'straight') return { edgeStyle: 'none', curved: null };
+    return { edgeStyle: 'orthogonalEdgeStyle', orthogonalLoop: '1', jettySize: 'auto', curved: route === 'curved' ? '1' : null };
   }
 
   function edgeColorKeys(name) {
@@ -711,7 +780,13 @@ export function createEngine(container, options) {
   function applyShapePatch(cell, patch) {
     let style = cell.style || '';
     const cur = shapeModel(cell);
-    if (patch.kind && KINDS[patch.kind] && patch.kind !== cur.kind) {
+    if (cur.kind === 'aws' && patch.service && awsService(patch.service) && patch.service !== cur.service) {
+      style = setStyleKeys(style, { edAws: patch.service, image: awsIconDataUri(patch.service) });
+      // Follow the service name unless the user renamed the shape.
+      if (patch.label == null && cur.label === awsService(cur.service).label) patch = Object.assign({}, patch, { label: awsService(patch.service).label });
+    }
+    // An AWS icon can't turn into an outline shape (or back): it has no fill or stroke to keep.
+    if (patch.kind && KINDS[patch.kind] && patch.kind !== cur.kind && patch.kind !== 'aws' && cur.kind !== 'aws') {
       const removed = {};
       KIND_KEYS.forEach((k) => { removed[k] = null; });
       ['ellipse', 'rhombus', 'text'].forEach((k) => { removed[k] = null; });
@@ -727,7 +802,7 @@ export function createEngine(container, options) {
         style = setStyleKeys(style, { strokeColor: c, fillColor: tint(c, 'light'), shadow: '1' });
       }
     }
-    if (patch.color && COLORS[patch.color]) {
+    if (patch.color && COLORS[patch.color] && cur.kind !== 'aws') {
       const kind = patch.kind && KINDS[patch.kind] ? patch.kind : cur.kind;
       const c = COLORS[patch.color];
       style = setStyleKeys(style, kind === 'text' ? { edColor: patch.color } :
@@ -762,7 +837,13 @@ export function createEngine(container, options) {
     if (patch.color && (patch.color === 'default' || patch.color === 'accent' || EDGE_COLORS[patch.color])) {
       style = setStyleKeys(style, edgeColorKeys(patch.color));
     }
-    if (patch.width != null && EDGE_WIDTHS.indexOf(Number(patch.width)) >= 0) style = setStyleKeys(style, { strokeWidth: String(Number(patch.width)) });
+    const width = patch.width != null && EDGE_WIDTHS.indexOf(Number(patch.width)) >= 0 ? Number(patch.width) : null;
+    if (width != null) style = setStyleKeys(style, { strokeWidth: String(width) });
+    const arrows = ARROW_ENDS.indexOf(patch.arrows) >= 0 ? patch.arrows : null;
+    const head = ARROW_HEADS[patch.head] ? patch.head : null;
+    // Width resizes the heads, so any of the three rewrites the arrow keys.
+    if (arrows || head || width != null) style = setStyleKeys(style, arrowKeys(arrows || cur.arrows, head || cur.head, width != null ? width : cur.width));
+    if (ROUTES.indexOf(patch.route) >= 0 && patch.route !== cur.route) style = setStyleKeys(style, routeKeys(patch.route));
     if (patch.anim) style = setStyleKeys(style, edgeAnimKeys(Object.assign({}, cur.anim, patch.anim)));
     if (style !== cell.style) model.setStyle(cell, style);
     if (patch.source != null) {
@@ -877,6 +958,25 @@ export function createEngine(container, options) {
   }
 
   const PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
+  // Sides of a shape where a connector meets it near the middle, which is
+  // where that side's "+" handle sits.
+  function busySides(cell, b) {
+    const out = new Set();
+    (model.getEdges(cell) || []).forEach((edge) => {
+      const es = graph.view.getState(edge);
+      const pts = es && es.absolutePoints;
+      if (!pts || pts.length < 2) return;
+      const p = edge.target === cell ? pts[pts.length - 1] : pts[0];
+      if (!p) return;
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (Math.abs(p.x - b.x) < 2 && Math.abs(p.y - cy) < 16) out.add('l');
+      else if (Math.abs(p.x - (b.x + b.w)) < 2 && Math.abs(p.y - cy) < 16) out.add('r');
+      else if (Math.abs(p.y - b.y) < 2 && Math.abs(p.x - cx) < 16) out.add('t');
+      else if (Math.abs(p.y - (b.y + b.h)) < 2 && Math.abs(p.x - cx) < 16) out.add('b');
+    });
+    return out;
+  }
+
   const SIDE_LABEL = { r: 'Add connected step to the right', b: 'Add connected step below', l: 'Add connected step to the left', t: 'Add connected step above' };
   let resizing = null;
 
@@ -897,6 +997,12 @@ export function createEngine(container, options) {
       frame.style.top = (b.y - 6) + 'px';
       frame.style.width = (b.w + 12) + 'px';
       frame.style.height = (b.h + 12) + 'px';
+      // A label drawn under the shape (AWS icons): the bottom "+" handle
+      // goes below the label instead of on top of it.
+      if (st.text && st.text.boundingBox && st.style && st.style.verticalLabelPosition === 'bottom') {
+        const under = Math.max(0, st.text.boundingBox.y + st.text.boundingBox.height - (b.y + b.h));
+        frame.style.setProperty('--ed-plus-b', (14 + under) + 'px');
+      }
       if (single) {
         ['nw', 'ne', 'sw', 'se'].forEach((c) => {
           const k = document.createElement('span');
@@ -907,11 +1013,14 @@ export function createEngine(container, options) {
           frame.appendChild(k);
         });
         if (!graph.isEditing() && !resizing) {
+          const busy = busySides(cell, b);
           ['r', 'b', 'l', 't'].forEach((side) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'ed-plus';
             btn.dataset.side = side;
+            // Slide off a connector end so the handle doesn't cover its arrowhead.
+            if (busy.has(side)) btn.dataset.shift = '1';
             btn.setAttribute('aria-label', SIDE_LABEL[side]);
             btn.innerHTML = PLUS_SVG;
             btn.addEventListener('click', (e) => {
@@ -1410,8 +1519,10 @@ export function createEngine(container, options) {
         x = spot.x;
         y = spot.y;
       }
-      const label = props.label != null ? String(props.label) : d.label;
-      const cell = edit(() => graph.insertVertex(graph.getDefaultParent(), null, textToHtml(label), Number(x), Number(y), w, h, shapeStyle(kind, color)));
+      const service = kind === 'aws' ? (awsService(props.service) ? props.service : DEFAULT_AWS_SERVICE) : null;
+      const label = props.label != null ? String(props.label) : (service ? awsService(service).label : d.label);
+      const style = kind === 'aws' ? shapeStyle('aws', null, { edAws: service }) : shapeStyle(kind, color);
+      const cell = edit(() => graph.insertVertex(graph.getDefaultParent(), null, textToHtml(label), Number(x), Number(y), w, h, style));
       graph.setSelectionCell(cell);
       return cell.id;
     },
@@ -1459,7 +1570,12 @@ export function createEngine(container, options) {
       props = props || {};
       let style = edgeStyle(props.color && (props.color === 'accent' || EDGE_COLORS[props.color]) ? props.color : 'default');
       if (props.lineStyle) style = setStyleKeys(style, lineStyleKeys(props.lineStyle));
-      if (props.width != null && EDGE_WIDTHS.indexOf(Number(props.width)) >= 0) style = setStyleKeys(style, { strokeWidth: String(Number(props.width)) });
+      const width = props.width != null && EDGE_WIDTHS.indexOf(Number(props.width)) >= 0 ? Number(props.width) : 1.8;
+      style = setStyleKeys(style, { strokeWidth: String(width) });
+      if (props.arrows || props.head) {
+        style = setStyleKeys(style, arrowKeys(ARROW_ENDS.indexOf(props.arrows) >= 0 ? props.arrows : 'end', ARROW_HEADS[props.head] ? props.head : 'block', width));
+      }
+      if (ROUTES.indexOf(props.route) >= 0) style = setStyleKeys(style, routeKeys(props.route));
       if (props.anim) style = setStyleKeys(style, edgeAnimKeys(props.anim));
       style = setStyleKeys(style, autoPorts(s.geometry, t.geometry));
       const label = props.label != null ? textToHtml(props.label) : '';

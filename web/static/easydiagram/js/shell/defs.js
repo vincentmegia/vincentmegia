@@ -24,9 +24,9 @@ export const KINDS = {
   note: { name: 'Sticky', cats: ['basic'], label: 'New note', w: 170, h: 100 },
 };
 export const KIND_NAMES = Object.assign(
-  Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.name])), { text: 'Text' });
+  Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.name])), { text: 'Text', aws: 'AWS' });
 
-export const CATS = [['all', 'All'], ['basic', 'Basic'], ['flow', 'Flowchart']];
+export const CATS = [['all', 'All'], ['basic', 'Basic'], ['flow', 'Flowchart'], ['aws', 'AWS']];
 
 // Outline path for a shape kind at w×h (prototype shapePath).
 export function shapePath(k, w, h) {

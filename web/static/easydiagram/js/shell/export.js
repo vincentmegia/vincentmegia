@@ -1,8 +1,8 @@
-// Export popover: PNG / SVG / PDF / .drawio, transparent, embed, scale.
+// Export popover: PNG / SVG / PDF / .ed, transparent, embed, scale.
 import { h, icon, setPressed, toggleRow, segmented } from './dom.js';
 import { I } from './defs.js';
 
-const FORMATS = [['png', 'PNG'], ['svg', 'SVG'], ['pdf', 'PDF'], ['drawio', '.drawio']];
+const FORMATS = [['png', 'PNG'], ['svg', 'SVG'], ['pdf', 'PDF'], ['ed', '.ed']];
 
 export function buildExportPopover(ctx) {
   const { store, actions } = ctx;

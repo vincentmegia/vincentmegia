@@ -375,7 +375,8 @@ test.describe('engine', () => {
 			const b = e.addShape('diamond', { x: 300, y: 0, label: 'Two <b>&amp;</b>' });
 			const ed = e.connect(a, b, { label: 'go' });
 			e.update(a, { anim: { name: 'bounce', trigger: 'once', speed: 'slow' } });
-			e.update(ed, { anim: { name: 'comet', speed: 'fast', direction: 'reverse' }, lineStyle: 'dotted', color: 'amber', width: 3 });
+			e.update(ed, { anim: { name: 'comet', speed: 'fast', direction: 'reverse' }, lineStyle: 'dotted', color: 'amber', width: 3,
+				arrows: 'both', head: 'diamond', route: 'curved' });
 			const p2 = e.addPage('Second');
 			e.addShape('note', { x: 10, y: 10, label: 'Sticky' });
 			const snapshot = () => e.pages().map((p) => { e.selectPage(p.id); return { name: p.name, cells: e.cells() }; });
@@ -393,6 +394,10 @@ test.describe('engine', () => {
 		expect(r.xml).toContain('edAnimTrigger=once;');
 		expect(r.xml).toContain('edAnimSpeed=slow;');
 		expect(r.xml).toContain('edAnim=comet;');
+		// Arrowheads and routing are plain draw.io keys, so upstream draw.io shows them too.
+		expect(r.xml).toMatch(/startArrow=diamond;.*endArrow=diamond;|endArrow=diamond;.*startArrow=diamond;/);
+		expect(r.xml).toContain('curved=1;');
+		expect(r.after[0].cells.find((c) => c.type === 'edge')).toMatchObject({ arrows: 'both', head: 'diamond', route: 'curved' });
 		expect(r.xml).toContain('edAnimDir=reverse;');
 		expect(r.xml).toContain('edAnimSpeed=fast;');
 		// The label's markup is text, not HTML.
@@ -668,8 +673,9 @@ test.describe('io', () => {
 			await openEditor(page);
 			const xml = await upstreamCompressedTwoPages(page);
 			const bytes = await pngWithEmbed(page, xml, chunk);
-			await openViaChooser(page, { name: 'flow.drawio.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
-			await expect(toast(page)).toHaveText('Opened “flow.drawio”');
+			// An embedded image opens as a new .ed document (it never overwrites the image).
+			await openViaChooser(page, { name: chunk === 'zTXt' ? 'flow.ed.png' : 'flow.drawio.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
+			await expect(toast(page)).toHaveText('Opened “flow.ed”');
 			await expect(page.locator('.ed-tab')).toHaveText(['Overview', 'Details']);
 			expect((await shapes(page)).map((c) => c.label)).toEqual(['Alpha', 'Beta']);
 		});
@@ -684,8 +690,8 @@ test.describe('io', () => {
 			e.load('<mxfile><diagram name="x"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>');
 			return s;
 		});
-		await dropFile(page, 'thing.drawio.svg', svg, 'image/svg+xml');
-		await expect(toast(page)).toHaveText('Opened “thing.drawio”');
+		await dropFile(page, 'thing.ed.svg', svg, 'image/svg+xml');
+		await expect(toast(page)).toHaveText('Opened “thing.ed”');
 		expect((await shapes(page))[0]).toMatchObject({ kind: 'hex', label: 'From SVG' });
 	});
 
@@ -716,7 +722,7 @@ test.describe('io', () => {
 			await expect(toast(page), name).toHaveAttribute('data-kind', 'error');
 			await expect(toast(page), name).toHaveText(msg);
 			expect(stripModified(await E(page, () => window.__easyDiagram.engine.toXml())), name).toBe(before);
-			await expect(page.getByTestId('file-name')).toHaveText('Untitled.drawio');
+			await expect(page.getByTestId('file-name')).toHaveText('Untitled.ed');
 		}
 		expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
 	});
@@ -765,10 +771,12 @@ test.describe('io', () => {
 		await page.keyboard.press('r');
 		await expect(page.getByTestId('save-status')).toHaveText('Draft kept on this device');
 		const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Control+s')]);
-		expect(download.suggestedFilename()).toBe('Untitled.drawio');
+		expect(download.suggestedFilename()).toBe('Untitled.ed');
 		const saved = (await readDownload(download)).toString('utf8');
 		expect(stripModified(saved)).toBe(stripModified(await E(page, () => window.__easyDiagram.engine.toXml())));
-		await expect(toast(page)).toHaveText('Saved “Untitled.drawio”');
+		// An .ed file is still standard draw.io <mxfile> XML.
+		expect(saved).toMatch(/^<mxfile[\s>]/);
+		await expect(toast(page)).toHaveText('Saved “Untitled.ed”');
 		await expect(page.getByTestId('save-status')).toHaveText('Saved on this device');
 		await expect.poll(() => E(page, () => window.__easyDiagram.io.loadDraft())).toBeNull();
 		await page.reload();
@@ -779,17 +787,17 @@ test.describe('io', () => {
 
 	test('in-place save: the first save picks a file, later saves write to the same handle', async ({ page }) => {
 		await openEditor(page, { pickers: 'stub' });
-		await page.evaluate(() => { window.__saveName = 'mine.drawio'; });
+		await page.evaluate(() => { window.__saveName = 'mine.ed'; });
 		await page.keyboard.press('r');
 		await page.keyboard.press('Control+s');
-		await expect(toast(page)).toHaveText('Saved “mine.drawio”');
-		await expect(page.getByTestId('file-name')).toHaveText('mine.drawio');
+		await expect(toast(page)).toHaveText('Saved “mine.ed”');
+		await expect(page.getByTestId('file-name')).toHaveText('mine.ed');
 		await page.keyboard.press('o');
 		await page.keyboard.press('Control+s');
 		await expect.poll(() => page.evaluate(() => window.__writes.length)).toBe(2);
 		const r = await page.evaluate(() => ({ calls: window.__pickerCalls.save, writes: window.__writes, xml: window.__easyDiagram.engine.toXml() }));
 		expect(r.calls).toBe(1);
-		expect(r.writes.map((w) => w.name)).toEqual(['mine.drawio', 'mine.drawio']);
+		expect(r.writes.map((w) => w.name)).toEqual(['mine.ed', 'mine.ed']);
 		expect(stripModified(r.writes[1].text)).toBe(stripModified(r.xml));
 		expect(r.writes[1].text).toContain('edKind=ellipse');
 		// Save as always asks again.
@@ -838,8 +846,8 @@ test.describe('io', () => {
 			return d;
 		};
 		const png3 = await exportVia('PNG', 3);
-		expect(png3.suggestedFilename()).toBe('Untitled-Page-1.drawio.png');
-		await expect(toast(page)).toHaveText('Exported “Untitled-Page-1.drawio.png” at 3×');
+		expect(png3.suggestedFilename()).toBe('Untitled-Page-1.ed.png');
+		await expect(toast(page)).toHaveText('Exported “Untitled-Page-1.ed.png” at 3×');
 		const png3buf = await readDownload(png3);
 		const png1 = await exportVia('PNG', 1, false);
 		expect(png1.suggestedFilename()).toBe('Untitled-Page-1.png');
@@ -847,16 +855,16 @@ test.describe('io', () => {
 		// 3x diagram, unscaled 16px border on each side.
 		expect(Math.abs((pngInfo(png3buf).width - 32) - 3 * (w1 - 32))).toBeLessThanOrEqual(3);
 		const svg = await exportVia('SVG');
-		expect(svg.suggestedFilename()).toBe('Untitled-Page-1.drawio.svg');
+		expect(svg.suggestedFilename()).toBe('Untitled-Page-1.ed.svg');
 		expect((await readDownload(svg)).toString('utf8')).toMatch(/<svg[^>]* content="/);
-		const dio = await exportVia('.drawio');
-		expect(dio.suggestedFilename()).toBe('Untitled.drawio');
+		const dio = await exportVia('.ed');
+		expect(dio.suggestedFilename()).toBe('Untitled.ed');
 
 		// Re-import the embedded 3x PNG into a fresh page state.
 		await E(page, () => window.__easyDiagram.engine.load('<mxfile><diagram name="blank"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'));
 		expect(await cells(page)).toEqual([]);
-		await openViaChooser(page, { name: 'Untitled-Page-1.drawio.png', mimeType: 'image/png', buffer: png3buf });
-		await expect(toast(page)).toHaveText('Opened “Untitled-Page-1.drawio”');
+		await openViaChooser(page, { name: 'Untitled-Page-1.ed.png', mimeType: 'image/png', buffer: png3buf });
+		await expect(toast(page)).toHaveText('Opened “Untitled-Page-1.ed”');
 		expect(await cells(page)).toEqual(model);
 	});
 
@@ -864,12 +872,12 @@ test.describe('io', () => {
 		await openEditor(page);
 		await buildFlowchartViaUI(page);
 		const model = await cells(page);
-		await expect.poll(() => E(page, async () => !!(await window.__easyDiagram.io.loadDraft('Untitled.drawio')))).toBe(true);
+		await expect.poll(() => E(page, async () => !!(await window.__easyDiagram.io.loadDraft('Untitled.ed')))).toBe(true);
 		await page.reload();
 		await page.waitForFunction(() => window.__easyDiagram);
 		const prompt = page.getByTestId('draft-prompt');
 		await expect(prompt).toBeVisible();
-		await expect(prompt).toContainText('You have an unsaved draft of “Untitled.drawio”');
+		await expect(prompt).toContainText('You have an unsaved draft of “Untitled.ed”');
 		await prompt.getByRole('button', { name: 'Restore' }).click();
 		await expect(toast(page)).toHaveText('Draft restored');
 		expect(await cells(page)).toEqual(model);
@@ -879,11 +887,11 @@ test.describe('io', () => {
 	test('Discard drops the draft', async ({ page }) => {
 		await openEditor(page);
 		await page.keyboard.press('r');
-		await expect.poll(() => E(page, async () => !!(await window.__easyDiagram.io.loadDraft('Untitled.drawio')))).toBe(true);
+		await expect.poll(() => E(page, async () => !!(await window.__easyDiagram.io.loadDraft('Untitled.ed')))).toBe(true);
 		await page.reload();
 		await page.getByTestId('draft-prompt').getByRole('button', { name: 'Discard' }).click();
 		await expect(page.getByTestId('draft-prompt')).toHaveCount(0);
-		await expect.poll(() => E(page, () => window.__easyDiagram.io.loadDraft('Untitled.drawio'))).toBeNull();
+		await expect.poll(() => E(page, () => window.__easyDiagram.io.loadDraft('Untitled.ed'))).toBeNull();
 		await page.reload();
 		await page.waitForFunction(() => window.__easyDiagram);
 		await page.waitForTimeout(500);
@@ -1135,6 +1143,26 @@ test.describe('ui', () => {
 			await insp.getByRole('group', { name: 'Width' }).getByRole('button', { name: label }).click();
 			expect((await get()).width).toBe(v);
 		}
+		// A new connector has a block arrowhead at the target, routed with elbows.
+		expect(await get()).toMatchObject({ arrows: 'end', head: 'block', route: 'elbow' });
+		for (const [label, v] of [['Both', 'both'], ['Start', 'start'], ['None', 'none'], ['End', 'end']]) {
+			await insp.getByRole('button', { name: `Arrowheads: ${label}` }).click();
+			expect((await get()).arrows).toBe(v);
+		}
+		for (const [label, v] of [['Open', 'open'], ['Dot', 'oval'], ['Diamond', 'diamond'], ['Arrow', 'block']]) {
+			await insp.getByRole('button', { name: `Arrowhead shape: ${label}` }).click();
+			expect((await get()).head).toBe(v);
+		}
+		for (const [label, v] of [['Straight', 'straight'], ['Curved', 'curved'], ['Elbow', 'elbow']]) {
+			await insp.getByRole('button', { name: `Route: ${label}` }).click();
+			expect((await get()).route).toBe(v);
+		}
+		// The head scales with the line width.
+		const endSize = () => E(page, (i) => /endSize=(\d+)/.exec(window.__easyDiagram.engine._graph.getModel().getCell(i).style)[1], ed);
+		const regular = Number(await endSize());
+		await insp.getByRole('group', { name: 'Width' }).getByRole('button', { name: 'Bold' }).click();
+		expect(Number(await endSize())).toBeGreaterThan(regular);
+		await insp.getByRole('group', { name: 'Width' }).getByRole('button', { name: 'Regular' }).click();
 		await expect(page.getByTestId('readout')).toContainText('Connector');
 		await insp.getByRole('button', { name: 'Delete connector' }).click();
 		await expect(toast(page)).toContainText('Connector deleted');
@@ -1275,7 +1303,7 @@ test.describe('ui', () => {
 		await expect(pop.locator('.ed-pop-title')).toHaveText('Export “Page-1”');
 		await expect(pop.getByRole('button', { name: 'PNG', exact: true })).toBeFocused();
 		await expect(pop).toContainText('Nothing is uploaded');
-		await pop.getByRole('button', { name: '.drawio' }).click();
+		await pop.getByRole('button', { name: '.ed', exact: true }).click();
 		await expect(pop.getByRole('button', { name: 'Transparent background' })).toBeDisabled();
 		await expect(pop.getByRole('button', { name: '2×' })).toBeDisabled();
 		await pop.getByRole('button', { name: 'SVG', exact: true }).click();
@@ -1392,7 +1420,12 @@ test.describe('ui', () => {
 		await openEditor(page);
 		const dock = page.getByRole('complementary', { name: 'Shapes' });
 		const visibleNames = () => dock.locator('.ed-tile:visible .ed-tile-name').allInnerTexts();
-		expect(await visibleNames()).toEqual(['Rectangle', 'Rounded', 'Ellipse', 'Decision', 'Terminator', 'Data', 'Hexagon', 'Database', 'Document', 'Sticky']);
+		const OUTLINES = ['Rectangle', 'Rounded', 'Ellipse', 'Decision', 'Terminator', 'Data', 'Hexagon', 'Database', 'Document', 'Sticky'];
+		const AWS = ['EC2', 'Lambda', 'ECS', 'EKS', 'S3', 'EFS', 'RDS', 'DynamoDB', 'Aurora', 'VPC', 'CloudFront', 'Route 53',
+			'Load Balancer', 'API Gateway', 'SQS', 'SNS', 'Step Functions', 'EventBridge', 'IAM', 'Cognito', 'KMS', 'CloudWatch', 'Kinesis', 'SageMaker'];
+		expect(await visibleNames()).toEqual([...OUTLINES, ...AWS]);
+		await dock.getByRole('button', { name: 'AWS', exact: true }).click();
+		expect(await visibleNames()).toEqual(AWS);
 		await dock.getByRole('button', { name: 'Flowchart' }).click();
 		await expect(dock.getByRole('button', { name: 'Flowchart' })).toHaveAttribute('aria-pressed', 'true');
 		expect(await visibleNames()).toEqual(['Rectangle', 'Decision', 'Terminator', 'Data', 'Database', 'Document']);
@@ -1400,7 +1433,12 @@ test.describe('ui', () => {
 		expect(await visibleNames()).toEqual(['Rectangle', 'Rounded', 'Ellipse', 'Decision', 'Hexagon', 'Sticky']);
 		await dock.getByRole('button', { name: 'All' }).click();
 		await dock.getByRole('searchbox', { name: 'Search shapes' }).fill('data');
-		expect(await visibleNames()).toEqual(['Data', 'Database']);
+		expect(await visibleNames()).toEqual(['Data', 'Database', 'RDS', 'DynamoDB', 'Aurora']);
+		// AWS tiles match on the full name and the category too.
+		await dock.getByRole('searchbox', { name: 'Search shapes' }).fill('dynamo');
+		expect(await visibleNames()).toEqual(['DynamoDB']);
+		await dock.getByRole('searchbox', { name: 'Search shapes' }).fill('security');
+		expect(await visibleNames()).toEqual(['IAM', 'Cognito', 'KMS']);
 		await dock.getByRole('searchbox', { name: 'Search shapes' }).fill('nope');
 		await expect(dock).toContainText('No shapes match “nope”.');
 		await dock.getByRole('searchbox', { name: 'Search shapes' }).fill('');
@@ -1592,6 +1630,231 @@ function contrastFailures() {
 	return out;
 }
 
+// ================================================================ AWS icons
+
+// AWS service icons (web/static/easydiagram/js/aws-icons.js): a dock
+// category, a Service picker in the inspector, the shared shape animations,
+// and a file format that keeps them (edAws + a URL-encoded data-URI image).
+test.describe('aws icons', () => {
+	const dock = (page) => page.getByRole('complementary', { name: 'Shapes' });
+	const awsChip = (page) => dock(page).getByRole('button', { name: 'AWS', exact: true });
+
+	test('the AWS dock category adds an icon shape, by click and by drag, with its picture on the canvas', async ({ page }, testInfo) => {
+		await openEditor(page);
+		await awsChip(page).click();
+		await expect(awsChip(page)).toHaveAttribute('aria-pressed', 'true');
+		await expect(dock(page).locator('.ed-tile[data-kind="aws"]:visible')).toHaveCount(24);
+		// Each tile shows its icon as an inline data: image (no network).
+		const src = await dock(page).locator('.ed-tile[data-service="lambda"] img').getAttribute('src');
+		expect(src).toMatch(/^data:image\/svg\+xml,%3Csvg/);
+
+		await dock(page).getByRole('button', { name: 'Add AWS Lambda' }).click();
+		const lambda = await cell(page, (await sel(page)).ids[0]);
+		expect(lambda).toMatchObject({ kind: 'aws', service: 'lambda', label: 'Lambda', w: 64, h: 64 });
+
+		await E(page, () => window.__easyDiagram.engine.zoomTo(1));
+		const tile = await dock(page).getByRole('button', { name: 'Add Amazon S3' }).boundingBox();
+		const box = await page.locator('.ed-canvas').boundingBox();
+		const drop = { x: box.x + box.width * 0.6, y: box.y + box.height * 0.5 };
+		await drag(page, { x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 }, drop, 25);
+		const s3 = await cell(page, (await sel(page)).ids[0]);
+		expect(s3).toMatchObject({ kind: 'aws', service: 's3', label: 'S3' });
+		const m = await E(page, (p) => window.__easyDiagram.engine.clientToModel(p.x, p.y), drop);
+		expect(Math.abs(s3.x + s3.w / 2 - m.x)).toBeLessThanOrEqual(10);
+		expect(Math.abs(s3.y + s3.h / 2 - m.y)).toBeLessThanOrEqual(10);
+
+		// The canvas draws each icon as an SVG <image> with its data URI (the
+		// selection's rotate handle is another <image>, so match the icons).
+		const hrefs = await page.locator('.ed-canvas svg image').evaluateAll((els) => els
+			.map((e) => e.getAttribute('href') || e.getAttribute('xlink:href'))
+			.filter((h) => h && h.startsWith('data:image/svg+xml,%3Csvg')));
+		expect(hrefs).toHaveLength(2);
+		expect(decodeURIComponent(hrefs[0])).toContain('#ED7100'); // Lambda: Compute orange
+		expect(decodeURIComponent(hrefs[1])).toContain('#7AA116'); // S3: Storage green
+		await shot(page, testInfo, 'aws-dock-and-canvas');
+	});
+
+	test('the inspector picks the service (no fill or stroke), and a renamed label survives a service change', async ({ page }) => {
+		await openEditor(page);
+		await awsChip(page).click();
+		await dock(page).getByRole('button', { name: 'Add Amazon EC2' }).click();
+		const id = (await sel(page)).ids[0];
+		const insp = inspector(page);
+		await expect(insp.locator('.mono-label.wide')).toHaveText('AWS · Amazon EC2');
+		await expect(insp.getByLabel('AWS service')).toHaveValue('ec2');
+		await expect(insp.getByRole('group', { name: 'Fill' })).toBeHidden();
+		await expect(insp.getByRole('group', { name: 'Stroke' })).toBeHidden();
+		// The floating context bar has no fill swatches for an icon, only Duplicate/Delete.
+		const ctxBar = page.getByRole('toolbar', { name: 'Selection' });
+		await expect(ctxBar.locator('.swatch:visible')).toHaveCount(0);
+		await expect(ctxBar.getByRole('button', { name: 'Duplicate' })).toBeVisible();
+		// The bottom quick-connect handle sits below the label, not on top of it.
+		const plusB = await page.locator('.ed-plus[data-side="b"]').boundingBox();
+		// The label's own text box: the smallest element in the canvas whose text is exactly "EC2".
+		const labelBottom = await E(page, () => {
+			const els = [...document.querySelectorAll('.ed-canvas svg *')].filter((el) => el.textContent.trim() === 'EC2' && !el.children.length);
+			const boxes = els.map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0);
+			boxes.sort((a, b) => a.width * a.height - b.width * b.height);
+			return boxes[0].bottom;
+		});
+		expect(plusB.y).toBeGreaterThanOrEqual(labelBottom);
+
+		await insp.getByLabel('AWS service').selectOption('rds');
+		expect(await cell(page, id)).toMatchObject({ service: 'rds', label: 'RDS' });
+		await expect(insp.locator('.mono-label.wide')).toHaveText('AWS · Amazon RDS');
+		const xml = await E(page, () => window.__easyDiagram.engine.toXml());
+		expect(xml).toContain('edAws=rds');
+
+		// A custom label is kept when the service changes.
+		const labelIn = insp.getByLabel('Label');
+		await labelIn.fill('Orders DB');
+		await labelIn.press('Enter');
+		await insp.getByLabel('AWS service').selectOption('aurora');
+		expect(await cell(page, id)).toMatchObject({ service: 'aurora', label: 'Orders DB' });
+
+		// One undo step per change: undo restores RDS.
+		await page.keyboard.press('Control+z');
+		expect((await cell(page, id)).service).toBe('rds');
+	});
+
+	test('AWS icons animate with the shape animations (optional), pause with Motion, and replay', async ({ page }, testInfo) => {
+		await openEditor(page);
+		await awsChip(page).click();
+		await dock(page).getByRole('button', { name: 'Add AWS Lambda' }).click();
+		const id = (await sel(page)).ids[0];
+		// Off by default: no animation class until one is chosen.
+		await expect(page.locator('.ed-canvas .ed-na')).toHaveCount(0);
+		for (const name of ['pulse', 'bounce', 'float', 'wiggle', 'glow', 'blink', 'pop']) {
+			await inspector(page).getByRole('button', { name: new RegExp(`^Animation: ${name}$`, 'i') }).click();
+			expect((await cell(page, id)).anim.name).toBe(name);
+			const g = page.locator(`.ed-canvas g.ed-na-${name}`).first();
+			await expect(g).toHaveCount(1);
+			// The animated group is the one holding the icon <image>.
+			expect(await g.evaluate((n) => !!n.querySelector('image'))).toBe(true);
+		}
+		await inspector(page).getByRole('button', { name: 'Animation: Pulse' }).click();
+		const anim = page.locator('.ed-canvas g.ed-na-pulse').first();
+		await expect.poll(() => anim.evaluate((n) => getComputedStyle(n).animationName)).toMatch(/pulse/i);
+		// Glow uses the service's category colour (Lambda = Compute orange).
+		await inspector(page).getByRole('button', { name: 'Animation: Glow' }).click();
+		expect(await page.locator('.ed-canvas g.ed-na-glow').first().evaluate((n) => n.style.getPropertyValue('--ed-glow'))).toBe('#ED7100');
+		await inspector(page).getByRole('button', { name: 'Animation: Pulse' }).click();
+		await shot(page, testInfo, 'aws-animated-inspector');
+		// Motion off pauses it; on again resumes.
+		await page.getByRole('button', { name: /Motion/ }).click();
+		await expect.poll(() => anim.evaluate((n) => getComputedStyle(n).animationPlayState)).toBe('paused');
+		await page.getByRole('button', { name: /Motion/ }).click();
+		await expect.poll(() => anim.evaluate((n) => getComputedStyle(n).animationPlayState)).toBe('running');
+		// The On hover trigger, then None.
+		await inspector(page).getByRole('button', { name: 'On hover', exact: true }).click();
+		expect((await cell(page, id)).anim.trigger).toBe('hover');
+		await expect(page.locator('.ed-canvas g.ed-na-pulse.ed-hov').first()).toHaveCount(1);
+		await inspector(page).getByRole('button', { name: 'Animation: None' }).click();
+		expect((await cell(page, id)).anim.name).toBe('none');
+		await expect(page.locator('.ed-canvas .ed-na')).toHaveCount(0);
+	});
+
+	test('an AWS diagram saves to .ed and reopens identical, with upstream-readable icon images', async ({ page }) => {
+		await openEditor(page);
+		await awsChip(page).click();
+		await dock(page).getByRole('button', { name: 'Add Amazon API Gateway' }).click();
+		const api = (await sel(page)).ids[0];
+		await inspector(page).getByRole('button', { name: 'Animation: Glow' }).click();
+		await dock(page).getByRole('button', { name: 'Add AWS Lambda' }).click();
+		const fn = (await sel(page)).ids[0];
+		await inspector(page).getByRole('button', { name: 'Animation: Bounce' }).click();
+		await dock(page).getByRole('button', { name: 'Add Amazon DynamoDB' }).click();
+		const db = (await sel(page)).ids[0];
+		const e1 = await E(page, (a) => window.__easyDiagram.engine.connect(a[0], a[1]), [api, fn]);
+		await E(page, (a) => window.__easyDiagram.engine.connect(a[0], a[1]), [fn, db]);
+		await E(page, (id) => window.__easyDiagram.engine.update(id, { anim: { name: 'flow' } }), e1);
+		const model = await cells(page);
+
+		const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Control+s')]);
+		expect(download.suggestedFilename()).toBe('Untitled.ed');
+		const xml = (await readDownload(download)).toString('utf8');
+		expect(xml).toMatch(/^<mxfile[\s>]/);
+		for (const svc of ['apigw', 'lambda', 'dynamodb']) expect(xml).toContain(`edAws=${svc}`);
+		expect(xml).toContain('edAnim=glow');
+		expect(xml).toContain('edAnim=bounce');
+		expect(xml).toContain('edAnim=flow');
+		// Standard draw.io image style with a URL-encoded SVG data URI: no raw
+		// ';' or '=' inside the value, so upstream draw.io reads the icon too.
+		const images = [...xml.matchAll(/image=(data:image\/svg\+xml,[^;"&]*)/g)].map((m) => m[1]);
+		expect(images).toHaveLength(3);
+		for (const img of images) expect(decodeURIComponent(img.slice('data:image/svg+xml,'.length))).toMatch(/^<svg[\s\S]*<\/svg>$/);
+		expect(xml).toContain('shape=image');
+
+		await page.reload();
+		await page.waitForFunction(() => window.__easyDiagram);
+		await page.getByTestId('draft-prompt').waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
+		await openViaChooser(page, { name: 'Untitled.ed', mimeType: 'application/xml', buffer: Buffer.from(xml) });
+		await expect(toast(page)).toHaveText('Opened “Untitled.ed”');
+		await expect(page.getByTestId('file-name')).toHaveText('Untitled.ed');
+		expect(await cells(page)).toEqual(model);
+	});
+
+	test('dropping an .ed file opens it, and an old .drawio still opens and then saves as .ed', async ({ page }) => {
+		await openEditor(page);
+		const xml = await E(page, () => {
+			const e = window.__easyDiagram.engine;
+			e.addShape('aws', { service: 'sqs', label: 'Jobs' });
+			const x = e.toXml();
+			e.load('<mxfile><diagram name="x"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>');
+			return x;
+		});
+		await dropFile(page, 'queue.ed', xml);
+		await expect(toast(page)).toHaveText('Opened “queue.ed”');
+		expect((await shapes(page))[0]).toMatchObject({ kind: 'aws', service: 'sqs', label: 'Jobs' });
+
+		await dropFile(page, 'legacy.drawio', xml);
+		await expect(toast(page)).toHaveText('Opened “legacy.drawio”');
+		const [download] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Control+s')]);
+		expect(download.suggestedFilename()).toBe('legacy.ed');
+	});
+
+	test('exports keep AWS icons: SVG and PNG show them, and an embedded PNG re-imports with the services', async ({ page }) => {
+		await openEditor(page);
+		await awsChip(page).click();
+		await dock(page).getByRole('button', { name: 'Add Amazon CloudFront' }).click();
+		await dock(page).getByRole('button', { name: 'Add Amazon S3' }).click();
+		const model = await cells(page);
+		const svg = await E(page, () => window.__easyDiagram.engine.toSvg({ embed: false }));
+		expect((svg.match(/<image\b/g) || []).length).toBe(2);
+		expect(svg).toMatch(/href="data:image\/svg\+xml/);
+
+		await page.getByRole('button', { name: 'Export' }).click();
+		const pop = page.locator('#ed-export-pop');
+		await pop.getByRole('button', { name: 'PNG', exact: true }).click();
+		const [png] = await Promise.all([page.waitForEvent('download'), pop.locator('.ed-pop-go').click()]);
+		expect(png.suggestedFilename()).toBe('Untitled-Page-1.ed.png');
+		const buf = await readDownload(png);
+		// The icons are actually painted: the PNG has CloudFront's purple and S3's green.
+		const colours = await E(page, async (bytes) => {
+			const img = new Image();
+			img.src = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+			await img.decode();
+			const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+			const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+			const d = g.getImageData(0, 0, c.width, c.height).data;
+			let purple = 0, green = 0;
+			for (let i = 0; i < d.length; i += 4) {
+				const [r, gg, b] = [d[i], d[i + 1], d[i + 2]];
+				if (Math.abs(r - 0x8c) < 30 && Math.abs(gg - 0x4f) < 30 && Math.abs(b - 0xff) < 40) purple++;
+				if (Math.abs(r - 0x7a) < 30 && Math.abs(gg - 0xa1) < 30 && Math.abs(b - 0x16) < 40) green++;
+			}
+			return { purple, green };
+		}, [...buf]);
+		expect(colours.purple).toBeGreaterThan(200);
+		expect(colours.green).toBeGreaterThan(200);
+
+		await E(page, () => window.__easyDiagram.engine.load('<mxfile><diagram name="blank"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'));
+		await openViaChooser(page, { name: 'Untitled-Page-1.ed.png', mimeType: 'image/png', buffer: buf });
+		await expect(toast(page)).toHaveText('Opened “Untitled-Page-1.ed”');
+		expect(await cells(page)).toEqual(model);
+	});
+});
+
 // ================================================================ Phone
 
 test.describe('phone width', () => {
@@ -1743,13 +2006,14 @@ test.describe('evidence', () => {
 		const [svg] = await Promise.all([page.waitForEvent('download'), page.keyboard.press('Enter')]);
 		step('print');
 		await page.keyboard.press('Control+p');
-		step('reopen saved .drawio');
+		step('reopen saved .ed');
 		const model = await cells(page);
 		await page.reload();
 		await page.waitForFunction(() => window.__easyDiagram);
 		await page.getByTestId('draft-prompt').waitFor({ state: 'detached', timeout: 2000 }).catch(() => {});
-		await openViaChooser(page, { name: 'Untitled.drawio', mimeType: 'application/xml', buffer: Buffer.from(savedXml) });
-		await expect(toast(page)).toHaveText('Opened “Untitled.drawio”');
+		expect(saved.suggestedFilename()).toBe('Untitled.ed');
+		await openViaChooser(page, { name: 'Untitled.ed', mimeType: 'application/xml', buffer: Buffer.from(savedXml) });
+		await expect(toast(page)).toHaveText('Opened “Untitled.ed”');
 		expect(await cells(page)).toEqual(model);
 		expect(savedXml).toContain('edAnim=glow');
 		await page.waitForLoadState('networkidle');

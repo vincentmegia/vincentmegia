@@ -206,7 +206,7 @@ var projectItems = []Project{
 	// with its own route-scoped CSP, so it can't be HTMX-swapped in.
 	{
 		Title:        "Easy Diagram",
-		Description:  "A local-first diagram editor in the browser — flowcharts with animated shapes and connectors, saved as standard .drawio files that never leave your device.",
+		Description:  "A local-first diagram editor in the browser — flowcharts and AWS architecture diagrams with animated shapes, icons and connectors, saved as .ed files that never leave your device.",
 		Tags:         []string{"JavaScript", "SVG", "Local-first"},
 		TagTint:      "primary",
 		LiveURL:      "/easy-diagram",

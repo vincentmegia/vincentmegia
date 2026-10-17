@@ -22,11 +22,15 @@ not code to ship.
      diagrams.net, Google or any third party.
    - Files stay on the user's device: File System Access API where the
      browser has it, upload/download otherwise, and IndexedDB drafts.
-4. **Files stay real `.drawio`.** We write standard `<mxfile>` XML that opens
-   in upstream draw.io. Our extra features are stored as extra style keys
+4. **Files stay real draw.io XML.** We write standard `<mxfile>` XML that
+   opens in upstream draw.io. *(2026-10-17: the extension is now `.ed`
+   rather than `.drawio`, at the user's request; only the name changed. See
+   "The `.ed` file extension" in `docs/features/easy-diagram.md`.)* Our extra features are stored as extra style keys
    that upstream ignores:
    - shape animation: `edAnim`, `edAnimTrigger`, `edAnimSpeed`;
-   - arrow animation: `edAnim`, `edAnimSpeed`, `edAnimDir`.
+   - arrow animation: `edAnim`, `edAnimSpeed`, `edAnimDir`;
+   - AWS icon service: `edAws` (added 2026-10-17, with the icon itself as a
+     standard `image=` data URI).
 5. **License.** draw.io core is Apache 2.0, so ship its `LICENSE` and a
    `NOTICE` next to the vendored files. Never copy code from
    `drawio-desktop`, which is GPL v3. Never show the "draw.io" name or logo in
