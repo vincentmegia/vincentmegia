@@ -271,6 +271,18 @@ test.describe('shelving books', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook)).toBe(null);
 	});
 
+	test('clicking the Return Cart itself picks up the next book in line', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBookNow());
+		const first = (await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots()))[0];
+
+		await walkToStation(page, 'return-cart');
+
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(first.id);
+		await expect(page.locator('#library-toast')).toContainText('Picked up');
+	});
+
 	test('a wrong-shelf arrival blocks the skill-check (no silent mistake)', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
@@ -573,7 +585,9 @@ test.describe("Boss's Office during the closing wait", () => {
 		await startShift(page);
 		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().clockSeconds = 0.01; });
 		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().phase)).toBe('closing-wait');
-		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().closingWaitSecondsRemaining = 2; });
+		// Long enough to still be waiting on arrival: the Boss's Office sits in
+		// the top-left corner (Hospital Shift's layout), about 2 s from the start.
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().closingWaitSecondsRemaining = 4; });
 
 		await walkToStation(page, 'boss-office');
 		await expect(page.locator('#library-toast')).toContainText('wait here');
@@ -879,10 +893,11 @@ test.describe('First Person Mode', () => {
 		await page.locator('#library-camera-button').click(); // -> First Person
 		await page.locator('#library-camera-button').click(); // -> back to Top-Down
 
-		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity)).toBeLessThan(100);
+		// Click-to-move works again: walking up to the Coffee Machine opens
+		// its pour (this used to check for an instant Sanity refill on
+		// arrival, from before the Coffee Pour minigame).
 		await walkToStation(page, 'coffee-machine');
-		const sanity = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity);
-		expect(sanity).toBeGreaterThan(99);
+		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
 	});
 });
 

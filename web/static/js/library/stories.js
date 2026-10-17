@@ -1,5 +1,6 @@
 // Short stories read at Library Shift's Reading Nook (v2.11: "add real
-// words and let me read"). Purely decorative content — no gameplay reads
+// words and let me read"). Each has a Korean title (`koTitle`) shown with
+// its English one, like every other book in this Korean library. Purely decorative content — no gameplay reads
 // the text itself. Every story has exactly STORY_PAGE_COUNT pages, shown
 // two at a time as an open book (READING_PAGES spreads); stories.test.js
 // enforces the count and a per-page length that fits the page at the
@@ -14,6 +15,7 @@ export const STORY_PAGE_MAX_CHARS = 260;
 export const READING_STORIES = [
   {
     title: 'A Quiet Afternoon',
+    koTitle: '조용한 오후',
     pages: [
       'The rain started just after lunch, soft at first, then steady enough that the street outside the library turned silver.',
       'Mrs. Abernathy came in shaking her umbrella like a wet dog. She always came on Tuesdays, and she always asked for the same thing: "Something with a garden in it."',
@@ -31,6 +33,7 @@ export const READING_STORIES = [
   },
   {
     title: 'The Lighthouse Keeper',
+    koTitle: '등대지기',
     pages: [
       'Ida kept the lighthouse at the end of the world, or at least at the end of the road, which on foggy nights felt like the same thing.',
       'Every evening she climbed the one hundred and twelve steps, wound the great clockwork, and lit the lamp that turned and turned until morning.',
@@ -48,6 +51,7 @@ export const READING_STORIES = [
   },
   {
     title: 'Tea for One',
+    koTitle: '혼자 마시는 차',
     pages: [
       'Arthur had made tea for two every morning for forty-one years, and on the first morning he only needed one cup, he made two anyway.',
       'He sat at the kitchen table and looked at the second cup for a long time. It went cold. He did not pour it out.',
@@ -65,6 +69,7 @@ export const READING_STORIES = [
   },
   {
     title: 'Paper Boats',
+    koTitle: '종이배',
     pages: [
       'On the last day of school, Priya folded every page of her old maths homework into a paper boat. There were thirty-seven of them.',
       'She lined them up along the windowsill like a tiny fleet, each one a little different, some with sharp prows and some a bit lopsided.',
@@ -82,6 +87,7 @@ export const READING_STORIES = [
   },
   {
     title: 'The Long Walk Home',
+    koTitle: '집으로 가는 먼 길',
     pages: [
       'The bus broke down three miles from town, and the driver said the next one would be at least an hour. Leo decided to walk.',
       'It was the kind of evening where the sky can\'t make up its mind: orange at the edges, purple in the middle, one early star already showing off.',

@@ -42,7 +42,16 @@
 //
 // from web/templates/pages/library-game.html.
 
-import { drawPerson, shadeColor, PEOPLE_TEMPLATES } from './shared/people.js';
+import { shadeColor } from './shared/people.js';
+import {
+  ANIME, DISPLAY_FONT, tint, sparkle, outlinedText, animeChip, animePlate, animeGauge, animeBadge, animeStar, animeTile, animeButton,
+  animeBackdrop, animeWindow, speechBubble, sakuraBranch,
+} from './hospital/anime-ui.js';
+import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
+import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
+import { drawMinjun } from './library/minjun.js';
+import { drawKimonoHimura } from './hospital/kimono-himura.js';
+import { drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from './hospital/anime-people.js';
 import {
   SHIFTS_PER_MONTH,
   shiftClockSecondsForShift,
@@ -124,6 +133,7 @@ import {
   buildStations,
   stationsOnFloor,
   stationAtPoint,
+  stationExtents,
   approachPoint,
   clampToCanvas,
   entryPointForFloor,
@@ -135,6 +145,7 @@ import {
   CANVAS_HEIGHT,
 } from './library/floor-plan.js';
 import { READING_STORIES } from './library/stories.js';
+import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import {
   defaultFacingTowardCenter,
   projectScene,
@@ -242,27 +253,11 @@ function drawStar(ctx, cx, cy, outerRadius, innerRadius, color) {
   ctx.fill();
 }
 
-const LABEL_TEXT_COLOR = '#3a2a2a';
+const LABEL_TEXT_COLOR = ANIME.ink;
 
-function drawLabelChip(ctx, x, y, text, font) {
-  if (!text) return;
-  ctx.save();
-  ctx.font = font;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const metrics = ctx.measureText(text);
-  const paddingX = 7;
-  const w = metrics.width + paddingX * 2;
-  const h = 16;
-  drawRoundRect(ctx, x - w / 2, y - h / 2, w, h, 6, 'rgba(255,251,246,0.92)');
-  ctx.strokeStyle = 'rgba(58,42,42,0.25)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(x - w / 2, y - h / 2, w, h, 6);
-  ctx.stroke();
-  ctx.fillStyle = LABEL_TEXT_COLOR;
-  ctx.fillText(text, x, y + 0.5);
-  ctx.restore();
+/** A name/label chip — Hospital Shift's anime nameplate (hospital/anime-ui.js's animeChip). */
+function drawLabelChip(ctx, x, y, text, font, fill = null, ink = LABEL_TEXT_COLOR) {
+  animeChip(ctx, x, y, text, font, fill, ink);
 }
 
 /** Truncates `text` (adding "…") to fit within `maxWidth` at `font`, measured via the same canvas context text will render in — used wherever a label chip's width must stay bounded (e.g. front-desk slots sitting only 46px apart) rather than auto-sizing to a title of arbitrary length. */
@@ -282,43 +277,47 @@ function truncateForChip(ctx, text, maxWidth, font) {
 }
 
 // ---------------------------------------------------------------------------
-// Big, expressive pixel characters (doc's Visual Direction: "make the
-// characters BIG," a personality-template system with distinct
-// expression parameters, not palette swaps of one face)
+// Characters — drawn in Hospital Shift's anime style: Coral uses Kimono
+// Himura's renderer (hospital/kimono-himura.js) with her own `coral` look —
+// her own hair and glasses, and a Korean hanbok for this Korean library — and
+// patrons, Karen and the staff use Hospital Shift's anime designs
+// (hospital/anime-people.js).
 // ---------------------------------------------------------------------------
 
-/** Base draw scale — noticeably bigger than Kitchen Shift's own player scale (that game's drawPixelPerson body proportions, reused here at a higher `s`). */
+/** The coffee splash's body scale — Hospital Shift's PERSON_SCALE (the anime renderers take their own `scale`). */
 export const LIBRARY_PERSON_SCALE = 1.55;
 
-/**
- * Personality templates: each supplies its own brow angle (positive tilts
- * outer ends up — a "surprised/cheerful" brow; negative tilts them down — a
- * "grumpy/angry" brow), mouth curve (positive = smile, negative = frown,
- * magnitude = how pronounced), eye shape, and hair/outfit palette — the
- * doc's explicit "not just a recolor" requirement.
- */
-export const PERSONALITY_TEMPLATES = {
-  ...PEOPLE_TEMPLATES,
-  // v2.12 — the player's own librarian look (the generic patron designs
-  // live in ../shared/people.js's PEOPLE_TEMPLATES).
-  librarian: {
-    label: 'Coral James',
-    bodyColor: '#f3ead8', pantsColor: '#4a4a5a', headColor: '#d9a06b', hairColor: '#7a3b2e', accentColor: '#5f8a6a',
-    eyeColor: '#2a2a2a', eyeShape: 'bigRound', browAngle: 0.3, mouthCurve: 1.1, blush: true,
-    hairStyle: 'bun', outfit: 'vestLanyard', glasses: true, shoeColor: '#5a3a2a',
-  },
+/** Coral's draw scale — Hospital Shift's PLAYER_ART_SCALE. */
+const PLAYER_ART_SCALE = 1.12;
+
+/** Background staff (set dressing — Hospital Shift's ER has its own wandering staff); they can't be clicked. */
+const AMBIENT_STAFF = [
+  // Patrol loops, walked in order, that go around the furniture rather than
+  // through it (random hops cut straight across the shelves).
+  { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[260, 480], [560, 485], [700, 478], [640, 535], [300, 530]] },
+  { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
+  // Kang Min-jun (library/minjun.js), the student assistant, carrying books
+  // in a loop around the 2nd Floor's Reference Shelf.
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.05, waypoints: [[540, 215], [800, 215], [800, 460], [540, 460]] },
+];
+const AMBIENT_SPEED = 60;
+
+/** Which anime design each non-patron character uses. */
+const SPECIAL_DESIGNS = {
+  karen: () => STAFF_DESIGNS.karen,
+  guard: () => STAFF_DESIGNS.guard,
+  volunteer: () => findPatientDesign('bookworm'),
 };
 
-/** Every design a regular patron can have (not Karen, not the player). */
-export const PATRON_PERSONALITY_KEYS = ['grumpyRegular', 'shyStudent', 'cheerfulKid', 'teen', 'grandma', 'businessman', 'artist', 'bearded', 'curly'];
+/** Every design a regular patron can have (not Karen, not the player) — Hospital Shift's patient designs. */
+export const PATRON_PERSONALITY_KEYS = PATIENT_DESIGN_KEYS;
 
 /** The player character's name (v2.12) — shown on a name tag under the sprite. */
 export const PLAYER_NAME = 'Coral James';
 
 /**
  * Picks a patron's design from their id, so the same patron always looks
- * the same and different patrons spread across all designs (replacing the
- * old 3-design cycle by queue position).
+ * the same and different patrons spread across all designs.
  */
 function personalityForId(id) {
   let h = 0;
@@ -327,36 +326,29 @@ function personalityForId(id) {
 }
 
 /**
- * Draws a Library Shift character from its `PERSONALITY_TEMPLATES` key at
- * `LIBRARY_PERSON_SCALE` — the renderer itself lives in ../shared/people.js
- * (shared with Kitchen Shift). `angryTint` is Karen's reddish outburst
- * tint; `stress` (0..1) is the player's low-Sanity expression (v2.16).
+ * Draws a Library Shift character, feet at (x, y). `personalityKey` is
+ * 'librarian' (Coral, in her hanbok), 'karen', 'guard', 'volunteer', or a
+ * patron's anime design key. `angryTint` is Karen's outburst; `stress`
+ * (0..1) is the player's low-Sanity face; `walking` sways Coral's step.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x
  * @param {number} y
- * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number}} [opts]
+ * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number, walking?: boolean}} [opts]
  */
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
-  const base = PERSONALITY_TEMPLATES[opts.personalityKey] || PERSONALITY_TEMPLATES.shyStudent;
-  drawPerson(ctx, x, y, base, { ...opts, scale: (opts.scale ?? 1) * LIBRARY_PERSON_SCALE });
-}
-
-// ---------------------------------------------------------------------------
-// Book flavor titles (per-genre pools — decorative only, no gameplay stake)
-// ---------------------------------------------------------------------------
-
-const TITLE_POOLS = {
-  mystery: ['The Silent Clue', 'Midnight Ledger', 'The Locked Room', 'A Quiet Alibi', 'The Missing Hour', 'Footprints in Ash', 'The Third Witness', 'Cold Case Coffee'],
-  romance: ['Second Chances', 'The Letter Never Sent', 'Sunset in Gard', 'Two Left Umbrellas', 'A Promise Kept', 'Summer at the Pier', 'Ink and Roses', 'The Last Dance'],
-  scifi: ['The Last Signal', 'Orbit Drift', 'Colony Nine', 'The Glass Engine', 'Beyond the Static', 'Red Dust Rising', 'The Quiet Machine', 'Starlight Archive'],
-  kids: ['The Brave Little Fox', 'Bedtime for Dragons', 'The Cloud Garden', 'A Very Silly Day', 'The Tiny Explorer', 'Pip the Penguin', 'Moon Boots', 'The Lost Balloon'],
-  reference: ["The Gardener's Almanac", 'Complete Grammar Guide', 'World Atlas, Revised', 'Field Guide to Birds', 'The Home Repair Book', 'Kitchen Science', 'A History of Maps', 'Pocket Dictionary'],
-};
-
-function titleForGenre(genreId, random) {
-  const pool = TITLE_POOLS[genreId] || ['Untitled'];
-  return pool[Math.floor(random() * pool.length)];
+  const t = performance.now() / 1000;
+  const scale = opts.scale ?? 1;
+  if (opts.personalityKey === 'minjun') {
+    drawMinjun(ctx, x, y, { scale, t, walking: Boolean(opts.walking) });
+    return;
+  }
+  if (opts.personalityKey === 'librarian') {
+    drawKimonoHimura(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, stress: opts.stress ?? 0, t, walking: Boolean(opts.walking), cap: false, look: 'coral' });
+    return;
+  }
+  const design = SPECIAL_DESIGNS[opts.personalityKey]?.() ?? findPatientDesign(opts.personalityKey);
+  drawAnimePerson(ctx, x, y, design, { scale, t, angryTint: Boolean(opts.angryTint) });
 }
 
 // ---------------------------------------------------------------------------
@@ -377,11 +369,11 @@ const SCENE_Y = [205, 445];
  * until it fits. Returns the font size + lines; if even `minFont` can't
  * fit, returns that size's best effort (callers clip to the book's rect).
  */
-function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont) {
+function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont, bold = true) {
   const words = title.split(' ');
   let best = null;
   for (let size = maxFont; size >= minFont; size -= 0.5) {
-    ctx.font = `bold ${size}px sans-serif`;
+    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
     const lines = [];
     let fits = true;
     for (const word of words) {
@@ -409,20 +401,38 @@ function titleInkFor(hex) {
  * shrunk to fit, clipped to the cover rect so it can never bleed into a
  * neighboring book (v1.4's original overflow bug).
  */
+/**
+ * A book's title on its cover: the Korean title large, its English
+ * translation smaller underneath (library/book-titles.js); a title without
+ * a translation fills the cover on its own.
+ */
 function drawCoverTitle(ctx, title, x, y, w, h, coverColor, opts = {}) {
   const pad = opts.pad ?? 2;
-  const { size, lines } = fitTitleLines(ctx, title, w - pad * 2, opts.maxLines ?? 4, opts.maxFont ?? 8, opts.minFont ?? 5);
+  const maxFont = opts.maxFont ?? 8;
+  const minFont = opts.minFont ?? 5;
+  const { ko, en } = splitTitle(title);
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.fillStyle = titleInkFor(coverColor);
-  ctx.font = `bold ${size}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const lineH = size * 1.15;
-  const top = y + h / 2 - ((lines.length - 1) * lineH) / 2;
-  lines.forEach((line, i) => ctx.fillText(line, x + w / 2, top + i * lineH));
+  const block = (text, top, height, bold, maxLines, hi, lo) => {
+    const { size, lines } = fitTitleLines(ctx, text, w - pad * 2, maxLines, hi, lo, bold);
+    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
+    const lineH = size * 1.15;
+    const first = top + height / 2 - ((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, i) => ctx.fillText(line, x + w / 2, first + i * lineH));
+  };
+  if (en) {
+    const split = h * 0.56;
+    block(ko, y, split, true, 2, maxFont, minFont);
+    ctx.globalAlpha = 0.85;
+    block(en, y + split - 1, h - split, false, 2, Math.max(4, maxFont * 0.72), 4);
+  } else {
+    block(ko, y, h, true, opts.maxLines ?? 4, maxFont, minFont);
+  }
   ctx.restore();
 }
 
@@ -464,6 +474,44 @@ export function init(canvas, elements) {
   const storageAvailable = probeStorageAvailable();
   let save = loadSave(storageAvailable);
   const random = Math.random;
+
+  let ambient = [];
+
+  function resetAmbient() {
+    ambient = AMBIENT_STAFF.map((def, i) => {
+      const [x, y] = def.waypoints[i % def.waypoints.length];
+      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2 };
+    });
+  }
+
+  function updateAmbient(dt) {
+    for (const a of ambient) {
+      if (a.pause > 0) { a.pause -= dt; continue; }
+      const [tx, ty] = a.waypoints[a.target];
+      const dx = tx - a.x;
+      const dy = ty - a.y;
+      const dist = Math.hypot(dx, dy);
+      const step = AMBIENT_SPEED * dt;
+      if (dist <= step) {
+        a.x = tx;
+        a.y = ty;
+        a.pause = 0.8 + random() * 2.2;
+        a.target = (a.target + 1) % a.waypoints.length;
+      } else {
+        a.x += (dx / dist) * step;
+        a.y += (dy / dist) * step;
+      }
+    }
+  }
+
+  /** `inFront` picks the staff drawn after the player (lower on screen), so people overlap back-to-front. */
+  function drawAmbient(inFront) {
+    for (const a of ambient) {
+      if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
+      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? 0.8, walking: a.pause <= 0 });
+      drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
+    }
+  }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
 
   let stations = buildStations(GENRES);
@@ -674,7 +722,8 @@ export function init(canvas, elements) {
   function commitStationTarget(station, rawPoint) {
     if (station?.kind !== 'boss-office') waitingAtBossOffice = false;
     if (station) {
-      const standoff = station.size / 2 + PLAYER_STOP_MARGIN;
+      const { hw, hh } = stationExtents(station);
+      const standoff = Math.max(hw, hh) + PLAYER_STOP_MARGIN;
       const approach = approachPoint(station.x, station.y, player.x, player.y, standoff);
       moveTarget = { x: approach.x, y: approach.y, station };
     } else if (rawPoint) {
@@ -868,7 +917,7 @@ export function init(canvas, elements) {
     return slots.map((slot, i) => {
       const desk = stations.find((s) => s.kind === 'front-desk');
       const totalWidth = (slots.length - 1) * 46;
-      return { ...slot, x: desk.x - totalWidth / 2 + i * 46, y: desk.y + desk.size / 2 + QUEUE_SLOT_OFFSET_Y };
+      return { ...slot, x: desk.x - totalWidth / 2 + i * 46, y: desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y };
     });
   }
 
@@ -911,7 +960,7 @@ export function init(canvas, elements) {
     return queue.map((f, i) => ({
       kind: 'fine', id: f.id, amountGard: f.amountGard, waitFraction: waitFractionOf(f),
       x: counter.x - totalWidth / 2 + i * 46,
-      y: counter.y + counter.size / 2 + QUEUE_SLOT_OFFSET_Y,
+      y: counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y,
     }));
   }
 
@@ -926,7 +975,7 @@ export function init(canvas, elements) {
     return shiftState.returnCart.slice(0, 5).map((book, i) => ({
       ...book,
       x: cart.x - 68 + (i % 5) * 34,
-      y: cart.y + cart.size / 2 + 34,
+      y: cart.y + cart.size / 2 + 40, // clear of the cart's label chip
     }));
   }
 
@@ -1041,13 +1090,13 @@ export function init(canvas, elements) {
 
   function openFindTheBookOverlay(genreId, correctTitle) {
     const genre = findGenre(genreId);
-    const points = scatterPoints(FIND_THE_BOOK_DECOY_COUNT + 1, random, 80);
+    const points = scatterPoints(FIND_THE_BOOK_DECOY_COUNT + 1, random, 90);
     const correctIndex = Math.floor(random() * points.length);
     // Decoys draw *distinct* titles that never match the requested one —
     // previously each decoy rolled independently from a 5-title pool, so a
     // decoy could carry the very title being searched for (bug report: "when
     // i try to get the book the costermer borrowed i couldnt").
-    const decoyTitles = (TITLE_POOLS[genreId] || []).filter((t) => t !== correctTitle);
+    const decoyTitles = titlesForGenre(genreId).filter((t) => t !== correctTitle);
     for (let i = decoyTitles.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));
       [decoyTitles[i], decoyTitles[j]] = [decoyTitles[j], decoyTitles[i]];
@@ -1057,6 +1106,7 @@ export function init(canvas, elements) {
     // "Looking for" header line (y≈194).
     const items = points.map((p, i) => ({
       ...p,
+      x: Math.min(828, Math.max(132, p.x)), // keep the wider covers inside the window
       y: 218 + ((p.y - SCENE_Y[0]) / (SCENE_Y[1] - SCENE_Y[0])) * (SCENE_Y[1] - 218),
       id: i,
       title: i === correctIndex ? correctTitle : (decoyTitles[decoyIndex++] ?? 'Untitled'),
@@ -1260,7 +1310,7 @@ export function init(canvas, elements) {
     overlay = {
       kind: 'reading',
       storyIndex,
-      title: READING_STORIES[storyIndex].title,
+      title: bookTitle({ ko: READING_STORIES[storyIndex].koTitle, en: READING_STORIES[storyIndex].title }),
       page: 0,
       progress: 0,
       nudge: 0,
@@ -1455,12 +1505,17 @@ export function init(canvas, elements) {
     }
 
     if (station.kind === 'return-cart') {
-      if (pendingCartPickupId) {
-        const id = pendingCartPickupId;
-        pendingCartPickupId = null;
+      // A clicked cover picks that book; clicking the cart itself picks the
+      // next one in line (the user: "im not able to pick up the book" — the
+      // cart is the obvious thing to click, but it used to do nothing).
+      const id = pendingCartPickupId ?? shiftState.returnCart[0]?.id ?? null;
+      pendingCartPickupId = null;
+      if (id && !shiftState.carriedBook) {
         const before = shiftState;
         shiftState = pickUpBook(shiftState, id);
-        if (shiftState !== before) showToast('Picked up a book — take it to its shelf.');
+        if (shiftState !== before) showToast(`Picked up “${shiftState.carriedBook.title}” — take it to its shelf.`);
+      } else if (!shiftState.carriedBook) {
+        showToast('The Return Cart is empty.');
       }
       return;
     }
@@ -1570,8 +1625,16 @@ export function init(canvas, elements) {
     }
   }
 
+  /** A Find the Book cover's rect, centered on the item. */
+  function findBookCoverRect(item) {
+    return { x: item.x - 34, y: item.y - 24, w: 68, h: 48 };
+  }
+
   function handleFindTheBookClick(x, y) {
-    const item = overlay.items.find((it) => Math.hypot(it.x - x, it.y - y) <= 20);
+    const item = overlay.items.find((it) => {
+      const r = findBookCoverRect(it);
+      return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    });
     if (!item) return;
     if (item.correct) {
       shiftState = resolveFindTheBook(shiftState, true);
@@ -1772,6 +1835,7 @@ export function init(canvas, elements) {
     finesStartShiftNumber = finesStartShiftForSeed(save.karenSeed);
     shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber));
     player = { ...PLAYER_START };
+    resetAmbient();
     playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
     heldFP.turnLeft = false;
     heldFP.turnRight = false;
@@ -1856,310 +1920,251 @@ export function init(canvas, elements) {
 
   // -- Rendering ------------------------------------------------------------
 
+  // Pastel anime tiles, Hospital Shift's palette (hospital/anime-ui.js's animeTile shades them).
   const STATION_COLORS = {
-    'front-desk': '#f2d98a',
-    'return-cart': '#d9bfa3',
-    'fines-counter': '#f7c6b0',
-    'coffee-machine': '#e3cdb4',
-    'reading-nook': '#d9e4cc',
-    'boss-office': '#dcc2ea',
-    stairs: '#b8cde0',
-    elevator: '#c9a7d1',
+    'front-desk': '#ffe0c2',
+    'return-cart': '#f2e6d0',
+    'fines-counter': '#ffe4dc',
+    'coffee-machine': '#f5d3bd',
+    'reading-nook': '#f0e6ff',
+    'boss-office': '#e6dcf5',
+    bookshelf: '#fff0dc',
+    stairs: '#b9d4f2',
+    elevator: '#d8b9f2',
   };
 
-  // Wooden plank floor (v2 art pass — replaces the original graph-paper
-  // grid): staggered planks with a slight per-plank tone variation, fixed
-  // per position so it doesn't shimmer between frames.
-  const PLANK_HEIGHT = 30;
-  const PLANK_LENGTH = 160;
-  const PLANK_TONES = ['#efdfc4', '#ecdabd', '#f1e3ca', '#e9d6b8'];
+  // The floor and back wall in Hospital Shift's anime style (the user:
+  // "make it like hospital shift"): glossy pastel checker tiles with
+  // afternoon sunbeams, a cream-to-blush back wall with a pink rail, a
+  // glossy sign button (Korean and English — the user asked for a Korean
+  // library), a painted sakura branch, a little wall shelf of books, and the
+  // pink bell clock. The HUD bars sit on the wall band.
+  const TILE = 40;
+  const WALL_BAND_HEIGHT = 58;
+
+  /** Set dressing from Hospital Shift's decor kit (hospital/anime-furniture.js's drawDecor). */
+  const LIBRARY_DECOR = [
+    { kind: 'water-cooler', floor: FLOOR_1, x: 760, y: 200, w: 28, h: 52 },
+    { kind: 'plant', floor: FLOOR_1, x: 36, y: 300, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_1, x: 36, y: 400, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_1, x: 760, y: 560, w: 30, h: 46 },
+    { kind: 'ladder', floor: FLOOR_2, x: 410, y: 280, w: 30, h: 62 },
+    { kind: 'waiting-chairs', floor: FLOOR_2, x: 190, y: 560, w: 96, h: 34 },
+    { kind: 'plant', floor: FLOOR_2, x: 40, y: 120, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_2, x: 920, y: 330, w: 30, h: 46 },
+  ];
 
   function drawFloor() {
-    ctx.fillStyle = PLANK_TONES[0];
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    for (let row = 0; row * PLANK_HEIGHT < CANVAS_HEIGHT; row++) {
-      const y = row * PLANK_HEIGHT;
-      const offset = (row % 3) * (PLANK_LENGTH / 3);
-      for (let x = -offset, i = 0; x < CANVAS_WIDTH; x += PLANK_LENGTH, i++) {
-        ctx.fillStyle = PLANK_TONES[(row * 7 + i * 3) % PLANK_TONES.length];
-        ctx.fillRect(x, y, PLANK_LENGTH, PLANK_HEIGHT);
-        ctx.fillStyle = 'rgba(120,85,50,0.16)';
-        ctx.fillRect(x, y, 1.5, PLANK_HEIGHT);
-        // A faint grain streak.
-        ctx.fillStyle = 'rgba(120,85,50,0.06)';
-        ctx.fillRect(x + 24 + ((row * 37 + i * 53) % 90), y + 9 + ((row + i) % 3) * 5, 40, 1.5);
-      }
-      ctx.fillStyle = 'rgba(120,85,50,0.18)';
-      ctx.fillRect(0, y, CANVAS_WIDTH, 1.5);
+    if (currentFloor === FLOOR_1) {
+      drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
+      drawSunbeams();
+      // Pastel guide stripes: Front Desk queue to the shelves, and the lower aisle.
+      drawRoundRect(ctx, 0, 265, 790, 7, 3.5, 'rgba(255,138,122,0.28)');
+      drawRoundRect(ctx, 0, 488, 790, 7, 3.5, 'rgba(63,181,143,0.26)');
+      drawBackWall();
+      sakuraBranch(ctx, 672, 28, 1.1);
+      drawWallBookShelf();
+      drawLibrarySign('도서관 · LIBRARY 1F', ANIME.coral, ANIME.coralDeep);
+      // Break-room rug under the coffee machine: soft pink, stitched border.
+      const coffee = stations.find((st) => st.kind === 'coffee-machine');
+      if (coffee) drawStitchedRug(coffee.x - 70, coffee.y - 62, 190, 120, 'rgba(255,194,218,0.55)', 'rgba(232,85,143,0.55)');
+    } else {
+      drawAnimeTiles('#f6efe4', '#efe5d6', 'rgba(255,255,255,0.18)');
+      drawSunbeams();
+      drawBackWall();
+      sakuraBranch(ctx, 672, 28, 1.1);
+      drawWallBookShelf();
+      drawLibrarySign('열람실 · READING 2F', ANIME.lavender, ANIME.lavenderDeep);
+      const nook = stations.find((st) => st.kind === 'reading-nook');
+      if (nook) drawStitchedRug(nook.x - 110, nook.y - 62, 220, 124, 'rgba(201,184,255,0.4)', 'rgba(143,122,224,0.55)');
     }
-    // A soft vignette toward the walls.
-    const vignette = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 620);
-    vignette.addColorStop(0, 'rgba(120,85,50,0)');
-    vignette.addColorStop(1, 'rgba(120,85,50,0.12)');
-    ctx.fillStyle = vignette;
+    for (const d of LIBRARY_DECOR) if (d.floor === currentFloor) drawDecor(ctx, d);
+    drawWallClock();
+  }
+
+  function drawStitchedRug(x, y, w, h, fill, stitch) {
+    drawRoundRect(ctx, x, y, w, h, 22, fill);
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = stitch;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x + 7, y + 7, w - 14, h - 14, 17);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Hospital Shift's floor: big pastel checker tiles with a glossy sheen. */
+  function drawAnimeTiles(light, dark, sheen) {
+    const g = ctx.createLinearGradient(0, WALL_BAND_HEIGHT, 0, CANVAS_HEIGHT);
+    g.addColorStop(0, tint(light, 0.3));
+    g.addColorStop(1, light);
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = dark;
+    for (let row = 0; row * TILE < CANVAS_HEIGHT; row++) {
+      for (let col = 0; col * TILE < CANVAS_WIDTH; col++) {
+        if ((row + col) % 2 === 0) ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
+      }
+    }
+    ctx.strokeStyle = 'rgba(59,42,74,0.07)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= CANVAS_WIDTH; x += TILE) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, CANVAS_HEIGHT); }
+    for (let y = 0; y <= CANVAS_HEIGHT; y += TILE) { ctx.moveTo(0, y + 0.5); ctx.lineTo(CANVAS_WIDTH, y + 0.5); }
+    ctx.stroke();
+    ctx.save();
+    ctx.fillStyle = sheen;
+    for (const sx of [120, 420, 700]) {
+      ctx.beginPath();
+      ctx.moveTo(sx, CANVAS_HEIGHT);
+      ctx.lineTo(sx + 60, CANVAS_HEIGHT);
+      ctx.lineTo(sx + 260, 60);
+      ctx.lineTo(sx + 230, 60);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
-    ctx.fillStyle = '#8a6a4a';
-    ctx.font = 'bold 13px sans-serif';
+  /** Warm light falling in from the upper right, like an anime afternoon. */
+  function drawSunbeams() {
+    ctx.save();
+    [[560, 160], [700, 120], [820, 90]].forEach(([bx, bw], i) => {
+      const g = ctx.createLinearGradient(bx, WALL_BAND_HEIGHT, bx - 260, CANVAS_HEIGHT);
+      g.addColorStop(0, 'rgba(255,246,214,0.42)');
+      g.addColorStop(1, 'rgba(255,246,214,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(bx, WALL_BAND_HEIGHT);
+      ctx.lineTo(bx + bw, WALL_BAND_HEIGHT);
+      ctx.lineTo(bx + bw - 300 - i * 20, CANVAS_HEIGHT);
+      ctx.lineTo(bx - 330 - i * 20, CANVAS_HEIGHT);
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  /** The back wall: cream to blush, a pink wainscot rail and plum trim. */
+  function drawBackWall() {
+    const g = ctx.createLinearGradient(0, 0, 0, WALL_BAND_HEIGHT);
+    g.addColorStop(0, '#fffaf3');
+    g.addColorStop(1, '#fdeef3');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, WALL_BAND_HEIGHT);
+    ctx.fillStyle = '#ffd1e3';
+    ctx.fillRect(0, 48, CANVAS_WIDTH, 7);
+    ctx.fillStyle = ANIME.ink;
+    ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
+    ctx.fillStyle = 'rgba(59,42,74,0.12)';
+    ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
+  }
+
+  /** The floor's sign, where Hospital Shift has its EMERGENCY button. */
+  function drawLibrarySign(text, color, colorDeep) {
+    animeButton(ctx, { x: 744, y: 12, w: 190, h: 32 }, '', color, colorDeep);
+    ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(currentFloor === FLOOR_1 ? '1st Floor' : '2nd Floor', CANVAS_WIDTH / 2, 24);
+    ctx.textBaseline = 'middle';
+    outlinedText(ctx, text, 839, 29, '#ffffff', tint(colorDeep, -0.45), 3.2);
+    sparkle(ctx, 750, 14, 5, '#ffffff');
+  }
 
-    if (currentFloor === FLOOR_1) drawWallClock();
+  /** A little wall shelf of books between the clock and the sakura branch. */
+  function drawWallBookShelf() {
+    const x = 566;
+    const y = 40;
+    const colors = [ANIME.pink, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.coral];
+    colors.forEach((color, i) => {
+      const h = 18 + ((i * 5) % 7);
+      const w = 7;
+      const bx = x + i * 8;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(bx, y - h, w, h, 1.5);
+      ctx.fill();
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillRect(bx + 1.5, y - h + 3, w - 3, 1.5);
+    });
+    drawRoundRect(ctx, x - 6, y, 62, 4, 2, '#c9a77a');
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - 6, y, 62, 4, 2);
+    ctx.stroke();
   }
 
   /**
-   * Decorative analog wall clock (Visual Direction addition: "a clock to
-   * track time" — the authoritative reading is `#library-hud-clock`'s
-   * `inGameTimeLabel` text; this is purely diegetic floor dressing echoing
-   * it). Hands are derived by parsing that same formatted label rather than
-   * duplicating rules.js's internal minutes-since-midnight math, so the two
-   * displays can never drift apart.
+   * Hospital Shift's pastel wall clock — pink rim, plum line art, two
+   * little bells. The authoritative reading is `#library-hud-clock`'s
+   * `inGameTimeLabel` text; hands are derived by parsing that same label so
+   * the two displays never drift apart.
    */
   function drawWallClock() {
     if (!shiftState) return;
     const label = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds);
     const match = /^(\d+):(\d+)\s(AM|PM)$/.exec(label);
     if (!match) return;
-    const hour12 = Number(match[1]);
+    const hour = Number(match[1]) % 12;
     const minute = Number(match[2]);
-    const period = match[3];
-    const hour24 = (hour12 % 12) + (period === 'PM' ? 12 : 0);
-
-    // Positioned in the gap between the Front Desk and Boss's Office boxes
-    // (both at y=90, x=480/700) rather than centered on the station row —
-    // avoids overlapping either box or its label chip.
-    const cx = 595;
-    const cy = 58;
-    const r = 20;
-    ctx.save();
-    drawRoundRect(ctx, cx - r - 4, cy - r - 4, (r + 4) * 2, (r + 4) * 2, 8, '#8a6a4a');
-    ctx.fillStyle = '#fdf8ee';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#5a4a3a';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const x1 = cx + Math.cos(angle) * (r - 4);
-      const y1 = cy + Math.sin(angle) * (r - 4);
-      const x2 = cx + Math.cos(angle) * (r - 8);
-      const y2 = cy + Math.sin(angle) * (r - 8);
-      ctx.strokeStyle = '#5a4a3a';
-      ctx.lineWidth = 1.5;
+    const cx = 520;
+    const cy = 29;
+    for (const dir of [-1, 1]) {
+      ctx.fillStyle = ANIME.gold;
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.arc(cx + dir * 13, cy - 16, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
     }
-    const minuteAngle = (minute / 60) * Math.PI * 2 - Math.PI / 2;
-    const hourAngle = ((hour24 % 12) + minute / 60) / 12 * Math.PI * 2 - Math.PI / 2;
-    ctx.strokeStyle = '#3a2a2a';
-    ctx.lineWidth = 2.5;
+    ctx.fillStyle = ANIME.pink;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(hourAngle) * (r * 0.5), cy + Math.sin(hourAngle) * (r * 0.5));
+    ctx.arc(cx, cy, 21, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = '#fffaf3';
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(minuteAngle) * (r * 0.75), cy + Math.sin(minuteAngle) * (r * 0.75));
+    ctx.arc(cx, cy, 16.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.2;
     ctx.stroke();
-    ctx.fillStyle = '#3a2a2a';
+    const hand = (angle, len, width) => {
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.sin(angle) * len, cy - Math.cos(angle) * len);
+      ctx.stroke();
+    };
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineCap = 'round';
+    hand(((hour + minute / 60) / 12) * Math.PI * 2, 9, 2.5);
+    hand((minute / 60) * Math.PI * 2, 13, 1.5);
+    ctx.lineCap = 'butt';
+    ctx.fillStyle = ANIME.pinkDeep;
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
   }
 
-  // -- Station detail art (v2 art pass) -------------------------------------
-  // The user compared these against Kitchen Shift's stations ("the coffee
-  // machine isnt well done like the kitchen") — every library station used
-  // to be a flat colored box with at most one stripe. Each drawer below
-  // paints recognizable fixture art in the station's own local coordinate
-  // space (origin = box center, already translated/scaled by drawStation,
-  // so First Person's billboards get it for free), canvas primitives only.
+  // -- Station art: Hospital Shift's anime furniture kit -----------------------
+  // Library's own fixtures live in library/anime-furniture.js; Stairs and
+  // the Elevator are Hospital Shift's own (hospital/anime-furniture.js).
+  // Each drawer paints in the station's local space (origin = box center,
+  // already translated/scaled by drawStation, so First Person's billboards
+  // get it for free).
 
-  /** Small deterministic PRNG so a shelf's book spines are stable across frames. */
-  function seededRandom(seedText) {
-    let h = 2166136261;
-    for (let i = 0; i < seedText.length; i++) h = Math.imul(h ^ seedText.charCodeAt(i), 16777619);
-    return () => {
-      h = Math.imul(h ^ (h >>> 15), 2246822507);
-      h = Math.imul(h ^ (h >>> 13), 3266489909);
-      return ((h ^= h >>> 16) >>> 0) / 4294967296;
-    };
-  }
+  /** Korean genre names for the bookcase signs (the Korean-library theme). */
+  const GENRE_SIGNS_KO = { mystery: '추리', romance: '로맨스', scifi: 'SF', kids: '어린이', reference: '참고' };
 
-  function drawBookshelfDetail(half, station, baseColor) {
-    const inset = 7;
-    const inner = half - inset;
-    drawRoundRect(ctx, -inner, -inner, inner * 2, inner * 2, 4, shadeColor(baseColor, -0.5));
-    // Two rows of tall spines (not three short ones) so each spine is long
-    // enough to carry a readable title from this genre's pool.
-    const rows = 2;
-    const rowH = (inner * 2) / rows;
-    const random = seededRandom(station.id);
-    const titles = TITLE_POOLS[station.genreId] || ['Untitled'];
-    let titleIndex = Math.floor(random() * titles.length);
-    const spinePalette = [
-      shadeColor(baseColor, 0.45), shadeColor(baseColor, 0.2), '#fdf1dc',
-      shadeColor(baseColor, -0.2), '#e8b95a', shadeColor(baseColor, 0.65),
-    ];
-    for (let r = 0; r < rows; r++) {
-      const shelfY = -inner + (r + 1) * rowH;
-      let x = -inner + 2;
-      while (x < inner - 4) {
-        const w = Math.min(11 + Math.floor(random() * 3), inner - 2 - x);
-        if (w < 8) break;
-        const h = rowH - 4 - Math.floor(random() * 3);
-        const color = spinePalette[Math.floor(random() * spinePalette.length)];
-        const top = shelfY - 3 - h;
-        drawRoundRect(ctx, x, top, w, h, 1.5, color);
-        ctx.fillStyle = 'rgba(58,42,42,0.22)';
-        ctx.fillRect(x, top + 1.5, w, 1);
-        ctx.fillRect(x, top + h - 2.5, w, 1);
-        // Title running up the spine (rotated -90°). A whole title can't be
-        // legible on a ~30px spine, so this shows the full title when it
-        // fits and otherwise one of the title's main words, at the largest size
-        // (6.5 → 5px) that fits.
-        const title = titles[titleIndex++ % titles.length];
-        const avail = h - 6;
-        // Each genre pool has only five titles, so the second row picks the
-        // title's next-longest word instead of repeating the first row's.
-        const words = title.split(' ').filter((wd) => wd.length > 2).sort((p, q) => q.length - p.length);
-        let text = words.length ? words[r % words.length] : title;
-        let size = 6.5;
-        ctx.font = `bold ${size}px sans-serif`;
-        if (ctx.measureText(title).width <= avail) text = title;
-        while (size > 5 && ctx.measureText(text).width > avail) {
-          size -= 0.5;
-          ctx.font = `bold ${size}px sans-serif`;
-        }
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, top + 3, w, h - 6);
-        ctx.clip();
-        ctx.translate(x + w / 2, top + h / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillStyle = titleInkFor(color);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, 0, 0.3);
-        ctx.restore();
-        x += w + 0.8;
-      }
-      drawRoundRect(ctx, -inner, shelfY - 3, inner * 2, 3, 1, shadeColor(baseColor, 0.3));
-    }
-  }
-
-  function drawReturnCartDetail(half) {
-    // "RETURNS" sign.
-    drawRoundRect(ctx, -22, -half + 6, 44, 13, 4, '#fdf8ee');
-    ctx.fillStyle = '#8a5a3a';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('RETURNS', 0, -half + 12.5);
-    const metal = '#8a6a4a';
-    // Upright posts + push handle.
-    drawRoundRect(ctx, -28, -16, 4, 40, 2, metal);
-    drawRoundRect(ctx, 24, -16, 4, 40, 2, metal);
-    drawRoundRect(ctx, 24, -22, 12, 4, 2, metal);
-    // Two trays.
-    for (const ty of [-2, 20]) drawRoundRect(ctx, -30, ty, 60, 5, 2, '#a57a52');
-    // Books on each tray: upright spines, one leaning.
-    const books = [['#5b6cc0', 14], ['#d65a6a', 17], ['#e8b95a', 12], ['#6aa37a', 16], ['#8a5aa0', 13]];
-    books.forEach(([color, h], i) => drawRoundRect(ctx, -24 + i * 9, -2 - h, 7, h, 1, color));
-    ctx.save();
-    ctx.translate(20, -2);
-    ctx.rotate(0.35);
-    drawRoundRect(ctx, -7, -14, 7, 14, 1, '#c47f4e');
-    ctx.restore();
-    [['#e8b95a', 13], ['#5b6cc0', 15], ['#6aa37a', 11]].forEach(([color, h], i) => drawRoundRect(ctx, -22 + i * 9, 20 - h, 7, h, 1, color));
-    drawRoundRect(ctx, 6, 13, 18, 7, 1.5, '#d65a6a'); // a book lying flat
-    // Wheels.
-    for (const wx of [-22, 22]) {
-      ctx.fillStyle = '#3a2a2a';
-      ctx.beginPath();
-      ctx.arc(wx, 30, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#c9b29a';
-      ctx.beginPath();
-      ctx.arc(wx, 30, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawFrontDeskDetail(half) {
-    // Desk: a wood front panel with a lighter countertop lip.
-    drawRoundRect(ctx, -half + 4, -2, half * 2 - 8, half - 2, 6, '#b9824f');
-    drawRoundRect(ctx, -half + 2, -6, half * 2 - 4, 7, 3, '#d9a66b');
-    for (const px of [-half + 12, 6]) {
-      ctx.strokeStyle = 'rgba(90,55,30,0.35)';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(px, 7, half - 18, half - 18);
-    }
-    // Computer monitor on the desk.
-    drawRoundRect(ctx, -28, -half + 8, 30, 22, 3, '#4a4a55');
-    drawRoundRect(ctx, -25.5, -half + 10.5, 25, 16, 2, '#bcdcf2');
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillRect(-23, -half + 13, 10, 2);
-    ctx.fillRect(-23, -half + 17, 15, 2);
-    drawRoundRect(ctx, -16, -half + 30, 6, 6, 1, '#4a4a55');
-    // A stack of books and a service bell.
-    [['#5b6cc0', 0], ['#d65a6a', 1], ['#6aa37a', 2]].forEach(([color, i]) => drawRoundRect(ctx, 10 - i, -12 - i * 6, 20, 5.5, 1.5, color));
-    ctx.fillStyle = '#e0a83a';
-    ctx.beginPath();
-    ctx.arc(-half + 14, -6, 6, Math.PI, 0);
-    ctx.fill();
-    ctx.fillRect(-half + 13, -14, 2, 3);
-    drawRoundRect(ctx, -half + 6, -7, 16, 2.5, 1, '#8a6a4a');
-    // A little potted plant on the desk's right corner.
-    drawRoundRect(ctx, 30, -14, 8, 8, 2, '#c47f4e');
-    ctx.fillStyle = '#6aa37a';
-    for (const [dx, dy, r] of [[34, -18, 4], [31, -21, 3], [37, -22, 3]]) {
-      ctx.beginPath();
-      ctx.arc(dx, dy, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawFinesCounterDetail(half) {
-    // "FINES" plaque.
-    drawRoundRect(ctx, -18, -half + 6, 36, 13, 4, '#fdf8ee');
-    ctx.fillStyle = '#a0503a';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('FINES', 0, -half + 12.5);
-    // Counter top.
-    drawRoundRect(ctx, -half + 4, 14, half * 2 - 8, half - 18, 5, '#c98a6a');
-    drawRoundRect(ctx, -half + 2, 11, half * 2 - 4, 6, 3, '#e3a98a');
-    // Cash register: angled display, body, keypad, cash drawer.
-    drawRoundRect(ctx, -10, -18, 30, 8, 2, '#5a4a4a');
-    drawRoundRect(ctx, -7, -16.5, 16, 5, 1, '#9fe0a8');
-    drawRoundRect(ctx, -14, -10, 38, 21, 4, '#7a6a6a');
-    ctx.fillStyle = '#fdf8ee';
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 4; c++) ctx.fillRect(-9 + c * 6, -6 + r * 4.5, 4, 3);
-    }
-    drawRoundRect(ctx, -16, 6, 42, 6, 2, '#5a4a4a');
-    // Coin stacks.
-    for (const [cx, n] of [[-28, 4], [-21, 2]]) {
-      for (let i = 0; i < n; i++) {
-        ctx.fillStyle = i % 2 ? '#e8b95a' : '#f2d98a';
-        ctx.beginPath();
-        ctx.ellipse(cx, 8 - i * 3.5, 5, 2.2, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(138,90,40,0.6)';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-      }
-    }
-  }
-
+  // The original coffee machine, kept as is — Hospital Shift kept this same
+  // art for its own machine.
   function drawCoffeeMachineDetail(half) {
     // Bean hopper on top: a clear trapezoid full of beans.
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -2221,164 +2226,41 @@ export function init(canvas, elements) {
     }
   }
 
-  function drawBossOfficeDetail(half) {
-    // A paneled office door with a brass name plaque and knob.
-    drawRoundRect(ctx, -half + 12, -half + 8, half * 2 - 24, half * 2 - 8, [6, 6, 0, 0], 'rgba(90,60,90,0.18)');
-    ctx.strokeStyle = 'rgba(90,60,90,0.28)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-half + 18, -half + 26, half * 2 - 36, 22);
-    ctx.strokeRect(-half + 18, 10, half * 2 - 36, 22);
-    drawRoundRect(ctx, -16, -half + 12, 32, 10, 2, '#e8cf8a');
-    ctx.fillStyle = '#8a6a3a';
-    ctx.font = 'bold 7px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('BOSS', 0, -half + 17.5);
-    ctx.fillStyle = '#c9a24a';
-    ctx.beginPath();
-    ctx.arc(half - 20, 4, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawReadingNookDetail(half) {
-    // A round rug, a cozy armchair, a floor lamp, and an open book.
-    ctx.fillStyle = '#c9a7d1';
-    ctx.beginPath();
-    ctx.ellipse(0, half - 14, half - 8, 9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    drawRoundRect(ctx, -24, -14, 36, 26, 9, '#c47f4e');
-    drawRoundRect(ctx, -22, 4, 32, 14, 5, '#d99a6a');
-    drawRoundRect(ctx, -30, -2, 10, 24, 5, '#b06e42');
-    drawRoundRect(ctx, 8, -2, 10, 24, 5, '#b06e42');
-    ctx.fillStyle = '#7a4a2a';
-    ctx.fillRect(-26, 21, 3, 6);
-    ctx.fillRect(13, 21, 3, 6);
-    const glow = ctx.createRadialGradient(28, -26, 2, 28, -26, 22);
-    glow.addColorStop(0, 'rgba(255,230,150,0.75)');
-    glow.addColorStop(1, 'rgba(255,230,150,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(28, -26, 22, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#5a4a3a';
-    ctx.fillRect(27, -24, 2.5, 46);
-    drawRoundRect(ctx, 22, 21, 13, 3, 1.5, '#5a4a3a');
-    ctx.fillStyle = '#f2d98a';
-    ctx.beginPath();
-    ctx.moveTo(20, -24);
-    ctx.lineTo(36, -24);
-    ctx.lineTo(32, -36);
-    ctx.lineTo(24, -36);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#fdf8ee';
-    ctx.beginPath();
-    ctx.moveTo(-8, -6);
-    ctx.quadraticCurveTo(-3, -9, 0, -6);
-    ctx.quadraticCurveTo(3, -9, 8, -6);
-    ctx.lineTo(8, 1);
-    ctx.quadraticCurveTo(3, -2, 0, 1);
-    ctx.quadraticCurveTo(-3, -2, -8, 1);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(58,42,42,0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, -6);
-    ctx.lineTo(0, 1);
-    ctx.stroke();
-  }
-
-  function drawStairsDetail(half, station) {
-    // Steps rising toward the top of the box, each a lighter tread with a
-    // darker riser, plus a handrail and an up/down direction badge.
-    const steps = 5;
-    const stepH = (half * 2 - 16) / steps;
-    for (let i = 0; i < steps; i++) {
-      const y = half - 8 - (i + 1) * stepH;
-      const inset = 8 + i * 2.5;
-      drawRoundRect(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, shadeColor('#b8cde0', 0.15 + i * 0.1));
-      ctx.fillStyle = 'rgba(58,70,90,0.28)';
-      ctx.fillRect(-half + inset, y + stepH - 3, half * 2 - inset * 2, 3);
-    }
-    ctx.strokeStyle = '#8a6a4a';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-half + 7, half - 10);
-    ctx.lineTo(-half + 17, -half + 10);
-    ctx.stroke();
-    ctx.lineCap = 'butt';
-    const goingUp = (station.targetFloor ?? 0) > (station.floor ?? 0);
-    drawRoundRect(ctx, half - 22, -half + 5, 17, 17, 8.5, '#fdf8ee');
-    ctx.fillStyle = '#5a6a80';
-    ctx.beginPath();
-    const ay = -half + 13.5;
-    const dir = goingUp ? -1 : 1;
-    ctx.moveTo(half - 13.5, ay + dir * 5);
-    ctx.lineTo(half - 18.5, ay - dir * 3);
-    ctx.lineTo(half - 8.5, ay - dir * 3);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  function drawElevatorDetail(half, station) {
-    // Floor indicator over the doorway.
-    drawRoundRect(ctx, -14, -half + 5, 28, 11, 4, '#3a3440');
-    ctx.fillStyle = '#f2d98a';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const goingUp = (station.targetFloor ?? 0) > (station.floor ?? 0);
-    ctx.fillText(`${goingUp ? '▲' : '▼'} ${station.targetFloor ?? ''}`, 0, -half + 11);
-    // Steel door frame + two sliding doors with a center seam.
-    drawRoundRect(ctx, -26, -half + 19, 52, half * 2 - 25, 4, '#d8dde3');
-    drawRoundRect(ctx, -23, -half + 22, 22.5, half * 2 - 28, 2, '#aab4bf');
-    drawRoundRect(ctx, 0.5, -half + 22, 22.5, half * 2 - 28, 2, '#aab4bf');
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(-20, -half + 24, 3, half * 2 - 34);
-    ctx.fillRect(3.5, -half + 24, 3, half * 2 - 34);
-    // Call-button panel.
-    drawRoundRect(ctx, 29, -6, 8, 16, 3, '#d8dde3');
-    ctx.fillStyle = '#e0a83a';
-    ctx.beginPath();
-    ctx.arc(33, 2, 2.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
+  /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
   const STATION_DETAIL_DRAWERS = {
-    bookshelf: drawBookshelfDetail,
-    'return-cart': drawReturnCartDetail,
-    'front-desk': drawFrontDeskDetail,
-    'fines-counter': drawFinesCounterDetail,
-    'coffee-machine': drawCoffeeMachineDetail,
-    'boss-office': drawBossOfficeDetail,
-    'reading-nook': drawReadingNookDetail,
+    bookshelf: (station) => {
+      const genre = findGenre(station.genreId);
+      const ko = GENRE_SIGNS_KO[station.genreId];
+      drawBookcase(ctx, station, {
+        color: genre?.color ?? ANIME.coral,
+        sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
+        titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
+      });
+    },
+    'return-cart': (station) => drawReturnCart(ctx, station),
+    'front-desk': (station) => drawFrontDesk(ctx, station),
+    'fines-counter': (station) => drawFinesRoom(ctx, station),
+    'coffee-machine': (station) => drawCoffeeMachineDetail(station.w / 2),
+    'boss-office': (station) => drawBossDoor(ctx, station),
+    'reading-nook': (station) => drawReadingNook(ctx, station),
+    stairs: (station) => drawStairs(ctx, station),
+    elevator: (station) => drawElevator(ctx, station, { t: performance.now() / 1000 }),
   };
 
   /**
    * Draws one station's box. `opts` is First Person's billboard hook (doc's
-   * "draw it via the *same* existing drawing functions... whatever
-   * function(s) draw station boxes"): passing `opts.scale`/`centerX`/
-   * `centerY` draws this exact same art scaled and positioned anywhere on
-   * screen instead of at the station's own world x/y, via a single
-   * `ctx.scale` transform rather than rewriting every fixed pixel offset
-   * below — Top-Down's own call site (`drawStation(station)`, no opts)
-   * renders byte-for-byte as before (scale 1, centered on the station's own
-   * world position, hover/target highlight and label both still apply).
-   * `opts.skipLabel` skips the on-canvas label chip — First Person shows the
-   * same text via `#library-interact-hint` instead (see `updateHoverHint`),
-   * since a label chip glued to a shrinking/growing billboard reads poorly
-   * at a distance.
+   * "draw it via the *same* existing drawing functions"): `scale`,
+   * `centerX`/`centerY` and `skipLabel`. Hospital Shift's look: an anime
+   * tile, the fixture art, plum line art, and a glowing ring + sparkle when
+   * hovered (pink) or targeted (gold).
    */
   function drawStation(station, opts = {}) {
     const billboard = opts.scale !== undefined;
     const scale = opts.scale ?? 1;
     const isHovered = !billboard && hoverStation && hoverStation.id === station.id;
     const isTarget = !billboard && moveTarget && moveTarget.station && moveTarget.station.id === station.id;
-    const half = station.size / 2;
-    const genre = station.kind === 'bookshelf' ? findGenre(station.genreId) : null;
-    const baseColor = genre ? genre.color : (STATION_COLORS[station.kind] || '#8a6a4a');
+    const { hw, hh } = stationExtents(station);
+    const box = { ...station, w: hw * 2, h: hh * 2 };
     // Locked all shift and through the closing wait — v2.13: it used to
     // *look* unlocked during the 20 s closing wait while arriving did
     // nothing (user: "when i want to get into the bosses office i cannot").
@@ -2390,43 +2272,38 @@ export function init(canvas, elements) {
     ctx.save();
     ctx.translate(Math.round(cx), Math.round(cy));
     ctx.scale(scale, scale);
-
-    if (station.kind === 'elevator') {
-      // Visually distinct from Stairs (below) — a rounded shape with
-      // "doors" down the middle, reading as a different fixture at a
-      // glance (doc's "so they read as two different fixtures").
-      drawRoundRect(ctx, -half, -half, station.size, station.size, 16, baseColor);
-      drawElevatorDetail(half, station);
-    } else if (station.kind === 'stairs') {
-      drawRoundRect(ctx, -half, -half, station.size, station.size, 6, baseColor);
-      drawStairsDetail(half, station);
-    } else {
-      drawRoundRect(ctx, -half, -half, station.size, station.size, 10, locked ? '#b8b0b8' : baseColor);
-      const detail = STATION_DETAIL_DRAWERS[station.kind];
-      if (detail) detail(half, station, baseColor);
-      if (locked) {
-        // A padlock badge over the (greyed) office door.
-        drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
-        ctx.strokeStyle = '#5a5060';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, -2, 5.5, Math.PI, 0);
-        ctx.stroke();
-        drawRoundRect(ctx, -7.5, 1, 15, 11, 3, '#5a5060');
-      }
+    animeTile(ctx, -hw, -hh, hw * 2, hh * 2, 12, locked ? '#cfc8d8' : (STATION_COLORS[station.kind] || '#f2e6d0'));
+    STATION_DETAIL_DRAWERS[station.kind]?.(box);
+    if (locked) {
+      // A padlock badge over the (greyed) office door.
+      drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
+      ctx.strokeStyle = '#5a5060';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, -2, 5.5, Math.PI, 0);
+      ctx.stroke();
+      drawRoundRect(ctx, -7.5, 1, 15, 11, 3, '#5a5060');
     }
-
-    ctx.strokeStyle = isTarget ? '#e0a83a' : (isHovered ? '#7fb0d6' : 'rgba(58,42,42,0.3)');
-    ctx.lineWidth = isTarget || isHovered ? 3 : 2;
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(-half + 1, -half + 1, station.size - 2, station.size - 2, 8);
+    ctx.roundRect(-hw, -hh, hw * 2, hh * 2, 12);
     ctx.stroke();
+    const ring = isTarget ? ANIME.gold : (isHovered ? ANIME.pink : null);
+    if (ring) {
+      ctx.strokeStyle = ring;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-hw - 3, -hh - 3, hw * 2 + 6, hh * 2 + 6, 15);
+      ctx.stroke();
+      sparkle(ctx, hw - 2, -hh + 2, 6, '#ffffff');
+    }
 
     if (!opts.skipLabel) {
       const label = labelForStation(station);
       if (label) {
-        const labelBelowFits = cy + half + 13 + 7 <= CANVAS_HEIGHT;
-        drawLabelChip(ctx, 0, labelBelowFits ? half + 13 : -half - 13, label, 'bold 11px sans-serif');
+        const labelBelowFits = cy + hh + 13 + 7 <= CANVAS_HEIGHT;
+        drawLabelChip(ctx, 0, labelBelowFits ? hh + 13 : -hh - 13, label, 'bold 11px sans-serif');
       }
     }
 
@@ -2439,31 +2316,33 @@ export function init(canvas, elements) {
       const genre = findGenre(book.genreId);
       const color = genre ? genre.color : '#8a6a4a';
       const { x: coverX, y: coverY, w: coverW, h: coverH } = returnCartCoverRect(book);
-      drawRoundRect(ctx, coverX, coverY, coverW, coverH, 2, color);
+      // Anime book cover: a soft drop shadow, plum line art, a spine band and a shine.
+      drawRoundRect(ctx, coverX + 1.5, coverY + 2.5, coverW, coverH, 3, 'rgba(59,42,74,0.2)');
+      drawRoundRect(ctx, coverX, coverY, coverW, coverH, 3, color);
       ctx.fillStyle = 'rgba(255,251,246,0.5)';
-      ctx.fillRect(coverX, coverY, 3, coverH);
+      ctx.fillRect(coverX + 1, coverY + 1, 3, coverH - 2);
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(coverX, coverY, coverW, coverH, 3);
+      ctx.stroke();
       // Full title on the front cover (user: "add the title names on each
       // books") — wrapped and shrunk to fit rather than v1.4's first-four-
       // words-then-crop, which cut titles off at the cover's edges.
       if (book.title) drawCoverTitle(ctx, book.title, coverX + 3, coverY, coverW - 3, coverH, color, { maxFont: 7.5, minFont: 5 });
-      if (book.isCoinHunt) drawStar(ctx, coverX + coverW - 2, coverY + 1, 5, 2, '#f2d98a');
+      if (book.isCoinHunt) animeStar(ctx, coverX + coverW - 2, coverY + 1, 6, 2.6, 1);
     }
     const cart = stations.find((s) => s.kind === 'return-cart');
     if (shiftState && shiftState.returnCart.length > 5) {
-      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 72, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 78, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
     }
     // v2.18: a messy cart drains Mood — say so, pulsing red.
     if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
       const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 200);
       ctx.save();
       ctx.globalAlpha = pulse;
-      const warnY = cart.y + cart.size / 2 + 94; // below the covers and the "+N more" chip
-      drawRoundRect(ctx, cart.x - 70, warnY - 9, 140, 18, 9, '#e06a5b');
-      ctx.fillStyle = '#fdf8ee';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Messy cart! Mood dropping', cart.x, warnY);
+      const warnY = cart.y + cart.size / 2 + 100; // below the covers and the "+N more" chip
+      drawLabelChip(ctx, cart.x, warnY, 'Messy cart! Mood dropping', 'bold 10px sans-serif', ANIME.coralDeep, '#ffffff');
       ctx.restore();
     }
   }
@@ -2486,7 +2365,7 @@ export function init(canvas, elements) {
     const waiting = shiftState?.finesQueue.length || 0;
     if (waiting > SLOT_VISIBLE_MAX) {
       const counter = stations.find((s) => s.kind === 'fines-counter');
-      drawLabelChip(ctx, counter.x, counter.y + counter.size / 2 + QUEUE_SLOT_OFFSET_Y + 50, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, counter.x, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 50, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2523,7 +2402,18 @@ export function init(canvas, elements) {
         // neighboring slot's own chip, same class of overflow bug as the
         // Return Cart covers above. Truncated to a short, single-word-ish
         // snippet that reliably stays inside one slot's width instead.
-        if (entry?.title) drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, entry.title, 40, 'bold 9px sans-serif'), 'bold 9px sans-serif');
+        if (entry?.title) {
+          // The Korean title on the chip, its English meaning just below
+          // (under the patience bar), both cut to the slot's 46px pitch.
+          const { ko, en } = splitTitle(entry.title);
+          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, 40, 'bold 9px sans-serif'), 'bold 9px sans-serif');
+          if (en) {
+            ctx.font = 'bold 7.5px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            outlinedText(ctx, truncateForChip(ctx, en, 44, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
+          }
+        }
       } else if (slot.kind === 'karen') {
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
       }
@@ -2532,7 +2422,7 @@ export function init(canvas, elements) {
     const shown = Math.min(total, SLOT_VISIBLE_MAX);
     if (total > shown) {
       const desk = stations.find((s) => s.kind === 'front-desk');
-      drawLabelChip(ctx, desk.x, desk.y + desk.size / 2 + QUEUE_SLOT_OFFSET_Y + 50, `+${total - shown} waiting`, 'bold 10px sans-serif');
+      drawLabelChip(ctx, desk.x, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 50, `+${total - shown} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2561,7 +2451,7 @@ export function init(canvas, elements) {
     lastFrameDrewPlayerSprite = true;
     const sanity = shiftState ? shiftState.sanity : SANITY_MAX;
     const stress = sanity < HALLUCINATION_START_SANITY ? (HALLUCINATION_START_SANITY - sanity) / HALLUCINATION_START_SANITY : 0;
-    drawLibraryPerson(ctx, player.x, player.y, { personalityKey: 'librarian', scale: 1, stress });
+    drawLibraryPerson(ctx, player.x, player.y, { personalityKey: 'librarian', scale: 1, stress, walking: moveTarget !== null });
     drawCoffeeSplash();
     drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     const badge = currentPlayerBadge();
@@ -2571,37 +2461,27 @@ export function init(canvas, elements) {
     }
   }
 
-  function drawSanityBar() {
+  /** Hospital Shift's anime stat gauge (badge, gauge, outlined label): healthy in its own color, then gold, then coral when low. */
+  function drawStatBar(y, label, value, max, colorHigh, font) {
     const x = 14;
-    const y = 14;
     const width = 130;
     const height = 16;
-    const sanityPercent = Math.round(shiftState ? shiftState.sanity : SANITY_MAX);
-    const frac = Math.max(0, Math.min(1, sanityPercent / SANITY_MAX));
-    const fillColor = sanityPercent > 50 ? '#7fd68a' : (sanityPercent > 20 ? '#e0a83a' : '#e06a5b');
-
-    ctx.save();
-    drawRoundRect(ctx, x, y, width, height, 8, 'rgba(255,251,246,0.85)');
-    drawRoundRect(ctx, x + 2, y + 2, Math.max(0, (width - 4) * frac), height - 4, 6, fillColor);
-    ctx.strokeStyle = 'rgba(58,42,42,0.3)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 8);
-    ctx.stroke();
-
-    ctx.fillStyle = LABEL_TEXT_COLOR;
-    // Doc's Visual Direction: the Sanity bar's label uses the site's own
-    // display font (Caprasimo), not a generic sans-serif — but a canvas
-    // draw issued before a self-hosted @font-face resolves silently falls
-    // back with no error, so this only switches to the Caprasimo family
-    // once `document.fonts.ready` has resolved (see `sanityFontReady`
-    // above); every later frame in this 60fps loop retries the draw, so a
-    // missed first frame or two self-corrects immediately.
-    ctx.font = sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif';
+    const percent = Math.round(value);
+    const frac = Math.max(0, Math.min(1, value / max));
+    const [top, deep] = percent > 50 ? colorHigh : (percent > 20 ? [ANIME.gold, ANIME.goldDeep] : [ANIME.coral, ANIME.coralDeep]);
+    animeGauge(ctx, x + 6, y, width - 6, height, frac, top, deep);
+    animeBadge(ctx, x + 6, y + height / 2, 10, top, deep, label === 'Sanity' ? 'heart' : 'smile');
+    ctx.font = font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`Sanity ${sanityPercent}%`, x + width / 2, y + height / 2 + 0.5);
-    ctx.restore();
+    outlinedText(ctx, `${label} ${percent}%`, x + width / 2 + 9, y + height / 2 + 0.5, '#ffffff', ANIME.ink, 2.6);
+  }
+
+  function drawSanityBar() {
+    // The Sanity label uses the site's display font (Caprasimo) once
+    // `document.fonts.ready` has resolved (see `sanityFontReady`).
+    drawStatBar(14, 'Sanity', shiftState ? shiftState.sanity : SANITY_MAX, SANITY_MAX, [ANIME.mint, ANIME.mintDeep],
+      sanityFontReady ? 'bold 11px "Caprasimo", sans-serif' : 'bold 11px sans-serif');
   }
 
   // v2.15 Gard counter (user: "something ... keeping track of your gard"):
@@ -2630,27 +2510,14 @@ export function init(canvas, elements) {
     const y = 14;
     const w = 176;
     const h = 22;
-    drawRoundRect(ctx, x, y, w, h, 11, 'rgba(255,251,246,0.85)');
-    // Mini Gard coin.
-    ctx.fillStyle = '#c28a2c';
-    ctx.beginPath();
-    ctx.arc(x + 13, y + 11, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#f2cf6a';
-    ctx.beginPath();
-    ctx.arc(x + 13, y + 11, 6.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#a8741e';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('G', x + 13, y + 11.5);
+    animePlate(ctx, x, y, w, h, 11);
+    animeBadge(ctx, x + 13, y + 11, 8.5, ANIME.gold, ANIME.goldDeep, 'G');
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'left';
     ctx.font = 'bold 11px sans-serif';
     ctx.fillText(`${bonus >= 0 ? '+' : '−'}${Math.abs(bonus)}g shift`, x + 26, y + 11.5);
     ctx.font = '10px sans-serif';
-    ctx.fillStyle = 'rgba(58,42,42,0.7)';
+    ctx.fillStyle = ANIME.inkSoft;
     ctx.textAlign = 'right';
     ctx.fillText(`Month ${save.monthToDateGard}g`, x + w - 9, y + 11.5);
     // "+N" pops float up and fade.
@@ -2671,57 +2538,42 @@ export function init(canvas, elements) {
     }
   }
 
-  /** v2.9 star rating, drawn to the right of the Sanity/Mood bars: five stars with half-star fills. */
+  /** v2.9 star rating, right of the Sanity/Mood bars: Hospital Shift's anime stars with half-star fills. */
   function drawRatingStars() {
     const rating = shiftState ? shiftState.rating : RATING_MAX;
     const x0 = 152;
     const cy = 25;
-    drawRoundRect(ctx, x0 - 4, cy - 11, 5 * 20 + 8, 22, 11, 'rgba(255,251,246,0.85)');
+    animePlate(ctx, x0 - 4, cy - 12, 5 * 20 + 8, 24, 12);
     for (let i = 0; i < RATING_MAX; i++) {
-      const cx = x0 + 10 + i * 20;
-      drawStar(ctx, cx, cy, 8, 3.6, 'rgba(58,42,42,0.18)');
-      const fill = Math.max(0, Math.min(1, rating - i));
-      if (fill > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(cx - 9, cy - 9, 18 * fill, 18);
-        ctx.clip();
-        drawStar(ctx, cx, cy, 8, 3.6, '#e8b95a');
-        ctx.restore();
-      }
+      animeStar(ctx, x0 + 10 + i * 20, cy, 8.5, 3.9, Math.max(0, Math.min(1, rating - i)));
     }
   }
 
   function drawLibraryMoodBar() {
-    const x = 14;
-    const y = 36;
-    const width = 130;
-    const height = 16;
-    const moodPercent = Math.round(shiftState ? shiftState.libraryMood : LIBRARY_MOOD_MAX);
-    const frac = Math.max(0, Math.min(1, moodPercent / LIBRARY_MOOD_MAX));
-    const fillColor = moodPercent > 50 ? '#7fb0d6' : (moodPercent > 20 ? '#e0a83a' : '#e06a5b');
-
-    ctx.save();
-    drawRoundRect(ctx, x, y, width, height, 8, 'rgba(255,251,246,0.85)');
-    drawRoundRect(ctx, x + 2, y + 2, Math.max(0, (width - 4) * frac), height - 4, 6, fillColor);
-    ctx.strokeStyle = 'rgba(58,42,42,0.3)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x, y, width, height, 8);
-    ctx.stroke();
-    ctx.fillStyle = LABEL_TEXT_COLOR;
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`Mood ${moodPercent}%`, x + width / 2, y + height / 2 + 0.5);
-    ctx.restore();
+    drawStatBar(36, 'Mood', shiftState ? shiftState.libraryMood : LIBRARY_MOOD_MAX, LIBRARY_MOOD_MAX, [ANIME.sky, ANIME.skyDeep], 'bold 10px sans-serif');
   }
 
   // -- Overlay rendering ------------------------------------------------------
 
+  /** Hospital Shift's dialog dim: a plum vignette with slow sparkles. */
   function drawOverlayBackdrop() {
-    ctx.fillStyle = 'rgba(30,20,20,0.55)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    animeBackdrop(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, performance.now() / 1000);
+  }
+
+  /** Each overlay's window trim, so screens are told apart at a glance (Hospital Shift's PANEL_ACCENTS). */
+  const WINDOW_ACCENTS = {
+    'coin-hunt': [ANIME.gold, ANIME.goldDeep],
+    'fines-sort': [ANIME.coral, ANIME.coralDeep],
+    'find-the-book': [ANIME.sky, ANIME.skyDeep],
+    reading: [ANIME.lavender, ANIME.lavenderDeep],
+    'till-count': [ANIME.mint, ANIME.mintDeep],
+    'coffee-pour': [ANIME.gold, ANIME.goldDeep],
+  };
+
+  /** A Hospital Shift anime dialog window behind an overlay's content. */
+  function drawWindow(x, y, w, h) {
+    const [accent, accentDeep] = WINDOW_ACCENTS[overlay?.kind] ?? [ANIME.pink, ANIME.pinkDeep];
+    animeWindow(ctx, { x, y, w, h }, { t: performance.now() / 1000, accent, accentDeep });
   }
 
   function drawSkillCheckOverlay() {
@@ -2732,23 +2584,23 @@ export function init(canvas, elements) {
     const barY = CANVAS_HEIGHT / 2 - 10;
     const barH = 24;
 
-    ctx.fillStyle = '#fdf8ee';
-    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(overlay.context === 'shelf' ? 'Shelf Skill-Check' : 'Checkout Skill-Check', CANVAS_WIDTH / 2, barY - 40);
-    ctx.font = '13px sans-serif';
-    ctx.fillText('Click, tap, or press Space/Enter to stop the marker in the gold zone', CANVAS_WIDTH / 2, barY - 16);
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `22px ${DISPLAY_FONT}`;
+    outlinedText(ctx, overlay.context === 'shelf' ? 'Shelf Skill-Check' : 'Checkout Skill-Check', CANVAS_WIDTH / 2, barY - 40, '#ffffff', ANIME.ink, 4);
+    ctx.font = 'bold 13px sans-serif';
+    outlinedText(ctx, 'Click, tap, or press Space/Enter to stop the marker in the gold zone', CANVAS_WIDTH / 2, barY - 16, '#ffffff', ANIME.ink, 3);
 
-    drawRoundRect(ctx, barX, barY, barW, barH, 10, 'rgba(255,251,246,0.9)');
-    drawRoundRect(ctx, barX + zone.start * barW, barY, zone.width * barW, barH, 6, '#f2d98a');
-    ctx.strokeStyle = 'rgba(58,42,42,0.4)';
-    ctx.lineWidth = 2;
+    drawRoundRect(ctx, barX, barY, barW, barH, 12, ANIME.paper);
+    drawRoundRect(ctx, barX + zone.start * barW, barY, zone.width * barW, barH, 6, ANIME.gold);
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.roundRect(barX, barY, barW, barH, 10);
+    ctx.roundRect(barX, barY, barW, barH, 12);
     ctx.stroke();
 
     const markerX = barX + overlay.gaugePosition * barW;
-    ctx.fillStyle = '#c65f7c';
+    ctx.fillStyle = ANIME.pinkDeep;
     ctx.beginPath();
     ctx.moveTo(markerX, barY - 6);
     ctx.lineTo(markerX - 7, barY - 18);
@@ -2871,7 +2723,7 @@ export function init(canvas, elements) {
 
   function drawCoinHuntOverlay() {
     drawOverlayBackdrop();
-    drawRoundRect(ctx, 90, 140, CANVAS_WIDTH - 180, 360, 16, '#fdf3df');
+    drawWindow(90, 140, CANVAS_WIDTH - 180, 360);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
@@ -2893,7 +2745,7 @@ export function init(canvas, elements) {
 
   function drawFinesSortOverlay() {
     drawOverlayBackdrop();
-    drawRoundRect(ctx, 90, 140, CANVAS_WIDTH - 180, 360, 16, '#efe6d8');
+    drawWindow(90, 140, CANVAS_WIDTH - 180, 360);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
@@ -2911,7 +2763,7 @@ export function init(canvas, elements) {
 
   function drawFindTheBookOverlay() {
     drawOverlayBackdrop();
-    drawRoundRect(ctx, 90, 140, CANVAS_WIDTH - 180, 360, 16, '#f2e9da');
+    drawWindow(90, 140, CANVAS_WIDTH - 180, 360);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
@@ -2923,9 +2775,17 @@ export function init(canvas, elements) {
       ctx.fillStyle = '#c65f7c';
       ctx.fillText(`Looking for: “${wanted}”`, CANVAS_WIDTH / 2, 194);
     }
+    // Covers are big enough for the Korean title and its English translation.
     for (const item of overlay.items) {
-      drawRoundRect(ctx, item.x - 20, item.y - 14, 40, 28, 3, item.color);
-      drawCoverTitle(ctx, item.title, item.x - 20, item.y - 14, 40, 28, item.color, { maxLines: 3, maxFont: 9, minFont: 6 });
+      const { x: bx, y: by, w: bw, h: bh } = findBookCoverRect(item);
+      drawRoundRect(ctx, bx + 1.5, by + 2.5, bw, bh, 4, 'rgba(59,42,74,0.2)');
+      drawRoundRect(ctx, bx, by, bw, bh, 4, item.color);
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 4);
+      ctx.stroke();
+      drawCoverTitle(ctx, item.title, bx + 2, by + 2, bw - 4, bh - 4, item.color, { maxFont: 11, minFont: 6 });
     }
   }
 
@@ -2949,7 +2809,7 @@ export function init(canvas, elements) {
   function drawReadingOverlay() {
     drawOverlayBackdrop();
     const cx = CANVAS_WIDTH / 2;
-    drawRoundRect(ctx, cx - 330, 94, 660, 440, 18, '#f2e9da');
+    drawWindow(cx - 330, 94, 660, 440);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = LABEL_TEXT_COLOR;
@@ -3009,7 +2869,7 @@ export function init(canvas, elements) {
   function drawTillCountOverlay() {
     drawOverlayBackdrop();
     const cx = CANVAS_WIDTH / 2;
-    drawRoundRect(ctx, 120, 130, CANVAS_WIDTH - 240, 360, 16, '#efe6d8');
+    drawWindow(120, 130, CANVAS_WIDTH - 240, 360);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
@@ -3088,7 +2948,7 @@ export function init(canvas, elements) {
   function drawCoffeePourOverlay() {
     drawOverlayBackdrop();
     const cx = CANVAS_WIDTH / 2;
-    drawRoundRect(ctx, cx - 210, 110, 420, 400, 18, '#f2e9da');
+    drawWindow(cx - 210, 110, 420, 400);
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
@@ -3232,7 +3092,7 @@ export function init(canvas, elements) {
   function drawKarenOverlay() {
     drawOverlayBackdrop();
     drawLibraryPerson(ctx, CANVAS_WIDTH / 2, 340, { personalityKey: 'karen', scale: 1.3, angryTint: true });
-    drawRoundRect(ctx, 130, 150, CANVAS_WIDTH - 260, 90, 12, '#fdf8ee');
+    speechBubble(ctx, { x: 130, y: 150, w: CANVAS_WIDTH - 260, h: 90 }, { tailX: CANVAS_WIDTH / 2, tailY: 262 });
     ctx.fillStyle = LABEL_TEXT_COLOR;
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
@@ -3241,12 +3101,8 @@ export function init(canvas, elements) {
     ctx.fillText(`${Math.max(0, Math.ceil(shiftState.karen.timerSecondsRemaining))}s to respond`, CANVAS_WIDTH / 2, 225);
 
     const buttons = karenButtonRects();
-    drawRoundRect(ctx, buttons.collect.x, buttons.collect.y, buttons.collect.w, buttons.collect.h, 8, '#7fb0d6');
-    drawRoundRect(ctx, buttons.slide.x, buttons.slide.y, buttons.slide.w, buttons.slide.h, 8, '#e0a83a');
-    ctx.fillStyle = '#fdf8ee';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('Collect the Fine', buttons.collect.x + buttons.collect.w / 2, buttons.collect.y + buttons.collect.h / 2 + 4);
-    ctx.fillText('Let It Slide', buttons.slide.x + buttons.slide.w / 2, buttons.slide.y + buttons.slide.h / 2 + 4);
+    animeButton(ctx, buttons.collect, 'Collect the Fine', ANIME.sky, ANIME.skyDeep, 'bold 13px sans-serif');
+    animeButton(ctx, buttons.slide, 'Let It Slide', ANIME.gold, ANIME.goldDeep, 'bold 13px sans-serif');
   }
 
   function wrapText(text, cx, y, maxWidth, lineHeight) {
@@ -3348,7 +3204,7 @@ export function init(canvas, elements) {
     // so it visually "stands" on the floor band rather than floating
     // centered on the horizon.
     const station = entity.ref;
-    const halfOnScreen = (station.size / 2) * entity.scale;
+    const halfOnScreen = stationExtents(station).hh * entity.scale;
     drawStation(station, {
       scale: entity.scale,
       centerX: entity.screenX,
@@ -3388,7 +3244,27 @@ export function init(canvas, elements) {
     drawFirstPersonCrosshair();
   }
 
+  /**
+   * Keeps the canvas's backing store matched to its on-screen size × the
+   * device pixel ratio (capped at 3×), as Hospital Shift does, so the art
+   * stays crisp when the 960×600 world is shown larger, in fullscreen or on
+   * a Retina display. The world coordinate system is unchanged — render()
+   * scales into it, and input mapping already uses CANVAS_WIDTH/HEIGHT.
+   */
+  let backingScale = 1;
+  function syncBackingStore() {
+    const rect = canvas.getBoundingClientRect();
+    const wanted = Math.min(3, Math.max(1, Math.round(((window.devicePixelRatio || 1) * rect.width / CANVAS_WIDTH) * 2) / 2));
+    if (wanted !== backingScale || canvas.width !== CANVAS_WIDTH * wanted) {
+      backingScale = wanted;
+      canvas.width = CANVAS_WIDTH * wanted;
+      canvas.height = CANVAS_HEIGHT * wanted;
+    }
+    ctx.setTransform(backingScale, 0, 0, backingScale, 0, 0);
+  }
+
   function render() {
+    syncBackingStore();
     lastFrameDrewPlayerSprite = false;
     const shake = currentIntensity() > 0.6 ? (currentIntensity() - 0.6) * 5 : 0;
     ctx.save();
@@ -3401,7 +3277,9 @@ export function init(canvas, elements) {
       drawReturnCartBooks();
       drawFrontDeskSlots();
       drawFinesCounterSlots();
+      drawAmbient(false);
       drawPlayer();
+      drawAmbient(true);
     }
     drawHallucinations();
     ctx.restore();
@@ -3428,6 +3306,7 @@ export function init(canvas, elements) {
       updatePlayer(deltaSeconds);
       updateFirstPersonMovement(deltaSeconds);
     }
+    updateAmbient(deltaSeconds);
 
     const beforeBorrowStage = shiftState.activeBorrow?.stage;
     const beforeKarenActive = shiftState.karen.active;

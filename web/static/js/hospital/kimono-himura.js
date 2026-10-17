@@ -40,9 +40,73 @@ export const HIMURA_PALETTE = {
   capStripe: '#e06a7a',
   kanzashi: '#e0485f',
   zori: '#7a4a32',
+  obiTop: '#f2d27a',
+  obiBottom: '#c9982e',
+  obiLine: '#9a2a2a',
+  hairStrandSoft: 'rgba(74,74,120,0.55)',
+  hairStrand: 'rgba(74,74,120,0.8)',
 };
 
-const P = HIMURA_PALETTE;
+/**
+ * Library Shift's librarian, Coral James, drawn by this same renderer but
+ * as her own character (the user: "make the character different rather
+ * than the same"): chestnut hair in a jaw-length bob with a ribbon, round
+ * glasses, teal-green eyes — and, since Library Shift is a Korean library
+ * ("make her wearing the official outfit of Koreans"), a hanbok instead of
+ * a kimono: a pale-yellow jeogori with red cuffs, a purple collar with the
+ * white dongjeong, a long red goreum ribbon, a rose chima with a gold-leaf
+ * hem, and pink kkotsin shoes (drawHanbok).
+ */
+export const CORAL_PALETTE = {
+  ...HIMURA_PALETTE,
+  skin: '#f8dcc6',
+  skinShade: '#ecc0a4',
+  hair: '#6b3a26',
+  hairShine: '#b57a54',
+  eyeDark: '#123a36',
+  iris: '#1f6e60',
+  irisLight: '#5cc8a8',
+  pupil: '#0e2a26',
+  pupilLight: '#2a5a50',
+  pupilDeep: '#081a18',
+  robeTop: '#4a92d6',
+  robeHem: '#25397a',
+  robeShade: '#16224a',
+  obiage: '#ffe08a',
+  sakura: '#ffffff',
+  sakuraCore: '#ff8fb8',
+  lips: '#d8707c',
+  zori: '#8a5a3a',
+  obiTop: '#ffc2d6',
+  obiBottom: '#e8709c',
+  obiLine: '#8a2a5a',
+  hairStrandSoft: 'rgba(181,122,84,0.55)',
+  hairStrand: 'rgba(181,122,84,0.8)',
+  ribbon: '#ff8fb8',
+  ribbonDeep: '#e8558f',
+  glasses: '#5a3a4a',
+  book: '#ffd166',
+  bookDeep: '#e0a020',
+  // Hanbok.
+  jeogori: '#fff2b8',
+  jeogoriShade: '#f2d27a',
+  chimaTop: '#f0607f',
+  chimaHem: '#b8284f',
+  chimaShade: 'rgba(110,10,40,0.22)',
+  git: '#7a3a82',
+  dongjeong: '#ffffff',
+  goreum: '#d42a4c',
+  goreumDeep: '#a01838',
+  cuff: '#d42a4c',
+  gold: '#ffd166',
+  goldDeep: '#d4a640',
+  kkotsin: '#ff8fb8',
+  kkotsinDeep: '#e8558f',
+};
+
+/** The palette and look of the character being drawn right now (set per call by drawKimonoHimura). */
+let P = HIMURA_PALETTE;
+let LOOK = 'himura';
 
 /** How far the head is lowered toward the collar (shorter neck). */
 const NECK_DROP = 3;
@@ -116,10 +180,26 @@ function roundRect(ctx, x, y, w, h, r, color) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x - feet center
  * @param {number} y - feet line
- * @param {{scale?: number, stress?: number, t?: number, walking?: boolean}} [opts]
+ * @param {{scale?: number, stress?: number, t?: number, walking?: boolean, cap?: boolean, look?: 'himura' | 'coral'}} [opts]
  *   stress 0..1 (low Sanity): worried brows, a frown, a sweat drop.
+ *   cap: the white nurse cap (default true).
+ *   look: 'himura' (default) or 'coral' — Library Shift's librarian, with
+ *   her own hair, glasses, eyes, kimono and a book (CORAL_PALETTE).
  */
 export function drawKimonoHimura(ctx, x, y, opts = {}) {
+  const prevPalette = P;
+  const prevLook = LOOK;
+  LOOK = opts.look === 'coral' ? 'coral' : 'himura';
+  P = LOOK === 'coral' ? CORAL_PALETTE : HIMURA_PALETTE;
+  try {
+    drawFigure(ctx, x, y, opts);
+  } finally {
+    P = prevPalette;
+    LOOK = prevLook;
+  }
+}
+
+function drawFigure(ctx, x, y, opts) {
   const k = opts.scale ?? 1;
   const stress = Math.max(0, Math.min(1, opts.stress ?? 0));
   const t = opts.t ?? 0;
@@ -143,15 +223,19 @@ export function drawKimonoHimura(ctx, x, y, opts = {}) {
   ctx.translate(0, NECK_DROP);
   drawBackHair(ctx, walk);
   ctx.restore();
-  drawFeet(ctx, walk);
-  drawRobe(ctx);
-  drawSleeves(ctx, walk);
-  drawObi(ctx);
-  drawCollar(ctx);
-  drawHands(ctx);
+  if (LOOK === 'coral') {
+    drawHanbok(ctx, walk);
+  } else {
+    drawFeet(ctx, walk);
+    drawRobe(ctx);
+    drawSleeves(ctx, walk);
+    drawObi(ctx);
+    drawCollar(ctx);
+    drawHands(ctx);
+  }
   ctx.save();
   ctx.translate(0, NECK_DROP);
-  drawHead(ctx, stress, t);
+  drawHead(ctx, stress, t, opts.cap ?? true);
   ctx.restore();
   ctx.restore();
 }
@@ -159,6 +243,22 @@ export function drawKimonoHimura(ctx, x, y, opts = {}) {
 // -- Body -----------------------------------------------------------------------
 
 function drawBackHair(ctx, walk) {
+  if (LOOK === 'coral') {
+    // A jaw-length bob, rounded at the ends and swinging a little.
+    const w = walk * 0.4;
+    ctx.fillStyle = P.hair;
+    ctx.beginPath();
+    ctx.moveTo(-11.5, -62);
+    ctx.quadraticCurveTo(-15, -50, -12.5 + w, -42);
+    ctx.quadraticCurveTo(-8 + w, -39.5, -5, -41);
+    ctx.lineTo(5, -41);
+    ctx.quadraticCurveTo(8 + w, -39.5, 12.5 + w, -42);
+    ctx.quadraticCurveTo(15, -50, 11.5, -62);
+    ctx.closePath();
+    ctx.fill();
+    outline(ctx, 0.5);
+    return;
+  }
   // Long straight hair falling behind the shoulders to the obi.
   const w = walk * 0.6;
   ctx.fillStyle = P.hair;
@@ -335,14 +435,14 @@ function drawObi(ctx) {
   // Obiage peeking above the sash.
   roundRect(ctx, -11.8, -29.6, 23.6, 2.2, 1, P.obiage);
   const grad = ctx.createLinearGradient(0, -28, 0, -19);
-  grad.addColorStop(0, '#f2d27a');
-  grad.addColorStop(1, '#c9982e');
+  grad.addColorStop(0, P.obiTop);
+  grad.addColorStop(1, P.obiBottom);
   roundRect(ctx, -12, -28, 24, 9, 1, grad);
   ctx.beginPath();
   ctx.roundRect(-12, -28, 24, 9, 1);
   outline(ctx, 0.5);
   // Brocade: edge lines and a row of small diamonds, in deep red on the gold.
-  ctx.strokeStyle = '#9a2a2a';
+  ctx.strokeStyle = P.obiLine;
   ctx.lineWidth = 0.55;
   for (const ly of [-27, -20]) {
     ctx.beginPath();
@@ -403,6 +503,26 @@ function drawCollar(ctx) {
 }
 
 function drawHands(ctx) {
+  if (LOOK === 'coral') {
+    // A closed book held against her, hands at either side.
+    roundRect(ctx, -4.6, -19.5, 9.2, 7.4, 1.2, P.bookDeep);
+    roundRect(ctx, -4.2, -19.9, 8.8, 7.2, 1, P.book);
+    ctx.beginPath();
+    ctx.roundRect(-4.2, -19.9, 8.8, 7.2, 1);
+    outline(ctx, 0.45);
+    ctx.fillStyle = P.ribbon;
+    ctx.fillRect(-0.4, -19.9, 1.1, 7.2);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(-3.2, -18.8, 2, 0.6);
+    for (const dir of [-1, 1]) {
+      ctx.fillStyle = P.skin;
+      ctx.beginPath();
+      ctx.ellipse(dir * 4.8, -15.6, 1.7, 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      outline(ctx, 0.4);
+    }
+    return;
+  }
   // Hands folded in front, just below the obi, slender fingers overlapping.
   ctx.fillStyle = P.skin;
   ctx.beginPath();
@@ -438,18 +558,20 @@ function facePath(ctx) {
   ctx.closePath();
 }
 
-function drawHead(ctx, stress, t) {
-  // Half-up bun behind the crown, with a kanzashi.
-  ctx.fillStyle = P.hair;
-  ctx.beginPath();
-  ctx.arc(1.5, HEAD_Y - 14.5, 5.8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = P.hairShine;
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.arc(1.5, HEAD_Y - 14.5, 3.8, Math.PI * 1.1, Math.PI * 1.6);
-  ctx.stroke();
-  drawKanzashi(ctx, t);
+function drawHead(ctx, stress, t, cap) {
+  if (LOOK === 'himura') {
+    // Half-up bun behind the crown, with a kanzashi.
+    ctx.fillStyle = P.hair;
+    ctx.beginPath();
+    ctx.arc(1.5, HEAD_Y - 14.5, 5.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = P.hairShine;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(1.5, HEAD_Y - 14.5, 3.8, Math.PI * 1.1, Math.PI * 1.6);
+    ctx.stroke();
+    drawKanzashi(ctx, t);
+  }
 
   // Ears, face.
   ctx.fillStyle = P.skinShade;
@@ -517,7 +639,11 @@ function drawHead(ctx, stress, t) {
   ctx.lineCap = 'butt';
 
   drawFrontHair(ctx);
-  drawNurseCap(ctx);
+  if (LOOK === 'coral') {
+    drawGlasses(ctx);
+    drawRibbon(ctx, t);
+  }
+  if (cap) drawNurseCap(ctx);
 
   if (stress > 0.3) {
     ctx.fillStyle = 'rgba(150,200,240,0.9)';
@@ -623,7 +749,7 @@ function drawFrontHair(ctx) {
   ctx.closePath();
   ctx.fill();
   outline(ctx, 0.45);
-  ctx.strokeStyle = 'rgba(74,74,120,0.55)';
+  ctx.strokeStyle = P.hairStrandSoft;
   ctx.lineWidth = 0.35;
   for (const sx of [-6.7, -2.2, 2.2, 6.7]) {
     ctx.beginPath();
@@ -632,11 +758,12 @@ function drawFrontHair(ctx) {
     ctx.stroke();
   }
   // Side locks framing the face, falling to the collar.
+  const lockEnd = LOOK === 'coral' ? 11 : 17;
   for (const dir of [-1, 1]) {
     ctx.beginPath();
     ctx.moveTo(dir * 11.4, HEAD_Y - 5);
-    ctx.quadraticCurveTo(dir * 12.6, HEAD_Y + 8, dir * 9.6, HEAD_Y + 17);
-    ctx.quadraticCurveTo(dir * 9.2, HEAD_Y + 7, dir * 8.4, HEAD_Y - 2);
+    ctx.quadraticCurveTo(dir * 12.6, HEAD_Y + lockEnd * 0.5, dir * 9.6, HEAD_Y + lockEnd);
+    ctx.quadraticCurveTo(dir * 9.2, HEAD_Y + lockEnd * 0.4, dir * 8.4, HEAD_Y - 2);
     ctx.closePath();
     ctx.fill();
     outline(ctx, 0.45);
@@ -651,7 +778,7 @@ function drawFrontHair(ctx) {
   ctx.arc(0, HEAD_Y - 3, 9.6, Math.PI * 1.55, Math.PI * 1.72);
   ctx.stroke();
   ctx.lineWidth = 0.45;
-  ctx.strokeStyle = 'rgba(74,74,120,0.8)';
+  ctx.strokeStyle = P.hairStrand;
   for (const sx of [-5, 2]) {
     ctx.beginPath();
     ctx.moveTo(sx, HEAD_Y - 12);
@@ -701,4 +828,268 @@ function drawKanzashi(ctx, t) {
     ctx.stroke();
     sakura(ctx, 10.6 + dx + sway, HEAD_Y - 15.8 + len, 0.9, dx ? P.kanzashi : '#ffffff', P.obiGold);
   }
+}
+
+/** Coral's round glasses: thin frames, a bridge and a glint on each lens. */
+function drawGlasses(ctx) {
+  ctx.strokeStyle = P.glasses;
+  ctx.lineWidth = 0.6;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(dir * 4.6, EYE_Y + 0.2, 3.6, 2.9, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(dir * 4.6 - 1.8, EYE_Y - 1.4);
+    ctx.lineTo(dir * 4.6 - 0.8, EYE_Y - 2.2);
+    ctx.stroke();
+    ctx.strokeStyle = P.glasses;
+    ctx.lineWidth = 0.6;
+  }
+  ctx.beginPath();
+  ctx.moveTo(-1, EYE_Y - 0.4);
+  ctx.quadraticCurveTo(0, EYE_Y - 1.2, 1, EYE_Y - 0.4);
+  ctx.moveTo(-8.2, EYE_Y - 0.4);
+  ctx.lineTo(-10.4, EYE_Y - 1.2);
+  ctx.moveTo(8.2, EYE_Y - 0.4);
+  ctx.lineTo(10.4, EYE_Y - 1.2);
+  ctx.stroke();
+}
+
+/** Coral's pink ribbon bow on the side of her head, its tails swaying. */
+function drawRibbon(ctx, t) {
+  const cx = 8.6;
+  const cy = HEAD_Y - 11.5;
+  const sway = Math.sin(t * 2) * 0.5;
+  ctx.fillStyle = P.ribbonDeep;
+  for (const [dx, len] of [[-1, 6], [1.2, 5]]) {
+    ctx.beginPath();
+    ctx.moveTo(cx + dx * 0.6, cy + 0.6);
+    ctx.lineTo(cx + dx * 2 + sway, cy + len);
+    ctx.lineTo(cx + dx * 0.4 + sway, cy + len - 1);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = P.ribbon;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.quadraticCurveTo(cx + dir * 4.6, cy - 4.4, cx + dir * 4.8, cy);
+    ctx.quadraticCurveTo(cx + dir * 4.6, cy + 3.6, cx, cy);
+    ctx.fill();
+    outline(ctx, 0.4);
+  }
+  ctx.fillStyle = P.ribbonDeep;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 1.3, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.35);
+}
+
+// -- Hanbok (Coral's look) ---------------------------------------------------------
+
+/** The chima: a high-waisted skirt from the chest, belling out to the floor. */
+function chimaPath(ctx) {
+  ctx.beginPath();
+  ctx.moveTo(-10.6, -31.5);
+  ctx.bezierCurveTo(-12.6, -20, -15.6, -6, -14.8, 4.6);
+  ctx.quadraticCurveTo(0, 7.4, 14.8, 4.6);
+  ctx.bezierCurveTo(15.6, -6, 12.6, -20, 10.6, -31.5);
+  ctx.quadraticCurveTo(0, -32.6, -10.6, -31.5);
+  ctx.closePath();
+}
+
+/** One slim jeogori sleeve, curving in at the bottom (dir -1 left, 1 right). */
+function jeogoriSleevePath(ctx, dir, sway) {
+  const o = dir * sway;
+  ctx.beginPath();
+  ctx.moveTo(dir * 8.6, -39.4);
+  ctx.quadraticCurveTo(dir * 14.4, -38.6, dir * 14.8 + o * 0.3, -31);
+  ctx.lineTo(dir * 14.4 + o, -18);
+  ctx.quadraticCurveTo(dir * 14 + o, -13.4, dir * 10 + o * 0.6, -13.6);
+  ctx.lineTo(dir * 5.8, -14.2);
+  ctx.lineTo(dir * 6.6, -19);
+  ctx.lineTo(dir * 8.2, -32);
+  ctx.closePath();
+}
+
+function drawHanbok(ctx, walk) {
+  // Kkotsin: flower shoes with upturned toes, peeking under the hem.
+  for (const dir of [-1, 1]) {
+    const fx = dir * 4.4 + (dir < 0 ? walk : -walk) * 1.1;
+    ctx.fillStyle = P.kkotsin;
+    ctx.beginPath();
+    ctx.moveTo(fx - 3.4, 7.6);
+    ctx.quadraticCurveTo(fx - 3.6, 4.6, fx - 0.6, 4.4);
+    ctx.lineTo(fx + 2.4, 4.6);
+    ctx.quadraticCurveTo(fx + 4.2, 4.4, fx + 4.6, 3.2); // the upturned toe
+    ctx.quadraticCurveTo(fx + 4.4, 7.4, fx + 2.6, 7.6);
+    ctx.closePath();
+    ctx.fill();
+    outline(ctx, 0.45);
+    ctx.fillStyle = P.kkotsinDeep;
+    ctx.beginPath();
+    ctx.arc(fx + 0.6, 5.6, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Chima.
+  const skirt = ctx.createLinearGradient(0, -32, 0, 6);
+  skirt.addColorStop(0, P.chimaTop);
+  skirt.addColorStop(0.6, P.chimaTop);
+  skirt.addColorStop(1, P.chimaHem);
+  chimaPath(ctx);
+  ctx.fillStyle = skirt;
+  ctx.fill();
+  outline(ctx);
+  ctx.save();
+  chimaPath(ctx);
+  ctx.clip();
+  // Volume and soft pleats fanning out toward the hem.
+  ctx.fillStyle = P.chimaShade;
+  ctx.fillRect(6, -33, 12, 42);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(-10, -30, 4, 36);
+  ctx.strokeStyle = 'rgba(110,10,40,0.35)';
+  ctx.lineWidth = 0.5;
+  for (const px of [-6.5, -2.2, 2.2, 6.5]) {
+    ctx.beginPath();
+    ctx.moveTo(px * 0.95, -28);
+    ctx.quadraticCurveTo(px * 1.15, -12, px * 1.6, 5);
+    ctx.stroke();
+  }
+  // Geumbak: a band of gold-leaf flowers and lines along the hem.
+  ctx.fillStyle = 'rgba(255,209,102,0.25)';
+  ctx.fillRect(-16, -2.6, 32, 4.6);
+  ctx.strokeStyle = P.gold;
+  ctx.lineWidth = 0.6;
+  for (const ly of [-2.6, 2]) {
+    ctx.beginPath();
+    ctx.moveTo(-16, ly);
+    ctx.quadraticCurveTo(0, ly + 1.2, 16, ly);
+    ctx.stroke();
+  }
+  for (let fx = -12; fx <= 12; fx += 4) sakura(ctx, fx, -0.2 + Math.abs(fx) * 0.04, 1.3, P.gold, '#ffffff');
+  ctx.restore();
+
+  // Jeogori: a short jacket over the shoulders, ending above the chima band.
+  ctx.fillStyle = 'rgba(60,30,40,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(0, -29.6, 11, 1.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const jacketPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(-6, -40.4);
+    ctx.quadraticCurveTo(-12.4, -39.4, -12.4, -33.4);
+    ctx.lineTo(-11.6, -29.6);
+    ctx.quadraticCurveTo(0, -27.6, 11.6, -29.6);
+    ctx.lineTo(12.4, -33.4);
+    ctx.quadraticCurveTo(12.4, -39.4, 6, -40.4);
+    ctx.closePath();
+  };
+  const jacket = ctx.createLinearGradient(0, -41, 0, -28);
+  jacket.addColorStop(0, P.jeogori);
+  jacket.addColorStop(1, P.jeogoriShade);
+  jacketPath();
+  ctx.fillStyle = jacket;
+  ctx.fill();
+  outline(ctx);
+
+  // Sleeves: slim, the classic curved underside (baerae), red cuffs (kkeutdong).
+  for (const dir of [-1, 1]) {
+    const sway = (dir < 0 ? walk : -walk) * 0.6;
+    const grad = ctx.createLinearGradient(0, -39, 0, -14);
+    grad.addColorStop(0, P.jeogori);
+    grad.addColorStop(1, P.jeogoriShade);
+    jeogoriSleevePath(ctx, dir, sway);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    outline(ctx);
+    ctx.save();
+    jeogoriSleevePath(ctx, dir, sway);
+    ctx.clip();
+    ctx.fillStyle = P.cuff;
+    ctx.fillRect(dir < 0 ? -18 : 4, -18.6, 14, 5.4);
+    ctx.strokeStyle = P.gold;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(dir * 5, -18.6);
+    ctx.lineTo(dir * 17, -18.6);
+    ctx.stroke();
+    if (dir > 0) {
+      ctx.fillStyle = 'rgba(120,80,20,0.15)';
+      ctx.fillRect(11.5, -40, 6, 28);
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(120,80,20,0.4)';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(dir * 8.4, -33);
+    ctx.lineTo(dir * 7.4, -20);
+    ctx.stroke();
+  }
+
+  // Neck, then the git collar crossing to the wearer's right with its white
+  // dongjeong strip along the neckline.
+  roundRect(ctx, -2.6, -42.5, 5.2, 4.5, 2, P.skin);
+  ctx.fillStyle = P.skinShade;
+  ctx.beginPath();
+  ctx.moveTo(-2.6, -41);
+  ctx.lineTo(2.6, -41);
+  ctx.lineTo(0, -36.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineCap = 'round';
+  for (const dir of [1, -1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 4.6, -41);
+    ctx.quadraticCurveTo(dir * 3.4, -35.4, dir * -2.4, -30.6);
+    ctx.strokeStyle = P.git;
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(dir * 4.1, -41.2);
+    ctx.quadraticCurveTo(dir * 3.4, -38.2, dir * 1.6, -35.6);
+    ctx.strokeStyle = P.dongjeong;
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+
+  // Goreum: a bow at the chest with two long ribbon tails.
+  const kx = -3.2;
+  const ky = -31.4;
+  for (const [dx, len, tilt] of [[-0.6, 17, -0.08], [0.8, 14, 0.05]]) {
+    ctx.save();
+    ctx.translate(kx + dx, ky + 0.6);
+    ctx.rotate(tilt);
+    roundRect(ctx, -0.9, 0, 1.8, len, 0.6, P.goreum);
+    ctx.beginPath();
+    ctx.roundRect(-0.9, 0, 1.8, len, 0.6);
+    outline(ctx, 0.35);
+    ctx.restore();
+  }
+  ctx.fillStyle = P.goreum;
+  ctx.beginPath();
+  ctx.ellipse(kx - 3.4, ky - 0.2, 3.4, 1.5, -0.15, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.4);
+  ctx.fillStyle = P.goreumDeep;
+  ctx.beginPath();
+  ctx.arc(kx, ky, 1.2, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.35);
+
+  // Hands folded in front, peeking from the cuffs.
+  ctx.fillStyle = P.skin;
+  ctx.beginPath();
+  ctx.ellipse(-1.7, -15.2, 2.3, 1.35, 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.4);
+  ctx.fillStyle = P.skin;
+  ctx.beginPath();
+  ctx.ellipse(1.6, -14.8, 2.4, 1.35, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  outline(ctx, 0.4);
 }

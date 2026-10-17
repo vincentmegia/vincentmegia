@@ -11,6 +11,10 @@ describe('Reading Nook stories', () => {
     assert.equal(new Set(titles).size, titles.length);
   });
 
+  test('every story has a Korean title too', () => {
+    for (const story of READING_STORIES) assert.match(story.koTitle ?? '', /[\uac00-\ud7a3]/, story.title);
+  });
+
   test('every story fills exactly READING_PAGES two-page spreads', () => {
     assert.equal(STORY_PAGE_COUNT, READING_PAGES * 2);
     for (const story of READING_STORIES) {

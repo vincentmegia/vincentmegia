@@ -59,13 +59,11 @@ export function forwardVector(facing) {
  * the room's center rather than an arbitrary fixed direction, so the player
  * isn't immediately staring at a wall regardless of where they happened to
  * be standing in Top-Down mode. Falls back to facing 0 ("north") when `x, y`
- * already IS the center (distance ~0) — both floors' entry points
- * (floor-plan.js's FLOOR_1_ENTRY_POINT/FLOOR_2_ENTRY_POINT) are exactly the
- * canvas center, and `angleTo` on two identical points hits `Math.atan2(0,
+ * already IS the center (distance ~0) — the 2nd Floor's entry point
+ * (floor-plan.js's FLOOR_2_ENTRY_POINT) is exactly the canvas center, and `angleTo` on two identical points hits `Math.atan2(0,
  * -0)`, which JS defines as `PI`, not `0` — a real, silent-degenerate result
  * that isn't "toward the center" in any meaningful sense, and would leave a
- * player facing exactly backward every time they arrive at either floor's
- * entry point.
+ * player facing exactly backward every time they arrive at that entry point.
  */
 export function defaultFacingTowardCenter(x, y, canvasWidth, canvasHeight) {
   const dx = canvasWidth / 2 - x;

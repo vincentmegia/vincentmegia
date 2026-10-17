@@ -15,6 +15,7 @@ import {
   FLOOR_2,
   FLOOR_1_ENTRY_POINT,
   FLOOR_2_ENTRY_POINT,
+  stationExtents,
 } from './floor-plan.js';
 import { GENRES } from './rules.js';
 
@@ -38,9 +39,26 @@ describe('buildStations', () => {
   test('every station stays within the canvas bounds', () => {
     const stations = buildStations(GENRES);
     for (const s of stations) {
-      const half = s.size / 2;
-      assert.ok(s.x - half >= 0 && s.x + half <= CANVAS_WIDTH, `${s.id} out of horizontal bounds`);
-      assert.ok(s.y - half >= 0 && s.y + half <= CANVAS_HEIGHT, `${s.id} out of vertical bounds`);
+      const { hw, hh } = stationExtents(s);
+      assert.ok(s.x - hw >= 0 && s.x + hw <= CANVAS_WIDTH, `${s.id} out of horizontal bounds`);
+      assert.ok(s.y - hh >= 0 && s.y + hh <= CANVAS_HEIGHT, `${s.id} out of vertical bounds`);
+    }
+  });
+
+  test('no two stations on the same floor overlap', () => {
+    const stations = buildStations(GENRES);
+    for (const floor of [FLOOR_1, FLOOR_2]) {
+      const onFloor = stationsOnFloor(stations, floor);
+      for (let i = 0; i < onFloor.length; i++) {
+        for (let j = i + 1; j < onFloor.length; j++) {
+          const a = onFloor[i];
+          const b = onFloor[j];
+          const ea = stationExtents(a);
+          const eb = stationExtents(b);
+          const apart = Math.abs(a.x - b.x) >= ea.hw + eb.hw || Math.abs(a.y - b.y) >= ea.hh + eb.hh;
+          assert.ok(apart, `${a.id} overlaps ${b.id}`);
+        }
+      }
     }
   });
 
@@ -132,6 +150,12 @@ describe('stationAtPoint', () => {
 
   test('returns null outside every station box', () => {
     assert.equal(stationAtPoint(0, 0, stations), null);
+  });
+
+  test('uses w/h for a non-square station', () => {
+    const wide = [{ id: 'shelf', x: 100, y: 100, size: 84, w: 120, h: 60 }];
+    assert.equal(stationAtPoint(155, 100, wide)?.id, 'shelf');
+    assert.equal(stationAtPoint(100, 135, wide), null);
   });
 });
 

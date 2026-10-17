@@ -219,7 +219,7 @@ kitchen." Three changes, all rendering-only in `library-game.js`:
    badge, and the elevator shows its target floor. Drawn in each station's
    local space, so First Person billboards pick it up unchanged.
 3. The graph-paper grid floor became staggered wooden planks with a soft
-   vignette.
+   vignette (replaced by Hospital Shift's anime tiles in v2.21).
 
 Verified with Playwright screenshots of the full floor and of all four
 personalities at both player scale and the front desk's 0.62 scale.
@@ -484,6 +484,167 @@ What stays here:
 
 Unit 221/221 and every `e2e/library-game.spec.js` test pass unchanged on
 Chromium + WebKit.
+
+**v2.21 Hospital Shift's anime style** — the user asked for Library Shift
+to be "like hospital shift" (its anime look on `main`), Coral in a kimono
+"like kimono from hospital shift", and a Korean library. Everything is
+drawn with Hospital Shift's own anime kit rather than a copy of it:
+
+* **Characters**: `drawLibraryPerson` now dispatches to Hospital Shift's
+  renderers. Coral is drawn by `hospital/kimono-himura.js`'s
+  `drawKimonoHimura` with `cap: false, look: 'coral'`, at Hospital's
+  `PLAYER_ART_SCALE` (1.12) with its walking sway. The user first got an
+  exact copy of Kimono Himura, then asked for "the character different
+  rather than the same". So the `coral` look (`CORAL_PALETTE`) keeps the
+  anime style but has its own design: a chestnut jaw-length bob with a
+  pink ribbon (no bun or kanzashi), round glasses (her look from the
+  original game) and teal-green eyes. Her outfit went through a blue
+  furisode first; then the user asked for "the official outfit of
+  Koreans", since this is a Korean library. So she wears a **hanbok**
+  (`drawHanbok`): a pale-yellow jeogori with slim curved sleeves and red
+  kkeutdong cuffs, a purple git collar with the white dongjeong, a long
+  red goreum ribbon tied at the chest, a high-waisted rose chima belled
+  to the floor with a gold-leaf (geumbak) hem band, and pink kkotsin with
+  upturned toes. Her hands are folded in front. Patrons use Hospital's
+  anime patient designs (`PATRON_PERSONALITY_KEYS` is now
+  `anime-people.js`'s `PATIENT_DESIGN_KEYS`, still hashed from the patron
+  id); Karen and the Security guard use `STAFF_DESIGNS`; the 2nd-Floor
+  Volunteer is the `bookworm` design. `LIBRARY_PERSON_SCALE` (1.55) now
+  only sizes the coffee splash.
+* **HUD**: Hospital's anime gauges with heart/smile badges and outlined
+  labels for Sanity (mint) and Mood (sky), plated anime stars, and the
+  Gard counter on an anime plate with a gold G badge; label chips are
+  `animeChip`.
+* **Floor and wall**: Hospital's glossy pastel checker tiles (mint on the
+  1st Floor, cream on the 2nd, like the ER and Supply Room) with afternoon
+  sunbeams and pastel guide stripes; the cream-to-blush back wall with the
+  pink rail; a glossy sign button where the ER's EMERGENCY sign is
+  ("도서관 · LIBRARY 1F" / "열람실 · READING 2F"); a painted sakura
+  branch, a little wall shelf of books, and Hospital's pink bell clock;
+  stitched pastel rugs under the Coffee Machine and Reading Nook; and
+  decor from `hospital/anime-furniture.js`'s `drawDecor` (plants, a water
+  cooler, a library ladder, reading chairs).
+* **Stations**: every station is an `animeTile` with plum line art and
+  Hospital's pink (hover) / gold (target) glow ring. Library's fixtures
+  are drawn by the new `web/static/js/library/anime-furniture.js` in the
+  same kit: wide bookcases with a glossy Korean/English genre sign
+  ("추리 · Mystery") over two shelves of titled spines, the Front Desk,
+  the Return Cart, the Fines Counter as a small room like the ER's
+  Operating Room ("벌금 · FINES"), the Boss's door ("관장 · BOSS") and the
+  Reading Nook. Stairs and the Elevator are Hospital's own drawers; the
+  Coffee Machine keeps its original art, as Hospital's does. Return Cart
+  covers get line art and shadows.
+* **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
+  rectangles: every station has `w`/`h` (defaulting to `size`), read
+  through `stationExtents` by hit-testing, the walk-up standoff, the
+  queue offsets, `drawStation` and First Person's billboards. There's a
+  fixture row under the wall at y=110 (Boss's Office, a 124px-wide Front
+  Desk, Return Cart, Stairs), 124×100 bookcases at y=340, the Fines
+  Counter as a 130×130 room at (860, 320), and the Coffee Machine and
+  Elevator in the bottom corners. `PLAYER_START`/`FLOOR_1_ENTRY_POINT`
+  moved to the open lower aisle (480, 500).
+* **Background staff**: a Security guard on the 1st Floor and a Volunteer
+  on the 2nd walk fixed patrol loops around the furniture (random hops
+  cut across the shelves). They're drawn back-to-front around Coral.
+* **Overlays**: Hospital's `animeBackdrop` and `animeWindow` (a trim
+  color per minigame) behind every minigame, a `speechBubble` and
+  `animeButton`s for Karen, and an outlined anime skill-check bar.
+* **Crisp canvas**: the backing store tracks the device pixel ratio (up
+  to 3×), as Hospital's does; input mapping already used
+  CANVAS_WIDTH/HEIGHT, so it's unaffected.
+
+* **Bilingual book titles** (the user: "make the books with korea titles
+  and english translates"): the title pools moved to
+  `web/static/js/library/book-titles.js` as Korean/English pairs. A book's
+  `title` is "침묵의 단서 · The Silent Clue" (`bookTitle`), so toasts and
+  overlay headers show both. Covers (`drawCoverTitle`) draw the Korean
+  large with the English smaller beneath (`splitTitle`). Front Desk
+  queue chips show the Korean title with its English meaning just below,
+  under the patience bar (the user: "on the below add english meaning").
+  Shelf spines stay Korean only: a spine is too short for both, and
+  cutting each to its longest word paired Korean and English words that
+  didn't match. Find the Book's covers grew to 68×48, with the whole cover
+  clickable, to fit both lines. The Return Cart covers sit 6 px lower,
+  clear of the cart's label. The Reading Nook stories have Korean titles
+  too (`koTitle` in stories.js).
+
+* **Clicking the Return Cart picks up a book**: the user couldn't pick up
+  a book, because only the small covers under the cart were clickable.
+  Clicking the cart itself just walked over and did nothing, even though
+  the cart (now drawn with books on it) is the obvious target. Arriving at
+  the cart now picks up the clicked cover's book, or else the next one in
+  line, and the toast names it. If the cart is empty, it says so. Covered
+  by the "clicking the Return Cart itself" e2e test.
+
+* **Kang Min-jun (강민준)**: the user asked for "a VERY VERY detailed
+  character … a boy". A first attempt, Director Park, was removed as not
+  detailed enough. Min-jun is a student library assistant with his own
+  renderer, `web/static/js/library/minjun.js` (`drawMinjun`). He has
+  layered cel shading and line art but no eye highlights or hair shine,
+  which the user had removed from Hospital Shift's characters.
+  - Face: sharp, cool eyes (the user picked these over the first,
+    softer almond ones). They're narrow and tilted up at the outer
+    corners, with a heavy lash line ending in a pointed flick, a straight
+    lower lid, an angled crease, and a deep iris tucked under the lid.
+    They blink, now and then twice. Then the user asked to "adjust the
+    stuff near the eyes". The blush was removed; the brows
+    are slimmer and set higher; the crease and lower-lid lines are
+    lighter; and the fringe locks taper to points above the brows, over a
+    softly fading fringe shadow. Last, the eyes were made "a little bit
+    straighter": the outer corners rise less, and the lash flick is
+    flatter to match. The brows were relaxed too ("not like it's
+    angry"): instead of sloping down toward the nose, they're nearly
+    level with a soft arch. The head shape changed to a sharper anime
+    V-jaw, then made "a little round": the cheeks curve down to soft jaw
+    corners and taper to a gently rounded chin. Also relaxed, softly arched brows, a shaded nose, a small smile (no blush), ears with inner folds, a softly rounded V-jaw, and a jaw shadow.
+  - Hair: a tufted crown in two tones, seven pointed fringe locks
+    falling over the brows, side locks, strand lines and a bobbing ahoge.
+  - Clothes: a white shirt with collar points and rolled sleeves, a navy
+    cable-knit sweater vest with ribbed V-neck and hem, and a striped tie.
+    A mint lanyard holds a swinging ID card with a photo and barcode.
+    Headphones rest around his neck. He wears a wristwatch, slacks with a
+    belt and creases, and laced sneakers.
+  - Books: three under his arm, with Korean titles on the spines.
+  - Motion: a walking stride with arm swing, and breathing when idle.
+
+  - A further detail pass ("make him detailed"):
+    - Hair: each fringe lock shaded root-to-tip with a second strand
+      line, and tufts over the ears.
+    - Eyes: radial texture lines in the iris, a lighter lower crescent and
+      a pink inner corner. The iris is now a deep violet at the user's
+      request: near-black violet at the top, an amethyst lower crescent,
+      violet texture lines and a darker pupil.
+    - Face: a nose-bridge shadow, a lower-lip tint and a silver stud
+      earring.
+    - Shirt: sleeve wrinkles, cuff buttons, collar shadows and stitching.
+    - Vest and tie: a tie dimple and gold tie clip, vest side seams, and an
+      enamel open-book pin.
+    - Slacks: side seams, pockets and ankle folds.
+    - Sneakers: eyelets, heel tabs and dashed sole stitching.
+    - Hands and watch: fingernails and knuckle creases; the watch has a
+      crown and tick marks.
+    - Headphones: band stitching and logo rings.
+    - Books: page edges and a ribbon bookmark.
+  - One more pass ("a little more detailed"):
+    - Eyes: a darker ring around each pupil and two extra lashes at the
+      outer flick.
+    - Face: faint under-eye shading and an upper-lip line.
+    - Hair: more crown strands and two short flyaways.
+    - Lanyard and ID card: a woven pattern on the strap, and a card
+      printed with "LIBRARY · 도서관", 강민준 and "Assistant".
+    - Belt and vest: belt loops, holes and a buckle prong, plus soft
+      shadows where his arms meet the vest.
+    - Feet: navy ribbed socks above the sneakers, with tied lace bows.
+
+  He walks a loop around the 2nd Floor's Reference Shelf, kept clear of
+  its label and the Reading Nook. He's set dressing, not clickable.
+
+e2e changes: the Boss's Office closing-wait test gives the wait 4 s
+(the office is now about 2 s from the start, so a 2 s wait ended before
+arrival), and the First Person "toggle back to Top-Down" test checks
+that walking to the Coffee Machine opens its pour. It used to check for
+an instant Sanity refill on arrival, from before the Coffee Pour
+minigame, and only passed while the walk was short.
 
 ## Summary
 
