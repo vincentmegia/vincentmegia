@@ -28,6 +28,9 @@
 //     readingCooldownSeconds: number, // v2.10: seconds until the Reading Nook can be used again (0 = ready)
 //     minjunCooldownSeconds: number, // seconds until Min-jun can shelve another book for you (0 = ready)
 //     minjunHelps: number,          // books Min-jun shelved for you this shift
+//     staffCooldowns: {[key]: number}, // seconds until each staff member can help again (STAFF_HELP)
+//     staffHelps: number,           // times the other staff helped this shift
+//     readingBook: {id, genreId, title, storyIndex} | null, // a book taken off a shelf to read in the Reading Nook
 //     walkouts: number,             // v2.9: patrons who left after waiting too long this shift
 //     (queued Fine/BorrowRequest entries carry waitRemainingSeconds/waitMaxSeconds — null = no wait timer)
 //
@@ -45,7 +48,7 @@
 //       active: boolean,            // true while her scripted event's short timer is running
 //       triggered: boolean,         // true once startKarenEvent has fired this shift (never twice)
 //       resolved: boolean,          // true once resolveKarenEvent (or an auto-resolved timeout) has fired
-//       outcome: 'collectFine' | 'letItSlide' | null,
+//       outcome: 'collectFine' | 'letItSlide' | 'escorted' | null, // 'escorted': Security walked her out (staffHelp)
 //       timerSecondsRemaining: number,
 //     },
 //
@@ -113,6 +116,8 @@ import {
   COMPLAINT_GARD,
   SHELVED_BOOK_TIP_GARD,
   MINJUN_HELP_COOLDOWN_SECONDS,
+  STAFF_HELP,
+  READING_CHOSEN_SANITY_RESTORE,
   UNSHELVED_BOOK_PENALTY_GARD,
   MESSY_CART_THRESHOLD,
   MESSY_CART_MOOD_DRAIN_PER_SECOND,
@@ -146,6 +151,9 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
     readingCooldownSeconds: 0,
     minjunCooldownSeconds: 0,
     minjunHelps: 0,
+    staffCooldowns: {},
+    staffHelps: 0,
+    readingBook: null,
     zeroSanitySeconds: 0,
     zeroMoodSeconds: 0,
     unshelvedAtClose: 0,
@@ -674,6 +682,7 @@ export function tick(state, deltaSeconds, { pauseBorrowPatience = false } = {}) 
     sanity: clampSanity(state.sanity - SANITY_DRAIN_PER_SECOND * delta),
     readingCooldownSeconds: Math.max(0, (state.readingCooldownSeconds ?? 0) - delta),
     minjunCooldownSeconds: Math.max(0, (state.minjunCooldownSeconds ?? 0) - delta),
+    staffCooldowns: tickCooldowns(state.staffCooldowns, delta),
   };
   if (next.sanity <= 0) {
     // Only the part of this tick after Sanity actually reached 0 counts.
@@ -822,11 +831,34 @@ export function canReadBook(state) {
  */
 export function finishReading(state) {
   if (!canReadBook(state)) return state;
-  return {
+  const next = {
     ...state,
     libraryMood: clampLibraryMood(state.libraryMood + READING_MOOD_RESTORE),
     readingCooldownSeconds: READING_COOLDOWN_SECONDS,
   };
+  const book = state.readingBook;
+  if (!book) return next;
+  // A book Eun-mi took off a shelf herself: a little Sanity too, and then it
+  // goes on the Return Cart to be shelved again like any other return.
+  return {
+    ...next,
+    sanity: clampSanity(state.sanity + READING_CHOSEN_SANITY_RESTORE),
+    readingBook: null,
+    returnCart: [...state.returnCart, { id: book.id, genreId: book.genreId, isCoinHunt: false, title: book.title }],
+  };
+}
+
+/**
+ * Takes a book off a shelf to read in the Reading Nook. A no-op outside
+ * 'playing' or while already holding one.
+ *
+ * @param {ShiftState} state
+ * @param {{id: string, genreId: string, title: string, storyIndex: number}} book
+ * @returns {ShiftState}
+ */
+export function takeBookToRead(state, book) {
+  if (state.phase !== 'playing' || state.readingBook) return state;
+  return { ...state, readingBook: book };
 }
 
 /**
@@ -885,5 +917,101 @@ export function minjunShelveCarriedBook(state) {
     bonusGard: state.bonusGard + SHELVED_BOOK_TIP_GARD,
     minjunCooldownSeconds: MINJUN_HELP_COOLDOWN_SECONDS,
     minjunHelps: (state.minjunHelps ?? 0) + 1,
+  };
+}
+
+function tickCooldowns(cooldowns, delta) {
+  const out = {};
+  for (const [key, left] of Object.entries(cooldowns ?? {})) {
+    const next = left - delta;
+    if (next > 0) out[key] = next;
+  }
+  return out;
+}
+
+/** Seconds until staff member `key` can help again (0 = ready). */
+export function staffCooldownSeconds(state, key) {
+  return state.staffCooldowns?.[key] ?? 0;
+}
+
+/**
+ * Why staff member `key` can't help right now, or null if they can. The
+ * reasons are 'phase' (not 'playing'), 'cooldown', 'unknown' (no such
+ * helper) and 'nothing' — there's nothing for them to do (a full Sanity
+ * bar, a full Mood bar, an empty Return Cart, nobody waiting, no book
+ * being searched for, or no Karen waiting in line).
+ *
+ * @param {ShiftState} state
+ * @param {string} key - a STAFF_HELP key
+ * @param {{karenWaiting?: boolean}} [ctx] - `karenWaiting`: Karen has arrived in the Front Desk line (the game's own flag)
+ * @returns {null | 'phase' | 'cooldown' | 'unknown' | 'nothing'}
+ */
+export function staffHelpBlocker(state, key, ctx = {}) {
+  if (state.phase !== 'playing') return 'phase';
+  if (!STAFF_HELP[key]) return 'unknown';
+  if (staffCooldownSeconds(state, key) > 0) return 'cooldown';
+  const someoneWaiting = [...state.borrowQueue, ...state.finesQueue].some((e) => e.waitRemainingSeconds != null)
+    || state.activeBorrow?.stage === 'searching';
+  const can = {
+    guard: Boolean(ctx.karenWaiting) && !state.karen.triggered,
+    libShelver: state.returnCart.length > 0,
+    libJanitor: state.libraryMood < LIBRARY_MOOD_MAX,
+    volunteer: state.sanity < SANITY_MAX,
+    libArchivist: state.activeBorrow?.stage === 'searching',
+    libStoryteller: someoneWaiting,
+  }[key];
+  return can ? null : 'nothing';
+}
+
+/**
+ * Staff member `key` helps (a no-op unless `staffHelpBlocker` is null), then
+ * starts their STAFF_HELP cooldown:
+ * - guard: escorts Karen out of the line before she starts — no mistake,
+ *   no fine, no Mood hit (her event resolves as 'escorted').
+ * - libShelver: shelves the oldest book on the Return Cart, with the usual
+ *   SHELVED_BOOK_TIP_GARD (a Coin Hunt book's coins are skipped).
+ * - libJanitor: tidies up — Library Mood + STAFF_HELP.libJanitor.mood.
+ * - volunteer: brings Eun-mi a coffee — Sanity + STAFF_HELP.volunteer.sanity.
+ * - libArchivist: finds the requested book, exactly like a successful Find
+ *   the Book (the request moves on to checkout).
+ * - libStoryteller: story time — every waiting patron's timer (and the
+ *   searching borrower's patience) gets STAFF_HELP.libStoryteller.patience
+ *   seconds back, up to their maximum.
+ *
+ * @param {ShiftState} state
+ * @param {string} key
+ * @param {{karenWaiting?: boolean}} [ctx]
+ * @returns {ShiftState}
+ */
+export function staffHelp(state, key, ctx = {}) {
+  if (staffHelpBlocker(state, key, ctx) !== null) return state;
+  const help = STAFF_HELP[key];
+  let next = state;
+  if (key === 'guard') {
+    next = { ...state, karen: { ...state.karen, triggered: true, active: false, resolved: true, outcome: 'escorted' } };
+  } else if (key === 'libShelver') {
+    next = { ...state, returnCart: state.returnCart.slice(1), bonusGard: state.bonusGard + SHELVED_BOOK_TIP_GARD };
+  } else if (key === 'libJanitor') {
+    next = { ...state, libraryMood: clampLibraryMood(state.libraryMood + help.mood) };
+  } else if (key === 'volunteer') {
+    next = { ...state, sanity: clampSanity(state.sanity + help.sanity) };
+  } else if (key === 'libArchivist') {
+    next = { ...state, activeBorrow: { ...state.activeBorrow, stage: 'checkout' } };
+  } else if (key === 'libStoryteller') {
+    const calm = (e) => (e.waitRemainingSeconds == null ? e : { ...e, waitRemainingSeconds: Math.min(e.waitMaxSeconds ?? Infinity, e.waitRemainingSeconds + help.patience) });
+    const borrow = state.activeBorrow;
+    next = {
+      ...state,
+      borrowQueue: state.borrowQueue.map(calm),
+      finesQueue: state.finesQueue.map(calm),
+      activeBorrow: borrow?.stage === 'searching'
+        ? { ...borrow, patienceRemainingSeconds: Math.min(borrow.patienceMaxSeconds, borrow.patienceRemainingSeconds + help.patience) }
+        : borrow,
+    };
+  }
+  return {
+    ...next,
+    staffCooldowns: help.cooldown > 0 ? { ...(state.staffCooldowns ?? {}), [key]: help.cooldown } : { ...(state.staffCooldowns ?? {}) },
+    staffHelps: (state.staffHelps ?? 0) + 1,
   };
 }

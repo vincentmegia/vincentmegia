@@ -80,3 +80,18 @@ describe('Min-jun actions', () => {
     for (const a of ['read', 'hum', 'wave']) assert.ok(MINJUN_ACTION_SECONDS[a] > 0);
   });
 });
+
+describe("Min-jun's walk", () => {
+  test('walking, his free hand goes in his pocket; stopped for an action, it comes out', () => {
+    for (const t of [0, 0.4, 1.3]) {
+      const ctx = fakeContext();
+      drawMinjun(ctx, 100, 200, { t, walking: true });
+      assert.ok(ctx.calls.count > 500);
+    }
+    const walking = fakeContext();
+    drawMinjun(walking, 100, 200, { t: 1, walking: true });
+    const standing = fakeContext();
+    drawMinjun(standing, 100, 200, { t: 1 });
+    assert.notEqual(walking.calls.count, standing.calls.count, 'the pocket arm draws differently from the hanging arm');
+  });
+});

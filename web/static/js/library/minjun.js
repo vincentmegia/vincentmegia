@@ -132,21 +132,29 @@ export function drawMinjun(ctx, x, y, opts = {}) {
   ctx.fill();
 
   ctx.translate(0, -bob);
+  // His walk ("a special walk putting his hands in his pockets"): an easy
+  // side-to-side sway from the hips, his free hand in his pocket.
+  const pocketWalk = Boolean(opts.walking) && !action;
+  if (pocketWalk) ctx.rotate(Math.sin(t * 4) * 0.025);
   drawLegs(ctx, stride);
   drawTote(ctx, stride, t);
-  // Reading, the free arm comes across in front of the vest, so it's drawn
-  // after the torso; waving or hanging, it's behind.
+  // Reading or walking hand-in-pocket, the free arm comes across in front
+  // of the vest, so it's drawn after the torso; waving or hanging, behind.
   const armUp = action === 'wave' || action === 'help';
-  if (action !== 'read') drawFreeArm(ctx, stride, t, armUp ? at : null);
+  if (action !== 'read' && !pocketWalk) drawFreeArm(ctx, stride, t, armUp ? at : null);
   drawTorso(ctx, breathe, t);
   if (action === 'read') drawReadingArm(ctx);
+  if (pocketWalk) drawPocketArm(ctx, t);
   drawToteStrap(ctx, stride);
   drawKeychain(ctx, t, stride);
   drawWalletChain(ctx, t, stride);
+  drawPhotocard(ctx, t, stride);
   drawArmShadows(ctx);
   drawBookArm(ctx, stride);
+  drawArmband(ctx, stride);
   if (action === 'read') drawOpenBook(ctx, at);
   drawNeckAndPhones(ctx, t);
+  drawCollarPin(ctx);
   ctx.save();
   if (action === 'hum') {
     // Bopping his head to the tune, pivoting at the neck.
@@ -186,6 +194,48 @@ function faceForAction(action, at) {
 export const MINJUN_ACTIONS = /** @type {const} */ (['read', 'hum', 'wave', 'help']);
 
 // -- Actions -------------------------------------------------------------------
+
+/**
+ * Walking, his free hand goes into his trouser pocket: the elbow out and
+ * relaxed, the forearm angled down across the belt, the hand hidden in the
+ * pocket with just the thumb hooked over its edge.
+ */
+function drawPocketArm(ctx, t) {
+  const loose = Math.sin(t * 4) * 0.3;
+  drawArm(ctx, [-10.6, -38], [-15.6 + loose, -27.6], [-8.6, -14.6], { watch: true });
+  // The pocket's mouth stretched over his hand (a bulge a shade lighter than
+  // the slacks), its slanted opening, and the thumb outside.
+  ctx.save();
+  ctx.translate(-8.2, -13.8);
+  ctx.rotate(-1.05);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 2.4, 1.7, 0, 0, Math.PI * 2);
+  fillPath(ctx, '#4a4a58', 0.45);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(-2.1, -0.5);
+  ctx.quadraticCurveTo(0, -1.4, 2.1, -0.5);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 0.25;
+  ctx.beginPath();
+  ctx.moveTo(-1.4, 0.4);
+  ctx.quadraticCurveTo(0, 0.9, 1.4, 0.4);
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(-6.7, -15.4);
+  ctx.rotate(-0.55);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 0.75, 1.3, 0, 0, Math.PI * 2);
+  fillPath(ctx, P.skin, 0.35);
+  ctx.fillStyle = 'rgba(255,236,226,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0.85, 0.36, 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
 
 /** His free arm bent up across his chest, holding an open book. */
 function drawReadingArm(ctx) {
@@ -302,6 +352,22 @@ function drawLegs(ctx, stride) {
     g.addColorStop(0, P.slacks);
     g.addColorStop(1, P.slacksShade);
     fillPath(ctx, g, 0.5);
+    // A faint woven check in the wool.
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(dir * 0.4, -19);
+    ctx.lineTo(dir * 7.8, -19);
+    ctx.lineTo(lx + dir * 3.3, 2.4 - lift);
+    ctx.lineTo(lx - dir * 3.1, 2.4 - lift);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    for (let yy = -19; yy < 3; yy += 1.1) {
+      for (let xx = -9; xx < 9; xx += 1.1) {
+        if ((Math.round(yy / 1.1) + Math.round(xx / 1.1)) % 2 === 0) ctx.fillRect(xx, yy, 0.55, 0.55);
+      }
+    }
+    ctx.restore();
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 0.4;
     ctx.beginPath();
@@ -383,9 +449,15 @@ function drawSneaker(ctx, sx, lift) {
     ctx.lineTo(sx + k, y0 + 0.4);
     ctx.stroke();
   }
-  // Sole.
+  // Two mint stripes round the sock, varsity style.
+  ctx.fillStyle = 'rgba(143,227,200,0.9)';
+  ctx.fillRect(sx - 2.3, y0 - 1.05, 4.6, 0.28);
+  ctx.fillRect(sx - 2.3, y0 - 0.55, 4.6, 0.28);
+  // Sole, with tread notches along its front edge.
   rr(ctx, sx - 4, y0 + 4.3, 8.4, 1.8, 0.9);
   fillPath(ctx, P.sole, 0.4);
+  ctx.fillStyle = 'rgba(70,74,90,0.45)';
+  for (let k = -3.2; k <= 3.4; k += 0.8) ctx.fillRect(sx + k, y0 + 5.55, 0.35, 0.45);
   // Upper with a rounded toe.
   ctx.beginPath();
   ctx.moveTo(sx - 3.8, y0 + 4.6);
@@ -507,6 +579,29 @@ function drawTote(ctx, stride, t) {
   ctx.quadraticCurveTo(-17.2, -28, l + 2.1, top + 0.6);
   ctx.closePath();
   fillPath(ctx, '#d9cfb8', 0.3);
+  // A folded pastel umbrella tucked in at the back corner, its hooked
+  // handle out.
+  ctx.save();
+  ctx.translate(l + 0.9, top + 0.4);
+  ctx.rotate(-0.42);
+  rr(ctx, -0.55, -5.4, 1.1, 5.6, 0.5);
+  fillPath(ctx, '#c9b8ff', 0.25);
+  ctx.strokeStyle = 'rgba(90,60,140,0.5)';
+  ctx.lineWidth = 0.12;
+  ctx.beginPath();
+  ctx.moveTo(-0.1, -5.2);
+  ctx.lineTo(0.2, 0);
+  ctx.stroke();
+  ctx.strokeStyle = '#7a4a2a';
+  ctx.lineWidth = 0.4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -5.4);
+  ctx.lineTo(0, -6.3);
+  ctx.arc(-0.55, -6.3, 0.55, 0, Math.PI, true);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.restore();
   // Things poking out of the top: a rolled poster with a rubber band and
   // the corner of a book.
   ctx.save();
@@ -526,6 +621,25 @@ function drawTote(ctx, stride, t) {
   fillPath(ctx, '#f2a541', 0.3);
   ctx.fillStyle = '#fbf3e0';
   ctx.fillRect(l + 4.4, top - 2.4, 0.5, 3.6);
+  // A bottle of banana milk (바나나맛 우유) tucked in beside the book: the
+  // round yellow belly, a short neck and the green cap.
+  {
+    const bx = l + 4.7;
+    const by = top - 1.6;
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 1.25, 1.45, 0, 0, Math.PI * 2);
+    fillPath(ctx, '#ffe27a', 0.25);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(bx - 0.45, by - 0.3, 0.3, 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    rr(ctx, bx - 0.55, by - 2.4, 1.1, 1.1, 0.2);
+    fillPath(ctx, '#ffe27a', 0.2);
+    rr(ctx, bx - 0.7, by - 3.1, 1.4, 0.8, 0.25);
+    fillPath(ctx, '#3fa34d', 0.2);
+    ctx.fillStyle = 'rgba(63,163,77,0.8)';
+    ctx.fillRect(bx - 0.9, by + 0.1, 1.8, 0.35);
+  }
   // The bag itself: slightly wider at the bottom, sagging under its load.
   ctx.beginPath();
   ctx.moveTo(l + 0.6, top);
@@ -755,7 +869,135 @@ function drawToteStrap(ctx, stride) {
     ctx.quadraticCurveTo(-11.9, -31, -8.1, -41.2);
     ctx.stroke();
     ctx.setLineDash([]);
+    // A round "I ♥ 책" (I love books) button pinned halfway up the strap.
+    const px = -11.4 + sw * 0.25;
+    const py = -31;
+    ctx.beginPath();
+    ctx.arc(px, py, 1.25, 0, Math.PI * 2);
+    fillPath(ctx, '#ff8fb8', 0.25);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 0.15;
+    ctx.beginPath();
+    ctx.arc(px, py, 1.0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 0.9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('♥책', px, py + 0.05);
   }
+}
+
+/**
+ * A K-pop photocard holder on a short ball chain from his right-hip belt loop:
+ * a clear sleeve with a pastel frame, a tiny idol portrait, and star
+ * stickers. It swings as he walks.
+ */
+function drawPhotocard(ctx, t, stride) {
+  const swing = Math.sin(t * 2.2 + 0.6) * 0.1 + stride * 0.22;
+  ctx.save();
+  ctx.translate(4.6, -16.4);
+  ctx.rotate(swing);
+  ctx.fillStyle = '#c0c4cc';
+  for (let k = 0; k < 4; k++) {
+    ctx.beginPath();
+    ctx.arc(0, 0.4 + k * 0.45, 0.14, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  rr(ctx, -1.35, 2, 2.7, 3.6, 0.35);
+  fillPath(ctx, '#c9b8ff', 0.25);
+  rr(ctx, -1.05, 2.3, 2.1, 2.7, 0.2);
+  ctx.fillStyle = '#e8f6ff';
+  ctx.fill();
+  // The portrait: a pink backdrop, hair, a face and a little shirt.
+  ctx.save();
+  rr(ctx, -1.05, 2.3, 2.1, 2.7, 0.2);
+  ctx.clip();
+  ctx.fillStyle = '#ffd6e2';
+  ctx.fillRect(-1.05, 2.3, 2.1, 2.7);
+  ctx.fillStyle = '#fbe3d3';
+  ctx.beginPath();
+  ctx.arc(0, 3.55, 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5a3a6a';
+  ctx.beginPath();
+  ctx.arc(0, 3.35, 0.6, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(0, 4.85, 0.9, 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Star stickers on the sleeve, and its clear shine.
+  for (const [sx, sy, c] of [[0.85, 2.45, '#ffd166'], [-0.9, 4.9, '#8fe3c8']]) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const r = k % 2 ? 0.14 : 0.36;
+      ctx.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 0.15;
+  ctx.beginPath();
+  ctx.moveTo(-0.7, 2.6);
+  ctx.lineTo(-0.2, 2.6);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A mint "도서" (library) armband on his book arm's upper sleeve. */
+function drawArmband(ctx, stride) {
+  const sway = stride * 0.5;
+  const [sx, sy] = [10.6, -38];
+  const [ex, ey] = [12.8 + sway * 0, -27.6];
+  const ang = Math.atan2(ey - sy, ex - sx);
+  ctx.save();
+  ctx.translate(sx + (ex - sx) * 0.42, sy + (ey - sy) * 0.42);
+  ctx.rotate(ang - Math.PI / 2);
+  rr(ctx, -2.85, -0.85, 5.7, 1.7, 0.4);
+  fillPath(ctx, '#3fb58f', 0.25);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 0.12;
+  ctx.setLineDash([0.3, 0.2]);
+  for (const dy of [-0.6, 0.6]) {
+    ctx.beginPath();
+    ctx.moveTo(-2.6, dy);
+    ctx.lineTo(2.6, dy);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 0.95px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('도서', 0, 0.05);
+  ctx.restore();
+}
+
+/** A tiny gold open-book pin on his right collar point. */
+function drawCollarPin(ctx) {
+  const x = 3.4;
+  const y = -39.6;
+  ctx.fillStyle = '#e8c25a';
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + 0.2);
+    ctx.quadraticCurveTo(x + dir * 0.35, y - 0.25, x + dir * 0.7, y - 0.1);
+    ctx.lineTo(x + dir * 0.7, y + 0.5);
+    ctx.quadraticCurveTo(x + dir * 0.35, y + 0.4, x, y + 0.7);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(120,80,20,0.7)';
+  ctx.lineWidth = 0.08;
+  ctx.beginPath();
+  ctx.moveTo(x, y + 0.2);
+  ctx.lineTo(x, y + 0.7);
+  ctx.stroke();
 }
 
 // -- Torso ----------------------------------------------------------------------
@@ -1032,6 +1274,12 @@ function drawTorso(ctx, breathe, t) {
   ctx.moveTo(-6.8, -36.4);
   ctx.lineTo(-6.75, -33.4);
   ctx.stroke();
+  // His initials embroidered in gold just under the pocket.
+  ctx.fillStyle = 'rgba(232,194,90,0.9)';
+  ctx.font = 'italic bold 0.95px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('M.J.', -6.7, -32.3);
   // A small taegeuk pin (the red-and-blue swirl of the Korean flag) just
   // below the book pin.
   ctx.save();
@@ -1110,6 +1358,17 @@ function drawTorso(ctx, breathe, t) {
   fillPath(ctx, '#c8ccd4', 0.3);
   ctx.fillStyle = 'rgba(60,60,72,0.55)';
   ctx.fillRect(-0.5, 0.55, 1, 0.18);
+  // His T-money transit card tucked in the holder behind the ID, its teal
+  // corner and "T" logo peeking out.
+  rr(ctx, -2.4, 0.5, 7.1, 9.4, 0.9);
+  fillPath(ctx, '#23a69a', 0.35);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 1px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('T', 4.15, 1.6);
+  ctx.fillStyle = 'rgba(255,209,102,0.9)';
+  ctx.fillRect(3.75, 3.2, 0.8, 0.3);
   rr(ctx, -3.6, 1.2, 7.2, 9.4, 0.9);
   fillPath(ctx, P.card, 0.45);
   ctx.fillStyle = P.cardBand;
@@ -1323,6 +1582,28 @@ function drawArm(ctx, shoulder, elbow, wrist, { watch = false } = {}) {
   ctx.rotate(ang - Math.PI / 2);
   rr(ctx, -3.4, -1.6, 6.8, 3.2, 1.2);
   fillPath(ctx, P.shirt, 0.45);
+  // The turned-back band shows the shirt's red-and-navy plaid lining.
+  ctx.save();
+  rr(ctx, -3.4, -1.6, 6.8, 3.2, 1.2);
+  ctx.clip();
+  ctx.fillStyle = '#f6e9e6';
+  ctx.fillRect(-3.4, -1.6, 6.8, 1.2);
+  ctx.lineWidth = 0.14;
+  ctx.strokeStyle = 'rgba(200,60,70,0.55)';
+  for (let x = -3.2; x <= 3.2; x += 0.8) {
+    ctx.beginPath();
+    ctx.moveTo(x, -1.6);
+    ctx.lineTo(x, -0.4);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(45,58,100,0.55)';
+  for (const y of [-1.2, -0.75]) {
+    ctx.beginPath();
+    ctx.moveTo(-3.4, y);
+    ctx.lineTo(3.4, y);
+    ctx.stroke();
+  }
+  ctx.restore();
   ctx.strokeStyle = 'rgba(80,90,120,0.45)';
   ctx.lineWidth = 0.3;
   ctx.beginPath();
@@ -1342,6 +1623,10 @@ function drawArm(ctx, shoulder, elbow, wrist, { watch = false } = {}) {
     ctx.rotate(ang - Math.PI / 2);
     rr(ctx, -2.2, -0.8, 4.4, 1.6, 0.5);
     fillPath(ctx, P.watchBand, 0.3);
+    // NATO-style stripes along the strap.
+    ctx.fillStyle = 'rgba(143,227,200,0.85)';
+    ctx.fillRect(-2.1, -0.42, 4.2, 0.18);
+    ctx.fillRect(-2.1, 0.24, 4.2, 0.18);
     ctx.fillStyle = 'rgba(20,10,6,0.6)'; // strap holes
     for (const hx of [-1.85, 1.6, 1.95]) {
       ctx.beginPath();
@@ -1552,8 +1837,31 @@ function drawBookArm(ctx, stride) {
       ctx.arc(bx + Math.cos(a) * 0.4 - 0.2, by + Math.sin(a) * 1.7 + 0.4, 0.42, 0, Math.PI * 2);
       ctx.fill();
     });
+    // A mint scrunchie worn on the same wrist, a little further up the arm.
+    for (let k = 0; k < 6; k++) {
+      ctx.fillStyle = k % 2 ? '#8fe3c8' : '#6fd0b0';
+      ctx.beginPath();
+      ctx.ellipse(bx - 1.3, by - 1.1 + k * 0.62, 0.55, 0.38, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   drawHand(ctx, wrist[0] + 0.8, wrist[1] - 0.6, -1.9, 0.6);
+  // A blue ballpoint star doodled on the back of his hand.
+  {
+    const hx = wrist[0] + 0.5;
+    const hy = wrist[1] - 0.7;
+    ctx.strokeStyle = 'rgba(58,98,200,0.75)';
+    ctx.lineWidth = 0.13;
+    ctx.beginPath();
+    for (let k = 0; k <= 5; k++) {
+      const a = -Math.PI / 2 + (k * 4 * Math.PI) / 5;
+      const px = hx + Math.cos(a) * 0.7;
+      const py = hy + Math.sin(a) * 0.7;
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
 }
 
 // -- Neck, headphones -------------------------------------------------------------
@@ -1612,6 +1920,19 @@ function drawNeckAndPhones(ctx, t) {
     }
     rr(ctx, dir < 0 ? 0.4 : -2.2, -2.2, 1.8, 4.4, 0.8);
     fillPath(ctx, P.phonesCushion, 0.3);
+    // Dashed stitching round the cushion, and a tiny L / R on each cup.
+    ctx.strokeStyle = 'rgba(30,110,85,0.55)';
+    ctx.lineWidth = 0.1;
+    ctx.setLineDash([0.25, 0.18]);
+    ctx.beginPath();
+    ctx.roundRect(dir < 0 ? 0.6 : -2.0, -2.0, 1.4, 4.0, 0.6);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 0.8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(dir < 0 ? 'R' : 'L', dir < 0 ? -0.9 : 0.9, -0.1);
     ctx.fillStyle = 'rgba(143,227,200,0.6)';
     ctx.beginPath();
     ctx.arc(dir < 0 ? -0.8 : 0.8, 0, 0.5, 0, Math.PI * 2);

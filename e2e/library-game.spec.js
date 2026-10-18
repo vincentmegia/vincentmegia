@@ -314,6 +314,38 @@ test.describe('shelving books', () => {
 		expect((await page.evaluate(() => window.__libraryGameTestHooks.getMinjun())).action).toBe('help');
 	});
 
+	test('the Shelver shelves the oldest Return Cart book when you click her', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.spawnBookNow(); window.__libraryGameTestHooks.spawnBookNow(); });
+		const [first, second] = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().returnCart.map((b) => b.id));
+		const shelver = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('libShelver'));
+		await clickCanvasPoint(page, { x: shelver.x, y: shelver.y - 34 * shelver.scale });
+		await waitUntilArrived(page);
+
+		await expect(page.locator('#library-toast')).toContainText('Shelver shelves');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.returnCart.map((b) => b.id)).toEqual([second]);
+		expect(state.returnCart.map((b) => b.id)).not.toContain(first);
+		expect(state.staffCooldowns.libShelver).toBeGreaterThan(0);
+	});
+
+	test('the Volunteer upstairs brings you a coffee for Sanity', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity)).toBeLessThan(100);
+		await page.locator('#library-floor-button').click();
+		const before = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity);
+		const volunteer = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('volunteer'));
+		await clickCanvasPoint(page, { x: volunteer.x, y: volunteer.y - 34 * volunteer.scale });
+		await waitUntilArrived(page);
+
+		await expect(page.locator('#library-toast')).toContainText('brings you a coffee');
+		const after = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(after.sanity).toBeGreaterThan(before);
+		expect(after.staffHelps).toBe(1);
+	});
+
 	test('Min-jun asks for a book when you click him empty-handed', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
@@ -753,6 +785,33 @@ test.describe('Reading Nook', () => {
 		await walkToStation(page, 'reading-nook');
 		await expect(page.locator('#library-toast')).toContainText('ready in');
 		expect(await getOverlay(page)).toBe(null);
+	});
+
+	test("taking a shelf's book and reading it in the Nook: its own story, +Sanity, then it's on the Return Cart", async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { const st = window.__libraryGameTestHooks.getShiftState(); st.sanity = 50; });
+
+		await walkToStation(page, 'bookshelf', 'mystery');
+		await expect(page.locator('#library-toast')).toContainText('The Lighthouse Keeper');
+		const held = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().readingBook);
+		expect(held.genreId).toBe('mystery');
+
+		await walkToStation(page, 'reading-nook');
+		await waitForOverlay(page, 'reading');
+		const overlay = await getOverlay(page);
+		expect(overlay.ownBook).toBe(true);
+		expect(overlay.title).toContain('The Lighthouse Keeper');
+
+		for (let i = 0; i < 6; i++) {
+			await page.evaluate(() => window.__libraryGameTestHooks.finishReadingPageNow());
+			await page.keyboard.press('Space');
+		}
+		await expect.poll(async () => getOverlay(page)).toBe(null);
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.readingBook).toBe(null);
+		expect(state.sanity).toBeGreaterThan(50);
+		expect(state.returnCart.map((b) => b.id)).toContain(held.id);
 	});
 });
 

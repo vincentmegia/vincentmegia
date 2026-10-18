@@ -919,3 +919,33 @@ export function dailyVolumes(twist) {
     borrows: Math.round(borrowVolumeForShift(DAILY_SHIFT_NUMBER) * (e.borrows ?? 1)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 20. Staff help ("make staff help the plyer"). Like Min-jun (§18), each
+//     library staff member helps when Eun-mi walks up and asks, then needs
+//     a cooldown. What each does fits their job; the effect sizes are here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-staff help: `cooldown` seconds before they can help again, plus the
+ * effect's size where it has one (`sanity`/`mood` restored, `patience`
+ * seconds given back to everyone waiting).
+ */
+export const STAFF_HELP = {
+  guard: { cooldown: 0 }, // escorts Karen out — she only comes once anyway
+  libShelver: { cooldown: 45 }, // shelves the oldest Return Cart book (usual tip)
+  libJanitor: { cooldown: 60, mood: 15 }, // tidies up
+  volunteer: { cooldown: 60, sanity: 30 }, // brings Eun-mi a coffee
+  libArchivist: { cooldown: 60 }, // finds the requested book (skips Find the Book)
+  libStoryteller: { cooldown: 75, patience: 15 }, // story time calms everyone waiting
+};
+
+// ---------------------------------------------------------------------------
+// 21. Taking a book to read ("add so that i can take books and read it in
+//     reading nook"): with empty hands, a shelf gives you its readable book;
+//     reading it in the Reading Nook restores Mood as usual plus this much
+//     Sanity (a book you chose yourself), then it goes on the Return Cart.
+// ---------------------------------------------------------------------------
+
+/** Extra Sanity for finishing a book you took off a shelf yourself. */
+export const READING_CHOSEN_SANITY_RESTORE = 10;

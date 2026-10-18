@@ -83,6 +83,7 @@ import {
   RATING_PENALTY_PER_WALKOUT,
   paycheckMultiplierForRating,
   READING_MOOD_RESTORE,
+  READING_CHOSEN_SANITY_RESTORE,
   hallucinationIntensity,
   shakyHandsZoneScale,
   shakyHandsSweepMultiplier,
@@ -134,8 +135,12 @@ import {
   brewCoffee,
   canReadBook,
   finishReading,
+  takeBookToRead,
   canMinjunHelp,
   minjunShelveCarriedBook,
+  staffHelp,
+  staffHelpBlocker,
+  staffCooldownSeconds,
   dropCarriedBook,
   startleFromHallucination,
 } from './library/engine-state.js';
@@ -154,7 +159,7 @@ import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
 } from './library/floor-plan.js';
-import { READING_STORIES } from './library/stories.js';
+import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import {
   defaultFacingTowardCenter,
@@ -340,21 +345,22 @@ const AMBIENT_STAFF = [
   // through it (random hops cut straight across the shelves).
   // (Routes redrawn for the second floor plan — floor-plan.js's
   // buildStations — keeping every walker clear of the furniture and queues.)
-  { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[230, 560], [460, 565], [720, 560], [460, 555]] },
+  { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[200, 560], [470, 562]] },
   { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[380, 280], [590, 280], [590, 500], [380, 500]] },
   // Kang Min-jun (library/minjun.js), the student assistant, drawn bigger
   // than the others (the user: "make min-jun bigger", then "more bigger"
   // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55× → 1.4×, then
-  // 1.3× to match Eun-mi's height with everyone else), pacing the open aisle
+  // 1.3× to match Eun-mi's height with everyone else, then "make him bigger
+  // in game" → 1.5× to show his detail), pacing the open aisle
   // right of the Reference Shelf, below the Stairs.
-  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.3, waypoints: [[850, 270], [885, 330], [885, 480], [845, 540]] },
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.5, waypoints: [[850, 290], [885, 340], [885, 480], [845, 535]] },
   // Four more staff ("make … 4 more staff", designs in library/library-
-  // people.js): a janitor in the aisle under the left bookcase, a shelver
+  // people.js): a janitor mopping by the Coffee Machine, a shelver
   // between the Front Desk's queue and the Stairs, a storyteller under the
   // Kids Shelf, and an archivist between the Reading Nook and the Stairs.
-  { key: 'libJanitor', name: 'Janitor · 미화원', floor: FLOOR_1, waypoints: [[240, 500], [450, 505]] },
-  { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[680, 230], [760, 235]] },
-  { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[200, 470], [340, 480]] },
+  { key: 'libJanitor', name: 'Janitor · 미화원', floor: FLOOR_1, waypoints: [[665, 555], [755, 556]] },
+  { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[680, 214], [760, 216]] },
+  { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[200, 505], [340, 510]] },
   { key: 'libArchivist', name: 'Archivist · 기록관', floor: FLOOR_2, waypoints: [[620, 200], [760, 210]] },
 ];
 const AMBIENT_SPEED = 60;
@@ -549,8 +555,8 @@ export function init(canvas, elements) {
 
   function updateAmbient(dt) {
     for (const a of ambient) {
-      // Min-jun stands still while Eun-mi is on her way to hand him a book.
-      if (a.key === 'minjun' && moveTarget?.minjun && a.pause <= 0) {
+      // A staff member stands still while Eun-mi is on her way to ask them.
+      if (moveTarget?.staffKey === a.key && a.pause <= 0) {
         a.action = null;
         continue;
       }
@@ -586,19 +592,75 @@ export function init(canvas, elements) {
     }
   }
 
-  /** Min-jun's name chip says when he can take Eun-mi's book, like Hospital Shift's Orderly. */
-  function ambientLabel(a) {
-    if (a.key !== 'minjun' || !shiftState?.carriedBook || shiftState.phase !== 'playing') return a.name;
-    const wait = Math.ceil(shiftState.minjunCooldownSeconds ?? 0);
-    return wait > 0 ? `${a.name} (busy ${wait}s)` : `${a.name} (click: shelve it)`;
+  /**
+   * What each staff member does when asked ("make staff help the plyer";
+   * the rules are engine-state.js's staffHelp): the name chip's verb, what
+   * they say when they help, and what they say when there's nothing to do.
+   */
+  const STAFF_HELP_TEXT = {
+    guard: { verb: 'escort Karen out', done: 'Security walks Karen out — no scene, no mistake.', nothing: 'Security: "All quiet. Call me if anyone makes trouble at the desk."' },
+    libShelver: { verb: 'shelve a return', done: (b) => `The Shelver shelves “${b}” from the Return Cart for you.`, nothing: 'Shelver: "The Return Cart is empty — nothing to shelve!"' },
+    libJanitor: { verb: 'tidy up', done: 'The Janitor tidies up — the library feels calmer (+Mood).', nothing: 'Janitor: "Spotless already!"' },
+    volunteer: { verb: 'coffee for you', done: 'The Volunteer brings you a coffee (+Sanity).', nothing: 'Volunteer: "You look wide awake — maybe later!"' },
+    libArchivist: { verb: 'find the book', done: (b) => `The Archivist finds “${b}” — take it to the desk to check it out.`, nothing: 'Archivist: "Take a borrow request first, and I\'ll find the book."' },
+    libStoryteller: { verb: 'story time', done: 'Story time! Everyone waiting calms down (+patience).', nothing: 'Storyteller: "No one is waiting right now."' },
+  };
+
+  /** Whether Karen has arrived in the Front Desk line and hasn't started yet (Security can walk her out). */
+  function karenWaiting() {
+    return Boolean(karenAvailable && shiftState && !shiftState.karen.triggered);
   }
 
-  /** Min-jun on the current floor, if (x, y) is on him (his drawn figure, tote and books included). */
-  function minjunAtPoint(x, y) {
-    const mj = ambient.find((a) => a.key === 'minjun' && a.floor === currentFloor);
-    if (!mj) return null;
-    const k = mj.scale ?? 1;
-    return Math.abs(x - mj.x) <= 22 * k && y <= mj.y + 8 * k && y >= mj.y - 78 * k ? mj : null;
+  /**
+   * A staff member's help hint for the small line under their name chip:
+   * "click: …" when they can help, "busy Ns" on cooldown, else null.
+   */
+  function ambientHint(a) {
+    if (!shiftState || shiftState.phase !== 'playing') return null;
+    if (a.key === 'minjun') {
+      if (!shiftState.carriedBook) return null;
+      const wait = Math.ceil(shiftState.minjunCooldownSeconds ?? 0);
+      return wait > 0 ? `busy ${wait}s` : 'click: shelve it';
+    }
+    const text = STAFF_HELP_TEXT[a.key];
+    if (!text) return null;
+    const blocker = staffHelpBlocker(shiftState, a.key, { karenWaiting: karenWaiting() });
+    if (blocker === 'cooldown') return `busy ${Math.ceil(staffCooldownSeconds(shiftState, a.key))}s`;
+    return blocker === null ? `click: ${text.verb}` : null;
+  }
+
+  /** The staff member on the current floor whose drawn figure (x, y) is on, if any. */
+  function staffAtPoint(x, y) {
+    for (const a of ambient) {
+      if (a.floor !== currentFloor || (a.key !== 'minjun' && !STAFF_HELP_TEXT[a.key])) continue;
+      const k = a.scale ?? LIBRARY_PERSON_SCALE;
+      // Min-jun's renderer units (tote and books included) vs. the anime people's.
+      const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k] : [17 * k, 68 * k];
+      if (Math.abs(x - a.x) <= hw && y <= a.y + 8 * k && y >= a.y - top) return a;
+    }
+    return null;
+  }
+
+  /** Eun-mi reached a staff member: they help if they can, or say why not. */
+  function askStaffForHelp(key) {
+    if (key === 'minjun') { askMinjunForHelp(); return; }
+    if (!shiftState || shiftState.phase !== 'playing') return;
+    const text = STAFF_HELP_TEXT[key];
+    const ctx = { karenWaiting: karenWaiting() };
+    const blocker = staffHelpBlocker(shiftState, key, ctx);
+    if (blocker === 'cooldown') {
+      showToast(`They're still busy — ask again in ${Math.ceil(staffCooldownSeconds(shiftState, key))}s.`);
+      return;
+    }
+    if (blocker !== null) {
+      showToast(text.nothing, 3);
+      return;
+    }
+    const title = key === 'libShelver'
+      ? shiftState.returnCart[0]?.title
+      : bookCatalog.get(shiftState.activeBorrow?.bookId)?.title;
+    shiftState = staffHelp(shiftState, key, ctx);
+    showToast(typeof text.done === 'function' ? text.done(title ?? 'a book') : text.done, 3.5);
   }
 
   /** Eun-mi reached Min-jun: he takes the carried book and shelves it, if he can. */
@@ -628,7 +690,9 @@ export function init(canvas, elements) {
     for (const a of ambient) {
       if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
       drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking: a.pause <= 0, action: a.action, actionT: a.actionT });
-      drawLabelChip(ctx, a.x, a.y + 20, ambientLabel(a), '9px sans-serif');
+      drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
+      const hint = ambientHint(a);
+      if (hint) drawLabelChip(ctx, a.x, a.y + 34, hint, 'bold 8px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
     }
   }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -860,13 +924,13 @@ export function init(canvas, elements) {
 
   function updatePlayer(deltaSeconds) {
     if (!moveTarget) return;
-    if (moveTarget.minjun) {
-      // Walk up beside him (on whichever side Eun-mi's coming from).
-      const mj = ambient.find((a) => a.key === 'minjun');
-      if (!mj || mj.floor !== currentFloor) { moveTarget = null; return; }
-      const side = player.x < mj.x ? -1 : 1;
-      moveTarget.x = mj.x + side * 46;
-      moveTarget.y = mj.y;
+    if (moveTarget.staffKey) {
+      // Walk up beside them (on whichever side Eun-mi's coming from).
+      const staff = ambient.find((a) => a.key === moveTarget.staffKey);
+      if (!staff || staff.floor !== currentFloor) { moveTarget = null; return; }
+      const side = player.x < staff.x ? -1 : 1;
+      moveTarget.x = staff.x + side * 46;
+      moveTarget.y = staff.y;
     }
     const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
     const step = 240 * sanityMultiplier * deltaSeconds;
@@ -878,10 +942,10 @@ export function init(canvas, elements) {
       player.x = clamped.x;
       player.y = clamped.y;
       const arrivedStation = moveTarget.station;
-      const toMinjun = moveTarget.minjun;
+      const staffKey = moveTarget.staffKey;
       moveTarget = null;
       if (arrivedStation) handleArrival(arrivedStation);
-      else if (toMinjun) askMinjunForHelp();
+      else if (staffKey) askStaffForHelp(staffKey);
     } else {
       const next = clampToCanvas(player.x + (dx / dist) * step, player.y + (dy / dist) * step);
       player.x = next.x;
@@ -1032,7 +1096,10 @@ export function init(canvas, elements) {
   /** Spacing between queued patrons — 46 until they were drawn full size. */
   const SLOT_PITCH = 60;
   /** How far below a station's box its patron queue stands — far enough that patrons' heads clear the station's label chip. */
-  const QUEUE_SLOT_OFFSET_Y = 72;
+  // Far enough below the Front Desk/Fines Counter that a full-size patron's
+  // head clears the furniture and its name chip (72 was for the 0.62-scale
+  // patrons).
+  const QUEUE_SLOT_OFFSET_Y = 126;
 
   function frontDeskSlots() {
     if (!shiftState) return [];
@@ -1446,11 +1513,29 @@ export function init(canvas, elements) {
   // you to finish the page. The last page turn finishes the book. The ×
   // button puts the book down early: no Mood, no cooldown.
 
+  /** Takes a shelf's one readable book (stories.js's storyIndexForGenre) to read in the Reading Nook. */
+  function takeShelfBookToRead(station) {
+    if (shiftState.readingBook) {
+      showToast(`You're already holding “${shiftState.readingBook.title}” — read it in the Reading Nook upstairs.`);
+      return;
+    }
+    const storyIndex = storyIndexForGenre(station.genreId);
+    if (storyIndex < 0) return;
+    const story = READING_STORIES[storyIndex];
+    const title = bookTitle({ ko: story.koTitle, en: story.title });
+    shiftState = takeBookToRead(shiftState, { id: `read-${bookIdCounter++}`, genreId: station.genreId, title, storyIndex });
+    const where = currentFloor === FLOOR_2 ? 'over in the corner' : 'upstairs';
+    showToast(`You took “${title}” off the shelf — read it in the Reading Nook ${where}.`, 3.5);
+  }
+
+  /** Opens the reading overlay: the book Eun-mi brought if she has one, else a story off the nook's own side table. */
   function openReadingOverlay() {
-    const storyIndex = Math.floor(random() * READING_STORIES.length);
+    const held = shiftState?.readingBook;
+    const storyIndex = held ? held.storyIndex : Math.floor(random() * READING_STORIES.length);
     overlay = {
       kind: 'reading',
       storyIndex,
+      ownBook: Boolean(held),
       title: bookTitle({ ko: READING_STORIES[storyIndex].koTitle, en: READING_STORIES[storyIndex].title }),
       page: 0,
       progress: 0,
@@ -1475,9 +1560,14 @@ export function init(canvas, elements) {
     overlay.progress = 0;
     if (overlay.page >= READING_PAGES) {
       const before = shiftState;
+      const own = before.readingBook;
       shiftState = finishReading(shiftState);
       overlay = null;
-      if (shiftState !== before) showToast(`What a lovely read — +${READING_MOOD_RESTORE} Mood.`);
+      if (shiftState !== before) {
+        showToast(own
+          ? `Finished “${own.title}” — +${READING_MOOD_RESTORE} Mood, +${READING_CHOSEN_SANITY_RESTORE} Sanity. It's on the Return Cart to reshelve.`
+          : `What a lovely read — +${READING_MOOD_RESTORE} Mood.`, own ? 4 : 2.5);
+      }
     }
   }
 
@@ -1681,7 +1771,11 @@ export function init(canvas, elements) {
         } else if (entry && !shiftState.carriedBook) {
           showToast(`Not here — “${entry.title}” is on the ${borrowShelfLabel()}.`);
         }
+        return;
       }
+      // Empty-handed (no return, no borrow search): take this shelf's
+      // readable book to the Reading Nook ("take books and read it").
+      if (!shiftState.carriedBook && !shiftState.carriedFine && !overlay) takeShelfBookToRead(station);
       return;
     }
 
@@ -1857,9 +1951,10 @@ export function init(canvas, elements) {
         return;
       }
 
-      if (minjunAtPoint(x, y)) {
+      const staff = staffAtPoint(x, y);
+      if (staff) {
         waitingAtBossOffice = false;
-        moveTarget = { x: player.x, y: player.y, station: null, minjun: true };
+        moveTarget = { x: player.x, y: player.y, station: null, staffKey: staff.key };
         return;
       }
 
@@ -1890,7 +1985,7 @@ export function init(canvas, elements) {
     hoverStation = stationAtPoint(x, y, stationsOnFloor(stations, currentFloor));
     // A hand cursor over anything clickable (stations, queued patrons,
     // Return Cart books), so it's clear patrons can be clicked.
-    const clickable = hoverStation || frontDeskSlotAtPoint(x, y) || finesCounterSlotAtPoint(x, y) || returnCartSlotAtPoint(x, y) || minjunAtPoint(x, y);
+    const clickable = hoverStation || frontDeskSlotAtPoint(x, y) || finesCounterSlotAtPoint(x, y) || returnCartSlotAtPoint(x, y) || staffAtPoint(x, y);
     canvas.style.cursor = clickable ? 'pointer' : '';
   }
 
@@ -2194,7 +2289,7 @@ export function init(canvas, elements) {
 
   /** Set dressing from Hospital Shift's decor kit (hospital/anime-furniture.js's drawDecor). */
   const LIBRARY_DECOR = [
-    { kind: 'water-cooler', floor: FLOOR_1, x: 160, y: 210, w: 28, h: 52 },
+    { kind: 'water-cooler', floor: FLOOR_1, x: 200, y: 120, w: 28, h: 52 },
     { kind: 'plant', floor: FLOOR_1, x: 930, y: 240, w: 30, h: 46 },
     { kind: 'plant', floor: FLOOR_1, x: 930, y: 420, w: 30, h: 46 },
     { kind: 'ladder', floor: FLOOR_2, x: 150, y: 300, w: 30, h: 62 },
@@ -2657,14 +2752,15 @@ export function init(canvas, elements) {
     if (currentFloor !== FLOOR_1) return;
     finesCounterSlots().forEach((slot, i) => {
       drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personalityForSlot(slot, i), scale: LIBRARY_PERSON_SCALE });
-      drawStar(ctx, slot.x + 18, slot.y - PERSON_HEIGHT - 4, 6, 2.5, '#f2d98a');
+      drawStar(ctx, slot.x + 24, slot.y - PERSON_HEIGHT + 14, 6, 2.5, '#f2d98a'); // beside the head, clear of the counter's name chip
       drawPatienceBar(slot, slot.waitFraction);
       drawLabelChip(ctx, slot.x, slot.y + 20, `${slot.amountGard}g`, 'bold 9px sans-serif');
     });
     const waiting = shiftState?.finesQueue.length || 0;
     if (waiting > SLOT_VISIBLE_MAX) {
       const counter = stations.find((s) => s.kind === 'fines-counter');
-      drawLabelChip(ctx, counter.x, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 60, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
+      // Beside the line rather than under it: the Elevator sits below.
+      drawLabelChip(ctx, counter.x + SLOT_PITCH * 2 + 4, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2694,7 +2790,7 @@ export function init(canvas, elements) {
         drawPatienceBar(slot, slot.waitFraction);
         const entry = bookCatalog.get(slot.bookId);
         const genre = entry ? findGenre(entry.genreId) : null;
-        drawRoundRect(ctx, slot.x + 12, slot.y - PERSON_HEIGHT - 14, 10, 14, 1, genre ? genre.color : '#8a6a4a');
+        drawRoundRect(ctx, slot.x + 20, slot.y - PERSON_HEIGHT + 4, 10, 14, 1, genre ? genre.color : '#8a6a4a'); // beside the head
         // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
         // title's label chip (drawLabelChip auto-sizes to text width, no
         // wrapping) can run wider than that and spill into the
@@ -2721,7 +2817,8 @@ export function init(canvas, elements) {
     const shown = Math.min(total, SLOT_VISIBLE_MAX);
     if (total > shown) {
       const desk = stations.find((s) => s.kind === 'front-desk');
-      drawLabelChip(ctx, desk.x, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 60, `+${total - shown} waiting`, 'bold 10px sans-serif');
+      // Beside the line, clear of the bookcase below it.
+      drawLabelChip(ctx, desk.x + SLOT_PITCH * 2 + 6, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${total - shown} waiting`, 'bold 10px sans-serif');
     }
   }
 
@@ -2731,6 +2828,10 @@ export function init(canvas, elements) {
       return { color: genre ? genre.color : '#8a6a4a', kind: 'book' };
     }
     if (shiftState?.carriedFine) return { color: '#f2d98a', kind: 'coin' };
+    if (shiftState?.readingBook) {
+      const genre = findGenre(shiftState.readingBook.genreId);
+      return { color: genre ? genre.color : '#8a6a4a', kind: 'book' };
+    }
     if (shiftState?.activeBorrow?.stage === 'checkout') {
       const entry = bookCatalog.get(shiftState.activeBorrow.bookId);
       const genre = entry ? findGenre(entry.genreId) : null;
@@ -3116,7 +3217,9 @@ export function init(canvas, elements) {
     ctx.font = 'bold 20px sans-serif';
     ctx.fillText(`“${overlay.title}”`, cx, 126);
     ctx.font = '12px sans-serif';
-    ctx.fillText('Read at your own pace. → / Space / Enter / click turns the page, ← goes back.', cx, 146);
+    ctx.fillText(overlay.ownBook
+      ? 'Your pick from the shelf. → / Space / Enter / click turns the page, ← goes back.'
+      : 'Read at your own pace. → / Space / Enter / click turns the page, ← goes back.', cx, 146);
 
     const close = readingCloseRect();
     drawRoundRect(ctx, close.x, close.y, close.w, close.h, 15, 'rgba(58,42,42,0.12)');
@@ -3799,6 +3902,10 @@ export function init(canvas, elements) {
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
       getShiftState: () => shiftState,
       getDaily: () => (daily ? { date: daily.date, twistId: daily.twist.id } : null),
+      getStaff(key) {
+        const a = ambient.find((s) => s.key === key);
+        return a ? { x: a.x, y: a.y, floor: a.floor, scale: a.scale ?? LIBRARY_PERSON_SCALE } : null;
+      },
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');
         return mj ? { x: mj.x, y: mj.y, floor: mj.floor, scale: mj.scale ?? 1, action: mj.action } : null;

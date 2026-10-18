@@ -30,6 +30,10 @@ import {
   finishReading,
   canMinjunHelp,
   minjunShelveCarriedBook,
+  staffHelp,
+  takeBookToRead,
+  staffHelpBlocker,
+  staffCooldownSeconds,
   LIBRARY_MOOD_MAX,
   SANITY_MAX,
 } from './engine-state.js';
@@ -61,6 +65,8 @@ import {
   MESSY_CART_THRESHOLD,
   MESSY_CART_MOOD_DRAIN_PER_SECOND,
   MINJUN_HELP_COOLDOWN_SECONDS,
+  STAFF_HELP,
+  READING_CHOSEN_SANITY_RESTORE,
 } from './rules.js';
 
 const SHIFT_1 = 1;
@@ -886,5 +892,96 @@ describe('Min-jun shelving for you', () => {
     state = tick(state, 1.5);
     assert.equal(state.minjunCooldownSeconds, 0);
     assert.equal(canMinjunHelp(state), true);
+  });
+});
+
+describe('staff helping the player', () => {
+  const book = (id, genreId = 'mystery') => ({ id, genreId, isCoinHunt: false });
+
+  test('the Shelver shelves the oldest Return Cart book with the usual tip, then needs a cooldown', () => {
+    let state = addBookToCart(addBookToCart(playingState(), book('s1')), book('s2'));
+    assert.equal(staffHelpBlocker(state, 'libShelver'), null);
+    state = staffHelp(state, 'libShelver');
+    assert.deepEqual(state.returnCart.map((b) => b.id), ['s2']);
+    assert.equal(state.bonusGard, SHELVED_BOOK_TIP_GARD);
+    assert.equal(staffCooldownSeconds(state, 'libShelver'), STAFF_HELP.libShelver.cooldown);
+    assert.equal(staffHelpBlocker(state, 'libShelver'), 'cooldown');
+    assert.equal(staffHelp(state, 'libShelver'), state);
+    state = tick(state, STAFF_HELP.libShelver.cooldown + 0.5);
+    assert.equal(staffHelpBlocker(state, 'libShelver'), null);
+    assert.equal(staffHelpBlocker(playingState(), 'libShelver'), 'nothing', 'an empty cart');
+  });
+
+  test('the Janitor lifts Mood and the Volunteer restores Sanity, only when they are below full', () => {
+    const fresh = playingState();
+    assert.equal(staffHelpBlocker(fresh, 'libJanitor'), 'nothing');
+    const low = { ...fresh, libraryMood: 40, sanity: 50 };
+    assert.equal(staffHelp(low, 'libJanitor').libraryMood, 40 + STAFF_HELP.libJanitor.mood);
+    assert.equal(staffHelp(low, 'volunteer').sanity, 50 + STAFF_HELP.volunteer.sanity);
+    assert.equal(staffHelp({ ...fresh, sanity: 95 }, 'volunteer').sanity, SANITY_MAX);
+  });
+
+  test('the Archivist finds the requested book, skipping Find the Book', () => {
+    let state = addBorrowRequest(playingState(), { id: 'r1', bookId: 'b1', patienceSeconds: 60 });
+    assert.equal(staffHelpBlocker(state, 'libArchivist'), 'nothing', 'no search underway yet');
+    state = acceptBorrowRequest(state, 'r1');
+    assert.equal(state.activeBorrow.stage, 'searching');
+    state = staffHelp(state, 'libArchivist');
+    assert.equal(state.activeBorrow.stage, 'checkout');
+    assert.equal(state.mistakeCount, 0);
+  });
+
+  test('the Storyteller gives everyone waiting some patience back, up to their maximum', () => {
+    let state = addBorrowRequest(playingState(), { id: 'r1', bookId: 'b1', patienceSeconds: 60, waitSeconds: 40 });
+    state = addFineToQueue(state, { id: 'f1', amountGard: 30, waitSeconds: 40 });
+    state = tick(state, 30);
+    const before = state.borrowQueue[0].waitRemainingSeconds;
+    state = staffHelp(state, 'libStoryteller');
+    assert.ok(Math.abs(state.borrowQueue[0].waitRemainingSeconds - (before + STAFF_HELP.libStoryteller.patience)) < 1e-9);
+    assert.ok(state.finesQueue[0].waitRemainingSeconds <= state.finesQueue[0].waitMaxSeconds);
+    assert.equal(staffHelpBlocker(playingState(), 'libStoryteller'), 'nothing', 'nobody waiting');
+  });
+
+  test("Security escorts Karen out of the line — no fine, no mistake, no Mood hit — only once she's waiting", () => {
+    const state = playingState();
+    const onHerShift = { ...state, karen: { ...state.karen, shiftNumber: state.shiftNumber } };
+    assert.equal(staffHelpBlocker(onHerShift, 'guard'), 'nothing', 'Karen has not arrived');
+    const after = staffHelp(onHerShift, 'guard', { karenWaiting: true });
+    assert.equal(after.karen.triggered, true);
+    assert.equal(after.karen.outcome, 'escorted');
+    assert.equal(after.mistakeCount, 0);
+    assert.equal(after.libraryMood, onHerShift.libraryMood);
+    assert.equal(after.bonusGard, onHerShift.bonusGard);
+    assert.equal(staffHelpBlocker(after, 'guard', { karenWaiting: true }), 'nothing');
+    assert.equal(after.staffHelps, 1);
+  });
+
+  test('unknown staff never help', () => {
+    assert.equal(staffHelpBlocker(playingState(), 'nobody'), 'unknown');
+  });
+});
+
+describe('taking a book to read in the Reading Nook', () => {
+  const book = { id: 'read-1', genreId: 'mystery', title: '등대지기 · The Lighthouse Keeper', storyIndex: 1 };
+
+  test('you can hold one book to read at a time', () => {
+    const state = takeBookToRead(playingState(), book);
+    assert.deepEqual(state.readingBook, book);
+    assert.equal(takeBookToRead(state, { ...book, id: 'read-2' }), state);
+  });
+
+  test('finishing it restores Mood and some Sanity, then puts it on the Return Cart', () => {
+    let state = { ...takeBookToRead(playingState(), book), libraryMood: 40, sanity: 50 };
+    state = finishReading(state);
+    assert.equal(state.libraryMood, 40 + READING_MOOD_RESTORE);
+    assert.equal(state.sanity, 50 + READING_CHOSEN_SANITY_RESTORE);
+    assert.equal(state.readingBook, null);
+    assert.deepEqual(state.returnCart.at(-1), { id: 'read-1', genreId: 'mystery', isCoinHunt: false, title: book.title });
+  });
+
+  test('reading without a book of your own works as before (no Sanity, nothing added to the cart)', () => {
+    const state = finishReading({ ...playingState(), sanity: 50 });
+    assert.equal(state.sanity, 50);
+    assert.equal(state.returnCart.length, 0);
   });
 });

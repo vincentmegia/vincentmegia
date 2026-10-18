@@ -31,3 +31,16 @@ describe('Reading Nook stories', () => {
     }
   });
 });
+
+describe('readable books on the shelves', () => {
+  test('every genre shelf holds exactly one readable story', async () => {
+    const { GENRES } = await import('./rules.js');
+    const { READING_STORIES, storyIndexForGenre } = await import('./stories.js');
+    for (const genre of GENRES) {
+      const i = storyIndexForGenre(genre.id);
+      assert.ok(i >= 0, `${genre.id} has no story`);
+      assert.equal(READING_STORIES.filter((s) => s.genreId === genre.id).length, 1);
+    }
+    assert.equal(storyIndexForGenre('nope'), -1);
+  });
+});

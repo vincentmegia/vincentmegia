@@ -715,6 +715,40 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   scores per run (a month run and a Daily, in two browsers) against the
   5-per-minute submit limit, so a second run within a minute of the last
   can fail with 429s. Restart the server, or wait a minute, between runs.
+  Then an overlap pass ("some thing is overlapping"): queued patrons now
+  stand `QUEUE_SLOT_OFFSET_Y` 126 below the Front Desk/Fines Counter (72
+  was sized for the old 0.62 patrons, so full-size heads covered the
+  furniture and its name chip); the Fines Counter moved up to (100, 250)
+  and the water cooler to (200, 120) to make room; each line's "+N
+  waiting" chip sits beside it rather than under it (the Romance Shelf and
+  the Elevator are below); the fine star and wanted-book icons sit beside
+  a patron's head instead of above it; and Security (bottom-left), the
+  Janitor (now by the Coffee Machine) and the Storyteller (below the Kids
+  Shelf's label) were rerouted off the labels and each other.
+* **Staff help** ("make staff help the plyer"), extending Min-jun's help to
+  every staff member: click one (Top-Down) and Eun-mi walks up beside
+  them (they wait for her); they help if they can, then need a cooldown
+  (`STAFF_HELP`, `rules.js` §20; `staffHelpBlocker`/`staffHelp` in
+  `engine-state.js`, `staffCooldowns` in the shift state):
+
+  | Staff | Floor | Help | Cooldown |
+  | ----- | ----- | ---- | -------- |
+  | Security | 1st | Escorts Karen out while she waits in line (her event resolves as 'escorted': no fine, no mistake, no Mood hit) | once |
+  | Shelver | 1st | Shelves the oldest Return Cart book (+5g tip; a Coin Hunt book's coins are skipped) | 45 s |
+  | Janitor | 1st | Tidies up: +15 Mood | 60 s |
+  | Volunteer | 2nd | Brings Eun-mi a coffee: +30 Sanity | 60 s |
+  | Archivist | 2nd | Finds the requested book (skips Find the Book; on to checkout) | 60 s |
+  | Storyteller | 2nd | Story time: every waiting patron (and the searching borrower) gets 15 s of patience back, up to their max | 75 s |
+
+  A small second chip under a staff member's name says "click: …" (deep
+  mint) when they can help, or "busy Ns" on cooldown; with nothing to do
+  (full bar, empty cart, nobody waiting) there's no hint, and asking gets
+  a short line of dialogue instead. Min-jun's hint moved to the same
+  second chip. Security's and the Janitor's routes moved up so the hint
+  line fits on the canvas, and the Shelver's up so it clears the Sci-Fi
+  Shelf. Covered by `engine-state.test.js` (every helper, cooldowns,
+  blockers, Karen's escort) and two Playwright tests (the Shelver, and the
+  Volunteer's coffee).
 * **Background staff**: a Security guard on the 1st Floor and a Volunteer
   on the 2nd walk fixed patrol loops around the furniture (random hops
   cut across the shelves). They're drawn back-to-front around Eun-mi.
@@ -874,6 +908,54 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
     sticky note on the tote reading "반납" (returns); and a silver wallet
     chain of alternating links from his right-hip belt loop, sagging round
     to a back pocket.
+  - Another pass ("i want him even more detailed"), face unchanged, Korean
+    student touches: a bottle of banana milk (바나나맛 우유: round yellow
+    belly, green cap) poking out of the tote beside the orange book; a
+    K-pop photocard holder on a ball chain from his left belt loop (a
+    lavender frame round a tiny idol portrait, star stickers, a clear
+    shine) that swings as he walks; a pink "♥책" (I love books) button
+    pinned halfway up the tote strap; a mint "도서" (library) armband with
+    dashed stitching on his book arm's upper sleeve; a tiny gold open-book
+    pin on his right collar point; and two mint varsity stripes round his
+    navy socks.
+  - His own walk ("make him have a special walk putting his hands in his
+    pockets"): while walking (and not mid-action), his free hand goes
+    into his trouser pocket (`drawPocketArm`) — elbow out and loose, the
+    forearm angled down across his belt (drawn over the vest, like the
+    reading arm), a pocket bulge a shade lighter than his slacks with its
+    slanted opening, and his thumb hooked outside — and his body sways
+    easily side to side from the hips (±0.025 rad). His other arm keeps
+    carrying the books. When he stops to read, hum, wave or help, the hand
+    comes out. The photocard moved to his right-hip belt loop so it
+    doesn't hide the pocket.
+  - Another pass ("make him detailer"), face unchanged: his T-money
+    transit card tucked in the badge holder behind the ID (a teal corner
+    with a white "T" and a gold stripe peeking out); the shirt's red-and-
+    navy plaid lining showing on both rolled cuffs; mint NATO-style stripes
+    along his watch strap; a blue ballpoint star doodled on the back of his
+    book hand; and a faint woven check in his slacks.
+  - And another ("even more detailed"), face unchanged: dashed stitching
+    round both headphone cushions with a tiny L / R on the cups; "M.J."
+    embroidered in gold under his vest's welt pocket; a mint scrunchie on
+    his book wrist above the bracelet; tread notches along his sneaker
+    soles; and a folded lavender umbrella with a hooked wooden handle
+    tucked in the tote's back corner.
+* **Taking books to read** ("add so that i can take books and read it in
+  reading nook"). The Reading Nook's five stories are now real books on the
+  shelves, one per genre (`stories.js`'s `genreId`, `storyIndexForGenre`):
+  The Lighthouse Keeper (Mystery), A Quiet Afternoon (Romance), The Long
+  Walk Home (Sci-Fi), Paper Boats (Kids), Tea for One (Reference). With
+  empty hands and no borrow search underway, clicking a shelf takes its
+  book (`takeBookToRead`, `readingBook` in the shift state; one at a time,
+  shown as the carry badge in the genre's color). At the Reading Nook that
+  book opens ("Your pick from the shelf"); finishing it gives the usual
+  +20 Mood plus READING_CHOSEN_SANITY_RESTORE (+10) Sanity (`rules.js`
+  §21), then it goes on the Return Cart to be reshelved like any return.
+  Without a book of your own the Nook works as before (a random story, Mood
+  only). The page's How to play panel gained a fifth step. Covered by
+  `engine-state.test.js`, `stories.test.js` (one story per genre) and a
+  Playwright test (take the Mystery book, read it, Sanity up, it's on the
+  cart).
 
   His eyes were opened up so they read at game size (the user: "I can
   barely see his eyes"; they were near-black slits): the eye opening is
@@ -884,7 +966,9 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   two steps at the user's request to 0.8×1.0, just under the original, with the ring around
   them, the iris lines and the lower crescent resized to match). The
   sharp, winged look is unchanged.
-  He's drawn at 1.4× ("make min-jun bigger" took him from 1.05× to
+  He's drawn at 1.5× ("make him bigger in game", from the 1.3× he got to
+  match everyone's height; the top of his walk dropped to y 290 so his
+  head clears the Stairs). Before that, 1.4× ("make min-jun bigger" took him from 1.05× to
   1.35×, then "make him more bigger in game" to 1.7×, then "a bit too
   big, make him a little smaller" to 1.55×, then "make him smaller" to
   1.4×; his path's shelf-side

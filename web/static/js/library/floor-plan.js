@@ -113,7 +113,7 @@ export function buildStations(genres) {
     { id: 'return-cart', kind: 'return-cart', floor: FLOOR_1, x: 300, y: 115, size },
     { id: 'front-desk', kind: 'front-desk', floor: FLOOR_1, x: 520, y: 115, size, w: FRONT_DESK_WIDTH, h: size },
     { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, x: 880, y: 115, size, targetFloor: FLOOR_2 },
-    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 100, y: 290, size, w: FINES_ROOM_SIZE, h: FINES_ROOM_SIZE },
+    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 100, y: 250, size, w: FINES_ROOM_SIZE, h: FINES_ROOM_SIZE },
     { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, x: 80, y: 540, size, targetFloor: FLOOR_2 },
     { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 880, y: 530, size },
     { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, x: 880, y: 115, size, targetFloor: FLOOR_1 },

@@ -15,6 +15,7 @@ export const STORY_PAGE_MAX_CHARS = 260;
 export const READING_STORIES = [
   {
     title: 'A Quiet Afternoon',
+    genreId: 'romance', // the shelf you can take it from ("take books and read it in reading nook")
     koTitle: '조용한 오후',
     pages: [
       'The rain started just after lunch, soft at first, then steady enough that the street outside the library turned silver.',
@@ -33,6 +34,7 @@ export const READING_STORIES = [
   },
   {
     title: 'The Lighthouse Keeper',
+    genreId: 'mystery', // the shelf you can take it from ("take books and read it in reading nook")
     koTitle: '등대지기',
     pages: [
       'Ida kept the lighthouse at the end of the world, or at least at the end of the road, which on foggy nights felt like the same thing.',
@@ -51,6 +53,7 @@ export const READING_STORIES = [
   },
   {
     title: 'Tea for One',
+    genreId: 'reference', // the shelf you can take it from ("take books and read it in reading nook")
     koTitle: '혼자 마시는 차',
     pages: [
       'Arthur had made tea for two every morning for forty-one years, and on the first morning he only needed one cup, he made two anyway.',
@@ -69,6 +72,7 @@ export const READING_STORIES = [
   },
   {
     title: 'Paper Boats',
+    genreId: 'kids', // the shelf you can take it from ("take books and read it in reading nook")
     koTitle: '종이배',
     pages: [
       'On the last day of school, Priya folded every page of her old maths homework into a paper boat. There were thirty-seven of them.',
@@ -87,6 +91,7 @@ export const READING_STORIES = [
   },
   {
     title: 'The Long Walk Home',
+    genreId: 'scifi', // the shelf you can take it from ("take books and read it in reading nook")
     koTitle: '집으로 가는 먼 길',
     pages: [
       'The bus broke down three miles from town, and the driver said the next one would be at least an hour. Leo decided to walk.',
@@ -104,3 +109,15 @@ export const READING_STORIES = [
     ],
   },
 ];
+
+/**
+ * The story you can take off a genre's shelf to read in the Reading Nook
+ * (each shelf holds one of these real, readable books), as an index into
+ * READING_STORIES; -1 for a genre with none.
+ *
+ * @param {string} genreId
+ * @returns {number}
+ */
+export function storyIndexForGenre(genreId) {
+  return READING_STORIES.findIndex((story) => story.genreId === genreId);
+}
