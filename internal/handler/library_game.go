@@ -8,8 +8,17 @@ import (
 	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/middleware"
+	"github.com/vincentmegia/vincentmegia/internal/model"
 	"github.com/vincentmegia/vincentmegia/internal/service"
 )
+
+// libraryLeaderboardView is the library-leaderboard fragment's data: one
+// board's top scores, and which board it is — Daily is the Daily
+// Challenge's YYYY-MM-DD date, "" for the all-time board.
+type libraryLeaderboardView struct {
+	Scores []model.LibraryScore
+	Daily  string
+}
 
 // libraryLeaderboardLimit is the top-N size shown on the public
 // leaderboard, same value as cookingLeaderboardLimit
@@ -55,21 +64,37 @@ func (h *LibraryGameHandler) Index(w http.ResponseWriter, r *http.Request) {
 // Leaderboard handles GET /library-game/leaderboard, returning the
 // library-leaderboard fragment (innerHTML target, per the HTMX
 // Interactions table). Always a bare fragment, never wrapped in the page
-// shell.
+// shell. ?board=daily returns today's Daily Challenge board instead.
 func (h *LibraryGameHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
-	scores, err := h.Service.Leaderboard(r.Context(), libraryLeaderboardLimit)
+	daily := ""
+	if r.URL.Query().Get("board") == "daily" {
+		daily = h.Service.Today()
+	}
+	h.renderBoard(w, r, daily)
+}
+
+// renderBoard renders one board's fragment (daily "" = all-time).
+func (h *LibraryGameHandler) renderBoard(w http.ResponseWriter, r *http.Request, daily string) {
+	var scores []model.LibraryScore
+	var err error
+	if daily == "" {
+		scores, err = h.Service.Leaderboard(r.Context(), libraryLeaderboardLimit)
+	} else {
+		scores, err = h.Service.DailyLeaderboard(r.Context(), daily, libraryLeaderboardLimit)
+	}
 	if err != nil {
-		slog.Error("get library leaderboard", "error", err)
+		slog.Error("get library leaderboard", "daily", daily, "error", err)
 		writeLibraryLeaderboardError(w)
 		return
 	}
-	h.Renderer.RenderFragment(w, "library-leaderboard", scores)
+	h.Renderer.RenderFragment(w, "library-leaderboard", libraryLeaderboardView{Scores: scores, Daily: daily})
 }
 
 // SubmitScore handles POST /library-game/score: validates and inserts a
 // leaderboard entry, then returns the refreshed fragment (outerHTML
 // target, per the HTMX Interactions table) so a successful submission's
-// own row is visible immediately.
+// own row is visible immediately — the daily board for a Daily Challenge
+// run (form field daily_date).
 //
 // Request parsing: standard HTML form encoding
 // (application/x-www-form-urlencoded), read via r.ParseForm()/
@@ -99,7 +124,8 @@ func (h *LibraryGameHandler) SubmitScore(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted); err != nil {
+	daily := r.FormValue("daily_date")
+	if err := h.Service.SubmitScore(r.Context(), playerName, totalEarnings, shiftsCompleted, daily); err != nil {
 		if isLibraryValidationError(err) {
 			// A curated, user-facing sentinel from
 			// service.ValidateLibraryScoreSubmission — safe to surface
@@ -113,13 +139,7 @@ func (h *LibraryGameHandler) SubmitScore(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	scores, err := h.Service.Leaderboard(r.Context(), libraryLeaderboardLimit)
-	if err != nil {
-		slog.Error("get library leaderboard after submit", "error", err)
-		writeLibraryLeaderboardError(w)
-		return
-	}
-	h.Renderer.RenderFragment(w, "library-leaderboard", scores)
+	h.renderBoard(w, r, daily)
 }
 
 // isLibraryValidationError reports whether err is one of
@@ -132,6 +152,9 @@ func isLibraryValidationError(err error) bool {
 		service.ErrLibraryScorePlayerNameTooLong,
 		service.ErrLibraryScoreEarningsOutOfRange,
 		service.ErrLibraryScoreShiftsOutOfRange,
+		service.ErrLibraryDailyDateInvalid,
+		service.ErrLibraryDailyDateStale,
+		service.ErrLibraryDailyShiftsInvalid,
 	} {
 		if errors.Is(err, sentinel) {
 			return true
@@ -149,7 +172,7 @@ func writeLibraryLeaderboardError(w http.ResponseWriter) {
 	// 200, not 5xx — see writeCookingLeaderboardError's doc comment for why.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`<p id="library-leaderboard" class="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">Couldn't load the leaderboard.</p>`))
+	w.Write([]byte(`<p id="library-leaderboard" class="ha-panel ha-muted px-4 py-3 text-sm">Couldn't load the leaderboard.</p>`))
 }
 
 // libraryScoreSubmitLimit/libraryScoreSubmitWindow bound this feature's own

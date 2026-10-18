@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"strings"
+	"time"
 )
 
 // Bounds from docs/features/library-game.md's Data Model — kept in sync
@@ -22,7 +23,29 @@ var (
 	ErrLibraryScorePlayerNameTooLong  = errors.New("player name must be 20 characters or fewer")
 	ErrLibraryScoreEarningsOutOfRange = errors.New("total earnings is out of the allowed range")
 	ErrLibraryScoreShiftsOutOfRange   = errors.New("shifts completed is out of the allowed range")
+	ErrLibraryDailyDateInvalid        = errors.New("daily challenge date must be YYYY-MM-DD")
+	ErrLibraryDailyDateStale          = errors.New("that daily challenge is no longer open")
+	ErrLibraryDailyShiftsInvalid      = errors.New("a daily challenge is a single shift")
 )
+
+// ValidateLibraryDailyDate parses a submission's daily_date: "" means an
+// ordinary run (nil). A Daily Challenge run must be for today's UTC date,
+// give or take one day so a shift finished across midnight (or on a skewed
+// clock) still counts — the same window as ValidateHospitalDailyDate.
+func ValidateLibraryDailyDate(daily string, now time.Time) (*time.Time, error) {
+	if daily == "" {
+		return nil, nil
+	}
+	day, err := time.Parse(busRushDailyDateLayout, daily)
+	if err != nil {
+		return nil, ErrLibraryDailyDateInvalid
+	}
+	today := BusRushToday(now)
+	if day.Before(today.AddDate(0, 0, -1)) || day.After(today.AddDate(0, 0, 1)) {
+		return nil, ErrLibraryDailyDateStale
+	}
+	return &day, nil
+}
 
 // ValidateLibraryScoreSubmission validates a leaderboard submission
 // (POST /library-game/score) per docs/features/library-game.md's Security

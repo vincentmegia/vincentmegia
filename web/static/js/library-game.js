@@ -102,6 +102,12 @@ import {
   gradeCoffeePour,
   COFFEE_POUR_SECONDS_TO_BRIM,
   COFFEE_PERFECT_TIP_GARD,
+  DAILY_SHIFT_NUMBER,
+  libraryDailyDate,
+  dailySeed,
+  seededRandom,
+  dailyTwistForDate,
+  dailyVolumes,
 } from './library/rules.js';
 import {
   createInitialState,
@@ -220,6 +226,28 @@ export function loadSave(storageAvailable) {
   }
 }
 
+/** This browser's best Daily Challenge paycheck, for one UTC date only. */
+const DAILY_BEST_KEY = 'library-game:daily-best';
+
+function loadDailyBest(storageAvailable, date) {
+  if (!storageAvailable) return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DAILY_BEST_KEY) ?? 'null');
+    return parsed && parsed.date === date && Number.isFinite(parsed.gard) ? parsed.gard : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistDailyBest(storageAvailable, date, gard) {
+  if (!storageAvailable) return;
+  try {
+    window.localStorage.setItem(DAILY_BEST_KEY, JSON.stringify({ date, gard }));
+  } catch {
+    // Same posture as persistSave: keep playing, just stop remembering.
+  }
+}
+
 function persistSave(storageAvailable, save) {
   if (!storageAvailable) return;
   try {
@@ -310,23 +338,24 @@ const PLAYER_SIZE_RATIO = PLAYER_ART_SCALE / 1.12;
 const AMBIENT_STAFF = [
   // Patrol loops, walked in order, that go around the furniture rather than
   // through it (random hops cut straight across the shelves).
-  { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[260, 480], [560, 485], [700, 478], [640, 535], [300, 530]] },
-  { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[200, 180], [760, 180], [780, 560], [300, 580], [220, 400]] },
+  // (Routes redrawn for the second floor plan — floor-plan.js's
+  // buildStations — keeping every walker clear of the furniture and queues.)
+  { key: 'guard', name: 'Security', floor: FLOOR_1, waypoints: [[230, 560], [460, 565], [720, 560], [460, 555]] },
+  { key: 'volunteer', name: 'Volunteer', floor: FLOOR_2, waypoints: [[380, 280], [590, 280], [590, 500], [380, 500]] },
   // Kang Min-jun (library/minjun.js), the student assistant, drawn bigger
   // than the others (the user: "make min-jun bigger", then "more bigger"
   // — 1.05× → 1.35× → 1.7×, then "a little smaller" → 1.55× → 1.4×, then
   // 1.3× to match Eun-mi's height with everyone else), pacing the open aisle
-  // between the Reference Shelf and the Stairs/Elevator — at 1.35× his old
-  // loop around the shelf put him over the Reading Nook.
-  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.3, waypoints: [[755, 210], [805, 230], [805, 450], [755, 465]] },
+  // right of the Reference Shelf, below the Stairs.
+  { key: 'minjun', name: 'Min-jun · 민준', floor: FLOOR_2, scale: 1.3, waypoints: [[850, 270], [885, 330], [885, 480], [845, 540]] },
   // Four more staff ("make … 4 more staff", designs in library/library-
-  // people.js): a janitor along the 1st Floor's bottom aisle, a shelver in
-  // the gap between the Front Desk and the Return Cart, a storyteller by
-  // the 2nd Floor's reading chairs, and an archivist left of the Kids Shelf.
-  { key: 'libJanitor', name: 'Janitor · 미화원', floor: FLOOR_1, waypoints: [[180, 560], [400, 565], [600, 560], [400, 555]] },
-  { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[452, 255], [515, 255]] },
-  { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[110, 505], [250, 510]] },
-  { key: 'libArchivist', name: 'Archivist · 기록관', floor: FLOOR_2, waypoints: [[150, 240], [170, 410], [215, 330]] },
+  // people.js): a janitor in the aisle under the left bookcase, a shelver
+  // between the Front Desk's queue and the Stairs, a storyteller under the
+  // Kids Shelf, and an archivist between the Reading Nook and the Stairs.
+  { key: 'libJanitor', name: 'Janitor · 미화원', floor: FLOOR_1, waypoints: [[240, 500], [450, 505]] },
+  { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[680, 230], [760, 235]] },
+  { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[200, 470], [340, 480]] },
+  { key: 'libArchivist', name: 'Archivist · 기록관', floor: FLOOR_2, waypoints: [[620, 200], [760, 210]] },
 ];
 const AMBIENT_SPEED = 60;
 
@@ -511,7 +540,8 @@ export function init(canvas, elements) {
   let ambient = [];
 
   function resetAmbient() {
-    ambient = AMBIENT_STAFF.map((def, i) => {
+    const minjunOff = Boolean(daily?.twist.effect.noMinjun);
+    ambient = AMBIENT_STAFF.filter((def) => !(minjunOff && def.key === 'minjun')).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
       return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null };
     });
@@ -639,6 +669,11 @@ export function init(canvas, elements) {
   let toastTimeoutHandle = null;
 
   let scheduledEvents = [];
+  // The Daily Challenge being played ({ date, twist }), or null for the
+  // month run. While it's set, spawns draw from `spawnRandom`, a stream
+  // seeded by the date, so everyone gets the same returns/fines/borrows.
+  let daily = null;
+  let spawnRandom = random;
   let bookIdCounter = 0;
   let fineIdCounter = 0;
   let borrowIdCounter = 0;
@@ -668,11 +703,14 @@ export function init(canvas, elements) {
   }
 
   function renderStartScreen() {
+    if (elements.startProgress) {
+      elements.startProgress.textContent = `Shift ${save.currentShift} of ${SHIFTS_PER_MONTH} · ${save.monthToDateGard} Gard this month`;
+    }
     showScreen('start');
   }
 
   function renderHud() {
-    elements.hud.shift.textContent = `${currentShiftNumber}/${SHIFTS_PER_MONTH}`;
+    elements.hud.shift.textContent = daily ? 'Daily' : `${currentShiftNumber}/${SHIFTS_PER_MONTH}`;
     if (!shiftState) {
       elements.hud.clock.textContent = '--:--';
       elements.hud.status.textContent = 'Quiet';
@@ -1098,15 +1136,17 @@ export function init(canvas, elements) {
   function scheduleShiftEvents() {
     const total = shiftState.totalClockSeconds;
     const events = [];
-    const bookCount = returnVolumeForShift(currentShiftNumber);
-    const fineCount = fineVolumeForShift(currentShiftNumber, finesStartShiftNumber);
-    const borrowCount = borrowVolumeForShift(currentShiftNumber);
-    for (let i = 0; i < bookCount; i++) events.push({ type: 'book', at: random() * total * 0.85 });
-    for (let i = 0; i < fineCount; i++) events.push({ type: 'fine', at: random() * total * 0.85 });
+    const volumes = daily ? dailyVolumes(daily.twist) : null;
+    const bookCount = volumes ? volumes.books : returnVolumeForShift(currentShiftNumber);
+    const fineCount = volumes ? volumes.fines : fineVolumeForShift(currentShiftNumber, finesStartShiftNumber);
+    const borrowCount = volumes ? volumes.borrows : borrowVolumeForShift(currentShiftNumber);
+    const rnd = spawnRandom;
+    for (let i = 0; i < bookCount; i++) events.push({ type: 'book', at: rnd() * total * 0.85 });
+    for (let i = 0; i < fineCount; i++) events.push({ type: 'fine', at: rnd() * total * 0.85 });
     for (let i = 0; i < borrowCount; i++) {
       // The first borrow patron always shows up within the opening seconds.
       const [early, late] = FIRST_BORROW_ARRIVAL_SECONDS;
-      const at = i === 0 ? early + random() * (late - early) : random() * total * 0.85;
+      const at = i === 0 ? early + rnd() * (late - early) : rnd() * total * 0.85;
       events.push({ type: 'borrow', at });
     }
     if (currentShiftNumber === karenShiftNumber) {
@@ -1117,28 +1157,28 @@ export function init(canvas, elements) {
   }
 
   function spawnBook(forceCoinHunt) {
-    const genre = GENRES[Math.floor(random() * GENRES.length)];
-    const isCoinHunt = forceCoinHunt ?? isCoinHuntBook(random());
+    const genre = GENRES[Math.floor(spawnRandom() * GENRES.length)];
+    const isCoinHunt = forceCoinHunt ?? isCoinHuntBook(spawnRandom());
     // `title` is purely cosmetic (drawn on the Return Cart cover and the
     // Coin Hunt header — user feedback: "i dunno what book it is") — it
     // rides along on the plain object engine-state.js's addBookToCart/
     // pickUpBook store and pass through verbatim (they never touch fields
     // they don't know about), so no engine-state.js/rules.js change is
     // needed to carry it all the way to `carriedBook`.
-    const title = titleForGenre(genre.id, random);
+    const title = titleForGenre(genre.id, spawnRandom);
     const book = { id: `book-${bookIdCounter++}`, genreId: genre.id, isCoinHunt, title };
     shiftState = addBookToCart(shiftState, book);
   }
 
   function spawnFine(forcedAmount) {
-    const amountGard = Number.isFinite(forcedAmount) ? forcedAmount : fineAmountForRoll(random());
+    const amountGard = Number.isFinite(forcedAmount) ? forcedAmount : fineAmountForRoll(spawnRandom());
     shiftState = addFineToQueue(shiftState, { id: `fine-${fineIdCounter++}`, amountGard, waitSeconds: queueWaitSecondsForShift(currentShiftNumber) });
   }
 
   function spawnBorrow() {
-    const genre = GENRES[Math.floor(random() * GENRES.length)];
+    const genre = GENRES[Math.floor(spawnRandom() * GENRES.length)];
     const bookId = `borrow-book-${borrowIdCounter++}`;
-    const title = titleForGenre(genre.id, random);
+    const title = titleForGenre(genre.id, spawnRandom);
     bookCatalog.set(bookId, { genreId: genre.id, title });
     shiftState = addBorrowRequest(shiftState, {
       id: `borrow-${borrowIdCounter}`,
@@ -1667,6 +1707,10 @@ export function init(canvas, elements) {
     }
 
     if (station.kind === 'coffee-machine') {
+      if (daily?.twist.effect.noCoffee) {
+        showToast("Out of order today — no coffee this shift (Daily Challenge twist).");
+        return;
+      }
       if (shiftState.phase === 'playing') openCoffeePourOverlay();
       return;
     }
@@ -1939,9 +1983,22 @@ export function init(canvas, elements) {
     resetHallucinations();
     lastSeenBonusGard = 0;
     gardPops = [];
-    currentShiftNumber = save.currentShift;
-    karenShiftNumber = karenShiftForSeed(save.karenSeed);
-    finesStartShiftNumber = finesStartShiftForSeed(save.karenSeed);
+    if (daily) {
+      currentShiftNumber = DAILY_SHIFT_NUMBER;
+      karenShiftNumber = daily.twist.effect.karen ? DAILY_SHIFT_NUMBER : -1;
+      finesStartShiftNumber = 1;
+      spawnRandom = seededRandom(dailySeed(daily.date));
+      // Same ids every attempt, so patrons look the same too (their designs
+      // are hashed from their ids).
+      bookIdCounter = 0;
+      fineIdCounter = 0;
+      borrowIdCounter = 0;
+    } else {
+      currentShiftNumber = save.currentShift;
+      karenShiftNumber = karenShiftForSeed(save.karenSeed);
+      finesStartShiftNumber = finesStartShiftForSeed(save.karenSeed);
+      spawnRandom = random;
+    }
     shiftState = startShiftState(createInitialState(currentShiftNumber, karenShiftNumber));
     player = { ...PLAYER_START };
     resetAmbient();
@@ -1968,8 +2025,40 @@ export function init(canvas, elements) {
   }
 
   function startShift() {
+    daily = null;
     requestFullscreen();
     beginShift();
+  }
+
+  /** Plays today's Daily Challenge (the same seeded shift and twist for everyone). */
+  function startDailyChallenge() {
+    const date = libraryDailyDate();
+    daily = { date, twist: dailyTwistForDate(date) };
+    requestFullscreen();
+    beginShift();
+  }
+
+  /** Fills the start screen's Daily Challenge card with today's date, twist and best. */
+  function renderDailyCard() {
+    const card = elements.dailyCard;
+    if (!card?.root) return;
+    const date = libraryDailyDate();
+    const twist = dailyTwistForDate(date);
+    const best = loadDailyBest(storageAvailable, date);
+    card.date.textContent = date;
+    card.twist.textContent = twist.name;
+    card.blurb.textContent = twist.blurb;
+    card.best.textContent = best === null ? 'No run yet today.' : `Your best today: ${best} Gard`;
+  }
+
+  /** Leaves the Daily Challenge for the start screen (the month run is untouched). */
+  function backToStart() {
+    daily = null;
+    shiftState = null;
+    currentShiftNumber = save.currentShift;
+    renderHud();
+    renderDailyCard();
+    renderStartScreen();
   }
 
   function endShift() {
@@ -1980,6 +2069,11 @@ export function init(canvas, elements) {
     }
 
     const payout = shiftState.payout ?? 0;
+    if (daily) {
+      endDailyShift(payout);
+      return;
+    }
+    resetPaycheckForMonthRun();
     save.monthToDateGard += payout;
     const isFinalShift = currentShiftNumber >= SHIFTS_PER_MONTH;
     if (isFinalShift) {
@@ -1992,18 +2086,8 @@ export function init(canvas, elements) {
     elements.paycheckScreen.root.dataset.outcome = shiftState.mistakeCount > 0 ? 'upset' : 'ok';
     elements.paycheckScreen.root.dataset.final = isFinalShift ? 'true' : 'false';
     elements.paycheckScreen.title.textContent = isFinalShift ? 'Final Paycheck' : 'Closing up';
-    const mistakesText = shiftState.mistakeCount > 0
-      ? `${shiftState.mistakeCount} mistake${shiftState.mistakeCount === 1 ? '' : 's'} this shift`
-      : 'Went well';
     // v2.9: the star rating scales the payout — say so on the paycheck.
-    const payPercent = Math.round(paycheckMultiplierForRating(shiftState.rating) * 100);
-    const hallucinationCut = Math.round((1 - hallucinationPayMultiplier(shiftState.zeroSanitySeconds)) * 100);
-    const moodCut = Math.round((1 - moodPayMultiplier(shiftState.zeroMoodSeconds)) * 100);
-    elements.paycheckScreen.outcome.textContent = `${mistakesText} · ${shiftState.rating}★ rating (${payPercent}% pay)`
-      + (hallucinationCut > 0 ? ` · −${hallucinationCut}% for hallucinating` : '')
-      + (moodCut > 0 ? ` · −${moodCut}% for a frustrated library` : '')
-      + ((shiftState.unshelvedAtClose ?? 0) > 0 ? ` · ${shiftState.unshelvedAtClose} book${shiftState.unshelvedAtClose === 1 ? '' : 's'} left unshelved (−${shiftState.unshelvedAtClose * UNSHELVED_BOOK_PENALTY_GARD}g)` : '')
-      + ((shiftState.complaints ?? 0) > 0 ? ` · ${shiftState.complaints} complaint letter${shiftState.complaints === 1 ? '' : 's'} (−${shiftState.complaints * COMPLAINT_GARD}g)` : '');
+    elements.paycheckScreen.outcome.textContent = paycheckOutcomeText();
     elements.paycheckScreen.shiftTotal.textContent = `${payout} Gard`;
     elements.paycheckScreen.monthTotal.textContent = `${save.monthToDateGard} Gard`;
     elements.paycheckScreen.nextShiftButton.classList.toggle('hidden', isFinalShift);
@@ -2015,6 +2099,63 @@ export function init(canvas, elements) {
       if (elements.paycheckScreen.submitButton) elements.paycheckScreen.submitButton.disabled = false;
     }
 
+    renderHud();
+    showScreen('paycheck');
+  }
+
+  /** The paycheck's outcome line: mistakes, rating and every pay cut. */
+  function paycheckOutcomeText() {
+    const mistakesText = shiftState.mistakeCount > 0
+      ? `${shiftState.mistakeCount} mistake${shiftState.mistakeCount === 1 ? '' : 's'} this shift`
+      : 'Went well';
+    const payPercent = Math.round(paycheckMultiplierForRating(shiftState.rating) * 100);
+    const hallucinationCut = Math.round((1 - hallucinationPayMultiplier(shiftState.zeroSanitySeconds)) * 100);
+    const moodCut = Math.round((1 - moodPayMultiplier(shiftState.zeroMoodSeconds)) * 100);
+    return `${mistakesText} · ${shiftState.rating}★ rating (${payPercent}% pay)`
+      + (hallucinationCut > 0 ? ` · −${hallucinationCut}% for hallucinating` : '')
+      + (moodCut > 0 ? ` · −${moodCut}% for a frustrated library` : '')
+      + ((shiftState.unshelvedAtClose ?? 0) > 0 ? ` · ${shiftState.unshelvedAtClose} book${shiftState.unshelvedAtClose === 1 ? '' : 's'} left unshelved (−${shiftState.unshelvedAtClose * UNSHELVED_BOOK_PENALTY_GARD}g)` : '')
+      + ((shiftState.complaints ?? 0) > 0 ? ` · ${shiftState.complaints} complaint letter${shiftState.complaints === 1 ? '' : 's'} (−${shiftState.complaints * COMPLAINT_GARD}g)` : '');
+  }
+
+  /** Puts back the month run's paycheck labels and buttons after a Daily Challenge. */
+  function resetPaycheckForMonthRun() {
+    const ps = elements.paycheckScreen;
+    ps.root.dataset.daily = 'false';
+    if (ps.monthLabel) ps.monthLabel.textContent = 'Run total';
+    if (ps.finalHeading) ps.finalHeading.textContent = 'Final Paycheck';
+    if (ps.dailyInput) ps.dailyInput.value = '';
+    ps.nextShiftButton.textContent = 'Start Next Shift';
+    ps.backButton?.classList.add('hidden');
+  }
+
+  /**
+   * A Daily Challenge shift is over: its paycheck is the score. Nothing in
+   * the month run's save changes; this browser's best for the day does.
+   */
+  function endDailyShift(payout) {
+    const ps = elements.paycheckScreen;
+    const prevBest = loadDailyBest(storageAvailable, daily.date);
+    const best = Math.max(prevBest ?? 0, payout);
+    persistDailyBest(storageAvailable, daily.date, best);
+    ps.root.dataset.outcome = shiftState.mistakeCount > 0 ? 'upset' : 'ok';
+    ps.root.dataset.final = 'false';
+    ps.root.dataset.daily = 'true';
+    ps.title.textContent = 'Daily Challenge';
+    ps.outcome.textContent = `${daily.twist.name} · ${paycheckOutcomeText()}`;
+    ps.shiftTotal.textContent = `${payout} Gard`;
+    if (ps.monthLabel) ps.monthLabel.textContent = "Today's best";
+    ps.monthTotal.textContent = `${best} Gard`;
+    if (ps.finalHeading) ps.finalHeading.textContent = `Submit today's score (${daily.date})`;
+    ps.finalBlock.classList.remove('hidden');
+    if (ps.earningsInput) ps.earningsInput.value = String(payout);
+    if (ps.shiftsInput) ps.shiftsInput.value = '1';
+    if (ps.dailyInput) ps.dailyInput.value = daily.date;
+    if (ps.submitButton) ps.submitButton.disabled = false;
+    ps.nextShiftButton.textContent = 'Try Again';
+    ps.nextShiftButton.classList.remove('hidden');
+    ps.newMonthButton.classList.add('hidden');
+    ps.backButton?.classList.remove('hidden');
     renderHud();
     showScreen('paycheck');
   }
@@ -2053,30 +2194,29 @@ export function init(canvas, elements) {
 
   /** Set dressing from Hospital Shift's decor kit (hospital/anime-furniture.js's drawDecor). */
   const LIBRARY_DECOR = [
-    { kind: 'water-cooler', floor: FLOOR_1, x: 760, y: 200, w: 28, h: 52 },
-    { kind: 'plant', floor: FLOOR_1, x: 36, y: 300, w: 30, h: 46 },
-    { kind: 'plant', floor: FLOOR_1, x: 36, y: 400, w: 30, h: 46 },
-    { kind: 'plant', floor: FLOOR_1, x: 760, y: 560, w: 30, h: 46 },
-    { kind: 'ladder', floor: FLOOR_2, x: 410, y: 280, w: 30, h: 62 },
-    { kind: 'waiting-chairs', floor: FLOOR_2, x: 190, y: 560, w: 96, h: 34 },
+    { kind: 'water-cooler', floor: FLOOR_1, x: 160, y: 210, w: 28, h: 52 },
+    { kind: 'plant', floor: FLOOR_1, x: 930, y: 240, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_1, x: 930, y: 420, w: 30, h: 46 },
+    { kind: 'ladder', floor: FLOOR_2, x: 150, y: 300, w: 30, h: 62 },
+    { kind: 'waiting-chairs', floor: FLOOR_2, x: 480, y: 570, w: 96, h: 34 },
     { kind: 'plant', floor: FLOOR_2, x: 40, y: 120, w: 30, h: 46 },
-    { kind: 'plant', floor: FLOOR_2, x: 920, y: 330, w: 30, h: 46 },
+    { kind: 'plant', floor: FLOOR_2, x: 40, y: 420, w: 30, h: 46 },
   ];
 
   function drawFloor() {
     if (currentFloor === FLOOR_1) {
       drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
       drawSunbeams();
-      // Pastel guide stripes: Front Desk queue to the shelves, and the lower aisle.
-      drawRoundRect(ctx, 0, 265, 790, 7, 3.5, 'rgba(255,138,122,0.28)');
-      drawRoundRect(ctx, 0, 488, 790, 7, 3.5, 'rgba(63,181,143,0.26)');
+      // Pastel guide stripes: the aisle under the Front Desk's queue, and the lower aisle.
+      drawRoundRect(ctx, 190, 252, 720, 7, 3.5, 'rgba(255,138,122,0.28)');
+      drawRoundRect(ctx, 190, 500, 620, 7, 3.5, 'rgba(63,181,143,0.26)');
       drawBackWall();
       sakuraBranch(ctx, 672, 28, 1.1);
       drawWallBookShelf();
       drawLibrarySign('도서관 · LIBRARY 1F', ANIME.coral, ANIME.coralDeep);
       // Break-room rug under the coffee machine: soft pink, stitched border.
       const coffee = stations.find((st) => st.kind === 'coffee-machine');
-      if (coffee) drawStitchedRug(coffee.x - 70, coffee.y - 62, 190, 120, 'rgba(255,194,218,0.55)', 'rgba(232,85,143,0.55)');
+      if (coffee) drawStitchedRug(Math.min(coffee.x - 70, CANVAS_WIDTH - 196), coffee.y - 62, 190, 120, 'rgba(255,194,218,0.55)', 'rgba(232,85,143,0.55)');
     } else {
       drawAnimeTiles('#f6efe4', '#efe5d6', 'rgba(255,255,255,0.18)');
       drawSunbeams();
@@ -2429,6 +2569,44 @@ export function init(canvas, elements) {
       const label = labelForStation(station);
       if (label) drawLabelChip(ctx, station.x, station.y + stationExtents(station).hh + 13, label, 'bold 11px sans-serif');
     }
+  }
+
+  /** "Daily Challenge · {twist}" along the bottom of the play area during a daily run. */
+  function drawDailyChip() {
+    if (!daily) return;
+    drawLabelChip(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16, `Daily Challenge · ${daily.twist.name}`, 'bold 13px sans-serif', ANIME.coral, '#ffffff');
+  }
+
+  /** The Coffee Machine taped off with an "OUT OF ORDER" sign (the Coffee Machine Broken twist). */
+  function drawCoffeeOutOfOrder() {
+    if (!daily?.twist.effect.noCoffee || currentFloor !== FLOOR_1) return;
+    const coffee = stations.find((st) => st.kind === 'coffee-machine');
+    if (!coffee) return;
+    ctx.save();
+    ctx.translate(coffee.x, coffee.y);
+    for (const [rot, dy] of [[-0.35, -6], [0.35, 8]]) {
+      ctx.save();
+      ctx.rotate(rot);
+      ctx.translate(0, dy);
+      ctx.beginPath();
+      ctx.rect(-52, -6, 104, 12);
+      ctx.fillStyle = '#ffd23a';
+      ctx.fill();
+      ctx.clip();
+      ctx.fillStyle = '#2a2226';
+      for (let x = -60; x < 60; x += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x, 6);
+        ctx.lineTo(x + 7, -6);
+        ctx.lineTo(x + 13, -6);
+        ctx.lineTo(x + 6, 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+    drawLabelChip(ctx, coffee.x, coffee.y - 50, 'OUT OF ORDER', 'bold 10px sans-serif', '#e06a5b', '#ffffff');
   }
 
   function drawReturnCartBooks() {
@@ -3396,6 +3574,7 @@ export function init(canvas, elements) {
     } else {
       drawFloor();
       stationsOnFloor(stations, currentFloor).forEach((station) => drawStation(station));
+      drawCoffeeOutOfOrder();
       drawReturnCartBooks();
       drawFrontDeskSlots();
       drawFinesCounterSlots();
@@ -3405,6 +3584,7 @@ export function init(canvas, elements) {
       drawAmbient(true);
     }
     drawHallucinations();
+    drawDailyChip();
     ctx.restore();
     // Doc's Scope: "Sanity/Mood bars, the HUD clock, and all five minigame
     // overlays are unchanged and must still work identically in First
@@ -3541,7 +3721,10 @@ export function init(canvas, elements) {
   elements.fpControls?.interactButton?.addEventListener('click', attemptInteract);
 
   elements.startScreen.shiftButton.addEventListener('click', startShift);
-  elements.paycheckScreen.nextShiftButton.addEventListener('click', startShift);
+  elements.dailyCard?.button?.addEventListener('click', startDailyChallenge);
+  elements.paycheckScreen.nextShiftButton.addEventListener('click', () => (daily ? startDailyChallenge() : startShift()));
+  elements.paycheckScreen.backButton?.addEventListener('click', backToStart);
+  renderDailyCard();
   elements.paycheckScreen.newMonthButton.addEventListener('click', startNewMonth);
   if (elements.paycheckScreen.submitButton) {
     elements.paycheckScreen.submitButton.addEventListener('click', () => {
@@ -3615,6 +3798,7 @@ export function init(canvas, elements) {
       attemptInteractNow: () => attemptInteract(),
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
       getShiftState: () => shiftState,
+      getDaily: () => (daily ? { date: daily.date, twistId: daily.twist.id } : null),
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');
         return mj ? { x: mj.x, y: mj.y, floor: mj.floor, scale: mj.scale ?? 1, action: mj.action } : null;
@@ -3702,12 +3886,25 @@ function bootstrap() {
       root: document.getElementById('library-start-screen'),
       shiftButton: document.getElementById('library-start-shift-button'),
     },
+    startProgress: document.getElementById('library-start-progress'),
+    dailyCard: {
+      root: document.getElementById('library-daily-card'),
+      date: document.getElementById('library-daily-date'),
+      twist: document.getElementById('library-daily-twist'),
+      blurb: document.getElementById('library-daily-blurb'),
+      best: document.getElementById('library-daily-best'),
+      button: document.getElementById('library-daily-button'),
+    },
     paycheckScreen: {
       root: document.getElementById('library-paycheck-screen'),
       title: document.getElementById('library-paycheck-title'),
       outcome: document.getElementById('library-paycheck-outcome'),
       shiftTotal: document.getElementById('library-paycheck-shift-total'),
       monthTotal: document.getElementById('library-paycheck-month-total'),
+      monthLabel: document.getElementById('library-paycheck-month-label'),
+      finalHeading: document.getElementById('library-final-paycheck-heading'),
+      dailyInput: document.getElementById('library-paycheck-daily-input'),
+      backButton: document.getElementById('library-paycheck-back-button'),
       finalBlock: document.getElementById('library-final-paycheck-block'),
       earningsInput: document.getElementById('library-paycheck-earnings-input'),
       shiftsInput: document.getElementById('library-paycheck-shifts-input'),

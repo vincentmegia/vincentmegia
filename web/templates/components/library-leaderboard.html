@@ -2,33 +2,58 @@
      contract for both GET /library-game/leaderboard (innerHTML into this
      element) and POST /library-game/score (outerHTML swap replacing this
      element), so it carries its own id="library-leaderboard" wrapper for
-     the outerHTML swap to target. Mirrors cooking-leaderboard.html's exact
-     reasoning.
+     the outerHTML swap to target. Mirrors hospital-leaderboard.html.
 
-     Dot is []model.LibraryScore, ordered total_earnings DESC (already
-     sorted by the repository query) — not re-sorted here.
+     Dot is handler.libraryLeaderboardView: .Scores ([]model.LibraryScore,
+     total_earnings DESC — already sorted by the repository query, not
+     re-sorted here) and .Daily, the Daily Challenge's date or "" for the
+     all-time board. The All-time / Daily tabs live inside the fragment so
+     the server marks the active one.
 
      player_name is rendered through html/template's normal auto-escaping
      (plain {{.PlayerName}}, never template.HTML-wrapped) since it's
      visitor-supplied text shown to every visitor — the XSS concern flagged
      in docs/features/library-game.md's Security Considerations. */}}
 {{define "library-leaderboard"}}
-<ol id="library-leaderboard" class="divide-y divide-line rounded-card border border-line bg-surface">
-	{{if .}}
-	{{range $i, $entry := .}}
-	<li class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
-		<span class="flex items-center gap-3">
-			<span class="w-6 shrink-0 text-right font-mono text-muted">{{add $i 1}}</span>
-			<span class="font-medium text-ink">{{$entry.PlayerName}}</span>
-		</span>
-		<span class="flex items-center gap-4 font-mono tabular-nums text-ink">
-			<span>{{$entry.TotalEarnings}} Gard</span>
-			<span class="text-muted">{{$entry.ShiftsCompleted}} shifts</span>
-		</span>
-	</li>
-	{{end}}
-	{{else}}
-	<li class="px-4 py-3 text-sm text-muted">No scores yet — be the first!</li>
-	{{end}}
-</ol>
+<div id="library-leaderboard" class="space-y-2" data-board="{{if .Daily}}daily{{else}}all{{end}}">
+	<div class="ha-tabs flex gap-1 p-1.5 text-xs font-bold" role="group" aria-label="Leaderboard">
+		<button
+			type="button"
+			hx-get="/library-game/leaderboard"
+			hx-target="#library-leaderboard"
+			hx-swap="outerHTML"
+			hx-indicator="#leaderboard-loading"
+			aria-pressed="{{if .Daily}}false{{else}}true{{end}}"
+			class="ha-tab flex-1 px-3 py-1.5"
+		>All-time</button>
+		<button
+			type="button"
+			hx-get="/library-game/leaderboard?board=daily"
+			hx-target="#library-leaderboard"
+			hx-swap="outerHTML"
+			hx-indicator="#leaderboard-loading"
+			aria-pressed="{{if .Daily}}true{{else}}false{{end}}"
+			class="ha-tab flex-1 px-3 py-1.5"
+		>Daily Challenge</button>
+	</div>
+	{{if .Daily}}<p class="ha-muted text-xs">Today's shift · {{.Daily}} (UTC)</p>{{end}}
+	<ol class="ha-board divide-y">
+		{{if .Scores}}
+		{{range $i, $entry := .Scores}}
+		<li class="flex items-center justify-between gap-4 px-4 py-2 text-sm">
+			<span class="flex items-center gap-3">
+				<span class="w-6 shrink-0 text-right font-mono text-muted">{{add $i 1}}</span>
+				<span class="font-medium text-ink">{{$entry.PlayerName}}</span>
+			</span>
+			<span class="flex items-center gap-4 font-mono tabular-nums text-ink">
+				<span>{{$entry.TotalEarnings}} Gard</span>
+				{{if not $.Daily}}<span class="text-muted">{{$entry.ShiftsCompleted}} shifts</span>{{end}}
+			</span>
+		</li>
+		{{end}}
+		{{else}}
+		<li class="px-4 py-3 text-sm text-muted">{{if .Daily}}No one has worked today's shift yet — be the first!{{else}}No scores yet — be the first!{{end}}</li>
+		{{end}}
+	</ol>
+</div>
 {{end}}

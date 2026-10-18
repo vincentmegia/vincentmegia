@@ -69,6 +69,14 @@ import {
   SANITY_DRAIN_PER_UPSET,
   clampSanity,
   walkSpeedMultiplierForSanity,
+  DAILY_SHIFT_NUMBER,
+  DAILY_TWISTS,
+  libraryDailyDate,
+  dailySeed,
+  seededRandom,
+  dailyTwistForDate,
+  findDailyTwist,
+  dailyVolumes,
 } from './rules.js';
 
 describe('roundTier', () => {
@@ -562,5 +570,38 @@ describe('zero-Mood pay cut (v2.17)', () => {
     assert.equal(moodPayMultiplier(0), 1);
     assert.equal(moodPayMultiplier(10), 0.98);
     assert.ok(Math.abs(moodPayMultiplier(10000) - 0.7) < 1e-9);
+  });
+});
+
+describe('Daily Challenge', () => {
+  test("the date is today's UTC day", () => {
+    assert.equal(libraryDailyDate(new Date('2026-10-18T23:30:00Z')), '2026-10-18');
+    assert.equal(libraryDailyDate(new Date('2026-10-18T00:10:00+09:00')), '2026-10-17');
+  });
+
+  test('the same date always gives the same twist and random stream', () => {
+    assert.equal(dailyTwistForDate('2026-10-18'), dailyTwistForDate('2026-10-18'));
+    const a = seededRandom(dailySeed('2026-10-18'));
+    const b = seededRandom(dailySeed('2026-10-18'));
+    for (let i = 0; i < 5; i++) assert.equal(a(), b());
+    assert.notEqual(dailySeed('2026-10-18'), dailySeed('2026-10-19'));
+  });
+
+  test('every twist comes up over a few weeks', () => {
+    const seen = new Set();
+    for (let d = 1; d <= 60; d++) seen.add(dailyTwistForDate(`2026-11-${String(d).padStart(2, '0')}`).id);
+    assert.equal(seen.size, DAILY_TWISTS.length);
+    assert.equal(findDailyTwist('karen-day').name, 'Karen Day');
+    assert.equal(findDailyTwist('nope'), null);
+  });
+
+  test("volumes are shift 12's, scaled by the twist, with fines always on", () => {
+    const base = dailyVolumes(null);
+    assert.equal(base.books, returnVolumeForShift(DAILY_SHIFT_NUMBER));
+    assert.equal(base.borrows, borrowVolumeForShift(DAILY_SHIFT_NUMBER));
+    assert.ok(base.fines > 0);
+    assert.equal(dailyVolumes(findDailyTwist('overdue-amnesty')).books, Math.round(base.books * 1.5));
+    assert.equal(dailyVolumes(findDailyTwist('fine-friday')).fines, base.fines * 2);
+    assert.equal(dailyVolumes(findDailyTwist('exam-week')).borrows, Math.round(base.borrows * 1.5));
   });
 });

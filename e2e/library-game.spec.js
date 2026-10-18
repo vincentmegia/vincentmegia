@@ -756,6 +756,80 @@ test.describe('Reading Nook', () => {
 	});
 });
 
+test.describe('Daily Challenge', () => {
+	test("the start screen's Daily card shows today's UTC date and twist, and plays a 'Daily' shift", async ({ page }) => {
+		await page.goto('/library-game');
+		const today = new Date().toISOString().slice(0, 10);
+		await expect(page.locator('#library-daily-date')).toHaveText(today);
+		await expect(page.locator('#library-daily-twist')).not.toHaveText('—');
+		await expect(page.locator('#library-start-progress')).toContainText('Shift 1 of 30');
+
+		await page.locator('#library-daily-button').click();
+		await page.waitForFunction(() => typeof window.__libraryGameTestHooks?.getDaily === 'function');
+		await expect(page.locator('#library-start-screen')).toBeHidden();
+		await expect(page.locator('#library-hud-shift')).toHaveText('Daily');
+		const daily = await page.evaluate(() => window.__libraryGameTestHooks.getDaily());
+		expect(daily.date).toBe(today);
+	});
+
+	test('the daily paycheck is the score: Today\'s best, a daily_date submit, Try Again and Back to Start', async ({ page }) => {
+		await page.goto('/library-game');
+		await page.locator('#library-daily-button').click();
+		await page.waitForFunction(() => typeof window.__libraryGameTestHooks?.getDaily === 'function');
+		await page.evaluate(() => { window.__libraryGameTestHooks.skipToClosing(); window.__libraryGameTestHooks.collectPaycheck(); });
+
+		await expect(page.locator('#library-paycheck-screen')).toBeVisible();
+		await expect(page.locator('#library-paycheck-title')).toContainText('Daily Challenge');
+		await expect(page.locator('#library-paycheck-month-label')).toHaveText("Today's best");
+		await expect(page.locator('#library-final-paycheck-block')).toBeVisible();
+		const today = new Date().toISOString().slice(0, 10);
+		await expect(page.locator('#library-paycheck-daily-input')).toHaveValue(today);
+		await expect(page.locator('#library-paycheck-shifts-input')).toHaveValue('1');
+		await expect(page.locator('#library-paycheck-next-shift-button')).toHaveText('Try Again');
+		await expect(page.locator('#library-paycheck-new-month-button')).toBeHidden();
+
+		// The month run wasn't touched.
+		await page.locator('#library-paycheck-back-button').click();
+		await expect(page.locator('#library-start-screen')).toBeVisible();
+		await expect(page.locator('#library-hud-shift')).toHaveText('1/30');
+		await expect(page.locator('#library-daily-best')).toContainText('Your best today');
+	});
+
+	test('the same date gives the same returns, fines and borrow requests every attempt', async ({ page }) => {
+		await page.goto('/library-game');
+		const snapshot = async () => {
+			await page.locator('#library-daily-button').click();
+			await page.waitForFunction(() => typeof window.__libraryGameTestHooks?.getDaily === 'function');
+			await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.spawnBookNow(); h.spawnBookNow(); h.spawnBorrowNow(); });
+			return page.evaluate(() => {
+				const st = window.__libraryGameTestHooks.getShiftState();
+				return { cart: st.returnCart.map((b) => [b.genreId, b.title]), borrows: window.__libraryGameTestHooks.getActiveBorrowInfo() ?? st.borrowQueue.map((r) => r.id) };
+			});
+		};
+		const first = await snapshot();
+		await page.evaluate(() => { window.__libraryGameTestHooks.skipToClosing(); window.__libraryGameTestHooks.collectPaycheck(); });
+		await page.locator('#library-paycheck-back-button').click();
+		const second = await snapshot();
+		expect(second).toEqual(first);
+	});
+
+	test('a daily submission lands on the Daily Challenge board', async ({ page }) => {
+		await page.goto('/library-game');
+		await page.locator('#library-daily-button').click();
+		await page.waitForFunction(() => typeof window.__libraryGameTestHooks?.getDaily === 'function');
+		await page.evaluate(() => { window.__libraryGameTestHooks.skipToClosing(); window.__libraryGameTestHooks.collectPaycheck(); });
+		const name = testPlayerName();
+		try {
+			await page.locator('#library-paycheck-name-input').fill(name);
+			await page.locator('#library-paycheck-submit-button').click();
+			await expect(page.locator('#library-leaderboard')).toHaveAttribute('data-board', 'daily');
+			await expect(page.locator('#library-leaderboard')).toContainText(name);
+		} finally {
+			await deleteTestScore(name);
+		}
+	});
+});
+
 test.describe('leaderboard submission (final shift)', () => {
 	test('reaching shift 30 shows the Final Paycheck block and a real POST /library-game/score round trip', async ({ page }) => {
 		const playerName = testPlayerName();

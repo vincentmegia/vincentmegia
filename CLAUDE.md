@@ -45,7 +45,10 @@ touching that area rather than expecting this section to carry it:
   visualizer, no DB/leaderboard) — `docs/features/puzzle-solver.md`.
 - **Library Shift** (`/library-game`, two-floor canvas library-shift sim —
   shelving/fines/borrow-request minigames, a scripted Karen event, Postgres
-  leaderboard, `localStorage` progress) — `docs/features/library-game.md`.
+  leaderboard, `localStorage` progress, a seeded Daily Challenge with a
+  rotating twist and its own leaderboard tab — migration 013 adds
+  `library_scores.daily_date`) — `docs/features/library-game.md`. Its page
+  uses Hospital's anime page kit re-tinted by `.library-anime` in `app.css`.
   Drawn in Hospital Shift's anime style (v2.21): it imports Hospital's
   `hospital/anime-ui.js`, `anime-people.js`, `anime-furniture.js` and
   `kimono-himura.js` (Eun-mi, the player, is that renderer's `look: 'coral'` — the key

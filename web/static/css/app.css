@@ -752,3 +752,68 @@ h1, h2, h3, h4, h5, h6 {
 	box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 2px 0 #a8305e;
 	text-shadow: 0 1px 0 rgba(59, 42, 74, 0.5);
 }
+
+/* Library Shift's page ("redo the layout including starting screen"): the
+   same anime kit as Hospital Shift (.hospital-anime + ha-* classes, above)
+   re-tinted to the library's own canvas palette — mint floor, coral sign,
+   sakura and warm paper — by overriding the kit's custom properties. Also
+   unlayered and display-free, for the same reason. */
+.library-anime {
+	--ha-pink: #ff8a7a;
+	--ha-pink-deep: #e0574a;
+	--ha-lavender: #9fe3cc;
+	--ha-lavender-deep: #2f9a78;
+	--ha-blush: #fff1e6;
+	--ha-card: linear-gradient(180deg, #fffdf7, #fff1e6);
+	--ha-page: radial-gradient(circle at 10% 0%, #d6f5ea 0, transparent 42%),
+		radial-gradient(circle at 92% 8%, #ffe1e8 0, transparent 38%),
+		radial-gradient(circle at 50% 100%, #fff1cf 0, transparent 46%);
+
+	@variant dark {
+		--ha-card: linear-gradient(180deg, #2a3330, #24201f);
+		--ha-page: radial-gradient(circle at 10% 0%, rgba(63, 181, 143, 0.22) 0, transparent 42%),
+			radial-gradient(circle at 92% 8%, rgba(255, 138, 122, 0.2) 0, transparent 38%),
+			radial-gradient(circle at 50% 100%, rgba(255, 209, 102, 0.14) 0, transparent 46%);
+	}
+}
+.library-anime .ha-hero {
+	background: linear-gradient(120deg, #c8f0e2 0%, #fff3d6 52%, #ffd6e2 100%);
+}
+.library-anime .ha-hero::before { content: "📚"; text-shadow: none; }
+.library-anime .ha-hero::after { content: "✿"; color: #ff8fb8; }
+.library-anime .ha-kicker {
+	font-family: "Caprasimo", sans-serif;
+	font-size: 0.95rem;
+	color: #2f9a78;
+	letter-spacing: 0.04em;
+}
+.library-anime .ha-bar { background: linear-gradient(90deg, #c8f0e2, #fff3d6, #ffd6e2); }
+.library-anime .ha-stats dt { color: #2f9a78; }
+.library-anime .ha-btn { box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), 0 4px 0 #a83a30; }
+.library-anime .ha-btn:active { box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), 0 1px 0 #a83a30; }
+.library-anime .ha-btn--soft { background: linear-gradient(180deg, #ffffff, #e9f8f2); box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7), 0 4px 0 #9fcfbe; }
+.library-anime .ha-btn--soft:active { box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7), 0 1px 0 #9fcfbe; }
+.library-anime .ha-btn--gold { box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4), 0 4px 0 #a8730e; }
+.library-anime .ha-card { box-shadow: 0 8px 0 rgba(59, 42, 74, 0.28), inset 0 0 0 5px rgba(159, 227, 204, 0.45); }
+.library-anime .ha-board > li { border-color: rgba(159, 227, 204, 0.7); }
+.library-anime .ha-board > li:nth-child(odd) { background: rgba(200, 240, 226, 0.3); }
+.library-anime .ha-board > li:nth-child(1) { background: rgba(255, 209, 102, 0.28); }
+.library-anime .ha-tab[aria-pressed="true"] { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), 0 2px 0 #a83a30; }
+.library-anime #library-leaderboard .text-ink { color: var(--ha-ink); }
+.library-anime #library-leaderboard .text-muted { color: var(--ha-ink-soft); }
+/* A step badge for the "How to play" list. */
+.library-anime .ha-step {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.6rem;
+	height: 1.6rem;
+	flex-shrink: 0;
+	border: 2px solid var(--ha-line);
+	border-radius: 999px;
+	background: linear-gradient(180deg, #9fe3cc, #3fb58f);
+	color: #fff;
+	font-weight: 800;
+	font-size: 0.8rem;
+	text-shadow: 0 1px 0 rgba(59, 42, 74, 0.5);
+}

@@ -537,7 +537,51 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
     the queues.
   - Covered by `library-people.test.js`: the counts, unique keys that
     don't collide with Hospital's, complete designs that all draw, and
-    `findLibraryDesign`. The user first got an
+    `findLibraryDesign`.
+* **Page layout and start screen** ("now redo the layout including starting
+  screen"): `library-game.html` now uses Hospital Shift's anime page kit
+  (`.hospital-anime` + `ha-*` classes) re-tinted to the library's canvas
+  palette by `.library-anime` in `app.css` (mint, coral, sakura, warm
+  paper; 📚 and ✿ hero sparkles). A hero banner with a Korean kicker and
+  four "how you play" chips; the game frame with a pill HUD (it takes its
+  own row on phones) and soft candy buttons; a two-card start screen — the
+  month run (Eun-mi, `#library-start-progress` "Shift N of 30 · X Gard
+  this month", three tips, Start Shift) and the Daily Challenge card; and a
+  numbered How to play panel under the leaderboard. Every element id the
+  game and tests bind to is unchanged.
+* **Daily Challenge** ("add a daily challenge", modelled on Hospital
+  Shift's; `rules.js` §19). The start screen's card shows today's UTC date,
+  the twist, its blurb and this browser's best today
+  (`library-game:daily-best` in `localStorage`). The challenge plays as
+  shift 12 (`DAILY_SHIFT_NUMBER`: its clock and pace, fines always on) with
+  every return, fine and borrow request — arrival times, genres, titles,
+  Coin Hunt books, fine amounts and the patrons' looks — drawn from one
+  stream seeded by the date (`seededRandom(dailySeed(date))`, id counters
+  reset), so everyone gets the same shift; minigame layouts stay
+  unseeded. Each day rolls one of six twists (`DAILY_TWISTS`,
+  `dailyTwistForDate`, volumes via `dailyVolumes`):
+
+  | Twist | Effect |
+  | ----- | ------ |
+  | Overdue Amnesty | 50% more returns |
+  | Exam Week | 50% more borrow requests |
+  | Fine Friday | twice as many fines |
+  | Coffee Machine Broken | the Coffee Machine is taped off ("OUT OF ORDER") |
+  | Karen Day | Karen shows up |
+  | Min-jun's Day Off | Min-jun isn't upstairs, so no shelving help |
+
+  The HUD's shift reads "Daily" and a "Daily Challenge · {twist}" chip sits
+  at the bottom of the canvas. The paycheck is the score: titled "Daily
+  Challenge", the twist leads the outcome line, "Today's best" replaces
+  Run total, and the submit form posts `daily_date` with
+  `shifts_completed=1`; Try Again replays the same shift and Back to Start
+  returns to the start screen. A daily run never touches the month run's
+  shift or Gard. Covered by `rules.test.js` (date, seed, twists, volumes),
+  Go service/handler tests (daily board, 1-shift rule, stale/malformed
+  dates), `cmd/server/e2e_test.go` (a daily row lands on `?board=daily`,
+  not all-time) and four Playwright tests (the card and a "Daily" shift;
+  the daily paycheck; the same date giving the same returns/borrows; a
+  daily submit landing on the daily board). The user first got an
   exact copy of Kimono Himura, then asked for "the character different
   rather than the same". So the `coral` look (`CORAL_PALETTE`) keeps the
   anime style but has its own design: a chestnut jaw-length bob with a
@@ -650,6 +694,27 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   Counter as a 130×130 room at (860, 320), and the Coffee Machine and
   Elevator in the bottom corners. `PLAYER_START`/`FLOOR_1_ENTRY_POINT`
   moved to the open lower aisle (480, 500).
+  **Second floor plan** ("make a whole diffrent floors layout"), replacing
+  the one above. 1st Floor, a lobby: Boss's Office (80, 115), Return
+  Cart (300, 115), the Front Desk as the circulation desk top-center
+  (520, 115), Stairs (880, 115); the Fines Counter room on the left wall
+  (100, 290); three bookcases staggered across the middle (Mystery
+  (360, 320), Romance lower at (580, 400) so it clears the Front Desk's
+  queue, Sci-Fi (800, 320)); the Elevator bottom-left (80, 540) and the
+  Coffee Machine bottom-right (880, 530), its rug clamped inside the
+  canvas. 2nd Floor, a reading room: the Reading Nook top-center
+  (480, 130), the Kids Shelf (250, 320) and Reference Shelf (710, 320)
+  either side, reading chairs along the bottom, the ladder left of the
+  Kids Shelf; Stairs and Elevator on the same footprint as downstairs.
+  `PLAYER_START`/`FLOOR_1_ENTRY_POINT` is (450, 500); the 2nd Floor entry
+  stays the canvas center (480, 300). The floor guide stripes, decor
+  (water cooler, plants, ladder, chairs) and every walker's route
+  (Security, the Volunteer, Min-jun, the Janitor, Shelver, Storyteller
+  and Archivist) were redrawn to keep clear of the furniture, the queues
+  and the shelf labels. Note for the Playwright suite: it now submits four
+  scores per run (a month run and a Daily, in two browsers) against the
+  5-per-minute submit limit, so a second run within a minute of the last
+  can fail with 429s. Restart the server, or wait a minute, between runs.
 * **Background staff**: a Security guard on the 1st Floor and a Volunteer
   on the 2nd walk fixed patrol loops around the furniture (random hops
   cut across the shelves). They're drawn back-to-front around Eun-mi.
@@ -1129,7 +1194,13 @@ States (see `tailwind-ui` for the full state list):
 | ---------------------------- | ------ | -------------------------------- | -------------------------- | ----------- | --------- |
 | Projects "Play now" card     | GET    | `/library-game`                  | `#main-content`            | `outerHTML` | `#nav-loading` |
 | Leaderboard panel open/refresh | GET  | `/library-game/leaderboard`      | `#library-leaderboard`     | `innerHTML` | local     |
-| Final Paycheck submit form   | POST   | `/library-game/score`            | `#library-leaderboard-panel` | `outerHTML` | local     |
+| "Daily Challenge" tab        | GET    | `/library-game/leaderboard?board=daily` | `#library-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| Final Paycheck / daily submit | POST  | `/library-game/score`            | `#library-leaderboard`     | `outerHTML` | `#leaderboard-loading` |
+
+The All-time / Daily Challenge tabs live inside the fragment
+(`data-board="all"|"daily"`, `aria-pressed`), so the server marks the
+active one; a daily submission answers with the daily board (Hospital
+Shift's pattern).
 
 Confirmation required for destructive actions:
 
@@ -1143,8 +1214,8 @@ Confirmation required for destructive actions:
 | Method | Path                       | Handler                       | Auth required | Notes |
 | ------ | --------------------------- | -------------------------------- | ------------- | ----- |
 | GET    | `/library-game`              | `LibraryGameHandler.Index`       | no            | Sets `ContentTemplate: "library-game-content"`. |
-| GET    | `/library-game/leaderboard`  | `LibraryGameHandler.Leaderboard`  | no            | Bare fragment. |
-| POST   | `/library-game/score`        | `LibraryGameHandler.SubmitScore`  | no            | Rate-limited per-IP, mirrors `CookingGameHandler.SubmitScore`. |
+| GET    | `/library-game/leaderboard`  | `LibraryGameHandler.Leaderboard`  | no            | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
+| POST   | `/library-game/score`        | `LibraryGameHandler.SubmitScore`  | no            | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC, `ValidateLibraryDailyDate`; a daily run must be 1 shift). Rate-limited per-IP. Unlike Hospital Shift there's no run ticket. |
 
 Registered in `cmd/server/main.go`'s `newMux`, following the exact
 Fishing/Cooking game registration pattern (handler + service + repository
@@ -1165,6 +1236,7 @@ wiring in `cmd/server/main.go`'s dependency construction).
 | library_scores   | total_earnings   | INT         | NOT NULL, range 0–100000                              | Gard total across the run. |
 | library_scores   | shifts_completed | INT         | NOT NULL, range 1–30                                  | Wider than `cooking_scores`' 1-20 since this game always runs 30 shifts. |
 | library_scores   | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now()                                | |
+| library_scores   | daily_date       | DATE        | nullable                                              | The Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/013_add_library_daily_date.sql`, with `idx_library_scores_daily (daily_date, total_earnings DESC) WHERE daily_date IS NOT NULL`. The all-time board ranks only `daily_date IS NULL` rows. |
 
 Same "leaderboard only, no per-player server-side state" posture as
 `cooking_scores`/`fishing_scores` — in-progress shift state, Gard, and

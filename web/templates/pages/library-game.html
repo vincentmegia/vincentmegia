@@ -1,7 +1,10 @@
-{{/* /library-game page: canvas game shell (placeholder only — see
-     docs/features/library-game.md, this backend PR does not implement any
-     game logic/rendering) + leaderboard, per that doc's UI and HTMX
-     Interactions sections. Defines "library-game-content", not "content" —
+{{/* /library-game page: canvas game shell + leaderboard, per
+     docs/features/library-game.md's UI and HTMX Interactions sections.
+     Laid out and themed like hospital-shift.html (the user: "redo the
+     layout including starting screen"): the anime kit's ha-* classes,
+     re-tinted to the library's mint/coral palette by .library-anime
+     (app.css), a two-card start screen (the month run and the Daily
+     Challenge) and a How to play panel under the leaderboard. Defines "library-game-content", not "content" —
      reusing "content" would silently take over the shared placeholder every
      other still-placeholder route renders. Mirrors cooking-game.html's
      structure/reasoning (see that file's header comment for the full
@@ -86,6 +89,16 @@
                                      note above).
        #library-start-shift-button   "Start Shift" button on the start
                                      screen.
+       #library-start-progress       Start screen: the month run's shift and
+                                     Gard so far (library-game.js fills it).
+       #library-daily-card and its -date/-twist/-blurb/-best nodes,
+       #library-daily-button         Daily Challenge card (today's seeded
+                                     shift and twist).
+       #library-paycheck-month-label, #library-final-paycheck-heading,
+       #library-paycheck-daily-input, #library-paycheck-back-button
+                                     Paycheck parts the Daily Challenge
+                                     relabels/uses (Today's best, the daily
+                                     submit, Back to Start).
        #library-paycheck-screen      Shift-end payout overlay, hidden by
                                      default. JS sets data-outcome and
                                      data-final="true" on shift 30, same
@@ -127,68 +140,70 @@
                                       leaderboard indicator active at a time.
 
      This page loads /static/js/library-game.js as a module (see the
-     bottom of this file) — that file does not exist yet; it's the
-     game-logic/rendering agents' deliverable, mirroring cooking-game.js's
-     relationship to cooking-game.html.
-
-     The book-shelving/fines/borrowing minigame overlays (Shelf Skill-Check,
-     Coin Hunt, Fines Sort, Find the Book, Checkout Skill-Check — see this
-     doc's Scope) are NOT included in this placeholder: they render as
-     canvas-primitive overlays per the Visual Direction section, and are the
-     game-logic/rendering agents' own work, not this backend PR's.
+     bottom of this file). The minigame overlays (Shelf Skill-Check, Coin
+     Hunt, Fines Sort, Find the Book, Checkout Skill-Check, Coffee Pour…)
+     are drawn on the canvas, not here.
 
      Dot is PageData; this page reads none of its fields directly (no
      server-side fetch — all player state is localStorage-driven, per
      docs/features/library-game.md's Data Model). */}}
 {{define "library-game-content"}}
-<main id="main-content" class="mx-auto max-w-5xl px-4 py-8">
+<main id="main-content" class="hospital-anime library-anime mx-auto max-w-5xl px-4 py-8">
 	<div class="space-y-6">
-		<section class="space-y-2">
-			<h1 class="text-2xl font-semibold text-ink">Library Shift</h1>
-			<p class="text-muted">
-				Work a shift at the library: shelve returned books at their color-coded shelf, process patron fines
-				at the Fines Counter, and fulfill borrow requests — earn Gard over 30 shifts.
+		<section class="ha-hero space-y-2">
+			<p class="ha-kicker pr-10">도서관 근무 · A Seoul library shift sim</p>
+			<h1 class="ha-title">Library Shift</h1>
+			<p class="ha-hero-text">
+				Work a two-floor Seoul library as Eun-mi: shelve returns at their color-coded shelves, find books for
+				borrowers, collect fines at the counter and keep patrons happy — earn Gard over 30 shifts, or play
+				today's Daily Challenge.
 			</p>
+			<ul class="flex flex-wrap gap-2 pt-1 text-xs font-semibold">
+				<li class="ha-chip px-3 py-1">📚 Shelve returns</li>
+				<li class="ha-chip px-3 py-1">🔎 Find borrowed books</li>
+				<li class="ha-chip px-3 py-1">🪙 Collect fines</li>
+				<li class="ha-chip px-3 py-1">☕ Mind your Sanity</li>
+			</ul>
 		</section>
 
 		<div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
 			<div class="space-y-4">
-				<p id="library-interact-hint" class="hidden rounded-card border border-line bg-surface-2 px-2 py-1 text-center text-xs font-medium text-ink sm:text-sm" role="status" aria-live="polite"></p>
+				<p id="library-interact-hint" class="hidden ha-chip px-3 py-1 text-center text-xs font-semibold sm:text-sm" role="status" aria-live="polite"></p>
 
-				<p id="library-toast" class="hidden rounded-card border border-line bg-surface-2 px-2 py-1 text-center text-xs font-medium text-ink sm:text-sm" role="status" aria-live="polite"></p>
+				<p id="library-toast" class="hidden ha-chip px-3 py-1 text-center text-xs font-semibold sm:text-sm" role="status" aria-live="polite"></p>
 
-				<div id="library-game-container" class="relative mx-auto flex w-full max-w-[900px] flex-col overflow-hidden rounded-card border border-line bg-surface-2 shadow-sm">
-					<div class="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-2/95 px-3 py-2">
-						<dl class="grid flex-1 grid-cols-3 gap-2 rounded-card border border-line bg-surface-2 px-2 py-2 text-center sm:px-4">
+				<div id="library-game-container" class="ha-frame relative mx-auto flex w-full max-w-[900px] flex-col overflow-hidden">
+					<div class="ha-bar flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+						<dl class="ha-stats grid w-full grid-cols-3 gap-2 px-2 py-1.5 text-center sm:w-auto sm:flex-1 sm:px-4">
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Shift</dt>
-								<dd id="library-hud-shift" class="font-mono text-sm tabular-nums text-ink sm:text-base">1/30</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Shift</dt>
+								<dd id="library-hud-shift" class="font-mono text-sm tabular-nums sm:text-base">1/30</dd>
 							</div>
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Time</dt>
-								<dd id="library-hud-clock" class="font-mono text-sm tabular-nums text-ink sm:text-base">--:--</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Time</dt>
+								<dd id="library-hud-clock" class="whitespace-nowrap font-mono text-sm tabular-nums sm:text-base">--:--</dd>
 							</div>
 							<div>
-								<dt class="text-[10px] uppercase tracking-wide text-muted sm:text-xs">Status</dt>
-								<dd id="library-hud-status" class="text-sm font-medium text-ink sm:text-base">Quiet</dd>
+								<dt class="text-[10px] uppercase tracking-wide sm:text-xs">Status</dt>
+								<dd id="library-hud-status" class="text-xs leading-tight sm:text-sm">Quiet</dd>
 							</div>
 						</dl>
 						<button
 							type="button"
 							id="library-floor-button"
 							aria-pressed="false"
-							class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>Go Upstairs</button>
 						<button
 							type="button"
 							id="library-camera-button"
 							aria-pressed="false"
-							class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>First Person</button>
 						<button
 							type="button"
 							id="library-fullscreen-button"
-							class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+							class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 						>Fullscreen</button>
 					</div>
 
@@ -202,96 +217,86 @@
 							aria-label="Library Shift play area"
 						>Your browser doesn't support the canvas element needed to play this game.</canvas>
 
-						{{/* First Person's own on-screen controls (doc's Scope: "on-screen
-						     buttons (for parity with the existing on-screen Fullscreen/
-						     floor-switch buttons), since click-to-move doesn't make sense
-						     without a visible top-down floor"). Hidden by default —
-						     library-game.js only unhides this alongside
-						     #library-camera-button's label flip into First Person. The
+						{{/* First Person's on-screen controls — hidden until
+						     library-game.js switches the camera to First Person. The
 						     wrapper is pointer-events-none so it never blocks canvas
-						     clicks/hover in Top-Down mode or the gaps between its own
-						     buttons; each button group re-enables pointer-events. */}}
+						     clicks; each button group re-enables pointer-events. */}}
 						<div id="library-fp-controls" class="hidden pointer-events-none absolute inset-x-0 bottom-2 flex items-end justify-between gap-2 px-3">
 							<div class="pointer-events-auto flex touch-none select-none gap-2">
-								<button
-									type="button"
-									id="library-fp-turn-left-button"
-									aria-label="Turn left"
-									class="rounded-card border border-line bg-surface/90 px-3 py-2 text-base font-medium text-ink shadow-sm transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-								>&#9664;</button>
-								<button
-									type="button"
-									id="library-fp-turn-right-button"
-									aria-label="Turn right"
-									class="rounded-card border border-line bg-surface/90 px-3 py-2 text-base font-medium text-ink shadow-sm transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-								>&#9654;</button>
+								<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
+								<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
 							</div>
-							<button
-								type="button"
-								id="library-fp-interact-button"
-								class="pointer-events-auto touch-none select-none rounded-card border border-line bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-							>Interact</button>
+							<button type="button" id="library-fp-interact-button" class="ha-btn pointer-events-auto touch-none select-none px-4 py-2 text-sm">Interact</button>
 							<div class="pointer-events-auto flex touch-none select-none gap-2">
-								<button
-									type="button"
-									id="library-fp-back-button"
-									aria-label="Move back"
-									class="rounded-card border border-line bg-surface/90 px-3 py-2 text-base font-medium text-ink shadow-sm transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-								>&#9660;</button>
-								<button
-									type="button"
-									id="library-fp-forward-button"
-									aria-label="Move forward"
-									class="rounded-card border border-line bg-surface/90 px-3 py-2 text-base font-medium text-ink shadow-sm transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-								>&#9650;</button>
+								<button type="button" id="library-fp-back-button" aria-label="Move back" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9660;</button>
+								<button type="button" id="library-fp-forward-button" aria-label="Move forward" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9650;</button>
 							</div>
 						</div>
 
-						{{/* Start screen — visible by default (this is the only screen
-						     shown pre-JS, matching cooking-game.html's convention). */}}
-						<div id="library-start-screen" class="absolute inset-0 flex items-center justify-center p-4">
-							<div class="w-full max-w-xs space-y-4 rounded-card border border-line bg-surface p-6 text-center shadow-lg">
-								<h2 class="text-lg font-semibold text-ink">The Library</h2>
-								<p class="text-xs text-muted">
-									You're <span class="font-semibold text-ink">Eun-mi (은미)</span>, the library's newest librarian.
-									Shelve returns, help borrowers, collect fines, and keep patrons happy over a 30-shift run.
-								</p>
-								<button
-									type="button"
-									id="library-start-shift-button"
-									class="w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-								>Start Shift</button>
+						{{/* Start screen — visible by default (the only screen shown pre-JS):
+						     the month run on the left, today's Daily Challenge on the right. */}}
+						<div id="library-start-screen" class="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
+							<div class="ha-card mt-6 grid w-full max-w-2xl gap-5 p-6 text-center sm:grid-cols-2">
+								<div class="flex flex-col gap-3">
+									<h2 class="ha-ribbon">The Library</h2>
+									<p class="ha-muted text-xs">
+										You're <span class="ha-ink font-semibold">Eun-mi (은미)</span>, the library's newest librarian.
+										Shelve returns, help borrowers, collect fines and keep patrons happy over a 30-shift run.
+									</p>
+									<p id="library-start-progress" class="ha-panel px-3 py-2 text-xs font-semibold">Shift 1 of 30 · 0 Gard this month</p>
+									<ul class="ha-muted space-y-1 text-left text-[11px]">
+										<li>🧑‍🎓 Min-jun (upstairs) shelves a book for you — click him.</li>
+										<li>☕ Coffee restores Sanity; the Reading Nook lifts Mood.</li>
+										<li>🔑 After 11 PM, clock out at the Boss's Office.</li>
+									</ul>
+									<button
+										type="button"
+										id="library-start-shift-button"
+										class="ha-btn mt-auto w-full px-4 py-2 text-sm"
+									>Start Shift</button>
+								</div>
+
+								{{/* Daily Challenge: today's seeded shift and twist (library-game.js fills it). */}}
+								<div id="library-daily-card" class="ha-panel flex flex-col gap-2 p-4 text-left">
+									<p class="ha-heading text-lg leading-tight">Daily Challenge</p>
+									<p class="ha-muted text-xs">Same shift for everyone today · <span id="library-daily-date">—</span> (UTC)</p>
+									<p class="ha-ink text-sm font-bold">Twist: <span id="library-daily-twist">—</span></p>
+									<p id="library-daily-blurb" class="ha-muted text-xs"></p>
+									<p id="library-daily-best" class="ha-ink text-xs font-semibold">No run yet today.</p>
+									<p class="ha-muted text-[11px]">One shift, scored by its paycheck, on its own leaderboard. Your month run is untouched.</p>
+									<button
+										type="button"
+										id="library-daily-button"
+										class="ha-btn ha-btn--gold mt-auto w-full px-4 py-2 text-sm"
+									>Play Daily Challenge</button>
+								</div>
 							</div>
 						</div>
 
-						{{/* Paycheck screen — hidden by default; game-logic JS unhides
-						     it and sets data-outcome/data-final, same convention as
-						     #cooking-paycheck-screen. */}}
+						{{/* Paycheck screen — hidden by default; library-game.js unhides
+						     it and sets data-outcome/data-final/data-daily. */}}
 						<div id="library-paycheck-screen" class="hidden absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
-							<div class="w-full max-w-xs space-y-4 rounded-card border border-line bg-surface p-6 shadow-lg">
-								<h2 id="library-paycheck-title" class="text-center text-lg font-semibold text-ink">Closing up</h2>
+							<div class="ha-card mt-6 w-full max-w-xs space-y-4 p-6">
+								<h2 id="library-paycheck-title" class="ha-ribbon text-center">Closing up</h2>
 
 								<dl class="space-y-1.5 text-sm">
-									<div class="flex items-center justify-between">
-										<dt class="text-muted">Outcome</dt>
-										<dd id="library-paycheck-outcome" class="font-medium text-ink">Went well</dd>
+									<div class="flex items-start justify-between gap-3">
+										<dt class="ha-muted">Outcome</dt>
+										<dd id="library-paycheck-outcome" class="ha-ink text-right font-semibold">Went well</dd>
 									</div>
 									<div class="flex items-center justify-between">
-										<dt class="text-muted">This shift</dt>
-										<dd id="library-paycheck-shift-total" class="font-mono tabular-nums text-ink">0 Gard</dd>
+										<dt class="ha-muted">This shift</dt>
+										<dd id="library-paycheck-shift-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 									<div class="flex items-center justify-between">
-										<dt class="text-muted">Run total</dt>
-										<dd id="library-paycheck-month-total" class="font-mono tabular-nums text-ink">0 Gard</dd>
+										<dt id="library-paycheck-month-label" class="ha-muted">Run total</dt>
+										<dd id="library-paycheck-month-total" class="ha-ink font-mono font-bold tabular-nums">0 Gard</dd>
 									</div>
 								</dl>
 
-								{{/* Final Paycheck — hidden except on shift 30. Submit to
-								     leaderboard — real HTML form + hx-post, per the doc's
-								     HTMX Interactions table. hx-swap="outerHTML" matches
-								     #library-leaderboard's own fragment root swap below. */}}
+								{{/* Leaderboard submission — after shift 30, or after a Daily Challenge. */}}
 								<div id="library-final-paycheck-block" class="hidden space-y-2 border-t border-line pt-4">
-									<p class="text-sm font-medium text-ink">Final Paycheck</p>
+									<p id="library-final-paycheck-heading" class="ha-ink text-sm font-bold">Final Paycheck</p>
 									<form
 										hx-post="/library-game/score"
 										hx-target="#library-leaderboard"
@@ -299,7 +304,7 @@
 										hx-indicator="#leaderboard-loading"
 										class="space-y-2"
 									>
-										<label for="library-paycheck-name-input" class="block text-xs font-medium text-muted">
+										<label for="library-paycheck-name-input" class="ha-muted block text-xs font-medium">
 											Submit to leaderboard (optional)
 										</label>
 										<div class="flex gap-2">
@@ -310,16 +315,17 @@
 												maxlength="20"
 												required
 												placeholder="Your name"
-												class="w-full min-w-0 rounded-card border border-line bg-surface px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+												class="ha-input w-full min-w-0 px-3 py-2 text-sm"
 											>
 											<button
 												type="submit"
 												id="library-paycheck-submit-button"
-												class="shrink-0 rounded-card border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50"
+												class="ha-btn ha-btn--soft shrink-0 px-3 py-2 text-sm"
 											>Submit</button>
 										</div>
 										<input type="hidden" id="library-paycheck-earnings-input" name="total_earnings" value="0">
 										<input type="hidden" id="library-paycheck-shifts-input" name="shifts_completed" value="30">
+										<input type="hidden" id="library-paycheck-daily-input" name="daily_date" value="">
 									</form>
 								</div>
 
@@ -327,13 +333,18 @@
 									<button
 										type="button"
 										id="library-paycheck-next-shift-button"
-										class="w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+										class="ha-btn ha-btn--gold w-full px-4 py-2 text-sm"
 									>Start Next Shift</button>
 									<button
 										type="button"
 										id="library-paycheck-new-month-button"
-										class="hidden w-full rounded-card bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+										class="hidden ha-btn ha-btn--gold w-full px-4 py-2 text-sm"
 									>Start New Month</button>
+									<button
+										type="button"
+										id="library-paycheck-back-button"
+										class="hidden ha-btn ha-btn--soft w-full px-4 py-2 text-sm"
+									>Back to Start</button>
 								</div>
 							</div>
 						</div>
@@ -341,25 +352,37 @@
 				</div>
 			</div>
 
-			<aside class="space-y-3">
-				<div class="flex items-center justify-between gap-2">
-					<h2 class="text-lg font-semibold text-ink">Leaderboard</h2>
-					<span id="leaderboard-loading" class="htmx-indicator text-xs text-muted">Loading…</span>
+			<aside class="space-y-4">
+				<div class="space-y-3">
+					<div class="flex items-center justify-between gap-2">
+						<h2 class="ha-heading text-xl">Leaderboard</h2>
+						<span id="leaderboard-loading" class="htmx-indicator text-xs text-muted">Loading…</span>
+					</div>
+
+					{{/* Self-replacing outerHTML target: the fragment carries its own
+					     id="library-leaderboard" (and its All-time / Daily tabs). */}}
+					<div
+						id="library-leaderboard"
+						hx-get="/library-game/leaderboard"
+						hx-trigger="load"
+						hx-target="this"
+						hx-swap="outerHTML"
+						hx-indicator="#leaderboard-loading"
+					>
+						<p class="ha-panel ha-muted px-4 py-3 text-sm">Loading leaderboard…</p>
+					</div>
 				</div>
 
-				{{/* Leaderboard: same self-replacing-target pattern as
-				     #cooking-leaderboard (see that file's comment for why
-				     outerHTML on a self-carrying id avoids a duplicate-id bug). */}}
-				<div
-					id="library-leaderboard"
-					hx-get="/library-game/leaderboard"
-					hx-trigger="load"
-					hx-target="this"
-					hx-swap="outerHTML"
-					hx-indicator="#leaderboard-loading"
-				>
-					<p class="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">Loading leaderboard…</p>
-				</div>
+				<section class="ha-panel space-y-2 p-4">
+					<h2 class="ha-heading text-lg">How to play</h2>
+					<ol class="space-y-2 text-xs">
+						<li class="flex gap-2"><span class="ha-step">1</span><span class="ha-ink">Click a book on the Return Cart, then its color-matched shelf, and stop the bar in the zone.</span></li>
+						<li class="flex gap-2"><span class="ha-step">2</span><span class="ha-ink">Click a patron at the Front Desk to take their request, find the book, then check it out.</span></li>
+						<li class="flex gap-2"><span class="ha-step">3</span><span class="ha-ink">Collect a fine at the Fines Counter, then carry it to the Front Desk and count it into the till.</span></li>
+						<li class="flex gap-2"><span class="ha-step">4</span><span class="ha-ink">Low Sanity brings hallucinations, so pour a coffee. Reading in the Nook upstairs lifts the library's Mood.</span></li>
+					</ol>
+					<p class="ha-muted text-[11px]">Tip: First Person turns with ◀ ▶, walks with ▲ ▼ and interacts with Enter.</p>
+				</section>
 			</aside>
 		</div>
 	</div>

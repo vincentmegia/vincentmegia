@@ -67,13 +67,13 @@ export const PLAYER_STOP_MARGIN = 28;
 export const FLOOR_1 = 1;
 export const FLOOR_2 = 2;
 
-/** The player's starting position every shift — 1st Floor's open lower aisle, clear of the top station row, the Front Desk's patron-queue slots and the shelf row. */
-export const PLAYER_START = { x: 480, y: 500 };
+/** The player's starting position every shift — the 1st Floor's open lower aisle, below the staggered shelves and clear of the queues. */
+export const PLAYER_START = { x: 450, y: 500 };
 
 /** Where the player lands after switching to 1st Floor (via Stairs, Elevator, or the HUD button) — clear of both fixtures, which sit at the same x/y on both floors. */
-export const FLOOR_1_ENTRY_POINT = { x: 480, y: 500 };
+export const FLOOR_1_ENTRY_POINT = { x: 450, y: 500 };
 
-/** Where the player lands after switching to 2nd Floor. */
+/** Where the player lands after switching to 2nd Floor — the canvas center, the open middle between its two shelves. */
 export const FLOOR_2_ENTRY_POINT = { x: 480, y: 300 };
 
 /**
@@ -99,56 +99,60 @@ const FLOOR_1_GENRE_COUNT = 3;
 
 export function buildStations(genres) {
   const size = STATION_BOX_SIZE;
+  // The second floor plan ("make a whole diffrent floors layout"). The 1st
+  // Floor is a lobby: the Front Desk is the circulation desk top-center
+  // (its queue forms below it), the Return Cart beside it, the Fines Counter
+  // a room on the left wall (its queue below it), three bookcases staggered
+  // across the middle, the Coffee Machine bottom-right and the Elevator
+  // bottom-left. The 2nd Floor is a reading room: the Reading Nook
+  // top-center under the windows, the Kids and Reference shelves either
+  // side, reading chairs along the bottom. Stairs stay top-right and the
+  // Elevator bottom-left on both floors (the same shaft on every floor).
   const stations = [
-    // 1st Floor — every non-shelf station, plus some Bookshelves below.
-    // Laid out like Hospital Shift's ER (the user asked for its art style):
-    // a fixture row under the back wall (y=110, clear of the 58px wall band
-    // the HUD sits on), Elevator and Coffee Machine in the bottom corners.
-    { id: 'boss-office', kind: 'boss-office', floor: FLOOR_1, x: 80, y: 110, size },
-    { id: 'front-desk', kind: 'front-desk', floor: FLOOR_1, x: 330, y: 110, size, w: FRONT_DESK_WIDTH, h: size },
-    { id: 'return-cart', kind: 'return-cart', floor: FLOOR_1, x: 620, y: 110, size },
-    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, x: 880, y: 110, size, targetFloor: FLOOR_2 },
-    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 860, y: 320, size, w: FINES_ROOM_SIZE, h: FINES_ROOM_SIZE },
-    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 80, y: 530, size },
-    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, x: 880, y: 530, size, targetFloor: FLOOR_2 },
-    // 2nd Floor — Stairs/Elevator at the same x/y as 1st Floor's, so the
-    // player lands in a familiar spot regardless of which floor they came
-    // from (real-building geometry: the stairwell/elevator shaft occupies
-    // the same footprint on every floor).
-    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, x: 880, y: 110, size, targetFloor: FLOOR_1 },
-    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, x: 880, y: 530, size, targetFloor: FLOOR_1 },
+    { id: 'boss-office', kind: 'boss-office', floor: FLOOR_1, x: 80, y: 115, size },
+    { id: 'return-cart', kind: 'return-cart', floor: FLOOR_1, x: 300, y: 115, size },
+    { id: 'front-desk', kind: 'front-desk', floor: FLOOR_1, x: 520, y: 115, size, w: FRONT_DESK_WIDTH, h: size },
+    { id: 'stairs-1', kind: 'stairs', floor: FLOOR_1, x: 880, y: 115, size, targetFloor: FLOOR_2 },
+    { id: 'fines-counter', kind: 'fines-counter', floor: FLOOR_1, x: 100, y: 290, size, w: FINES_ROOM_SIZE, h: FINES_ROOM_SIZE },
+    { id: 'elevator-1', kind: 'elevator', floor: FLOOR_1, x: 80, y: 540, size, targetFloor: FLOOR_2 },
+    { id: 'coffee-machine', kind: 'coffee-machine', floor: FLOOR_1, x: 880, y: 530, size },
+    { id: 'stairs-2', kind: 'stairs', floor: FLOOR_2, x: 880, y: 115, size, targetFloor: FLOOR_1 },
+    { id: 'elevator-2', kind: 'elevator', floor: FLOOR_2, x: 80, y: 540, size, targetFloor: FLOOR_1 },
     // v2.10: a cozy Reading Nook (armchair + lamp) — read a book to restore
-    // Library Mood. Bottom-center of the 2nd Floor, clear of its shelves.
-    { id: 'reading-nook', kind: 'reading-nook', floor: FLOOR_2, x: 480, y: 480, size },
+    // Library Mood. Top-center of the 2nd Floor, between its two shelves.
+    { id: 'reading-nook', kind: 'reading-nook', floor: FLOOR_2, x: 480, y: 130, size },
   ];
 
   const floor1Genres = genres.slice(0, FLOOR_1_GENRE_COUNT);
   const floor2Genres = genres.slice(FLOOR_1_GENRE_COUNT);
 
-  const floor1ShelfXs = [180, 420, 660, 840];
+  // Staggered: the middle bookcase sits lower, clear of the Front Desk's queue.
+  const floor1Shelves = [[360, 320], [580, 400], [800, 320], [580, 220]];
   floor1Genres.forEach((genre, i) => {
+    const [x, y] = floor1Shelves[i] ?? [180 + i * 240, 340];
     stations.push({
       id: `bookshelf-${genre.id}`,
       kind: 'bookshelf',
       floor: FLOOR_1,
       genreId: genre.id,
-      x: floor1ShelfXs[i] ?? (180 + i * 240),
-      y: 340,
+      x,
+      y,
       size,
       w: BOOKCASE_WIDTH,
       h: BOOKCASE_HEIGHT,
     });
   });
 
-  const floor2ShelfXs = [320, 640, 480, 200, 760];
+  const floor2Shelves = [[250, 320], [710, 320], [480, 430], [250, 470], [710, 470]];
   floor2Genres.forEach((genre, i) => {
+    const [x, y] = floor2Shelves[i] ?? [320 + i * 220, 300];
     stations.push({
       id: `bookshelf-${genre.id}`,
       kind: 'bookshelf',
       floor: FLOOR_2,
       genreId: genre.id,
-      x: floor2ShelfXs[i] ?? (320 + i * 220),
-      y: 300,
+      x,
+      y,
       size,
       w: BOOKCASE_WIDTH,
       h: BOOKCASE_HEIGHT,

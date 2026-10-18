@@ -489,6 +489,40 @@ func TestEndToEnd(t *testing.T) {
 				t.Errorf("error body looks like a raw DB error: %s", body)
 			}
 		})
+
+		t.Run("a Daily Challenge run lands on today's daily board, not the all-time one", func(t *testing.T) {
+			today := time.Now().UTC().Format("2006-01-02")
+			dailyName := fmt.Sprintf("e2e-ld%d", time.Now().UnixNano()%1_000_000)
+			t.Cleanup(func() {
+				if _, err := conn.Exec(`DELETE FROM library_scores WHERE player_name = $1`, dailyName); err != nil {
+					t.Errorf("cleanup: delete test daily library_scores row: %v", err)
+				}
+			})
+			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"1234"}, "shifts_completed": {"1"}, "daily_date": {today}}
+			resp, err := client.PostForm(srv.URL+"/library-game/score", dailyForm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("daily POST status = %d, body: %s", resp.StatusCode, b)
+			}
+			if body := string(b); !strings.Contains(body, `data-board="daily"`) || !strings.Contains(body, dailyName) {
+				t.Errorf("daily POST should answer with the daily board including the run: %s", body)
+			}
+			_, allTime := get(t, client, srv.URL+"/library-game/leaderboard")
+			if strings.Contains(allTime, dailyName) {
+				t.Errorf("daily run shows on the all-time board: %s", allTime)
+			}
+			_, daily := get(t, client, srv.URL+"/library-game/leaderboard?board=daily")
+			if !strings.Contains(daily, dailyName) {
+				t.Errorf("daily run missing from ?board=daily: %s", daily)
+			}
+		})
 	})
 
 	t.Run("hospital shift routes round-trip through the real hospital_scores table", func(t *testing.T) {

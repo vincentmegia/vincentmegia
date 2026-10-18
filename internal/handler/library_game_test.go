@@ -24,14 +24,35 @@ type fakeLibraryRepository struct {
 	scores    []model.LibraryScore
 	insertErr error
 	topErr    error
+	daily     []model.LibraryScore
+	dailyDays []time.Time
 }
 
-func (f *fakeLibraryRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int) error {
+func (f *fakeLibraryRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
 	if f.insertErr != nil {
 		return f.insertErr
 	}
-	f.scores = append(f.scores, model.LibraryScore{PlayerName: playerName, TotalEarnings: totalEarnings, ShiftsCompleted: shiftsCompleted})
+	row := model.LibraryScore{PlayerName: playerName, TotalEarnings: totalEarnings, ShiftsCompleted: shiftsCompleted}
+	if dailyDate != nil {
+		f.daily = append(f.daily, row)
+		f.dailyDays = append(f.dailyDays, *dailyDate)
+		return nil
+	}
+	f.scores = append(f.scores, row)
 	return nil
+}
+
+func (f *fakeLibraryRepository) TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.LibraryScore, error) {
+	if f.topErr != nil {
+		return nil, f.topErr
+	}
+	var out []model.LibraryScore
+	for i, row := range f.daily {
+		if f.dailyDays[i].Equal(day) {
+			out = append(out, row)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeLibraryRepository) TopScores(ctx context.Context, limit int) ([]model.LibraryScore, error) {
@@ -231,4 +252,54 @@ func TestLibraryGameHandler_Index(t *testing.T) {
 		t.Errorf("index missing title/content\n--- output ---\n%s", out)
 	}
 	assertMainContentContainer(t, out)
+}
+
+// TestLibraryGameHandler_DailyBoard verifies ?board=daily renders today's
+// Daily Challenge board with the Daily tab pressed, and a daily submission
+// answers with that board rather than the all-time one.
+func TestLibraryGameHandler_DailyBoard(t *testing.T) {
+	repo := &fakeLibraryRepository{
+		scores: []model.LibraryScore{{PlayerName: "MonthRunner", TotalEarnings: 90000, ShiftsCompleted: 30, CreatedAt: time.Now()}},
+	}
+	h := newTestLibraryHandler(t, repo)
+	today := h.Service.Today()
+
+	form := url.Values{"player_name": {"DailyEunmi"}, "total_earnings": {"1200"}, "shifts_completed": {"1"}, "daily_date": {today}}
+	req := httptest.NewRequest(http.MethodPost, "/library-game/score", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.SubmitScore(rec, req)
+	out := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("daily submit status = %d, body: %s", rec.Code, out)
+	}
+	for _, want := range []string{`data-board="daily"`, "DailyEunmi", "1200 Gard", today} {
+		if !strings.Contains(out, want) {
+			t.Errorf("daily submit response missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "MonthRunner") {
+		t.Errorf("daily board shows an all-time row\n%s", out)
+	}
+
+	rec = httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/library-game/leaderboard", nil))
+	if all := rec.Body.String(); !strings.Contains(all, `data-board="all"`) || !strings.Contains(all, "MonthRunner") || strings.Contains(all, "DailyEunmi") {
+		t.Errorf("all-time board should hold only the month run\n%s", all)
+	}
+
+	rec = httptest.NewRecorder()
+	h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, "/library-game/leaderboard?board=daily", nil))
+	if daily := rec.Body.String(); !strings.Contains(daily, "DailyEunmi") {
+		t.Errorf("?board=daily missing today's run\n%s", daily)
+	}
+
+	form.Set("shifts_completed", "3")
+	req = httptest.NewRequest(http.MethodPost, "/library-game/score", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	h.SubmitScore(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("a 3-shift daily run status = %d, want 400", rec.Code)
+	}
 }

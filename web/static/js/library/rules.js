@@ -849,3 +849,73 @@ export const MESSY_CART_MOOD_DRAIN_PER_SECOND = 0.25;
 
 /** Seconds after Min-jun shelves a book before he can take another. */
 export const MINJUN_HELP_COOLDOWN_SECONDS = 60;
+
+// ---------------------------------------------------------------------------
+// 19. Daily Challenge ("add a daily challenge", modelled on Hospital Shift's
+//     rules.js §3d). One shift per UTC day, the same for everyone: its
+//     returns, fines and borrow requests (arrival times, genres, titles,
+//     Coin Hunt books, fine amounts) all come from one stream seeded by the
+//     date, and each day rolls one twist. The score is that shift's
+//     paycheck, on its own daily leaderboard (library_scores.daily_date).
+// ---------------------------------------------------------------------------
+
+/** The tier-2 shift the challenge plays as (its clock, pace and base volumes). */
+export const DAILY_SHIFT_NUMBER = 12;
+
+/**
+ * Each twist's `effect`: `books`/`fines`/`borrows` multiply that volume,
+ * `noCoffee` puts the Coffee Machine out of order, `karen` brings Karen in,
+ * and `noMinjun` gives Min-jun the day off (no shelving help upstairs).
+ */
+export const DAILY_TWISTS = [
+  { id: 'overdue-amnesty', name: 'Overdue Amnesty', blurb: 'No late fees today, so everyone is bringing books back: 50% more returns.', effect: { books: 1.5 } },
+  { id: 'exam-week', name: 'Exam Week', blurb: 'Students everywhere: 50% more borrow requests.', effect: { borrows: 1.5 } },
+  { id: 'fine-friday', name: 'Fine Friday', blurb: 'Overdue notices went out: twice as many fines to collect.', effect: { fines: 2 } },
+  { id: 'broken-coffee', name: 'Coffee Machine Broken', blurb: 'No coffee all shift. Pace your Sanity.', effect: { noCoffee: true } },
+  { id: 'karen-day', name: 'Karen Day', blurb: 'Karen is back, and she wants the manager.', effect: { karen: true } },
+  { id: 'minjun-off', name: "Min-jun's Day Off", blurb: 'No student assistant upstairs: shelve every book yourself.', effect: { noMinjun: true } },
+];
+
+/** A Date's UTC calendar day as YYYY-MM-DD (the server's daily_date). */
+export function libraryDailyDate(now = new Date()) {
+  const d = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date(0);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A 32-bit seed from a date string (FNV-1a), stable across browsers. */
+export function dailySeed(date) {
+  let h = 0x811c9dc5;
+  for (const ch of String(date)) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** A deterministic 0..1 random stream for a seed (mulberry32, above). */
+export function seededRandom(seed) {
+  return mulberry32(seed);
+}
+
+/** The day's twist: the same for everyone on that date. */
+export function dailyTwistForDate(date) {
+  return DAILY_TWISTS[Math.floor(seededRandom(dailySeed(`twist:${date}`))() * DAILY_TWISTS.length)];
+}
+
+export function findDailyTwist(id) {
+  return DAILY_TWISTS.find((t) => t.id === id) ?? null;
+}
+
+/**
+ * How many returns, fines and borrow requests the challenge brings: shift
+ * 12's volumes (fines always on — no waiting for them to start), scaled by
+ * the twist.
+ */
+export function dailyVolumes(twist) {
+  const e = twist?.effect ?? {};
+  return {
+    books: Math.round(returnVolumeForShift(DAILY_SHIFT_NUMBER) * (e.books ?? 1)),
+    fines: Math.round(fineVolumeForShift(DAILY_SHIFT_NUMBER, 1) * (e.fines ?? 1)),
+    borrows: Math.round(borrowVolumeForShift(DAILY_SHIFT_NUMBER) * (e.borrows ?? 1)),
+  };
+}
