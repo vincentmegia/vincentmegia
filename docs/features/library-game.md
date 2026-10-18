@@ -956,8 +956,83 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   `engine-state.test.js`, `stories.test.js` (one story per genre) and a
   Playwright test (take the Mystery book, read it, Sanity up, it's on the
   cart).
+* **Unique walks** ("make it so everyone has a unique walk"). Hospital's
+  anime renderer draws a body in one piece (no swinging legs), so each
+  staff walk is a rhythm applied to the whole figure about its feet
+  (`library/walk-styles.js`: `WALK_STYLES`, `applyWalk`, `drawWalkProp`),
+  only while they're actually walking:
 
-  His eyes were opened up so they read at game size (the user: "I can
+  | Who | Walk |
+  | --- | ---- |
+  | Security | march: a firm, even bob and a slight shoulder roll |
+  | Volunteer | skip: hops, squashing a little on each landing |
+  | Janitor | waddle: slow side to side, pushing a swishing mop |
+  | Shelver | power-walk: quick steps, leaning into her direction |
+  | Storyteller | dance: a swaying bob and a twirl every four seconds |
+  | Archivist | stroll: slow and stooped, tapping a wooden cane |
+
+  Min-jun keeps his hand-in-pocket walk and Eun-mi her own (both in their
+  renderers). Walkers now remember which way they're heading (`dir`) so
+  leans and props face it, and each has a phase offset so no two step in
+  time. Covered by `walk-styles.test.js` (every walker has a distinct walk,
+  finite poses, leans follow direction, props for the Janitor and
+  Archivist only).
+* **Director Park** was added (a simple design, then an office cutscene
+  on clocking out, then several redesigns) and then removed at the user's
+  request ("just remove him from the game"): no character, cutscene or
+  renderer. Clocking out goes straight to the paycheck again.
+* **Director Seo** (서 관장; "add a new detailed director" — asked: a
+  young, stylish, modern man, in an office cutscene at clock-out). His own
+  renderer, `library/director-seo.js` (`drawDirectorSeo`), drawn 6%
+  taller than everyone: dark-brown two-block hair with a comma fringe and
+  strand lines, warm brown eyes (no highlights, a quick blink —
+  `isDirectorBlinkingAt`), straight groomed brows, a half-smile, a silver
+  hoop earring and a white wireless earbud; a camel long coat open over a
+  ribbed black turtleneck (notched lapels with stitching, horn buttons and
+  buttonholes, flap pockets, fold shadows), a thin silver chain with a bar
+  pendant, slim charcoal trousers with a crease and cuffed hem, white
+  leather sneakers with laces, a heel tab and a green dash, a silver watch,
+  a signet ring, and a tablet whose screen shows a bar chart and a moving
+  pulse line. He walks with a "confident stride" (`WALK_STYLES.libDirector`). His
+  own walk cycle was then made visible ("walk animation?" — the legs and
+  arms barely moved): each leg swings from the hip (±0.22 rad, back leg
+  drawn first), the trailing foot lifts, a knee fold shows mid-step, the
+  free arm swings ±4.6, the coat hem sways ±2.4 and he bobs on each step.
+  Then "make it better": two-segment legs (thigh and shin) with a soft
+  knee bend during each leg's swing phase, heel-toe feet (the toe tips up
+  at heel strike, the foot rolls off behind), a rise as the legs pass and a
+  dip on each heel strike, a slight upper-body counter-sway, the coat hem
+  lagging the stride, the head settling a beat late, a forearm lift on the
+  forward arm swing, and `walkAmount` (0..1) easing him into and out of
+  walking so the cutscene's start and stop don't snap. Then "make him more
+  stylish": thin gold round glasses with faintly tinted lenses; more
+  volume and shine in his hair; a burgundy silk pocket square with gold
+  dots in a breast pocket and a gold flower brooch with a pearl on the
+  right lapel; the coat's loose belt ties hanging at his hips through belt
+  loops, swinging as he walks; cropped trousers showing a sliver of ankle
+  above his sneakers; and a stack of two thin rings (silver and gold).
+  The office was then redone ("make teh office look better",
+  `drawDirectorOffice`): pinstriped wallpaper with crown molding and
+  paneled wainscoting; a floor-to-ceiling window onto Seoul at night
+  (twinkling stars, a glowing moon, Namsan Tower with a blinking light,
+  two layers of skyline with lit windows) between sheer curtains on a rod;
+  a styled bookcase (a potted plant, a framed photo, a gold trophy, a
+  leaning book); the framed 감사장 with a red seal; a tall monstera in a
+  white planter, its leaves swaying; a walnut desk on metal legs with a
+  glowing monitor showing a chart, a keyboard, a steaming coffee, a brass
+  arc lamp with a warm glow, and his nameplate; staggered glossy planks
+  with a moonlight pool; a burgundy rug with gold diamonds and fringe; and
+  a soft vignette. The speech bubble moved up above the monstera.
+  Clocking out plays his cutscene (`boss-cutscene`, ~4.8 s, skip with a
+  click or Space/Enter/Esc) before the paycheck: his office at night (city
+  window and moon, bookcase, a framed 감사장, his desk with a lamp, files and
+  a "관장 · Director Seo" nameplate); he walks over from his desk, says a
+  line about the shift (`directorLine`: flawless, ordinary, rough, the 30th
+  shift, or the Daily Challenge) and hands Eun-mi the pay envelope. Covered
+  by `director-seo.test.js`, `walk-styles.test.js` and a Playwright test;
+  the tests that clock out skip it with a click (`skipBossCutscene`).
+
+  Min-jun's eyes were opened up so they read at game size (the user: "I can
   barely see his eyes"; they were near-black slits): the eye opening is
   a little taller, the lash line follows it, the violet is a step
   brighter, and the lid shadow is lighter. A bigger iris was tried and
@@ -976,6 +1051,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   the open aisle between the Reference Shelf and the Stairs/Elevator. At
   the bigger size his old loop around the shelf overlapped the Reading
   Nook. He was set dressing until "make him HELP the player"; see below.
+
 
   He does things now ("make min-jun do smth"): at each corner of his walk
   he stops for a few seconds and either reads (his free arm comes up

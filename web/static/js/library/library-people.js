@@ -155,7 +155,7 @@ export const LIBRARY_PATRON_DESIGNS = [
 
 export const LIBRARY_PATRON_DESIGN_KEYS = LIBRARY_PATRON_DESIGNS.map((d) => d.key);
 
-/** Four new library staff who wander the floors (library-game.js's AMBIENT_STAFF). */
+/** Four library staff who wander the floors (library-game.js's AMBIENT_STAFF). */
 export const LIBRARY_STAFF_DESIGNS = {
   libJanitor: {
     key: 'libJanitor', label: 'Janitor', age: 'elder', skin: SKIN.tan,

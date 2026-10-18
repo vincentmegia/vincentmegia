@@ -167,6 +167,12 @@ async function getOverlay(page) {
 	return page.evaluate(() => window.__libraryGameTestHooks.getOverlay());
 }
 
+/** Clocking out plays Director Seo's office cutscene before the paycheck: wait for it, then click to skip it (the real input path). */
+async function skipBossCutscene(page) {
+	await waitForOverlay(page, 'boss-cutscene');
+	await clickCanvasPoint(page, { x: 480, y: 300 });
+}
+
 async function waitForOverlay(page, kind) {
 	await page.waitForFunction((k) => window.__libraryGameTestHooks.getOverlay()?.kind === k, kind, { timeout: 10000 });
 	return getOverlay(page);
@@ -644,11 +650,27 @@ test.describe('a full shift and the closing-wait lock', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.isBossOfficeReady())).toBe(true);
 
 		await walkToStation(page, 'boss-office');
+		await skipBossCutscene(page);
 		await expect(page.locator('#library-paycheck-screen')).toBeVisible();
 		await expect(page.locator('#library-paycheck-shift-total')).toHaveText(/Gard/);
 		await expect(page.locator('#library-paycheck-month-total')).toHaveText(/Gard/);
 		await expect(page.locator('#library-final-paycheck-block')).toBeHidden();
 		await expect(page.locator('#library-paycheck-next-shift-button')).toBeVisible();
+	});
+});
+
+test.describe("Director Seo's cutscene", () => {
+	test('clocking out plays his office cutscene (he walks over and speaks), then the paycheck on its own', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.skipToClosing());
+		await walkToStation(page, 'boss-office');
+
+		await waitForOverlay(page, 'boss-cutscene');
+		expect((await getOverlay(page)).line).toContain('Eun-mi');
+		await expect(page.locator('#library-paycheck-screen')).toBeHidden();
+		await expect(page.locator('#library-paycheck-screen')).toBeVisible({ timeout: 8000 });
+		expect(await getOverlay(page)).toBe(null);
 	});
 });
 
@@ -666,8 +688,10 @@ test.describe("Boss's Office during the closing wait", () => {
 		await expect(page.locator('#library-toast')).toContainText('wait here');
 		await expect(page.locator('#library-paycheck-screen')).toBeHidden();
 
-		// No second click: standing there is enough.
-		await expect(page.locator('#library-paycheck-screen')).toBeVisible({ timeout: 6000 });
+		// No second click: standing there is enough (Director Seo's cutscene
+		// plays first, then the paycheck).
+		await skipBossCutscene(page);
+		await expect(page.locator('#library-paycheck-screen')).toBeVisible();
 	});
 });
 
@@ -733,6 +757,7 @@ test.describe('shelving incentives', () => {
 		await page.evaluate(() => window.__libraryGameTestHooks.skipToClosing());
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().unshelvedAtClose)).toBeGreaterThanOrEqual(10);
 		await walkToStation(page, 'boss-office');
+		await skipBossCutscene(page);
 		await expect(page.locator('#library-paycheck-outcome')).toContainText('left unshelved');
 	});
 });
@@ -755,6 +780,7 @@ test.describe('star rating', () => {
 
 		await page.evaluate(() => window.__libraryGameTestHooks.skipToClosing());
 		await walkToStation(page, 'boss-office');
+		await skipBossCutscene(page);
 		await expect(page.locator('#library-paycheck-outcome')).toContainText('3.5★ rating (70% pay)');
 	});
 });
@@ -910,7 +936,8 @@ test.describe('leaderboard submission (final shift)', () => {
 
 			await page.evaluate(() => window.__libraryGameTestHooks.skipToClosing());
 			await walkToStation(page, 'boss-office');
-
+			await skipBossCutscene(page);
+	
 			await expect(page.locator('#library-paycheck-screen')).toHaveAttribute('data-final', 'true');
 			await expect(page.locator('#library-final-paycheck-block')).toBeVisible();
 			await expect(page.locator('#library-paycheck-new-month-button')).toBeVisible();

@@ -50,6 +50,8 @@ import {
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
+import { drawDirectorSeo } from './library/director-seo.js';
+import { applyWalk, drawWalkProp } from './library/walk-styles.js';
 import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
@@ -407,6 +409,10 @@ function personalityForId(id) {
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
   const t = performance.now() / 1000;
   const scale = opts.scale ?? 1;
+  if (opts.personalityKey === 'libDirector') {
+    drawDirectorSeo(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, t, walking: Boolean(opts.walking) });
+    return;
+  }
   if (opts.personalityKey === 'minjun') {
     drawMinjun(ctx, x, y, { scale, t, walking: Boolean(opts.walking), action: opts.action ?? null, actionT: opts.actionT ?? 0 });
     return;
@@ -549,7 +555,7 @@ export function init(canvas, elements) {
     const minjunOff = Boolean(daily?.twist.effect.noMinjun);
     ambient = AMBIENT_STAFF.filter((def) => !(minjunOff && def.key === 'minjun')).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
-      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null };
+      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null, dir: 1, phase: i * 1.3 };
     });
   }
 
@@ -587,6 +593,7 @@ export function init(canvas, elements) {
         }
       } else {
         a.x += (dx / dist) * step;
+        if (Math.abs(dx) > 0.5) a.dir = dx > 0 ? 1 : -1;
         a.y += (dy / dist) * step;
       }
     }
@@ -689,7 +696,15 @@ export function init(canvas, elements) {
   function drawAmbient(inFront) {
     for (const a of ambient) {
       if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
-      drawLibraryPerson(ctx, a.x, a.y, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking: a.pause <= 0, action: a.action, actionT: a.actionT });
+      // Each walker's own walk (library/walk-styles.js), about their feet.
+      const walking = a.pause <= 0 && moveTarget?.staffKey !== a.key;
+      const t = performance.now() / 1000 + a.phase;
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      applyWalk(ctx, a.key, t, a.dir, walking);
+      drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT });
+      drawWalkProp(ctx, a.key, t, a.dir, walking);
+      ctx.restore();
       drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
       const hint = ambientHint(a);
       if (hint) drawLabelChip(ctx, a.x, a.y + 34, hint, 'bold 8px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
@@ -900,6 +915,33 @@ export function init(canvas, elements) {
   function enterBossOfficeNow() {
     waitingAtBossOffice = false;
     shiftState = enterBossOffice(shiftState);
+    // Director Seo's cutscene in his office, then the paycheck.
+    overlay = { kind: 'boss-cutscene', t: 0, line: directorLine() };
+  }
+
+  // -- Director Seo's cutscene ("add a new detailed director": a young,
+  // stylish man, seen in his office at clock-out). His office at night —
+  // the city through a big window, a bookcase, a framed 감사장, his desk with
+  // a lamp and nameplate. He walks over from his desk with his confident
+  // stride (library/walk-styles.js), says a line about the shift and hands
+  // Eun-mi the pay envelope; then the paycheck. A click (or
+  // Space/Enter/Esc) skips it.
+  const BOSS_CUTSCENE_SECONDS = 4.8;
+  const DIRECTOR_FROM_X = 600;
+  const DIRECTOR_TO_X = 420;
+  const DIRECTOR_WALK = [0.4, 2.4]; // seconds he's walking
+
+  function directorLine() {
+    if (daily) return "Nice run on today's challenge, Eun-mi. Same time tomorrow?";
+    if (currentShiftNumber >= SHIFTS_PER_MONTH) return 'Thirty shifts! Honestly, this place runs on you, Eun-mi.';
+    if (shiftState.mistakeCount === 0 && shiftState.rating >= RATING_MAX) return 'Flawless shift, Eun-mi. The numbers look amazing.';
+    if (shiftState.mistakeCount > 2 || shiftState.rating < 3) return "Tough day, huh? Get some rest — tomorrow's a fresh chapter.";
+    return 'Good work today, Eun-mi. Here you go.';
+  }
+
+  function finishBossCutscene() {
+    if (overlay?.kind !== 'boss-cutscene') return;
+    overlay = null;
     endShift();
   }
 
@@ -1663,6 +1705,11 @@ export function init(canvas, elements) {
 
   function updateOverlay(deltaSeconds) {
     if (!overlay) return;
+    if (overlay.kind === 'boss-cutscene') {
+      overlay.t += deltaSeconds;
+      if (overlay.t >= BOSS_CUTSCENE_SECONDS) finishBossCutscene();
+      return;
+    }
     if (overlay.kind === 'reading') {
       overlay.progress = Math.min(1, overlay.progress + deltaSeconds / READING_SECONDS_PER_PAGE);
       overlay.nudge = Math.max(0, overlay.nudge - deltaSeconds);
@@ -1918,6 +1965,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'karen') handleKarenClick(x, y);
     else if (overlay.kind === 'till-count') handleTillCountClick(x, y);
     else if (overlay.kind === 'reading') handleReadingClick(x, y);
+    else if (overlay.kind === 'boss-cutscene') finishBossCutscene();
   }
 
   // -- Canvas input -----------------------------------------------------------
@@ -1997,6 +2045,11 @@ export function init(canvas, elements) {
   const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back' };
 
   function onKeyDown(e) {
+    if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {
+      e.preventDefault();
+      finishBossCutscene();
+      return;
+    }
     if (overlay?.kind === 'till-count') {
       const index = Number(e.key) - 1;
       if (Number.isInteger(index) && index >= 0 && index < TILL_DENOMINATIONS.length) {
@@ -3535,6 +3588,458 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     else if (overlay.kind === 'till-count') drawTillCountOverlay();
     else if (overlay.kind === 'reading') drawReadingOverlay();
+    else if (overlay.kind === 'boss-cutscene') drawBossCutscene();
+  }
+
+  /**
+   * Director Seo's office ("make teh office look better"): striped wallpaper
+   * with crown molding and wainscot panels; a floor-to-ceiling window onto
+   * Seoul at night (layered skyline, lit windows, Namsan Tower, a glowing
+   * moon, stars) between sheer curtains; a styled bookcase; a framed 감사장;
+   * a tall monstera; a walnut desk with a glowing monitor, keyboard,
+   * steaming coffee, a lamp and his nameplate; glossy planks with a
+   * patterned rug; moonlight and lamplight pools and a soft vignette.
+   */
+  function drawDirectorOffice(T) {
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+    const FLOOR_Y = 400;
+
+    // Wall: warm gradient with a soft pinstripe wallpaper.
+    const wall = ctx.createLinearGradient(0, 0, 0, FLOOR_Y);
+    wall.addColorStop(0, '#efe0c8');
+    wall.addColorStop(1, '#e4cfb0');
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, W, FLOOR_Y);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    for (let x = 0; x < W; x += 22) ctx.fillRect(x, 24, 8, FLOOR_Y - 120);
+    // Crown molding.
+    ctx.fillStyle = '#f8efe0';
+    ctx.fillRect(0, 0, W, 24);
+    ctx.fillStyle = 'rgba(120,80,40,0.25)';
+    ctx.fillRect(0, 24, W, 3);
+    // Wainscot: a chair rail and recessed panels.
+    ctx.fillStyle = '#a77a52';
+    ctx.fillRect(0, FLOOR_Y - 96, W, 96);
+    ctx.fillStyle = '#bc8e64';
+    ctx.fillRect(0, FLOOR_Y - 100, W, 8);
+    for (let x = 14; x < W; x += 118) {
+      drawRoundRect(ctx, x, FLOOR_Y - 80, 100, 66, 4, 'rgba(0,0,0,0.12)');
+      drawRoundRect(ctx, x + 3, FLOOR_Y - 77, 94, 60, 3, '#ad8058');
+    }
+
+    // The big window onto Seoul at night.
+    const win = { x: 520, y: 34, w: 400, h: 300 };
+    const sky = ctx.createLinearGradient(0, win.y, 0, win.y + win.h);
+    sky.addColorStop(0, '#141c44');
+    sky.addColorStop(0.6, '#2c3470');
+    sky.addColorStop(1, '#5a4c86');
+    drawRoundRect(ctx, win.x - 8, win.y - 8, win.w + 16, win.h + 16, 6, '#f6ecdc');
+    ctx.fillStyle = sky;
+    ctx.fillRect(win.x, win.y, win.w, win.h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(win.x, win.y, win.w, win.h);
+    ctx.clip();
+    // Stars, twinkling.
+    for (let i = 0; i < 26; i++) {
+      const sx = win.x + ((i * 97) % win.w);
+      const sy = win.y + 8 + ((i * 53) % 120);
+      ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.35 * Math.sin(T * 3 + i)})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+    // The moon with a soft glow.
+    const mx = win.x + 320;
+    const my = win.y + 70;
+    const glow = ctx.createRadialGradient(mx, my, 10, mx, my, 70);
+    glow.addColorStop(0, 'rgba(255,246,207,0.45)');
+    glow.addColorStop(1, 'rgba(255,246,207,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(mx - 70, my - 70, 140, 140);
+    ctx.fillStyle = '#fff6cf';
+    ctx.beginPath();
+    ctx.arc(mx, my, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(220,200,150,0.35)';
+    ctx.beginPath();
+    ctx.arc(mx - 6, my - 4, 5, 0, Math.PI * 2);
+    ctx.arc(mx + 7, my + 6, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Namsan Tower on its hill, far away.
+    ctx.fillStyle = '#2a2f5e';
+    ctx.beginPath();
+    ctx.moveTo(win.x + 40, win.y + win.h);
+    ctx.quadraticCurveTo(win.x + 120, win.y + 170, win.x + 200, win.y + win.h);
+    ctx.fill();
+    ctx.fillStyle = '#3a4078';
+    ctx.fillRect(win.x + 117, win.y + 120, 6, 66);
+    drawRoundRect(ctx, win.x + 108, win.y + 128, 24, 12, 4, '#3a4078');
+    ctx.fillStyle = 'rgba(255,120,140,0.9)';
+    ctx.beginPath();
+    ctx.arc(win.x + 120, win.y + 104, 2.4 + Math.sin(T * 4) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a4078';
+    ctx.fillRect(win.x + 119, win.y + 104, 2, 18);
+    // Far skyline, then the nearer, darker one with lit windows.
+    for (const [layer, color, minH, maxH, lit] of [[0, '#2e3366', 60, 120, 0.25], [1, '#1c2146', 80, 170, 0.6]]) {
+      let x = win.x - 10;
+      let n = layer * 7;
+      while (x < win.x + win.w) {
+        const bw = 26 + ((n * 17) % 22);
+        const bh = minH + ((n * 41) % (maxH - minH));
+        const top = win.y + win.h - bh;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, top, bw, bh);
+        for (let wy = top + 8; wy < win.y + win.h - 6; wy += 10) {
+          for (let wx = x + 4; wx < x + bw - 4; wx += 7) {
+            if (((wx * 7 + wy * 3 + n) % 10) / 10 < lit) {
+              ctx.fillStyle = layer ? 'rgba(255,214,120,0.9)' : 'rgba(255,214,120,0.45)';
+              ctx.fillRect(wx, wy, 3, 4);
+            }
+          }
+        }
+        x += bw + 3;
+        n++;
+      }
+    }
+    ctx.restore();
+    // Mullions and a sill.
+    ctx.fillStyle = '#f6ecdc';
+    ctx.fillRect(win.x + win.w / 2 - 3, win.y, 6, win.h);
+    ctx.fillRect(win.x, win.y + win.h * 0.55, win.w, 5);
+    drawRoundRect(ctx, win.x - 14, win.y + win.h + 6, win.w + 28, 10, 3, '#e8d8bf');
+    // Sheer curtains gathered at each side, with folds.
+    for (const side of [-1, 1]) {
+      const cx = side < 0 ? win.x - 18 : win.x + win.w - 34;
+      const cw = 52;
+      const g = ctx.createLinearGradient(cx, 0, cx + cw, 0);
+      g.addColorStop(0, 'rgba(255,250,240,0.85)');
+      g.addColorStop(1, 'rgba(255,250,240,0.55)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(cx, win.y - 14);
+      ctx.lineTo(cx + cw, win.y - 14);
+      ctx.quadraticCurveTo(cx + cw * (side < 0 ? 0.6 : 0.4), win.y + 160, cx + cw * (side < 0 ? 0.8 : 0.2), win.y + win.h + 18);
+      ctx.lineTo(cx + cw * (side < 0 ? 0.1 : 0.9) - side * 4, win.y + win.h + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(200,180,150,0.45)';
+      ctx.lineWidth = 1.2;
+      for (let k = 1; k < 4; k++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + (cw * k) / 4, win.y - 10);
+        ctx.quadraticCurveTo(cx + (cw * k) / 4 + side * 2, win.y + 150, cx + cw * (side < 0 ? 0.25 + k * 0.15 : 0.75 - k * 0.15), win.y + win.h + 14);
+        ctx.stroke();
+      }
+    }
+    // The curtain rod.
+    drawRoundRect(ctx, win.x - 34, win.y - 20, win.w + 68, 6, 3, '#8a6a4a');
+
+    // The bookcase, styled with books, a plant, a photo and a trophy.
+    drawRoundRect(ctx, 30, 96, 180, 306, 8, '#6e4428');
+    drawRoundRect(ctx, 38, 104, 164, 290, 6, '#4e2f1c');
+    const colors = [ANIME.pink, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.coral, '#f2e6d0'];
+    for (let r = 0; r < 4; r++) {
+      const sy = 112 + r * 70;
+      drawRoundRect(ctx, 38, sy + 60, 164, 8, 2, '#7a4e30');
+      if (r === 1) {
+        // A small potted plant and a framed photo.
+        drawRoundRect(ctx, 54, sy + 38, 22, 22, 4, '#e8e0d4');
+        ctx.fillStyle = '#4f9a6a';
+        for (const [lx, ly, rot] of [[60, sy + 30, -0.5], [70, sy + 28, 0.4], [65, sy + 24, 0]]) {
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, 5, 9, rot, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        drawRoundRect(ctx, 94, sy + 22, 32, 38, 3, '#c9a24a');
+        drawRoundRect(ctx, 98, sy + 26, 24, 30, 2, '#cfe4f6');
+        ctx.fillStyle = '#f2d2b6';
+        ctx.beginPath();
+        ctx.arc(110, sy + 38, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3a2620';
+        ctx.fillRect(104, sy + 46, 12, 10);
+        for (let b = 0; b < 4; b++) drawRoundRect(ctx, 140 + b * 14, sy + 10 + (b % 2) * 4, 11, 50 - (b % 2) * 4, 2, colors[(b + 2) % colors.length]);
+      } else if (r === 3) {
+        // A gold trophy and books leaning on it.
+        ctx.fillStyle = '#e8c25a';
+        ctx.beginPath();
+        ctx.moveTo(150, sy + 12);
+        ctx.lineTo(176, sy + 12);
+        ctx.quadraticCurveTo(174, sy + 34, 163, sy + 38);
+        ctx.quadraticCurveTo(152, sy + 34, 150, sy + 12);
+        ctx.fill();
+        ctx.fillRect(160, sy + 38, 6, 12);
+        drawRoundRect(ctx, 152, sy + 50, 22, 10, 2, '#7a4e30');
+        for (let b = 0; b < 6; b++) drawRoundRect(ctx, 48 + b * 14, sy + 8 + (b % 3) * 3, 11, 52 - (b % 3) * 3, 2, colors[(b + r) % colors.length]);
+        ctx.save();
+        ctx.translate(136, sy + 60);
+        ctx.rotate(-0.28);
+        drawRoundRect(ctx, -11, -50, 11, 50, 2, ANIME.coral);
+        ctx.restore();
+      } else {
+        for (let b = 0; b < 10; b++) drawRoundRect(ctx, 46 + b * 15, sy + 8 + ((b + r) % 3) * 3, 12, 52 - ((b + r) % 3) * 3, 2, colors[(b + r) % colors.length]);
+      }
+    }
+
+    // The framed certificate.
+    drawRoundRect(ctx, 262, 40, 128, 92, 6, '#c9a24a');
+    drawRoundRect(ctx, 270, 48, 112, 76, 4, '#fffaf0');
+    ctx.strokeStyle = 'rgba(201,162,74,0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(276, 54, 100, 64);
+    ctx.fillStyle = '#5a3a1a';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('감사장', 326, 76);
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Seoul Library Award', 326, 100);
+    ctx.fillStyle = '#d42a4c';
+    ctx.beginPath();
+    ctx.arc(362, 112, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // A tall monstera in a white planter by the wall.
+    const px = 450;
+    drawRoundRect(ctx, px - 24, FLOOR_Y - 46, 48, 46, 8, '#f4efe6');
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(px - 24, FLOOR_Y - 46, 48, 8);
+    for (const [lx, ly, rot, sz] of [[-26, -110, -0.7, 1], [24, -120, 0.6, 1.1], [-6, -150, -0.1, 1.15], [30, -78, 1, 0.85], [-30, -70, -1.1, 0.8]]) {
+      const sway = Math.sin(T * 1.2 + lx) * 0.03;
+      ctx.save();
+      ctx.translate(px + lx, FLOOR_Y + ly);
+      ctx.rotate(rot + sway);
+      ctx.fillStyle = '#3f8a5a';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 20 * sz, 26 * sz, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Monstera splits.
+      ctx.strokeStyle = '#e4cfb0';
+      ctx.lineWidth = 2;
+      for (const k of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(k * 20 * sz, -6 * sz);
+        ctx.lineTo(k * 9 * sz, -3 * sz);
+        ctx.moveTo(k * 19 * sz, 8 * sz);
+        ctx.lineTo(k * 8 * sz, 6 * sz);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#2f6a44';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, -24 * sz);
+      ctx.lineTo(0, 24 * sz);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.strokeStyle = '#2f6a44';
+    ctx.lineWidth = 2;
+    for (const [lx, ly] of [[-26, -90], [24, -100], [-6, -130], [30, -66], [-30, -58]]) {
+      ctx.beginPath();
+      ctx.moveTo(px, FLOOR_Y - 44);
+      ctx.quadraticCurveTo(px + lx * 0.3, FLOOR_Y + ly * 0.6, px + lx, FLOOR_Y + ly + 16);
+      ctx.stroke();
+    }
+
+    // Floor: glossy walnut planks, staggered seams, the window's moonlight.
+    const floor = ctx.createLinearGradient(0, FLOOR_Y, 0, H);
+    floor.addColorStop(0, '#8a5a36');
+    floor.addColorStop(1, '#6e4428');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+    ctx.strokeStyle = 'rgba(40,20,8,0.3)';
+    ctx.lineWidth = 1.5;
+    for (let row = 0, y = FLOOR_Y + 22; y < H; y += 26, row++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+      for (let x = (row % 2) * 70; x < W; x += 140) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - 26);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = 'rgba(180,200,255,0.12)';
+    ctx.beginPath();
+    ctx.moveTo(win.x + 20, FLOOR_Y);
+    ctx.lineTo(win.x + win.w - 20, FLOOR_Y);
+    ctx.lineTo(win.x + win.w + 60, H);
+    ctx.lineTo(win.x - 80, H);
+    ctx.closePath();
+    ctx.fill();
+    // A patterned rug where the two of them meet.
+    drawRoundRect(ctx, 130, 470, 420, 96, 10, '#8a2a3e');
+    drawRoundRect(ctx, 140, 478, 400, 80, 8, '#b84a5a');
+    ctx.strokeStyle = '#e8c25a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(150, 486, 380, 64, 6);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(232,194,90,0.7)';
+    for (let x = 175; x < 520; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 506);
+      ctx.lineTo(x + 8, 518);
+      ctx.lineTo(x, 530);
+      ctx.lineTo(x - 8, 518);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#f2e6d0';
+    ctx.lineWidth = 1.2;
+    for (let x = 134; x < 548; x += 6) {
+      for (const y of [470, 566]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + (y === 470 ? -5 : 5));
+        ctx.stroke();
+      }
+    }
+
+    // The walnut desk on slim metal legs.
+    const dx = 600;
+    const dy = 318;
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(dx + 150, FLOOR_Y + 70, 170, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (const lx of [dx + 18, dx + 282]) drawRoundRect(ctx, lx, dy + 20, 8, FLOOR_Y + 66 - dy - 20, 3, '#3a3c46');
+    drawRoundRect(ctx, dx + 30, dy + 22, 240, 70, 6, '#5e3a24');
+    drawRoundRect(ctx, dx + 40, dy + 32, 220, 22, 4, '#6e4428');
+    drawRoundRect(ctx, dx + 140, dy + 40, 20, 5, 2, '#c9a24a');
+    drawRoundRect(ctx, dx, dy, 300, 24, 6, '#7a4e30');
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(dx + 8, dy + 3, 284, 4);
+    // Monitor with a glowing screen, keyboard, coffee and nameplate.
+    drawRoundRect(ctx, dx + 108, dy - 74, 112, 70, 6, '#24262e');
+    const scr = ctx.createLinearGradient(0, dy - 68, 0, dy - 10);
+    scr.addColorStop(0, '#cfe8ff');
+    scr.addColorStop(1, '#9ec8f0');
+    drawRoundRect(ctx, dx + 114, dy - 68, 100, 58, 3, scr);
+    ctx.fillStyle = '#3fb58f';
+    for (let b = 0; b < 6; b++) ctx.fillRect(dx + 124 + b * 14, dy - 24 - b * 5, 8, 10 + b * 5);
+    drawRoundRect(ctx, dx + 156, dy - 6, 16, 8, 2, '#3a3c46');
+    drawRoundRect(ctx, dx + 112, dy + 2, 92, 8, 3, '#e8e8ee');
+    drawRoundRect(ctx, dx + 228, dy - 14, 16, 16, 3, '#ffffff');
+    ctx.fillStyle = '#5a3a26';
+    ctx.fillRect(dx + 230, dy - 12, 12, 3);
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 1.4;
+    for (const k of [0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dx + 233 + k * 6, dy - 17);
+      ctx.quadraticCurveTo(dx + 237 + k * 6 + Math.sin(T * 3 + k) * 2, dy - 26, dx + 233 + k * 6, dy - 34);
+      ctx.stroke();
+    }
+    drawRoundRect(ctx, dx + 14, dy - 22, 84, 20, 4, '#24262e');
+    ctx.fillStyle = '#e8c25a';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('관장 · Director Seo', dx + 56, dy - 12);
+    // A brass arc desk lamp and its warm glow.
+    ctx.strokeStyle = '#c9a24a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(dx + 276, dy);
+    ctx.quadraticCurveTo(dx + 290, dy - 90, dx + 250, dy - 96);
+    ctx.stroke();
+    ctx.fillStyle = '#2f6a4a';
+    ctx.beginPath();
+    ctx.ellipse(dx + 246, dy - 92, 18, 9, 0.2, Math.PI, Math.PI * 2);
+    ctx.fill();
+    const lamp = ctx.createRadialGradient(dx + 240, dy - 70, 6, dx + 240, dy - 40, 120);
+    lamp.addColorStop(0, 'rgba(255,220,140,0.42)');
+    lamp.addColorStop(1, 'rgba(255,220,140,0)');
+    ctx.fillStyle = lamp;
+    ctx.fillRect(dx + 100, dy - 160, 280, 260);
+
+    // A soft vignette pulling the eye to the middle.
+    const vig = ctx.createRadialGradient(W / 2, H * 0.55, H * 0.35, W / 2, H * 0.55, W * 0.75);
+    vig.addColorStop(0, 'rgba(20,10,20,0)');
+    vig.addColorStop(1, 'rgba(20,10,20,0.35)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawBossCutscene() {
+    const T = overlay.t;
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+    ctx.save();
+    drawDirectorOffice(T);
+    // Eun-mi by the door, Director Seo walking over from his desk.
+    const walkU = Math.min(1, Math.max(0, (T - DIRECTOR_WALK[0]) / (DIRECTOR_WALK[1] - DIRECTOR_WALK[0])));
+    const eased = walkU * walkU * (3 - 2 * walkU);
+    const dirX = DIRECTOR_FROM_X + (DIRECTOR_TO_X - DIRECTOR_FROM_X) * eased;
+    const walking = walkU > 0 && walkU < 1;
+    // Eases in over the first steps and out as he arrives.
+    const walkAmount = Math.min(1, Math.sin(walkU * Math.PI) * 2.2);
+    const FEET = 540;
+    drawLibraryPerson(ctx, 220, FEET, { personalityKey: 'librarian', scale: 1.45 });
+    ctx.save();
+    ctx.translate(dirX, FEET);
+    applyWalk(ctx, 'libDirector', T, -1, walking);
+    drawDirectorSeo(ctx, 0, 0, { scale: 1.45 * PLAYER_ART_SCALE, t: T, walkAmount });
+    ctx.restore();
+    drawLabelChip(ctx, 220, FEET + 22, PLAYER_NAME, 'bold 12px sans-serif');
+    drawLabelChip(ctx, dirX, FEET + 22, 'Director Seo · 서 관장', 'bold 12px sans-serif');
+
+    // His line, in a speech bubble once he's arrived.
+    if (T > DIRECTOR_WALK[1]) {
+      ctx.font = 'bold 15px sans-serif';
+      const lines = wrapLines(overlay.line, 300);
+      const bw = 330;
+      const bh = 26 + lines.length * 20;
+      const bx = DIRECTOR_TO_X - bw / 2 + 30;
+      const by = FEET - 330 - bh; // above the monstera
+      drawRoundRect(ctx, bx, by, bw, bh, 14, '#ffffff');
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 14);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(DIRECTOR_TO_X - 10, by + bh - 1);
+      ctx.lineTo(DIRECTOR_TO_X + 6, by + bh + 26);
+      ctx.lineTo(DIRECTOR_TO_X + 14, by + bh - 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = ANIME.ink;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      lines.forEach((ln, i) => ctx.fillText(ln, bx + bw / 2, by + 22 + i * 20));
+    }
+    // The pay envelope passing from his hand to hers.
+    if (T > 3.0) {
+      const u = Math.min(1, (T - 3.0) / 0.7);
+      const ex = DIRECTOR_TO_X - 40 + (220 + 40 - (DIRECTOR_TO_X - 40)) * u;
+      const ey = FEET - 95 - Math.sin(u * Math.PI) * 18;
+      drawRoundRect(ctx, ex - 18, ey - 11, 36, 22, 3, '#fffaf0');
+      ctx.strokeStyle = 'rgba(90,60,30,0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(ex - 18, ey - 11);
+      ctx.lineTo(ex, ey + 2);
+      ctx.lineTo(ex + 18, ey - 11);
+      ctx.stroke();
+      ctx.fillStyle = '#d42a4c';
+      ctx.beginPath();
+      ctx.arc(ex, ey + 2, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    drawLabelChip(ctx, 130, 30, '관장실 · Director\'s Office', 'bold 13px sans-serif', ANIME.coral, '#ffffff');
+    drawLabelChip(ctx, W - 92, 30, 'Click to continue ▶', 'bold 12px sans-serif');
+    // Fade in from, and out to, black.
+    const fade = Math.max(0, 1 - T / 0.35, (T - (BOSS_CUTSCENE_SECONDS - 0.35)) / 0.35);
+    if (fade > 0) {
+      ctx.fillStyle = `rgba(20,14,24,${Math.min(1, fade)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
   }
 
   // -- First Person rendering --------------------------------------------
@@ -3736,9 +4241,9 @@ export function init(canvas, elements) {
     if (waitingAtBossOffice && isBossOfficeReady(shiftState) && !overlay) {
       if (isPlayerAtBossOffice()) {
         enterBossOfficeNow();
-        return;
+      } else {
+        waitingAtBossOffice = false;
       }
-      waitingAtBossOffice = false;
     }
 
     if ((shiftState.complaints ?? 0) > beforeComplaints) {
@@ -3901,6 +4406,7 @@ export function init(canvas, elements) {
       attemptInteractNow: () => attemptInteract(),
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
       getShiftState: () => shiftState,
+      skipCutscene: () => finishBossCutscene(),
       getDaily: () => (daily ? { date: daily.date, twistId: daily.twist.id } : null),
       getStaff(key) {
         const a = ambient.find((s) => s.key === key);
