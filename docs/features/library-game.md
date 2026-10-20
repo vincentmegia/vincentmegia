@@ -1038,7 +1038,75 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   outside, with curl strokes, a soft shadow low down and two shine
   arcs), a tousled fringe of tufts leaning different ways that stops above
   his brows, side tufts flicking out over the ears, and a three-tuft
-  bouncing cowlick; the tufts bob gently.
+  bouncing cowlick; the tufts bob gently. Then "make the high school student more
+  detailed": hands with four separate fingers (curled short on the strap,
+  open with pale nails on the card hand), knuckle dimples and a thumbnail;
+  a shoulder seam and elbow creases on both blazer sleeves; a side seam,
+  a hip fold and fabric stacking above the hem on his trousers; a red heel
+  tab, a red foxing stripe and tread ticks on his high-tops; thread holes
+  in the gold front buttons with a buttonhole opposite, a stitched lapel
+  buttonhole, the shirt's top button and a folded tie knot with a dimple; a
+  silver clip on his pen; ruled handwriting lines on the top flashcard; a
+  jaw shadow and faint tendons on his neck; an inner rim on each ear; two
+  small nostrils; and two short flyaway hairs off the sides of the fluff.
+  (Lower lashes, outer-corner lash flicks and a philtrum were tried and
+  dropped: at full size they read as marks on his cheeks and eyeliner.)
+  Then "more detailed and stylish": cream over-ear headphones (silver
+  sliders, mint accents) resting round his neck replace the wired earphone;
+  slimmer, tapered trousers cropped above the ankle with a rolled cuff, over
+  ribbed white socks with a navy and a burgundy stripe; a fine twill weave
+  on the blazer; a ribbed hoodie hem; a silver stud in his right ear and a
+  silver ring on his strap hand; the "수능 D-100" pin moved lower on the
+  lapel, clear of the headphones; and the fringe's locks fade in from their
+  roots, so they grow out of the crown instead of meeting it in a hard line.
+  Then "make it better": the fluffy crown hugs his head and tapers toward
+  the ears (smaller lobes, bigger on top) instead of spreading wide like a
+  helmet; each trouser leg is one outline (`limbPath`), so no seam shows at
+  the knee; and the headphone cups have a visible side wall, a highlight and
+  a small mint logo bar in place of the ring-and-dot that read as eyes.
+  Then "make him more detailed like min-jun but not exact": Min-jun's
+  density comes from big, readable props that break his silhouette, so Ji-ho
+  got his own exam-student ones rather than copies of Min-jun's — a thick
+  blue "수능특강" (국어 · 영어) workbook with neon page flags and a clear ruler
+  sticking up out of his backpack behind his shoulder (`drawPackTop`); round
+  gold-wire study glasses pushed up into his hair (`drawPushedUpGlasses`); a
+  red "합격" good-luck charm with a gold tassel swinging from his flashcard
+  ring; a mint phone (camera bump, bunny sticker, pink strap) sticking out
+  of his right blazer pocket; a faint grey check on his trousers like a
+  Korean uniform's; bigger flashcards; and a stronger blazer twill.
+  Then "more detailed": a sternum strap clipped across his chest (sliders
+  on both shoulder straps, a buckle with a tiny orange whistle) and loose
+  webbing tails with plastic tips hanging from the straps; pick stitching
+  inside the lapel edges; the hood's lighter heather lining and a stitched
+  seam over it; tied lace bows on his high-tops; the top flashcard's word
+  underlined twice in red pen with a red star; a lighter mid-tone layer of
+  curls and long strand lines in his hair, and darker hair showing behind
+  his ears; and a soft cheekbone contour on the shaded side. (A shadow
+  under the lower lip was tried and dropped: it read as a second lip.)
+  Then "make his t shirt better" (the white shirt under the blazer — he
+  has no T-shirt): a real collar (`drawShirtCollar`, drawn after the head
+  so it wraps over the front of his neck) — a band round the neck and two
+  crisp points lying over the tie knot, each with a cast shadow,
+  topstitching and a collar-stay line; the shirt front shaded cool at the
+  sides with the collar's shadow across the top and two creases by the
+  tie; and the grey hoodie under it given a heather speckle, shade where
+  the blazer overlaps and a ribbed neckline band, its drawstrings now
+  coming out of that band instead of lying over the shirt. Then "better":
+  a button-down collar (a tiny white button holding each point down); a
+  fine oxford basket weave on the shirt front; his shirttail slipping out
+  under the hoodie on one side, a curved white hem with stitching and a
+  fold, over the trousers; and the drawstrings hanging outward so their
+  tips tuck under the lapels, clear of the collar buttons and tie clip.
+  Then "detailed": the back of the collar standing up behind his neck,
+  with its fold line; and on the shirttail a stitched button placket with
+  a four-hole white button, two more creases and a small triangular gusset
+  reinforcing the side-seam split.
+  Then "more more detailed": an embroidered school emblem on his upper
+  sleeve (a navy shield, gold border, open book and laurels); a tiny gold
+  crest on the tie above the clip; stitching along the headphones' padded
+  band and round each ear cushion; the water bottle's water level,
+  measurement ticks and a carry loop on its cap; a canvas weave on the
+  high-tops; and a stitched seam and a red bow on the plush bunny.
 * **Director Seo** (서 관장; "add a new detailed director" — asked: a
   young, stylish, modern man, in an office cutscene at clock-out). His own
   renderer, `library/director-seo.js` (`drawDirectorSeo`), drawn 6%
