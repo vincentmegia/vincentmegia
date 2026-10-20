@@ -92,7 +92,9 @@ export function installFiles(ctx) {
     try { p = io.exportFile(engine, o); } catch (err) { fail(err); return; }
     Promise.resolve(p).then((res) => {
       const fname = (res && res.name) || `${name}.${format}`;
-      toast(format === 'png' ? `Exported “${fname}” at ${o.scale}×` : `Exported “${fname}”`);
+      if (format === 'png') toast(`Exported “${fname}” at ${o.scale}×`);
+      else if (format === 'html') toast(res && res.animated ? `Exported “${fname}” with ${res.animated} animation${res.animated === 1 ? '' : 's'}` : `Exported “${fname}” (no animations on this page)`);
+      else toast(`Exported “${fname}”`);
     }, fail);
   };
 

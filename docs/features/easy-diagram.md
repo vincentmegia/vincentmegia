@@ -4,10 +4,11 @@
 
 `Implemented` at `/easy-diagram`, with a new UI shell built on draw.io's
 graph engine. The build decisions in `docs/features/easy-diagram/BUILD.md`
-superseded this doc's original "fork the whole editor" plan. Four later
+superseded this doc's original "fork the whole editor" plan. Five later
 changes are described below: [The `.ed` file extension](#the-ed-file-extension),
-[AWS icons](#aws-icons), [Connector arrowheads](#connector-arrowheads) and
-[Connectors: dock group, connection points and shape picker](#connectors-dock-group-connection-points-and-shape-picker).
+[AWS icons](#aws-icons), [Connector arrowheads](#connector-arrowheads),
+[Connectors: dock group, connection points and shape picker](#connectors-dock-group-connection-points-and-shape-picker)
+and [Animated HTML export](#animated-html-export).
 
 The rest of this doc started as a reverse-engineering survey of
 draw.io's desktop and core repositories, plus a plan for turning them into a
@@ -442,6 +443,61 @@ flowchart took a little longer to build.
    Line. No Dotted or Open arrow preset; every head and line style is
    still in the connector inspector.
 
+### Animated HTML export
+
+The user asked for "an export feature that will convert the easy diagram
+to an .html which will retain the animation". PNG, SVG and PDF are static,
+so the animations were lost on every export until now.
+
+* **UI:** the Export popover has a fifth format, **HTML**, between SVG and
+  PDF. Transparent background applies to it; Keep it editable and Scale
+  don't. The note under the button says the page plays the animations. The
+  download is `<file>-<page>.html` (`Untitled-Page-1.html`), and the toast
+  counts the animations it kept (`Exported “…” with 4 animations`, or
+  `(no animations on this page)`). It exports the current page, like PNG
+  and SVG.
+* **What's in the file:** one self-contained page with no scripts:
+  - the page's SVG inline, from the same `getSvg` call as the SVG export
+    (`engine.toAnimatedSvg`), with the animations written in by
+    `animation.js`'s `animateExportSvg`: the same `ed-na-*`/`ed-e-*`
+    classes, custom properties and connector overlay paths the editor puts
+    on the live graph, built by the same helpers (`shapeAnimSpec`,
+    `addShapeAnim`, `addEdgeAnim`), so the export can't drift from the
+    editor;
+  - the animation CSS, copied at export time from the loaded `engine.css`
+    rules (`.ed-na*`, `.ed-ea`, `.ed-e-*`, `.ed-draw-base`, the `edN*`/
+    `edE*` keyframes and the reduced-motion block), so the keyframes have
+    one source;
+  - the IBM Plex fonts the labels use, as `data:` URLs (fetched from
+    `/static/easydiagram/fonts/`, about 165 KB base64 with all six; only
+    the families the SVG names are included);
+  - a CSP `<meta>` of `default-src 'none'; style-src 'unsafe-inline';
+    img-src data:; font-src data:`, so opening the file fetches nothing
+    and label HTML can't run code.
+* **Triggers:** Loop and Once play on load. Hover plays while the pointer
+  is over the shape, through a CSS `[data-cell-id]:hover` rule (the editor
+  does it from JS). Speed and connector direction carry over.
+  `prefers-reduced-motion: reduce` stops everything, as in the editor. The
+  editor's Motion toggle doesn't affect the export.
+* **Shape origin:** in the export a shape's drawing and label are wrapped
+  in one animated `<g>` (child cells stay outside, as in the editor). Its
+  `transform-origin` is the centre of what the shape draws, measured on an
+  offscreen copy of the SVG. `transform-box: fill-box` wasn't enough: a
+  label's `<foreignObject>` is 100% of the SVG, so the box was the whole
+  diagram and shapes pulsed around the diagram's centre.
+* **Connector overlays** go right after the line inside its group, under
+  the arrowheads and label (the editor appends them at the end, which in
+  the export put the flow dots over the label text).
+* **Not included:** the diagram isn't embedded, so an HTML export doesn't
+  reopen in the editor. Multi-page diagrams export the current page only.
+
+Tested in `e2e/easy-diagram.spec.js` (`HTML export is a self-contained
+page…`), in Chromium and WebKit. The test exports through the popover,
+checks the file (CSP, no `<script>`, keyframes, embedded font, no external
+URLs), then loads it in a fresh page and asserts that every animation
+runs, that each shape's origin is its own centre, that the flow overlay
+isn't drawn last, and that hovering starts the hover-triggered shape.
+
 ---
 
 ## Functionality inventory
@@ -674,7 +730,7 @@ browser storage.
       Firefox and WebKit, matching this repo's Chromium and WebKit Playwright
       coverage.
 * [ ] Export PNG (with embedded diagram) → re-import → editable.
-* [ ] Export SVG, HTML and XML. PDF opens the print dialog.
+* [ ] Export SVG, HTML and XML. PDF opens the print dialog. (HTML is the animated export; see [Animated HTML export](#animated-html-export).)
 * [ ] Import `.vsdx` and Mermaid samples.
 * [ ] Draft recovery after closing the tab with unsaved changes.
 * [ ] No "draw.io" branding is visible in the UI (grep the built output).

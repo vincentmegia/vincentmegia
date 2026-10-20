@@ -131,7 +131,8 @@ touching that area rather than expecting this section to carry it:
   UI shell on draw.io's vendored graph engine, files saved as draw.io XML
   with an `.ed` extension, no third-party requests; AWS icons, animations,
   and a Connectors dock group plus click/drag connection points and a
-  categorized "Connect from…" picker) — `docs/features/easy-diagram.md`
+  categorized "Connect from…" picker, and an animated HTML export: a
+  script-free standalone page that plays the animations) — `docs/features/easy-diagram.md`
   and `docs/features/easy-diagram/BUILD.md` (the engine contract). It is a
   full-viewport page with its own route CSP, reached from `/projects` by a
   full page load.

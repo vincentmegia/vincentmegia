@@ -31,7 +31,7 @@
 // string setTimeout in the vendored files.
 // ---------------------------------------------------------------------------
 
-import { createAnimator, shapeAnimOf, edgeAnimOf, SHAPE_ANIMS, EDGE_ANIMS, TRIGGERS, SPEEDS } from './animation.js';
+import { createAnimator, animateExportSvg, shapeAnimOf, edgeAnimOf, SHAPE_ANIMS, EDGE_ANIMS, TRIGGERS, SPEEDS } from './animation.js';
 import { awsService, awsIconDataUri, DEFAULT_AWS_SERVICE } from './aws-icons.js';
 
 /* global Graph, mxGraph, mxGraphModel, mxCodec, mxUtils, mxEvent, mxConstants, mxUndoManager,
@@ -1581,7 +1581,8 @@ export function createEngine(container, options) {
   }
 
   // ---- SVG / PNG export
-  function exportSvgNode(scale, transparent, foEnabled) {
+  // `decorate(root)` runs while the export's display styles are still applied.
+  function exportSvgNode(scale, transparent, foEnabled, decorate) {
     const t = THEMES[theme];
     exporting = true;
     const origCreate = graph.createSvgCanvas;
@@ -1595,7 +1596,9 @@ export function createEngine(container, options) {
         };
       }
       const bg = transparent ? null : t.stage;
-      return graph.getSvg(bg, scale || 1, 16, false, true, true, true, null, null, true);
+      const root = graph.getSvg(bg, scale || 1, 16, false, true, true, true, null, null, true);
+      if (decorate) decorate(root);
+      return root;
     } finally {
       graph.createSvgCanvas = origCreate;
       exporting = false;
@@ -2048,6 +2051,17 @@ export function createEngine(container, options) {
       const root = exportSvgNode(1, !!opts.transparent);
       if (opts.embed) root.setAttribute('content', api.toXml());
       return svgString(root);
+    },
+    // The SVG for an HTML export: same drawing as toSvg, plus the animation
+    // classes and connector overlays the editor shows (animation.js).
+    toAnimatedSvg(opts) {
+      opts = opts || {};
+      let animated = 0;
+      const root = exportSvgNode(1, !!opts.transparent, true, (svg) => {
+        const states = Object.values(model.cells || {}).map((c) => graph.view.getState(c)).filter(Boolean);
+        animated = animateExportSvg(svg, states, { accent: ACCENT, scale: 1 });
+      });
+      return { svg: mxUtils.getXml(root), animated, background: opts.transparent ? null : THEMES[theme].stage };
     },
     toPngBlob(opts) {
       opts = opts || {};

@@ -884,6 +884,66 @@ test.describe('io', () => {
 		expect(await cells(page)).toEqual(model);
 	});
 
+	test('HTML export is a self-contained page that plays the shape and connector animations', async ({ page }) => {
+		await openEditor(page);
+		await E(page, () => {
+			const e = window.__easyDiagram.engine;
+			const a = e.addShape('rect', { x: 80, y: 80, label: 'Pulse' });
+			const b = e.addShape('rect', { x: 380, y: 80, label: 'Hover me' });
+			const c = e.addShape('rect', { x: 80, y: 280, label: 'Still' });
+			e.update(a, { anim: { name: 'pulse' } });
+			e.update(b, { anim: { name: 'bounce', trigger: 'hover' } });
+			e.update(e.connect(a, b, { label: 'flow' }), { anim: { name: 'flow' } });
+			e.update(e.connect(a, c), { anim: { name: 'dash' } });
+		});
+		await page.getByRole('button', { name: 'Export' }).click();
+		const pop = page.locator('#ed-export-pop');
+		await pop.getByRole('button', { name: 'HTML', exact: true }).click();
+		await expect(pop.getByRole('button', { name: 'Transparent background' })).toBeEnabled();
+		await expect(pop.getByRole('button', { name: /Keep it editable/ })).toBeDisabled();
+		await expect(pop.locator('.ed-pop-go')).toHaveText('Download HTML');
+		const [d] = await Promise.all([page.waitForEvent('download'), pop.locator('.ed-pop-go').click()]);
+		expect(d.suggestedFilename()).toBe('Untitled-Page-1.html');
+		await expect(toast(page)).toHaveText('Exported “Untitled-Page-1.html” with 4 animations');
+
+		const html = (await readDownload(d)).toString('utf8');
+		expect(html).toContain(`content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"`);
+		expect(html).not.toMatch(/<script/i);
+		expect(html).toMatch(/@keyframes edNPulse/);
+		expect(html).toMatch(/@font-face \{ font-family: 'IBM Plex Sans'.*url\(data:font\/woff2;base64,/);
+		expect(html).not.toMatch(/drawio\.com|diagrams\.net|draw\.io|https?:\/\/(?!www\.w3\.org)/i);
+
+		// Opened on its own, the page animates exactly like the editor.
+		const viewer = await page.context().newPage();
+		const errors = [];
+		viewer.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+		viewer.on('pageerror', (e) => errors.push(String(e)));
+		await viewer.setContent(html);
+		const anims = await viewer.evaluate(() => ({
+			shapes: Array.from(document.querySelectorAll('.ed-na')).map((n) => [getComputedStyle(n).animationName, getComputedStyle(n).animationPlayState]),
+			edges: Array.from(document.querySelectorAll('.ed-ea')).map((n) => getComputedStyle(n).animationName),
+			// The flow overlay sits under the connector's label, not on top of it.
+			overlayLast: !!document.querySelector('[data-cell-id] > .ed-ea-overlay:last-child'),
+			// Each shape scales/moves around its own centre, as in the editor.
+			offCentre: Array.from(document.querySelectorAll('.ed-na')).map((n) => {
+				const r = n.querySelector('rect');
+				const [ox, oy] = n.style.transformOrigin.split(' ').map(parseFloat);
+				return Math.max(Math.abs(ox - (+r.getAttribute('x') + r.getAttribute('width') / 2)), Math.abs(oy - (+r.getAttribute('y') + r.getAttribute('height') / 2)));
+			}),
+		}));
+		expect(Math.max(...anims.offCentre)).toBeLessThanOrEqual(1);
+		expect(anims.shapes).toEqual([['edNPulse', 'running'], ['edNBounce', 'paused']]);
+		expect(anims.edges.sort()).toEqual(['edEDash', 'edEFlow']);
+		expect(anims.overlayLast).toBe(false);
+		// The hover trigger plays while the pointer is over the shape.
+		// (The label sits over the shape, inside the same cell group, so hover still counts.)
+		const box = await viewer.locator('.ed-hov rect').boundingBox();
+		await viewer.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await expect.poll(() => viewer.evaluate(() => getComputedStyle(document.querySelector('.ed-hov')).animationPlayState)).toBe('running');
+		expect(errors).toEqual([]);
+		await viewer.close();
+	});
+
 	test('a draft is offered after a reload and restores the same model', async ({ page }) => {
 		await openEditor(page);
 		await buildFlowchartViaUI(page);

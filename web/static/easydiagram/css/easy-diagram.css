@@ -217,7 +217,7 @@ body.easy-diagram-body:has(.ed[data-theme="light"]) { background: #F4F4F2; }
   animation: popMenu .2s cubic-bezier(.2,0,0,1) both; transform-origin: top right;
 }
 .ed-pop-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ed-formats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ed-formats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .ed-formats .chip { padding: 0; border-radius: 9px; }
 .ed-pop-opts { display: flex; flex-direction: column; gap: 10px; }
 .ed-pop-scale { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--ink2); }

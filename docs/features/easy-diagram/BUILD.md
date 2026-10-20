@@ -149,6 +149,7 @@ returns:
   // export (all client-side)
   toSvg({transparent, embed}),        // -> string; embed=true stores the mxfile XML in the SVG `content` attribute (upstream-compatible)
   toPngBlob({scale, transparent, embed}), // -> Promise<Blob>; embed=true writes the XML into a zTXt/tEXt `mxfile` chunk like upstream
+  toAnimatedSvg({transparent}),       // -> {svg, animated, background}; the toSvg drawing plus the animation classes/overlays, for the HTML export (added 2026-10-20)
 
   // geometry helpers (added 2026-10-13 for WP3)
   clientToModel(clientX, clientY), // -> {x, y} model coords for a viewport point (dock drag-to-canvas; addShape's x,y = top-left)
@@ -228,7 +229,7 @@ Engine rules:
 openFile()                 // -> Promise<{name, xml, handle|null}>; accepts .drawio/.xml, plus .svg/.png with embedded diagram
 save(engine, file)         // file {name, handle|null} -> Promise<{name, handle|null}>; in place via handle, else showSaveFilePicker, else download
 saveAs(engine, file)
-exportFile(engine, {format: 'png'|'svg'|'drawio', scale, transparent, embed, name})  // triggers a download
+exportFile(engine, {format: 'png'|'svg'|'html'|'ed', scale, transparent, embed, name})  // triggers a download
 saveDraft(xml), loadDraft() -> Promise<{xml, savedAt}|null>, clearDraft()          // IndexedDB, wrapped in try/catch
 importDroppedFile(file: File) -> Promise<{name, xml}>
 ```

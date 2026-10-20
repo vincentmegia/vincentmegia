@@ -8,7 +8,7 @@
 //   openFile()                      -> Promise<{name, xml, handle|null}>
 //   save(engine, file)              -> Promise<{name, handle|null}>
 //   saveAs(engine, file)            -> Promise<{name, handle|null}>
-//   exportFile(engine, opts)        -> Promise<{name}>   (triggers a download)
+//   exportFile(engine, opts)        -> Promise<{name}>   (triggers a download; format png|svg|html|ed)
 //   saveDraft(xml, name?)           -> Promise<boolean>  (never rejects)
 //   loadDraft(name?)                -> Promise<{name, xml, savedAt}|null>
 //   clearDraft(name?)               -> Promise<boolean>  (never rejects)
@@ -722,7 +722,118 @@ export async function exportFile(engine, opts) {
     return { name };
   }
 
+  if (format === 'html') {
+    let out;
+    try {
+      out = engine.toAnimatedSvg({ transparent });
+    } catch (e) {
+      throw new IoError('The HTML export failed.', e);
+    }
+    if (!out || typeof out.svg !== 'string' || !/<svg[\s>]/.test(out.svg)) throw new IoError('The HTML export failed.');
+    const html = buildHtml({ title: base, svg: out.svg, background: out.background, fonts: await fontFaces(out.svg) });
+    const name = base + '.html';
+    downloadBlob(new Blob([html], { type: 'text/html' }), name);
+    return { name, animated: out.animated };
+  }
+
   throw new IoError('Unknown export format: ' + format);
+}
+
+// ---------------------------------------------------------------------------
+// HTML export: one self-contained page that plays the diagram's animations.
+//
+// The page is the exported SVG inline, the editor's own animation CSS (copied
+// from the loaded engine.css, so the keyframes have one source) and the
+// IBM Plex fonts as data: URLs. Its CSP allows no scripts and no network, so
+// opening the file never fetches anything and label HTML can't run code.
+
+const ANIM_SELECTOR = /\.ed-(na|ea|e-|draw-base)/;
+const ANIM_KEYFRAMES = /^ed[NE]/;
+
+function cssRuleText(rule) {
+  if (rule.type === CSSRule.KEYFRAMES_RULE) return ANIM_KEYFRAMES.test(rule.name) ? rule.cssText : '';
+  if (rule.type === CSSRule.STYLE_RULE) return ANIM_SELECTOR.test(rule.selectorText) ? rule.cssText : '';
+  if (rule.type === CSSRule.MEDIA_RULE) {
+    const inner = Array.from(rule.cssRules).map(cssRuleText).filter(Boolean);
+    return inner.length ? `@media ${rule.conditionText || rule.media.mediaText} {\n${inner.join('\n')}\n}` : '';
+  }
+  return '';
+}
+
+function animationCss() {
+  const out = [];
+  Array.from(document.styleSheets).forEach((sheet) => {
+    let rules;
+    try { rules = sheet.cssRules; } catch (_) { return; } // cross-origin sheet
+    Array.from(rules || []).forEach((r) => { const t = cssRuleText(r); if (t) out.push(t); });
+  });
+  return out.join('\n');
+}
+
+const FONT_FILES = [
+  ['IBM Plex Sans', 400, 'ibm-plex-sans-latin-400-normal.woff2'],
+  ['IBM Plex Sans', 500, 'ibm-plex-sans-latin-500-normal.woff2'],
+  ['IBM Plex Sans', 600, 'ibm-plex-sans-latin-600-normal.woff2'],
+  ['IBM Plex Sans', 700, 'ibm-plex-sans-latin-700-normal.woff2'],
+  ['IBM Plex Mono', 400, 'ibm-plex-mono-latin-400-normal.woff2'],
+  ['IBM Plex Mono', 500, 'ibm-plex-mono-latin-500-normal.woff2'],
+];
+
+function base64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// @font-face rules for the families the SVG uses. A font that can't be
+// fetched is left out; the labels then fall back to the system font stack.
+async function fontFaces(svg) {
+  const used = FONT_FILES.filter(([family]) => svg.indexOf(family) >= 0);
+  const faces = await Promise.all(used.map(async ([family, weight, file]) => {
+    try {
+      const res = await fetch(new URL('../fonts/' + file, import.meta.url));
+      if (!res.ok) return '';
+      const data = base64(new Uint8Array(await res.arrayBuffer()));
+      return `@font-face { font-family: '${family}'; font-style: normal; font-weight: ${weight}; src: url(data:font/woff2;base64,${data}) format('woff2'); }`;
+    } catch (_) {
+      return '';
+    }
+  }));
+  return faces.filter(Boolean).join('\n');
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function buildHtml({ title, svg, background, fonts }) {
+  const bg = background && /^#[0-9a-f]{3,8}$/i.test(background) ? background : 'transparent';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<meta name="generator" content="Easy Diagram">
+<title>${escapeHtml(title)}</title>
+<style>
+${fonts}
+html, body { margin: 0; min-height: 100%; }
+body { background: ${bg}; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.ed-engine { padding: 16px; box-sizing: border-box; max-width: 100%; }
+.ed-engine > svg { display: block; max-width: 100%; height: auto; }
+${animationCss()}
+/* Hover-triggered shape animations play while the pointer is over the shape. */
+[data-cell-id]:hover > .ed-na.ed-hov { animation-play-state: running; }
+</style>
+</head>
+<body>
+<div class="ed-engine">
+${svg}
+</div>
+</body>
+</html>
+`;
 }
 
 // ---------------------------------------------------------------------------

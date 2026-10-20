@@ -1,8 +1,8 @@
-// Export popover: PNG / SVG / PDF / .ed, transparent, embed, scale.
+// Export popover: PNG / SVG / HTML (animated) / PDF / .ed, transparent, embed, scale.
 import { h, icon, setPressed, toggleRow, segmented } from './dom.js';
 import { I } from './defs.js';
 
-const FORMATS = [['png', 'PNG'], ['svg', 'SVG'], ['pdf', 'PDF'], ['ed', '.ed']];
+const FORMATS = [['png', 'PNG'], ['svg', 'SVG'], ['html', 'HTML'], ['pdf', 'PDF'], ['ed', '.ed']];
 
 export function buildExportPopover(ctx) {
   const { store, actions } = ctx;
@@ -36,11 +36,14 @@ export function buildExportPopover(ctx) {
     scale.set(opts.scale);
     // Options that do not apply to a format are disabled, not hidden, so the layout stays put.
     const img = opts.fmt === 'png' || opts.fmt === 'svg';
-    transparent.el.disabled = !img;
+    transparent.el.disabled = !img && opts.fmt !== 'html';
     embed.el.disabled = !img;
     scaleRow.classList.toggle('is-off', opts.fmt !== 'png');
     scaleRow.querySelectorAll('button').forEach((b) => { b.disabled = opts.fmt !== 'png'; });
     go.textContent = opts.fmt === 'pdf' ? 'Print / Save as PDF' : 'Download ' + FORMATS.find((f) => f[0] === opts.fmt)[1];
+    note.textContent = opts.fmt === 'html'
+      ? 'A web page that plays the animations. Rendered in your browser. Nothing is uploaded.'
+      : 'Rendered in your browser. Nothing is uploaded.';
     title.textContent = `Export “${actions.currentPageName()}”`;
   }
 
