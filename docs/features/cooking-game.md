@@ -1976,7 +1976,7 @@ bounds, etc.) is covered in Security Considerations below.
   unauthenticated site.
 * **Input handling**: `player_name` goes through `html/template` auto-escaping
   like the Fishing Game's leaderboard; trimmed and bounds-checked
-  server-side, not just via the DB constraint.
+  server-side, not just via the DB constraint; invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game).
 * **Untrusted score submissions**: gameplay is entirely client-side, so
   `POST /kitchen-shift/score` trusts the client's reported
   `total_earnings`/`shifts_completed`. Mitigated with the same sanity-bound

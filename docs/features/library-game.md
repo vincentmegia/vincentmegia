@@ -1688,7 +1688,7 @@ established precedent.
   validated server-side against the same bounds as the DB CHECK
   constraints before insert (mirrors `internal/service/
   cooking_validation.go`'s pattern) — never trust client-submitted Gard
-  totals beyond range-checking them.
+  totals beyond range-checking them. In `player_name`, invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game).
 * **No new secrets/config** introduced by this feature.
 
 ---

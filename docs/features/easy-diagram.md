@@ -472,8 +472,9 @@ so the animations were lost on every export until now.
     `/static/easydiagram/fonts/`, about 165 KB base64 with all six; only
     the families the SVG names are included);
   - a CSP `<meta>` of `default-src 'none'; style-src 'unsafe-inline';
-    img-src data:; font-src data:`, so opening the file fetches nothing
-    and label HTML can't run code.
+    img-src data:; font-src data:; form-action 'none'; base-uri 'none'`, so
+    opening the file fetches nothing, label HTML can't run code, and a
+    `<form>` smuggled into a label can't submit anywhere.
 * **Triggers:** Loop and Once play on load. Hover plays while the pointer
   is over the shape, through a CSS `[data-cell-id]:hover` rule (the editor
   does it from JS). Speed and connector direction carry over.

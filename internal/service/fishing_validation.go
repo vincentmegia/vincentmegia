@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 )
 
 // Bounds from docs/features/fishing-game.md's Data Model — kept in sync
@@ -31,12 +30,9 @@ var (
 // rejects obviously-impossible submissions before they reach Postgres.
 // Returns the trimmed player name to store on success.
 func ValidateFishingScoreSubmission(playerName string, score, depthReachedMiles int) (string, error) {
-	trimmed := strings.TrimSpace(playerName)
-	if trimmed == "" {
-		return "", ErrFishingScorePlayerNameRequired
-	}
-	if len([]rune(trimmed)) > fishingScorePlayerNameMaxLen {
-		return "", ErrFishingScorePlayerNameTooLong
+	trimmed, err := validatePlayerName(playerName, fishingScorePlayerNameMaxLen, ErrFishingScorePlayerNameRequired, ErrFishingScorePlayerNameTooLong)
+	if err != nil {
+		return "", err
 	}
 	if score < 0 || score > fishingScoreMax {
 		return "", ErrFishingScoreOutOfRange

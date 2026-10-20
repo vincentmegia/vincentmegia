@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 	"time"
 )
 
@@ -57,12 +56,9 @@ func ValidateLibraryDailyDate(daily string, now time.Time) (*time.Time, error) {
 // they reach Postgres. Returns the trimmed player name to store on
 // success.
 func ValidateLibraryScoreSubmission(playerName string, totalEarnings, shiftsCompleted int) (string, error) {
-	trimmed := strings.TrimSpace(playerName)
-	if trimmed == "" {
-		return "", ErrLibraryScorePlayerNameRequired
-	}
-	if len([]rune(trimmed)) > libraryScorePlayerNameMaxLen {
-		return "", ErrLibraryScorePlayerNameTooLong
+	trimmed, err := validatePlayerName(playerName, libraryScorePlayerNameMaxLen, ErrLibraryScorePlayerNameRequired, ErrLibraryScorePlayerNameTooLong)
+	if err != nil {
+		return "", err
 	}
 	if totalEarnings < 0 || totalEarnings > libraryScoreEarningsMax {
 		return "", ErrLibraryScoreEarningsOutOfRange

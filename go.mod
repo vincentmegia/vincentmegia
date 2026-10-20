@@ -1,6 +1,6 @@
 module github.com/vincentmegia/vincentmegia
 
-go 1.26.5
+go 1.26.9
 
 require (
 	codeberg.org/go-pdf/fpdf v0.12.0
@@ -23,5 +23,5 @@ require (
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

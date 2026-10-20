@@ -21,3 +21,10 @@ config*.yaml
 # meant to hold secrets (DATABASE_URL, etc.) for local dev, so this one
 # genuinely matters to keep out of version control.
 .env
+# Any other .env variant (.env.local, .env.production, ...) is just as
+# likely to hold a real secret; .env.example is the committed template.
+.env.*
+!.env.example
+
+# Local Claude Code output (reports, scratch artifacts).
+/Claude outputs/

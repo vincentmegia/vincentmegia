@@ -107,9 +107,9 @@ func (h *BusStopsHandler) Index(w http.ResponseWriter, r *http.Request) {
 // busStopsMapsCSP is Google's recommended strict (nonce-based) policy for
 // the Maps JavaScript API (developers.google.com/maps/documentation/
 // javascript/content-security-policy), merged with this site's own
-// baseline: default-src/base-uri/object-src/frame-ancestors are kept from
-// middleware.SecurityHeaders, and 'self' is added to font-src/style-src
-// for the site's self-hosted fonts and output.css. 'strict-dynamic' means
+// baseline: default-src/base-uri/form-action/object-src/frame-ancestors
+// are kept from middleware.SecurityHeaders, and 'self' is added to
+// font-src/style-src for the site's self-hosted fonts and output.css. 'strict-dynamic' means
 // host allowlists are ignored for scripts, so every <script> on the page
 // must carry the nonce (base.html adds it when PageData.CSPNonce is set).
 func busStopsMapsCSP(nonce string) string {
@@ -117,6 +117,7 @@ func busStopsMapsCSP(nonce string) string {
 	return strings.Join([]string{
 		"default-src 'self'",
 		"base-uri 'self'",
+		"form-action 'self'",
 		"object-src 'none'",
 		"frame-ancestors 'none'",
 		"script-src " + n + " 'strict-dynamic' https: 'unsafe-eval' blob:",
@@ -327,6 +328,10 @@ type BusRouteStopView struct {
 // Route data only changes with the nightly sync, so it may be cached
 // briefly; it carries no visitor location.
 func (h *BusStopsHandler) Route(w http.ResponseWriter, r *http.Request) {
+	// Every error answer (429/400/404/500) is no-store, so a shared cache
+	// never holds a transient failure; only a found route is cacheable
+	// (overridden below).
+	w.Header().Set("Cache-Control", "no-store")
 	if !h.routeLimiter.Allow(middleware.ClientKey(r)) {
 		h.renderMessage(w, http.StatusTooManyRequests, BusMessageView{State: "rate-limited", Message: busMsgRateLimited})
 		return

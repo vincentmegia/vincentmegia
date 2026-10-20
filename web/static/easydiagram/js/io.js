@@ -744,8 +744,9 @@ export async function exportFile(engine, opts) {
 //
 // The page is the exported SVG inline, the editor's own animation CSS (copied
 // from the loaded engine.css, so the keyframes have one source) and the
-// IBM Plex fonts as data: URLs. Its CSP allows no scripts and no network, so
-// opening the file never fetches anything and label HTML can't run code.
+// IBM Plex fonts as data: URLs. Its CSP allows no scripts, no network and no
+// form submissions, so opening the file never fetches anything, label HTML
+// can't run code, and a form in a label can't post anywhere.
 
 const ANIM_SELECTOR = /\.ed-(na|ea|e-|draw-base)/;
 const ANIM_KEYFRAMES = /^ed[NE]/;
@@ -813,7 +814,7 @@ function buildHtml({ title, svg, background, fonts }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'">
 <meta name="generator" content="Easy Diagram">
 <title>${escapeHtml(title)}</title>
 <style>

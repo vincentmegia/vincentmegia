@@ -150,6 +150,7 @@ func isLibraryValidationError(err error) bool {
 	for _, sentinel := range []error{
 		service.ErrLibraryScorePlayerNameRequired,
 		service.ErrLibraryScorePlayerNameTooLong,
+		service.ErrPlayerNameInvalidCharacters,
 		service.ErrLibraryScoreEarningsOutOfRange,
 		service.ErrLibraryScoreShiftsOutOfRange,
 		service.ErrLibraryDailyDateInvalid,

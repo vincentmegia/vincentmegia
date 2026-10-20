@@ -741,7 +741,7 @@ holds only voluntarily-submitted, already-finished round results.
   which is trusted because it's hardcoded, never user input). Trim
   whitespace and enforce the 1–20 char bound server-side (not just in the
   DB constraint, so a bad request gets a clear 4xx rather than a raw
-  constraint-violation error).
+  constraint-violation error); invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game).
 * **Untrusted score submissions**: the game simulation is entirely
   client-side (Scope), so `POST /fishing-game/score` is trusting the
   client's reported `score`/`depth_reached_miles`. Mitigate with sanity
@@ -772,8 +772,11 @@ holds only voluntarily-submitted, already-finished round results.
   one development session before a user noticed "garbage data" on
   `/fishing-game` and it was traced back here. Any new e2e test that
   submits a real score must clean up after itself the same way.
-* **CSRF**: `POST /fishing-game/score` must be covered by the app's CSRF
-  protection, same as `POST /logout`.
+* **CSRF**: `POST /fishing-game/score`, like every POST/PUT/DELETE, goes
+  through `middleware.CrossOriginProtection`, which 403s a browser request
+  sent from another site (`Sec-Fetch-Site`/`Origin` check). That stops
+  cross-site forgery from a browser only; a script calling the route
+  directly is limited only by the per-IP rate limit and validation.
 * **Secrets**: none introduced by this feature.
 * **No inline `<script>` tags** — `fishing-game.js` is external, consistent
   with this site's strict CSP (`docs/features/home.md`'s Security

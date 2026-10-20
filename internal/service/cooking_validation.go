@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 )
 
 // Bounds from docs/features/cooking-game.md's Data Model — kept in sync
@@ -39,12 +38,9 @@ var (
 // they reach Postgres. Returns the trimmed player name to store on
 // success.
 func ValidateCookingScoreSubmission(playerName string, totalEarnings, shiftsCompleted int) (string, error) {
-	trimmed := strings.TrimSpace(playerName)
-	if trimmed == "" {
-		return "", ErrCookingScorePlayerNameRequired
-	}
-	if len([]rune(trimmed)) > cookingScorePlayerNameMaxLen {
-		return "", ErrCookingScorePlayerNameTooLong
+	trimmed, err := validatePlayerName(playerName, cookingScorePlayerNameMaxLen, ErrCookingScorePlayerNameRequired, ErrCookingScorePlayerNameTooLong)
+	if err != nil {
+		return "", err
 	}
 	if totalEarnings < 0 || totalEarnings > cookingScoreEarningsMax {
 		return "", ErrCookingScoreEarningsOutOfRange

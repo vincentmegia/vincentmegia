@@ -175,11 +175,13 @@ func isHospitalValidationError(err error) bool {
 	for _, sentinel := range []error{
 		service.ErrHospitalScorePlayerNameRequired,
 		service.ErrHospitalScorePlayerNameTooLong,
+		service.ErrPlayerNameInvalidCharacters,
 		service.ErrHospitalScoreEarningsOutOfRange,
 		service.ErrHospitalScoreShiftsOutOfRange,
 		service.ErrHospitalDailyDateInvalid,
 		service.ErrHospitalDailyDateStale,
 		service.ErrHospitalDailyShiftsInvalid,
+		service.ErrHospitalMonthShiftsInvalid,
 		service.ErrHospitalEarningsImplausible,
 		service.ErrHospitalRunTicketMissing,
 		service.ErrHospitalRunTicketInvalid,

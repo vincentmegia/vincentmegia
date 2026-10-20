@@ -128,6 +128,7 @@ func isBusRushValidationError(err error) bool {
 	for _, sentinel := range []error{
 		service.ErrBusRushPlayerNameRequired,
 		service.ErrBusRushPlayerNameTooLong,
+		service.ErrPlayerNameInvalidCharacters,
 		service.ErrBusRushScoreOutOfRange,
 		service.ErrBusRushDistanceOutOfRange,
 		service.ErrBusRushDailyDateInvalid,

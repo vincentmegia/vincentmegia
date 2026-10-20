@@ -49,10 +49,13 @@ var validationErrors = []error{
 	ErrHeroMessageRequired,
 	ErrSlideImagePathRequired,
 	ErrSlideAltRequired,
+	ErrSlideImagePathInvalid,
+	ErrSlideLinkURLInvalid,
 	ErrWorkKickerRequired,
 	ErrWorkTitleRequired,
 	ErrWorkDescriptionRequired,
 	ErrWorkLiveURLRequired,
+	ErrWorkLiveURLInvalid,
 	ErrReorderInvalid,
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/model"
+	"github.com/vincentmegia/vincentmegia/internal/repository"
 )
 
 // fakeHospitalRepository is an in-memory stand-in for
@@ -20,12 +21,22 @@ type fakeHospitalRepository struct {
 	insertErr   error
 	topErr      error
 	insertCalls int
+	nonces      map[string]bool // stored run_nonce values (the UNIQUE constraint)
 }
 
-func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
+func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time, runNonce string) error {
 	f.insertCalls++
 	if f.insertErr != nil {
 		return f.insertErr
+	}
+	if runNonce != "" {
+		if f.nonces[runNonce] {
+			return repository.ErrHospitalRunNonceUsed
+		}
+		if f.nonces == nil {
+			f.nonces = map[string]bool{}
+		}
+		f.nonces[runNonce] = true
 	}
 	f.scores = append(f.scores, model.HospitalScore{
 		PlayerName:      playerName,
@@ -99,6 +110,7 @@ func TestHospitalService_SubmitScore_ValidationRejected(t *testing.T) {
 		{"name too long", "this-name-is-way-too-long-for-the-limit", 1000, 5, ErrHospitalScorePlayerNameTooLong},
 		{"earnings out of range", "Vince", 400_000, 5, ErrHospitalScoreEarningsOutOfRange},
 		{"shifts out of range", "Vince", 1000, 31, ErrHospitalScoreShiftsOutOfRange},
+		{"month run short of 30 shifts", "Vince", 1000, 5, ErrHospitalMonthShiftsInvalid},
 	}
 
 	for _, tt := range tests {
@@ -125,7 +137,7 @@ func TestHospitalService_SubmitScore_RepositoryError(t *testing.T) {
 	repo := &fakeHospitalRepository{insertErr: repoErr}
 	svc := &HospitalService{Repo: repo}
 
-	err := svc.SubmitScore(context.Background(), "Vince", 1000, 5, "", "")
+	err := svc.SubmitScore(context.Background(), "Vince", 1000, 30, "", "")
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}

@@ -6,10 +6,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -79,6 +81,8 @@ func run() error {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
+	warnHospitalRunConfig(cfg)
+
 	busService := newBusService(conn, readConn, cfg)
 	mux, err := newMux(conn, readConn, cfg.LandingAPIToken, busStopsDeps{
 		Service:    busService,
@@ -96,24 +100,61 @@ func run() error {
 	defer stopScheduler()
 	go busService.RunScheduler(schedCtx)
 
-	handlerChain := middleware.Chain(mux,
-		middleware.Recover,
-		middleware.RequestID,
-		middleware.ClientIP(cfg.TrustProxyHeaders),
-		middleware.Logging,
-		middleware.SecurityHeaders,
-	)
-
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           handlerChain,
+		Handler:           newHandlerChain(mux, cfg.TrustProxyHeaders),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       120 * time.Second,
 	}
 
 	return serveWithGracefulShutdown(srv)
+}
+
+// writeTimeout is the server's http.Server.WriteTimeout; requestDeadline
+// is the context deadline every handler gets (middleware.Deadline), kept
+// below it so a handler whose database query or upstream call runs long
+// gives up and still has time to write its error before the server cuts
+// the connection.
+const (
+	writeTimeout    = 10 * time.Second
+	requestDeadline = 8 * time.Second
+)
+
+// maxRequestBodyBytes caps POST/PUT/PATCH/DELETE bodies outside the JSON
+// API (which caps its own at 64 KiB). The largest legitimate body is a
+// /settings/resume form — a few KB of text — so 1 MiB is generous.
+const maxRequestBodyBytes = 1 << 20
+
+// newHandlerChain wraps mux in the app's middleware, outermost first.
+// CrossOriginProtection runs before anything reads the body, so a refused
+// cross-site request costs nothing beyond its headers; the 403/413 it and
+// LimitRequestBody write still get SecurityHeaders and a log line.
+func newHandlerChain(mux http.Handler, trustProxyHeaders bool) http.Handler {
+	return middleware.Chain(mux,
+		middleware.Recover,
+		middleware.RequestID,
+		middleware.ClientIP(trustProxyHeaders),
+		middleware.Logging,
+		middleware.SecurityHeaders,
+		middleware.CrossOriginProtection,
+		middleware.LimitRequestBody(maxRequestBodyBytes, "/api/"),
+		middleware.Deadline(requestDeadline),
+	)
+}
+
+// warnHospitalRunConfig logs Hospital Shift's leaderboard anti-cheat
+// settings that are fine for local dev and e2e but wrong in production.
+// It warns rather than refusing to start: `make run-e2e` deliberately
+// runs with the time check off, and local dev with no secret.
+func warnHospitalRunConfig(cfg config.Config) {
+	if cfg.HospitalRunSecret == "" {
+		slog.Warn("hospital shift: HOSPITAL_RUN_SECRET is not set; run tickets are signed with a random per-process key, so every in-progress run fails to submit after a restart or deploy. Set it in production.")
+	}
+	if !cfg.HospitalRunTimeCheck {
+		slog.Error("SECURITY: hospital shift: HOSPITAL_RUN_TIME_CHECK=off disables the leaderboard's minimum-run-time anti-cheat check, so a scripted run can submit instantly. This is for Playwright (make run-e2e) only; never set it in production.")
+	}
 }
 
 // runMigrations applies pending migrations at startup via the goose
@@ -283,7 +324,7 @@ func newMux(conn, readConn *sql.DB, landingAPIToken string, bus busStopsDeps, ho
 		return nil, err
 	}
 
-	fileServer := http.FileServer(http.Dir("web/static"))
+	fileServer := http.FileServer(staticFS{http.Dir("web/static")})
 	mux.Handle("GET /static/", http.StripPrefix("/static/", noCacheStatic(fileServer)))
 
 	return mux, nil
@@ -408,6 +449,31 @@ func noCacheStatic(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// staticFS is the /static/ file system with directory listings and
+// dotfiles removed: opening a directory or any path with a segment
+// starting with "." reports "not exist", so http.FileServer answers 404
+// rather than an index page of the directory or a stray .DS_Store. Files
+// serve exactly as before (same Last-Modified/304 handling).
+type staticFS struct{ fs http.FileSystem }
+
+func (s staticFS) Open(name string) (http.File, error) {
+	for _, seg := range strings.Split(name, "/") {
+		if strings.HasPrefix(seg, ".") {
+			return nil, fs.ErrNotExist
+		}
+	}
+	f, err := s.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		f.Close()
+		return nil, fs.ErrNotExist
+	}
+	return f, nil
 }
 
 // serveWithGracefulShutdown starts srv and blocks until SIGINT/SIGTERM is

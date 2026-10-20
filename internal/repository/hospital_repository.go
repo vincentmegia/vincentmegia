@@ -3,11 +3,22 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/vincentmegia/vincentmegia/internal/model"
 )
+
+// ErrHospitalRunNonceUsed is Insert's error when a row with the same run
+// ticket nonce already exists (the hospital_scores_run_nonce_key UNIQUE
+// constraint, migration 014): the ticket was already redeemed.
+var ErrHospitalRunNonceUsed = errors.New("hospital run nonce already used")
+
+// hospitalRunNonceConstraint names migration 014's UNIQUE constraint.
+const hospitalRunNonceConstraint = "hospital_scores_run_nonce_key"
 
 // HospitalRepository reads and writes the hospital_scores table — the
 // Hospital Shift game's public leaderboard. See
@@ -34,12 +45,19 @@ func NewHospitalRepository(db, readDB *sql.DB) *HospitalRepository {
 // table's own CHECK constraints are a backstop, not the primary validation
 // layer (docs/features/hospital-shift.md's Security Considerations).
 // dailyDate is the Daily Challenge's day, or nil for an ordinary run.
-func (repo *HospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
+// runNonce is the run ticket's nonce ("" stores NULL); a nonce already in
+// the table returns ErrHospitalRunNonceUsed and inserts nothing, which is
+// what makes a ticket single-use across restarts and instances.
+func (repo *HospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time, runNonce string) error {
 	const query = `
-		INSERT INTO hospital_scores (player_name, total_earnings, shifts_completed, daily_date)
-		VALUES ($1, $2, $3, $4)`
+		INSERT INTO hospital_scores (player_name, total_earnings, shifts_completed, daily_date, run_nonce)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''))`
 
-	if _, err := repo.DB.ExecContext(ctx, query, playerName, totalEarnings, shiftsCompleted, dailyDate); err != nil {
+	if _, err := repo.DB.ExecContext(ctx, query, playerName, totalEarnings, shiftsCompleted, dailyDate, runNonce); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == hospitalRunNonceConstraint {
+			return ErrHospitalRunNonceUsed
+		}
 		return fmt.Errorf("insert hospital_scores: %w", err)
 	}
 	return nil

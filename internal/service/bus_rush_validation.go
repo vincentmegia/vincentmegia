@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 	"time"
 )
 
@@ -63,12 +62,9 @@ func FormatBusRushDay(day time.Time) string {
 // client-side (docs/features/bus-rush.md's Scope). Returns the trimmed
 // name to store.
 func ValidateBusRushScoreSubmission(playerName string, score, distanceMeters int) (string, error) {
-	trimmed := strings.TrimSpace(playerName)
-	if trimmed == "" {
-		return "", ErrBusRushPlayerNameRequired
-	}
-	if len([]rune(trimmed)) > busRushPlayerNameMaxLen {
-		return "", ErrBusRushPlayerNameTooLong
+	trimmed, err := validatePlayerName(playerName, busRushPlayerNameMaxLen, ErrBusRushPlayerNameRequired, ErrBusRushPlayerNameTooLong)
+	if err != nil {
+		return "", err
 	}
 	if score < 0 || score > busRushScoreMax {
 		return "", ErrBusRushScoreOutOfRange

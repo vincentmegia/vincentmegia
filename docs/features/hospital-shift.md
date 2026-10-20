@@ -814,7 +814,7 @@ answers with the daily board (the Bus Rush leaderboard's pattern).
 | ------ | ----------------------------- | -------------------------------- | ---- | ----- |
 | GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. |
 | GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
-| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
+| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift, any other run 30), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
 | POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed, single-use run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min — tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test). |
 
 ---
@@ -831,6 +831,7 @@ answers with the daily board (the Bus Rush leaderboard's pattern).
 | shifts_completed | INT         | NOT NULL, 1–30 |
 | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 | daily_date       | DATE        | nullable — the Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/012_add_hospital_daily_date.sql`. |
+| run_nonce        | TEXT        | nullable, UNIQUE (`hospital_scores_run_nonce_key`) — the run ticket's nonce, so a ticket saves one row (Security Considerations). NULL for rows from before it. Added by `migrations/014_add_hospital_run_nonce.sql`. |
 
 Index `idx_hospital_scores_earnings (total_earnings DESC)`, plus
 `idx_hospital_scores_daily (daily_date, total_earnings DESC) WHERE
@@ -889,11 +890,13 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   rate-limited per IP with its own limiter.
 * `player_name`/`total_earnings`/`shifts_completed` validated server-side
   against the same bounds as the CHECK constraints
-  (`internal/service/hospital_validation.go`); player names are rendered
+  (`internal/service/hospital_validation.go`; in names, invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game)); player names are rendered
   through html/template auto-escaping. `daily_date` must be YYYY-MM-DD
   within a day of today's UTC date (`ValidateHospitalDailyDate`, Bus
   Rush's window — a run finished across midnight still counts, old days
-  can't be back-filled), and a daily run must report exactly 1 shift.
+  can't be back-filled), and a daily run must report exactly 1 shift; an
+  ordinary run must report exactly 30 (the page submits only at the
+  month's end, `SHIFTS_PER_MONTH`).
 * **Leaderboard anti-cheat** (the user: "add security", choosing it;
   `internal/service/hospital_run.go`). The game runs client-side, so a
   score can't be proven — but faking one now takes about as long as
@@ -910,15 +913,27 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
     the ticket was issued: 3.6 h for a month, 7.2 min for a Daily (shift
     12's clock). The Go side mirrors the clock table
     (`hospitalShiftClockSeconds`) — change both together.
-  * *Single use.* A ticket redeems once (remembered in memory for its
-    12 h life; given back if the insert fails), so one honest run can't be
-    replayed into many rows.
+  * *Single use.* The ticket's nonce is stored with the score row in
+    `hospital_scores.run_nonce`, which has a UNIQUE constraint (migration
+    014), so a second submission with the same ticket is a 400 ("already
+    submitted") — durable across restarts and shared by every server
+    instance. Spending the ticket and saving the score are the same
+    insert, so a failed insert leaves the ticket unspent.
   * *Plausible earnings.* At most 10,000 Gard per claimed shift
     (`hospitalMaxEarningsPerShift`, above a perfect shift at the +25% rank
     perk), so a 1-shift Daily can't claim a month's pay.
-  * Limits: a determined cheater can still play in real time and edit the
-    final number within the cap, or script the page. It stops instant fake
-    submissions and replays.
+  * Limits: this raises the cost of a fake score, it doesn't prove one.
+    A ticket isn't tied to any play — anyone can `POST /hospital-shift/run`
+    from a script (120/min per IP), wait out the minimum time (3.6 h for a
+    month, 7.2 min for a Daily), and submit any total up to the per-shift
+    cap (300,000 for a month, 10,000 for a Daily) without opening the page.
+    A real-time player can likewise edit the final number within the cap.
+    The page's Playwright hooks (`window.__hospitalShiftTestHooks`,
+    `window.__hospitalShiftTestSeed`) also ship in production, so the page
+    itself is easy to drive from the console. What the checks stop is
+    instant fake submissions and replaying one ticket into many rows. The
+    server logs a startup warning when `HOSPITAL_RUN_SECRET` is unset or
+    the time check is off.
   * Config: `HOSPITAL_RUN_SECRET` signs tickets; unset, a random secret is
     made per process, so a run in progress across a deploy can't submit —
     **set it in production**. `HOSPITAL_RUN_TIME_CHECK=off` (only
@@ -943,11 +958,13 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       `?board=daily` and not the all-time board). Anti-cheat
       (`hospital_run_test.go`, `TestHospitalShiftHandler_RunTickets`): the
       month/Daily minimum durations; an honest run accepted once, then
-      replay rejected, and released after a failed insert; missing,
+      replay rejected (also from a fresh ticket checker, as after a
+      restart), and still usable after a failed insert; missing,
       garbage, tampered, foreign-signed, too-fast and expired tickets
       rejected; the time check's off switch; the per-shift earnings cap; the
       handler's ticket route (no-store, rate-limited) and its 400 reasons.
-      The real-Postgres round trips start a run first.
+      The real-Postgres round trips start a run first, and a replayed
+      ticket is refused by the real `run_nonce` UNIQUE constraint.
 * [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
       triage agreement, condition gating, skill-check zones, bandage
       grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,

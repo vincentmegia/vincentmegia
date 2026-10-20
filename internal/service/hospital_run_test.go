@@ -33,7 +33,7 @@ func TestHospitalMinRunDuration(t *testing.T) {
 	}
 }
 
-func TestHospitalRunTickets_AcceptsAnHonestRunOnce(t *testing.T) {
+func TestHospitalRunTickets_AcceptsAnHonestRun(t *testing.T) {
 	now := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 	tickets := ticketsAt(t, &now)
 	ticket, err := tickets.Issue()
@@ -41,15 +41,17 @@ func TestHospitalRunTickets_AcceptsAnHonestRunOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(4 * time.Hour)
-	if err := tickets.Redeem(ticket, 30, false); err != nil {
+	nonce, err := tickets.Verify(ticket, 30, false)
+	if err != nil {
 		t.Fatalf("honest 30-shift run rejected: %v", err)
 	}
-	if err := tickets.Redeem(ticket, 30, false); !errors.Is(err, ErrHospitalRunTicketUsed) {
-		t.Errorf("replayed ticket: err = %v, want ErrHospitalRunTicketUsed", err)
+	if want := strings.Split(ticket, ".")[2]; nonce != want {
+		t.Errorf("nonce = %q, want the ticket's %q", nonce, want)
 	}
-	tickets.Release(ticket)
-	if err := tickets.Redeem(ticket, 30, false); err != nil {
-		t.Errorf("released ticket should redeem again: %v", err)
+	// Verify is stateless: single use is the database's UNIQUE run_nonce
+	// (see TestHospitalService_SubmitScore_AntiCheat).
+	if again, err := tickets.Verify(ticket, 30, false); err != nil || again != nonce {
+		t.Errorf("second Verify = %q, %v; want the same nonce", again, err)
 	}
 }
 
@@ -83,7 +85,7 @@ func TestHospitalRunTickets_Rejects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			at := now
 			tickets.Now = func() time.Time { return at.Add(tt.after) }
-			if err := tickets.Redeem(tt.ticket, tt.shifts, tt.daily); !errors.Is(err, tt.wantErr) {
+			if _, err := tickets.Verify(tt.ticket, tt.shifts, tt.daily); !errors.Is(err, tt.wantErr) {
 				t.Errorf("err = %v, want %v", err, tt.wantErr)
 			}
 		})
@@ -93,7 +95,7 @@ func TestHospitalRunTickets_Rejects(t *testing.T) {
 func TestHospitalRunTickets_SkipTimeCheck(t *testing.T) {
 	tickets, _ := NewHospitalRunTickets("", true)
 	ticket, _ := tickets.Issue()
-	if err := tickets.Redeem(ticket, 30, false); err != nil {
+	if _, err := tickets.Verify(ticket, 30, false); err != nil {
 		t.Errorf("with the time check off, an instant run should pass: %v", err)
 	}
 }
@@ -120,8 +122,14 @@ func TestHospitalService_SubmitScore_AntiCheat(t *testing.T) {
 	if err := svc.SubmitScore(context.Background(), "Vince", 80000, 30, "", ticket); !errors.Is(err, ErrHospitalRunTicketUsed) {
 		t.Errorf("replay: err = %v, want ErrHospitalRunTicketUsed", err)
 	}
-	if repo.insertCalls != 1 {
-		t.Errorf("insert calls = %d, want 1", repo.insertCalls)
+	// A second server instance (or the same one after a restart) shares
+	// the database, so the replay is still refused.
+	restarted := &HospitalService{Repo: repo, Tickets: ticketsAt(t, &now), Now: func() time.Time { return now }}
+	if err := restarted.SubmitScore(context.Background(), "Vince", 80000, 30, "", ticket); !errors.Is(err, ErrHospitalRunTicketUsed) {
+		t.Errorf("replay after restart: err = %v, want ErrHospitalRunTicketUsed", err)
+	}
+	if len(repo.scores) != 1 {
+		t.Errorf("stored rows = %d, want 1", len(repo.scores))
 	}
 }
 
@@ -137,7 +145,7 @@ func TestHospitalService_SubmitScore_ImplausibleEarnings(t *testing.T) {
 	}
 }
 
-func TestHospitalService_SubmitScore_ReleasesTicketWhenInsertFails(t *testing.T) {
+func TestHospitalService_SubmitScore_FailedInsertKeepsTicket(t *testing.T) {
 	now := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 	repo := &fakeHospitalRepository{insertErr: errors.New("connection refused")}
 	svc := &HospitalService{Repo: repo, Tickets: ticketsAt(t, &now)}

@@ -119,7 +119,7 @@ func TestBusStopsIndex_WithMapsKey_NonceCSPMatchesScriptTags(t *testing.T) {
 		t.Fatalf("CSP has no nonce script-src: %q", csp)
 	}
 	nonce := m[1]
-	for _, want := range []string{"default-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "style-src 'self' 'nonce-" + nonce + "'", "worker-src blob:", "https://*.googleapis.com"} {
+	for _, want := range []string{"default-src 'self'", "form-action 'self'", "object-src 'none'", "frame-ancestors 'none'", "style-src 'self' 'nonce-" + nonce + "'", "worker-src blob:", "https://*.googleapis.com"} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("CSP missing %q: %q", want, csp)
 		}
@@ -589,6 +589,9 @@ func TestBusStopsRoute(t *testing.T) {
 		h.Route(rec, req)
 		if rec.Code != tc.code || !strings.Contains(rec.Body.String(), `data-bus-state="`+tc.state+`"`) || strings.Contains(rec.Body.String(), "secret") {
 			t.Errorf("err %v: got %d %s", tc.err, rec.Code, rec.Body.String())
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("err %v: Cache-Control = %q, want no-store", tc.err, cc)
 		}
 	}
 }

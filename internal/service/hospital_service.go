@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 // docs/skills/go-backend/SKILL.md "Service"/"Testability".
 // *repository.HospitalRepository satisfies this implicitly.
 type hospitalRepository interface {
-	Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error
+	Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time, runNonce string) error
 	TopScores(ctx context.Context, limit int) ([]model.HospitalScore, error)
 	TopDailyScores(ctx context.Context, day time.Time, limit int) ([]model.HospitalScore, error)
 }
@@ -64,9 +65,12 @@ func (s *HospitalService) Today() string {
 // failure so the handler can render a clear 4xx rather than a raw DB
 // constraint-violation error. daily is the Daily Challenge's date ("" for
 // an ordinary run) — see ValidateHospitalDailyDate; a daily run is always
-// exactly one shift. ticket is the run's ticket from IssueRunTicket: the
-// anti-cheat checks (hospital_run.go) run last, so a ticket is only spent
-// on an otherwise-valid score, and given back if the insert fails.
+// exactly one shift, and an ordinary run is always the full 30-shift month
+// (the page only submits at the month's end). ticket is the run's ticket
+// from IssueRunTicket: the anti-cheat checks (hospital_run.go) run last,
+// and the ticket is spent by the insert itself (its nonce is UNIQUE in
+// hospital_scores), so a failed insert doesn't burn an honest run and a
+// replay — even after a restart — is ErrHospitalRunTicketUsed.
 func (s *HospitalService) SubmitScore(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, daily, ticket string) error {
 	trimmed, err := ValidateHospitalScoreSubmission(playerName, totalEarnings, shiftsCompleted)
 	if err != nil {
@@ -79,17 +83,21 @@ func (s *HospitalService) SubmitScore(ctx context.Context, playerName string, to
 	if day != nil && shiftsCompleted != 1 {
 		return ErrHospitalDailyShiftsInvalid
 	}
+	if day == nil && shiftsCompleted != hospitalMonthShifts {
+		return ErrHospitalMonthShiftsInvalid
+	}
 	if err := ValidateHospitalEarningsPlausible(totalEarnings, shiftsCompleted); err != nil {
 		return err
 	}
+	var nonce string
 	if s.Tickets != nil {
-		if err := s.Tickets.Redeem(ticket, shiftsCompleted, day != nil); err != nil {
+		if nonce, err = s.Tickets.Verify(ticket, shiftsCompleted, day != nil); err != nil {
 			return err
 		}
 	}
-	if err := s.Repo.Insert(ctx, trimmed, totalEarnings, shiftsCompleted, day); err != nil {
-		if s.Tickets != nil {
-			s.Tickets.Release(ticket)
+	if err := s.Repo.Insert(ctx, trimmed, totalEarnings, shiftsCompleted, day, nonce); err != nil {
+		if errors.Is(err, repository.ErrHospitalRunNonceUsed) {
+			return ErrHospitalRunTicketUsed
 		}
 		return fmt.Errorf("insert hospital score: %w", err)
 	}

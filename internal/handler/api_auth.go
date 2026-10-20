@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
@@ -15,8 +16,10 @@ import (
 // attempts one source may make per window before being refused outright.
 // This is a brute-force speed bump on a single-caller internal API
 // (docs/features/landing-content-api.md's Auth section), not a general
-// traffic limiter: successful requests are never counted, so the one
-// legitimate caller can't rate-limit itself no matter how busy it is.
+// traffic limiter: successful requests are never counted and never
+// checked against it (RequireAPIToken verifies the token first), so the
+// one legitimate caller can't be rate-limited — by itself or by an
+// attacker burning the failure budget from a shared address.
 const (
 	authFailureLimit  = 10
 	authFailureWindow = time.Minute
@@ -34,36 +37,44 @@ const (
 // routes only when it is non-empty (see cmd/server/main.go's newMux), so
 // this middleware never has to decide whether an empty token means "allow
 // everything".
+//
+// The token is checked before the failure limiter is consulted: a request
+// presenting the correct token always passes, so an attacker spraying bad
+// tokens from the same address (or the same Render egress) can't lock
+// home-admin out. The limiter only slows down wrong guesses.
 func RequireAPIToken(token string, limiter *authFailureLimiter, next http.Handler) http.Handler {
+	want := sha256.Sum256([]byte(token))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !limiter.Allow(middleware.ClientKey(r)) {
+		presented, ok := bearerToken(r)
+		// Compare SHA-256 digests, not the raw strings: ConstantTimeCompare
+		// returns immediately when its inputs differ in length, so comparing
+		// raw values would leak the token's length through timing. Digests
+		// are always 32 bytes. The compare also runs when the header was
+		// missing or malformed (against the empty string's digest), so the
+		// rejection path doesn't branch earlier for one kind of failure.
+		got := sha256.Sum256([]byte(presented))
+		valid := subtle.ConstantTimeCompare(got[:], want[:]) == 1
+		if ok && valid {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		key := middleware.ClientKey(r)
+		if !limiter.Allow(key) {
 			writeAPIError(w, http.StatusTooManyRequests, "rate_limited",
 				"Too many failed authentication attempts. Try again shortly.")
 			return
 		}
-
-		presented, ok := bearerToken(r)
-		// Compare even when the header was missing or malformed, against
-		// the same token, so a rejected request costs the same time
-		// regardless of *why* it was rejected — an early return on a
-		// missing header would leak, through timing, whether a supplied
-		// token was well-formed but wrong.
-		valid := subtle.ConstantTimeCompare([]byte(presented), []byte(token)) == 1
-		if !ok || !valid {
-			limiter.RecordFailure(middleware.ClientKey(r))
-			// Never log the presented token, in full or in part — only
-			// that a failure happened, and from where.
-			slog.Warn("landing api auth failed",
-				"request_id", middleware.RequestIDFromContext(r.Context()),
-				"path", r.URL.Path,
-				"remote", middleware.ClientKey(r),
-			)
-			writeAPIError(w, http.StatusUnauthorized, "unauthorized",
-				"Missing or invalid API token.")
-			return
-		}
-
-		next.ServeHTTP(w, r)
+		limiter.RecordFailure(key)
+		// Never log the presented token, in full or in part — only
+		// that a failure happened, and from where.
+		slog.Warn("landing api auth failed",
+			"request_id", middleware.RequestIDFromContext(r.Context()),
+			"path", r.URL.Path,
+			"remote", key,
+		)
+		writeAPIError(w, http.StatusUnauthorized, "unauthorized",
+			"Missing or invalid API token.")
 	})
 }
 
@@ -131,6 +142,7 @@ func (l *authFailureLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	key = middleware.LimiterKey(key)
 	entry, ok := l.attempts[key]
 	if !ok || time.Now().After(entry.windowEnd) {
 		return true
@@ -144,6 +156,7 @@ func (l *authFailureLimiter) RecordFailure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	key = middleware.LimiterKey(key)
 	now := time.Now()
 	entry, ok := l.attempts[key]
 	if !ok || now.After(entry.windowEnd) {

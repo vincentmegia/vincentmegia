@@ -591,6 +591,28 @@ func TestEndToEnd(t *testing.T) {
 			}
 		})
 
+		t.Run("a replayed run ticket is refused by the run_nonce UNIQUE constraint", func(t *testing.T) {
+			resp, err := client.PostForm(srv.URL+"/hospital-shift/score", form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "already submitted") {
+				t.Errorf("replay: status = %d, body = %s; want 400 \"already submitted\"", resp.StatusCode, b)
+			}
+			var rows int
+			if err := conn.QueryRow(`SELECT count(*) FROM hospital_scores WHERE player_name = $1`, playerName).Scan(&rows); err != nil {
+				t.Fatal(err)
+			}
+			if rows != 1 {
+				t.Errorf("rows for %s = %d, want 1", playerName, rows)
+			}
+		})
+
 		t.Run("a Daily Challenge run lands on today's daily board, not the all-time one", func(t *testing.T) {
 			dailyName := fmt.Sprintf("e2e-d%d", time.Now().UnixNano()%1_000_000)
 			t.Cleanup(func() {
@@ -773,6 +795,23 @@ func TestEndToEnd(t *testing.T) {
 		}
 		if !strings.Contains(body, `"error":"validation_failed"`) {
 			t.Errorf("body = %q, want the validation_failed envelope", body)
+		}
+	})
+
+	t.Run("landing API rejects unsafe URLs with 422 and stores nothing", func(t *testing.T) {
+		for _, payload := range []string{
+			`{"image_path":"/static/images/carousel/1.svg","alt":"a","caption":"","link_url":"javascript:alert(1)","external":false}`,
+			`{"image_path":"//evil.example/x.png","alt":"a","caption":"","link_url":"","external":false}`,
+		} {
+			resp, body := apiDo(t, client, http.MethodPost, srv.URL+landingAPIPrefix+"/carousel", apiAuth(), []byte(payload))
+			if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, `"error":"validation_failed"`) {
+				t.Errorf("POST %s: status = %d, body = %s; want 422 validation_failed", payload, resp.StatusCode, body)
+			}
+		}
+		resp, body := apiDo(t, client, http.MethodPost, srv.URL+landingAPIPrefix+"/selected-work", apiAuth(),
+			[]byte(`{"kicker":"k","title":"t","description":"d","live_url":"//evil.example","external":false}`))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("POST selected-work //evil.example: status = %d, body = %s; want 422", resp.StatusCode, body)
 		}
 	})
 

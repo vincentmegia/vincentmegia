@@ -184,8 +184,10 @@ honored.
   `DATABASE_URL` precedent; `fileConfig`'s strict decoding
   (`dec.KnownFields(true)`) would reject the key anyway, which is the
   intended behavior.
-* Compared with `crypto/subtle.ConstantTimeCompare`, never `==`, to avoid
-  leaking the token through response timing.
+* Compared with `crypto/subtle.ConstantTimeCompare` over the SHA-256
+  digests of the presented and configured tokens, never `==` — digests
+  are fixed-length, so the compare leaks neither content nor length
+  through response timing.
 * Minimum length validated at startup (suggest ≥ 32 chars, generated from
   a CSPRNG). Fail fast on a set-but-too-short token, consistent with how
   `config.Load` already treats a present-but-invalid value.
@@ -201,6 +203,9 @@ honored.
   response. API auth failures return `401` with a JSON body and no
   redirect.
 * Rate-limit failed auth attempts per source IP to blunt brute force. The
+  token is checked first: a request with the correct token always passes,
+  even from a source over its failure budget, so an attacker sharing HQ's
+  address can't lock it out. IPv6 sources share a budget per /64. The
   existing `scoreSubmitLimiter` in `internal/handler/fishing_game.go` is
   the pattern to follow (in-memory, fixed window, single-process).
   "Source IP" is resolved via `internal/middleware.ClientKey`, not a raw
@@ -349,7 +354,7 @@ per `docs/skills/go-backend/SKILL.md`'s Errors section.
 | 401 | `unauthorized`         | Missing, malformed, or incorrect bearer token. |
 | 404 | `not_found`            | Unknown slide/item ID, or unknown route. |
 | 409 | `carousel_full`        | `POST /carousel` when 5 slides already exist. |
-| 422 | `validation_failed`    | Well-formed JSON that violates a field rule (missing required field, bad reorder list). |
+| 422 | `validation_failed`    | Well-formed JSON that violates a field rule (missing required field, unsafe URL, bad reorder list). |
 | 429 | `rate_limited`         | Too many failed auth attempts from one source. |
 | 500 | `internal_error`       | Anything unexpected; details logged, not returned. |
 
@@ -388,6 +393,14 @@ relax any of them:
   the cap returns `409`, not a silent no-op.
 * Slides require `image_path` and `alt`; `caption`/`link_url` optional.
 * Selected work items require `kicker`, `title`, `description`, `live_url`.
+* URLs are checked on write (`validImagePath`/`validContentLink` in
+  `internal/service/landing_content_validation.go`, shared with the
+  editor): `image_path` must be a same-origin path under `/static/` (no
+  `//`, scheme, `..`, backslash or whitespace); a non-empty
+  `link_url` and every `live_url` must be an absolute `https://` URL with a
+  host or a root-relative path with one leading slash (`/projects`, not
+  `//host`) — `javascript:`, `data:`, `http:` and other schemes are
+  rejected. Each is capped at 2,048 bytes. A failure is `422`.
 * Hero requires all three of `eyebrow`/`title`/`message`.
 * All string fields are trimmed before storage; a whitespace-only value for
   a required field is a validation failure, not an empty-but-valid one.

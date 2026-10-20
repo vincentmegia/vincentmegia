@@ -27,7 +27,7 @@ type fakeHospitalRepository struct {
 	topErr    error
 }
 
-func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time) error {
+func (f *fakeHospitalRepository) Insert(ctx context.Context, playerName string, totalEarnings, shiftsCompleted int, dailyDate *time.Time, runNonce string) error {
 	if f.insertErr != nil {
 		return f.insertErr
 	}
@@ -200,7 +200,7 @@ func TestHospitalShiftHandler_SubmitScore_RateLimited(t *testing.T) {
 	repo := &fakeHospitalRepository{}
 	h := newTestHospitalHandler(t, repo)
 
-	form := url.Values{"player_name": {"Vince"}, "total_earnings": {"1000"}, "shifts_completed": {"5"}}
+	form := url.Values{"player_name": {"Vince"}, "total_earnings": {"1000"}, "shifts_completed": {"30"}}
 	remoteAddr := "203.0.113.13:12345"
 
 	var lastCode int
@@ -350,5 +350,26 @@ func TestHospitalShiftHandler_RunTickets(t *testing.T) {
 	start()
 	if rec := start(); rec.Code != http.StatusTooManyRequests {
 		t.Errorf("third run in a minute: status = %d, want 429", rec.Code)
+	}
+}
+
+// TestHospitalShiftHandler_SubmitScore_ShortMonthRejected verifies an
+// ordinary run claiming fewer than 30 shifts is a 400 with its reason,
+// not the generic leaderboard error.
+func TestHospitalShiftHandler_SubmitScore_ShortMonthRejected(t *testing.T) {
+	repo := &fakeHospitalRepository{}
+	h := newTestHospitalHandler(t, repo)
+
+	form := url.Values{"player_name": {"Vince"}, "total_earnings": {"1000"}, "shifts_completed": {"5"}}
+	req := httptest.NewRequest(http.MethodPost, "/hospital-shift/score", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.SubmitScore(rec, req)
+
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "all 30 shifts") {
+		t.Errorf("status = %d, body = %q; want 400 with the 30-shift reason", rec.Code, rec.Body.String())
+	}
+	if len(repo.scores) != 0 {
+		t.Errorf("repo.scores len = %d, want 0", len(repo.scores))
 	}
 }

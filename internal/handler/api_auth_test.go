@@ -184,6 +184,38 @@ func TestAuthFailureLimiter(t *testing.T) {
 		}
 	})
 
+	t.Run("correct token passes even when the source is over the failure limit", func(t *testing.T) {
+		// An attacker sharing home-admin's address (or Render's egress)
+		// must not be able to lock it out by burning the failure budget.
+		limiter := newAuthFailureLimiter(1, time.Minute)
+		h := RequireAPIToken(testToken, limiter, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		send := func(token string) int {
+			req := httptest.NewRequest(http.MethodGet, "/api/internal/v1/landing/hero", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		send("nope")
+		if got := send("nope"); got != http.StatusTooManyRequests {
+			t.Fatalf("bad token over limit: status = %d, want 429", got)
+		}
+		if got := send(testToken); got != http.StatusOK {
+			t.Errorf("correct token over limit: status = %d, want 200", got)
+		}
+	})
+
+	t.Run("IPv6 sources in one /64 share a budget", func(t *testing.T) {
+		limiter := newAuthFailureLimiter(1, time.Minute)
+		limiter.RecordFailure("[2001:db8:0:1::1]")
+		if limiter.Allow("[2001:db8:0:1::ffff]") {
+			t.Error("a second address in the same /64 got a fresh budget")
+		}
+		if !limiter.Allow("[2001:db8:0:2::1]") {
+			t.Error("a different /64 was blocked")
+		}
+	})
+
 	t.Run("exhausted budget returns 429 rather than 401", func(t *testing.T) {
 		limiter := newAuthFailureLimiter(1, time.Minute)
 		h := RequireAPIToken(testToken, limiter, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))

@@ -940,3 +940,43 @@ func TestValidateBusServiceNo(t *testing.T) {
 		}
 	}
 }
+
+// TestBusSearchPostalGeocodeBudget: uncached OneMap lookups share one
+// server-wide token bucket (burst, then ~1/s), so a flood of distinct
+// postal codes can't exhaust the shared OneMap quota; over budget is the
+// friendly ErrBusPostalUnavailable, and cache hits stay free.
+func TestBusSearchPostalGeocodeBudget(t *testing.T) {
+	clk := &clock{t: at(12, 0)}
+	repo := newFakeBusRepo()
+	geo := &fakeGeocoder{places: map[string]onemap.Place{
+		"520106": {Postal: "520106", Label: "106 Simei Street 1", Latitude: 1.341885, Longitude: 103.950833},
+	}}
+	s := NewBusService(repo, nil, BusServiceOptions{Now: clk.Now, Geocoder: geo, GeocodeRate: 1, GeocodeBurst: 3})
+
+	if _, err := s.SearchPostal(context.Background(), "520106"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 2; i++ {
+		if _, err := s.SearchPostal(context.Background(), fmt.Sprintf("10000%d", i)); !errors.Is(err, ErrBusPostalNotFound) {
+			t.Fatalf("lookup %d within burst: err = %v, want ErrBusPostalNotFound", i, err)
+		}
+	}
+	if _, err := s.SearchPostal(context.Background(), "100009"); !errors.Is(err, ErrBusPostalUnavailable) {
+		t.Errorf("over budget: err = %v, want ErrBusPostalUnavailable", err)
+	}
+	if geo.calls != 3 {
+		t.Errorf("geocode calls = %d, want 3 (the over-budget lookup must not reach OneMap)", geo.calls)
+	}
+	// A cached postal code still answers while the budget is empty.
+	if _, err := s.SearchPostal(context.Background(), "520106"); err != nil {
+		t.Errorf("cached lookup over budget: %v", err)
+	}
+	// One second refills one lookup.
+	clk.t = clk.t.Add(time.Second)
+	if _, err := s.SearchPostal(context.Background(), "100009"); !errors.Is(err, ErrBusPostalNotFound) {
+		t.Errorf("after refill: err = %v, want ErrBusPostalNotFound", err)
+	}
+	if geo.calls != 4 {
+		t.Errorf("geocode calls after refill = %d, want 4", geo.calls)
+	}
+}

@@ -131,6 +131,7 @@ func isCookingValidationError(err error) bool {
 	for _, sentinel := range []error{
 		service.ErrCookingScorePlayerNameRequired,
 		service.ErrCookingScorePlayerNameTooLong,
+		service.ErrPlayerNameInvalidCharacters,
 		service.ErrCookingScoreEarningsOutOfRange,
 		service.ErrCookingScoreShiftsOutOfRange,
 	} {

@@ -244,6 +244,14 @@ DROP TABLE landing_hero;
   `link_url` — same shape as today's `CarouselSlide` struct.
 * Every Selected work card requires `kicker`, `title`, `description`, and
   `live_url`.
+* URLs are checked on write (`validImagePath`/`validContentLink` in
+  `internal/service/landing_content_validation.go`, so the editor and the
+  bearer API both get them): `image_path` must be a same-origin path under
+  `/static/` (no `//`, scheme, `..`, backslash or whitespace); a non-empty
+  `link_url` and every `live_url` must be an absolute `https://` URL with a
+  host or a root-relative path with one leading slash (`/projects`, not
+  `//host`) — `javascript:`, `data:`, `http:` and other schemes are
+  rejected. Each is capped at 2,048 bytes. Migration 005's seed rows pass.
 * Hero's `eyebrow`/`title`/`message` are all required; no arbitrary length
   cap beyond `TEXT`, matching `resume.md`'s precedent of not imposing one.
 * Reordering is up/down-by-one via the move endpoints, not free-form

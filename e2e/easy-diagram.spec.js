@@ -907,7 +907,7 @@ test.describe('io', () => {
 		await expect(toast(page)).toHaveText('Exported “Untitled-Page-1.html” with 4 animations');
 
 		const html = (await readDownload(d)).toString('utf8');
-		expect(html).toContain(`content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"`);
+		expect(html).toContain(`content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'"`);
 		expect(html).not.toMatch(/<script/i);
 		expect(html).toMatch(/@keyframes edNPulse/);
 		expect(html).toMatch(/@font-face \{ font-family: 'IBM Plex Sans'.*url\(data:font\/woff2;base64,/);

@@ -195,7 +195,7 @@ never reach the address bar or history.
 | GET | `/bus-stops/nearby` | `BusStopsHandler.Nearby` | no | `lat`,`lng` query; fragment `bus-stop-list`; per-IP limited |
 | GET | `/bus-stops/search` | `BusStopsHandler.Search` | no | `q` query; a 6-digit `q` is a postal code (OneMap geocode → nearest stops, `data-mode="postal"`); fragment `bus-stop-list`; per-IP limited |
 | GET | `/bus-stops/{code}/arrivals` | `BusStopsHandler.Arrivals` | no | fragment `bus-arrivals`; per-IP limited |
-| GET | `/bus-stops/{code}/route/{service}` | `BusStopsHandler.Route` | no | fragment `bus-route`; per-IP 60/min; `Cache-Control: public, max-age=300` (route data only changes with the nightly sync, no visitor data) |
+| GET | `/bus-stops/{code}/route/{service}` | `BusStopsHandler.Route` | no | fragment `bus-route`; per-IP 60/min; `Cache-Control: public, max-age=300` (route data only changes with the nightly sync, no visitor data); its 4xx/5xx errors are `no-store` |
 
 Validation failures return a 400 with a small HTML message fragment
 (never an upstream error text). Rate-limit hits return 429 with a short
@@ -326,6 +326,11 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
   burst of 2 (measured 3 Oct 2026); on HTTP 429 the client waits
   (`Retry-After` if sent, capped at 3 s, else 1 s then 2 s) and retries, at
   most 3 attempts in total, before reporting "unavailable".
+  Uncached lookups also share one server-wide token bucket (1/s, burst 3,
+  `GeocodeRate`/`GeocodeBurst` in `bus_service.go`, like the LTA outbound
+  budget), so one client cycling through postal codes can't use up the
+  shared OneMap allowance; over the budget the search answers "unavailable"
+  (503) without calling OneMap. Cache hits don't spend tokens.
 * **Stop code**: exactly 5 ASCII digits, else `ErrBusStopCodeInvalid`
   (no LTA call). Must exist in `bus_stops`, else `ErrBusStopNotFound`
   (no LTA call).
@@ -424,7 +429,8 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
   base URL. The visitor's browser never contacts OneMap. Postal codes are
   a location, so they get the same treatment as coordinates: not in logs
   (path-only request log), `Cache-Control: no-store`, shared per-IP search
-  limit. OneMap failures are logged and replaced by fixed copy.
+  limit, plus a server-wide OneMap budget (Business Rules). OneMap
+  failures are logged and replaced by fixed copy.
 * **Errors**: LTA/DB errors are logged with `slog` and replaced by fixed
   user-facing messages.
 

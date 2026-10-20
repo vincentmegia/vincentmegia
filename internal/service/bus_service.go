@@ -54,6 +54,14 @@ const (
 	syncRunTimeout = 10 * time.Minute
 )
 
+// defaultGeocodeRate/Burst budget OneMap postal lookups server-wide:
+// OneMap's quota is shared by every visitor, so one client can't burn it
+// (cache hits are free; a lookup beyond the budget is "try again").
+const (
+	defaultGeocodeRate  = 1.0
+	defaultGeocodeBurst = 3
+)
+
 // BusServiceOptions tunes BusService. Zero values take the doc's defaults.
 type BusServiceOptions struct {
 	Now           func() time.Time // default time.Now
@@ -61,6 +69,8 @@ type BusServiceOptions struct {
 	StaleWindow   time.Duration    // default 2m
 	OutboundRate  float64          // LTA BusArrival calls/second, default 5
 	OutboundBurst int              // default 10
+	GeocodeRate   float64          // OneMap postal lookups/second, default 1
+	GeocodeBurst  int              // default 3
 	// Geocoder turns a postal code into a place (OneMap). nil disables
 	// postal-code search: SearchPostal returns ErrBusPostalUnavailable.
 	Geocoder geocoder
@@ -109,8 +119,9 @@ type BusService struct {
 	group  singleflight.Group
 	bucket *tokenBucket
 
-	postalMu sync.Mutex
-	postal   map[string]postalEntry // postal code → geocode, see SearchPostal
+	postalMu  sync.Mutex
+	postal    map[string]postalEntry // postal code → geocode, see SearchPostal
+	geoBucket *tokenBucket           // server-wide OneMap budget, see SearchPostal
 }
 
 // NewBusService builds a BusService. client may be nil when
@@ -133,11 +144,18 @@ func NewBusService(repo busRepository, client ltaClient, opts BusServiceOptions)
 	if opts.OutboundBurst <= 0 {
 		opts.OutboundBurst = defaultBurst
 	}
+	if opts.GeocodeRate <= 0 {
+		opts.GeocodeRate = defaultGeocodeRate
+	}
+	if opts.GeocodeBurst <= 0 {
+		opts.GeocodeBurst = defaultGeocodeBurst
+	}
 	s := &BusService{
-		repo:   repo,
-		opts:   opts,
-		cache:  make(map[string]arrivalEntry),
-		bucket: newTokenBucket(opts.OutboundRate, opts.OutboundBurst, opts.Now()),
+		repo:      repo,
+		opts:      opts,
+		cache:     make(map[string]arrivalEntry),
+		bucket:    newTokenBucket(opts.OutboundRate, opts.OutboundBurst, opts.Now()),
+		geoBucket: newTokenBucket(opts.GeocodeRate, opts.GeocodeBurst, opts.Now()),
 	}
 	// Avoid a typed-nil interface: a nil *lta.Client passed in must still
 	// compare equal to nil here.
@@ -545,7 +563,8 @@ func nextDailyRun(now time.Time) time.Time {
 	return next
 }
 
-// tokenBucket is a small process-wide limiter for outbound LTA calls.
+// tokenBucket is a small process-wide limiter for outbound LTA and OneMap
+// calls.
 type tokenBucket struct {
 	mu     sync.Mutex
 	rate   float64
@@ -601,7 +620,9 @@ func IsBusPostalCode(q string) bool {
 // SearchPostal geocodes a 6-digit postal code with OneMap, then returns
 // the nearest stops to it. OneMap failures map to ErrBusPostalUnavailable
 // (logged, never shown); no match, or a point outside Singapore, maps to
-// ErrBusPostalNotFound.
+// ErrBusPostalNotFound. Uncached lookups share one server-wide budget
+// (GeocodeRate/GeocodeBurst, ~1/s); over it, the search is
+// ErrBusPostalUnavailable ("try again") without calling OneMap.
 func (s *BusService) SearchPostal(ctx context.Context, q string) (BusPostalResult, error) {
 	postal := strings.TrimSpace(q)
 	if !onemap.IsPostalCode(postal) {
@@ -613,6 +634,10 @@ func (s *BusService) SearchPostal(ctx context.Context, q string) (BusPostalResul
 
 	entry, ok := s.cachedPostal(postal)
 	if !ok {
+		if !s.geoBucket.allow(s.opts.Now()) {
+			slog.Warn("bus postal geocode: OneMap budget exhausted")
+			return BusPostalResult{}, ErrBusPostalUnavailable
+		}
 		place, found, err := s.opts.Geocoder.Geocode(ctx, postal)
 		if err != nil {
 			slog.Warn("bus postal geocode", "error", err)

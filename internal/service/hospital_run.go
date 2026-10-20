@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -31,7 +30,8 @@ import (
 //     perfect shift pays (a 4,000 paycheck at the +25% rank perk, every
 //     discharge and bonus), so a 1-shift Daily can't claim a month's pay.
 //
-// Each ticket is single-use, so one honest run can't be replayed into many
+// Each ticket is single-use — its nonce is stored with the score row under
+// a UNIQUE constraint — so one honest run can't be replayed into many
 // leaderboard rows.
 
 const (
@@ -99,10 +99,8 @@ func ValidateHospitalEarningsPlausible(totalEarnings, shiftsCompleted int) error
 	return nil
 }
 
-// HospitalRunTickets issues and checks signed, single-use run tickets.
-// Used tickets are remembered in memory until they'd have expired anyway:
-// enough for this site's single server process (a restart forgets them,
-// but a ticket is only usable for a few hours either way).
+// HospitalRunTickets issues and checks signed run tickets. It keeps no
+// state: single use is enforced by Postgres (see Verify).
 type HospitalRunTickets struct {
 	secret []byte
 	// SkipTimeCheck turns off the minimum-duration check, for the
@@ -110,9 +108,6 @@ type HospitalRunTickets struct {
 	// (HOSPITAL_RUN_TIME_CHECK=off; never set in production).
 	SkipTimeCheck bool
 	Now           func() time.Time
-
-	mu   sync.Mutex
-	used map[string]time.Time
 }
 
 // NewHospitalRunTickets signs with secret; an empty secret gets a random
@@ -126,7 +121,7 @@ func NewHospitalRunTickets(secret string, skipTimeCheck bool) (*HospitalRunTicke
 			return nil, fmt.Errorf("generate hospital run secret: %w", err)
 		}
 	}
-	return &HospitalRunTickets{secret: key, SkipTimeCheck: skipTimeCheck, used: map[string]time.Time{}}, nil
+	return &HospitalRunTickets{secret: key, SkipTimeCheck: skipTimeCheck}, nil
 }
 
 func (t *HospitalRunTickets) now() time.Time {
@@ -152,55 +147,33 @@ func (t *HospitalRunTickets) Issue() (string, error) {
 	return payload + "." + t.sign(payload), nil
 }
 
-// Redeem checks a ticket for a run claiming `shifts` shifts and, if it
-// passes, marks it used. Release undoes that when the score then fails to
-// save, so a database hiccup doesn't burn an honest run.
-func (t *HospitalRunTickets) Redeem(ticket string, shifts int, daily bool) error {
+// Verify checks a ticket for a run claiming `shifts` shifts and returns
+// its nonce. It doesn't mark the ticket used: single use is the
+// hospital_scores.run_nonce UNIQUE constraint (migration 014), so the
+// score row and the "spent" mark are one insert — durable across restarts
+// and instances, and a failed insert leaves the ticket unspent.
+func (t *HospitalRunTickets) Verify(ticket string, shifts int, daily bool) (string, error) {
 	if ticket == "" {
-		return ErrHospitalRunTicketMissing
+		return "", ErrHospitalRunTicketMissing
 	}
 	parts := strings.Split(ticket, ".")
 	if len(parts) != 4 || parts[0] != hospitalRunTicketVersion {
-		return ErrHospitalRunTicketInvalid
+		return "", ErrHospitalRunTicketInvalid
 	}
 	payload := strings.Join(parts[:3], ".")
 	if !hmac.Equal([]byte(parts[3]), []byte(t.sign(payload))) {
-		return ErrHospitalRunTicketInvalid
+		return "", ErrHospitalRunTicketInvalid
 	}
 	issuedUnix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return ErrHospitalRunTicketInvalid
+		return "", ErrHospitalRunTicketInvalid
 	}
-	now := t.now()
-	elapsed := now.Sub(time.Unix(issuedUnix, 0))
+	elapsed := t.now().Sub(time.Unix(issuedUnix, 0))
 	if elapsed < 0 || elapsed > hospitalRunTicketMaxAge {
-		return ErrHospitalRunTicketExpired
+		return "", ErrHospitalRunTicketExpired
 	}
 	if !t.SkipTimeCheck && elapsed < HospitalMinRunDuration(shifts, daily) {
-		return ErrHospitalRunTooFast
+		return "", ErrHospitalRunTooFast
 	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for nonce, at := range t.used {
-		if now.Sub(at) > hospitalRunTicketMaxAge {
-			delete(t.used, nonce)
-		}
-	}
-	if _, seen := t.used[parts[2]]; seen {
-		return ErrHospitalRunTicketUsed
-	}
-	t.used[parts[2]] = now
-	return nil
-}
-
-// Release forgets that a ticket was redeemed.
-func (t *HospitalRunTickets) Release(ticket string) {
-	parts := strings.Split(ticket, ".")
-	if len(parts) != 4 {
-		return
-	}
-	t.mu.Lock()
-	delete(t.used, parts[2])
-	t.mu.Unlock()
+	return parts[2], nil
 }

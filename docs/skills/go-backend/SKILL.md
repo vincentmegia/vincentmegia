@@ -142,7 +142,22 @@ handler. At minimum:
 * **Recover** — catch panics so one handler failure doesn't crash the process.
 * **Request ID** — generate/propagate an ID for correlating logs across a request.
 * **Logging** — log method, path, status, duration for every request.
-* **Timeout** — bound handler execution via `http.TimeoutHandler` or context deadline.
+* **Timeout** — bound handler execution with a context deadline below
+  `WriteTimeout` (`middleware.Deadline`, 8 s against the 10 s
+  `WriteTimeout`), not `http.TimeoutHandler`, which buffers every response.
+  Every DB and outbound HTTP call must take the request's `ctx` so the
+  deadline actually stops it.
+* **Body cap** — `middleware.LimitRequestBody` caps POST/PUT/PATCH/DELETE
+  bodies at 1 MiB (413 on a declared `Content-Length` over it); the JSON API
+  under `/api/` keeps its own 64 KiB cap and envelope.
+* **Cross-origin writes** — `middleware.CrossOriginProtection` (the
+  stdlib's `http.CrossOriginProtection`) returns 403 for an unsafe-method
+  request whose `Sec-Fetch-Site` is anything but `same-origin`/`none`
+  (`same-site` too — no sibling subdomain posts here), or, without that
+  header, whose `Origin` doesn't match the host. Requests with neither
+  header (curl, home-admin's bearer-token calls) pass, so this stops
+  browser-based CSRF only; it is not authentication and doesn't replace
+  per-route auth, validation or rate limits.
 
 ```go
 func Recover(next http.Handler) http.Handler {
@@ -159,6 +174,13 @@ func Recover(next http.Handler) http.Handler {
 ```
 
 Order middleware deliberately (recover outermost, then request ID, then logging).
+This app's chain is `cmd/server/main.go`'s `newHandlerChain`: Recover →
+RequestID → ClientIP → Logging → SecurityHeaders → CrossOriginProtection →
+LimitRequestBody → Deadline.
+
+Per-caller rate limiters key on `middleware.LimiterKey(middleware.ClientKey(r))`
+(IPv6 collapsed to its /64) and must evict expired windows, or their maps
+grow with every address ever seen.
 
 ---
 
@@ -167,7 +189,7 @@ Order middleware deliberately (recover outermost, then request ID, then logging)
 Set response security headers on every response, not per-handler:
 
 ```text
-Content-Security-Policy
+Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
 Strict-Transport-Security: max-age=63072000; includeSubDomains
@@ -175,7 +197,12 @@ Strict-Transport-Security: max-age=63072000; includeSubDomains
 
 This matters more than usual here because HTMX swaps server-rendered HTML directly
 into the DOM — a strict CSP is a meaningful defense-in-depth layer against XSS,
-alongside the escaping already required in `htmx-ui`.
+alongside the escaping already required in `htmx-ui`. A route that needs a
+looser policy (Bus Stop Finder's Maps page, Easy Diagram) replaces it with its
+own, keeping `base-uri`/`form-action`/`object-src`/`frame-ancestors`.
+
+`/static/` is served through `staticFS`, which 404s directories (no listings)
+and any path segment starting with `.`.
 
 ---
 

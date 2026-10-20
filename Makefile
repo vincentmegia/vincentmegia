@@ -13,7 +13,7 @@ deps: ## Install Go module dependencies and npm devDependencies (Tailwind CLI, P
 	npx playwright install chromium
 
 build: ## Build the server binary into bin/server.
-	go build -o bin/server ./cmd/server
+	go build -trimpath -o bin/server ./cmd/server
 
 run: ## Run the server (go run, no build artifact). Requires DATABASE_URL (or .env) — see docs/features/resume.md.
 	go run ./cmd/server

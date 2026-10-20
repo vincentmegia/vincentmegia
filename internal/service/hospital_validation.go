@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"strings"
 	"time"
 )
 
@@ -16,6 +15,9 @@ const (
 	hospitalScoreEarningsMax      = 300000
 	hospitalScoreShiftsMin        = 1
 	hospitalScoreShiftsMax        = 30
+	// hospitalMonthShifts mirrors rules.js SHIFTS_PER_MONTH: an
+	// ordinary run is only submitted after the whole month.
+	hospitalMonthShifts = 30
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 	ErrHospitalDailyDateInvalid        = errors.New("daily challenge date must be YYYY-MM-DD")
 	ErrHospitalDailyDateStale          = errors.New("that daily challenge is no longer open")
 	ErrHospitalDailyShiftsInvalid      = errors.New("a daily challenge is a single shift")
+	ErrHospitalMonthShiftsInvalid      = errors.New("a run's score is submitted after all 30 shifts")
 )
 
 // ValidateHospitalDailyDate parses a submission's daily_date: "" means an
@@ -58,12 +61,9 @@ func ValidateHospitalDailyDate(daily string, now time.Time) (*time.Time, error) 
 // they reach Postgres. Returns the trimmed player name to store on
 // success.
 func ValidateHospitalScoreSubmission(playerName string, totalEarnings, shiftsCompleted int) (string, error) {
-	trimmed := strings.TrimSpace(playerName)
-	if trimmed == "" {
-		return "", ErrHospitalScorePlayerNameRequired
-	}
-	if len([]rune(trimmed)) > hospitalScorePlayerNameMaxLen {
-		return "", ErrHospitalScorePlayerNameTooLong
+	trimmed, err := validatePlayerName(playerName, hospitalScorePlayerNameMaxLen, ErrHospitalScorePlayerNameRequired, ErrHospitalScorePlayerNameTooLong)
+	if err != nil {
+		return "", err
 	}
 	if totalEarnings < 0 || totalEarnings > hospitalScoreEarningsMax {
 		return "", ErrHospitalScoreEarningsOutOfRange

@@ -156,6 +156,7 @@ func isFishingValidationError(err error) bool {
 	for _, sentinel := range []error{
 		service.ErrFishingScorePlayerNameRequired,
 		service.ErrFishingScorePlayerNameTooLong,
+		service.ErrPlayerNameInvalidCharacters,
 		service.ErrFishingScoreOutOfRange,
 		service.ErrFishingScoreDepthOutOfRange,
 	} {
@@ -209,14 +210,16 @@ const (
 //     load balancer). Revisit with a shared store (e.g. Redis) if/when
 //     that becomes true.
 //
-// It also never evicts stale entries, so its memory grows with the number
-// of distinct source addresses seen over the process's lifetime — fine for
-// this feature's expected traffic, worth revisiting if it ever isn't.
+// Keys go through middleware.LimiterKey, so one IPv6 client's /64 is one
+// bucket. Expired entries are swept at most once per window (see
+// evictExpiredLocked), so memory is bounded by the sources seen in roughly
+// the last two windows rather than over the process's lifetime.
 type scoreSubmitLimiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	entries map[string]*submitWindow
+	mu        sync.Mutex
+	limit     int
+	window    time.Duration
+	entries   map[string]*submitWindow
+	lastSweep time.Time
 }
 
 type submitWindow struct {
@@ -240,10 +243,12 @@ func (l *scoreSubmitLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	key = middleware.LimiterKey(key)
 	now := time.Now()
 	w, ok := l.entries[key]
 	if !ok || now.After(w.windowEnds) {
 		l.entries[key] = &submitWindow{count: 1, windowEnds: now.Add(l.window)}
+		l.evictExpiredLocked(now)
 		return true
 	}
 	if w.count >= l.limit {
@@ -251,4 +256,20 @@ func (l *scoreSubmitLimiter) Allow(key string) bool {
 	}
 	w.count++
 	return true
+}
+
+// evictExpiredLocked removes entries whose window has closed, the same way
+// api_auth.go's authFailureLimiter does, but at most once per window: the
+// sweep is O(entries), and running it on every new window would make a
+// flood of distinct sources quadratic. Callers must hold l.mu.
+func (l *scoreSubmitLimiter) evictExpiredLocked(now time.Time) {
+	if now.Sub(l.lastSweep) < l.window {
+		return
+	}
+	l.lastSweep = now
+	for key, entry := range l.entries {
+		if now.After(entry.windowEnds) {
+			delete(l.entries, key)
+		}
+	}
 }

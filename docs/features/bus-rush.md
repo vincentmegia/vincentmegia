@@ -517,7 +517,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * **Upgrades**: cost grows per level (`upgradeCost`); every upgrade has a
   max level and the buy button disables at max or when tokens are short.
 * **Leaderboard bounds** (server, mirrored by CHECK constraints): name
-  trimmed and 1–20 runes; score and distance 0–999999. `daily_date` must
+  trimmed and 1–20 runes, with invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game); score and distance 0–999999. `daily_date` must
   parse as YYYY-MM-DD and be within one day of the server's UTC date
   (`ValidateBusRushDailyDate`) — a run finished across midnight or on a
   skewed clock still counts, but old days can't be back-filled.
