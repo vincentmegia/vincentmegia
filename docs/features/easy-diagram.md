@@ -7,6 +7,8 @@ graph engine. The build decisions in `docs/features/easy-diagram/BUILD.md`
 superseded this doc's original "fork the whole editor" plan. Three later
 changes are described below: [The `.ed` file extension](#the-ed-file-extension),
 [AWS icons](#aws-icons) and [Connector arrowheads](#connector-arrowheads).
+A fourth, [Connectors: dock group, connection points and shape picker](#connectors-dock-group-connection-points-and-shape-picker),
+is approved but not built yet.
 
 The rest of this doc started as a reverse-engineering survey of
 draw.io's desktop and core repositories, plus a plan for turning them into a
@@ -262,6 +264,123 @@ the shape's side "+" handles sat right on top of incoming arrowheads.
   in from above (and none leaves from below). A "+" handle on a side where
   a connector attaches near the middle slides along that side
   (`data-shift`), so it doesn't cover the arrowhead.
+
+### Connectors: dock group, connection points and shape picker
+
+**Status: approved 2026-10-20 (see Decisions at the end of this section);
+not built yet.** The clickable mockup and its screenshots are in
+`Claude outputs/easy-diagram/connectors-poc/` (`poc.html`; open it in a
+browser).
+
+The user asked for two things:
+
+1. "connectors to be available on the left pane with a separate group … an
+   easy option to connect different components using an arrow connector
+   where it snaps from one component to the other";
+2. "display connectors in shapes, and clicking on connectors I have the
+   option to connect different kinds of categorized shapes".
+
+Today the only ways to connect are the `A` connector tool and the four `+`
+handles on a selected shape. A `+` handle always adds a Rounded "Next step"
+shape, so you can't choose the kind. Neither one shows where a connector
+will attach before you drop it.
+
+**1. Connectors group in the dock** (`dock.js`)
+
+* A **Connectors** section under the shape tiles, with its own heading.
+  Category chips and search filter shapes only, so the group stays visible.
+* Six presets. Each maps to keys we already write, so `.ed` files stay
+  plain draw.io XML and no new `ed*` key is needed:
+
+  | Preset   | Route    | Arrows | Line   |
+  | -------- | -------- | ------ | ------ |
+  | Arrow    | Elbow    | End    | Solid  |
+  | Straight | Straight | End    | Solid  |
+  | Curved   | Curved   | End    | Solid  |
+  | Dashed   | Elbow    | End    | Dashed |
+  | Two-way  | Elbow    | Both   | Solid  |
+  | Line     | Elbow    | None   | Solid  |
+
+* **Click a preset to arm it.** The tile stays highlighted and every shape
+  shows its connection points. Drag from one shape to another to connect.
+  Clicking the tile again, or `Esc`, disarms it. After one connection it
+  goes back to Select, like the `A` tool does today.
+* **Two shapes selected + click a preset** joins them directly (first
+  selected → second). The `C` key does the same with the default connector.
+* **Drag a preset onto a shape** starts a connection from that shape.
+* The last preset used becomes the **default connector**. Ports, the picker
+  and the `A` tool all use it. It is shown in the "nothing selected"
+  inspector and remembered in `localStorage` (a per-viewer convenience;
+  it is not stored in the file).
+
+**2. Connection points on shapes** (engine overlay, replaces the `+` handles)
+
+* Each shape shows four connection points, at the middle of each side (a
+  small ring with a `+` on hover).
+  - They appear when you hover a shape or select it, and on every shape
+    while a connector is armed or being dragged.
+  - On an AWS icon, the bottom point sits below the label, like today's
+    `+` handle.
+  - A new **Connection points: On hover / Always / Off** page setting
+    controls this.
+* **Drag a point** to draw a connector. The end follows the pointer as a
+  dashed accent preview. Over another shape it **snaps to that shape's
+  nearest connection point**: a ring shows where, the shape outline
+  thickens, and the status readout says "Release to connect A → B". The
+  connector stores exactly those sides (`exitX/exitY/entryX/entryY`, which
+  `addConnected` already writes), so it doesn't jump on release.
+* **Click a point** to open the **Connect picker** (below).
+* **Releasing on empty canvas** also opens the picker. The new shape is
+  then placed at the release point instead of beside the source.
+
+**3. Connect picker** (new `shell/connect-picker.js`)
+
+* A popover next to the clicked point: "Connect from 'In stock?'".
+* Tabs:
+  - **Basic**, **Flowchart** and **AWS**: the same categories and tiles as
+    the dock;
+  - **On this page**: the existing shapes, to connect to one instead of
+    adding a new one.
+  
+  The last tab used is remembered.
+* Picking a tile adds that kind on the clicked side and connects it with
+  the chosen preset. Placement uses `addConnected`'s existing free-slot
+  search, so shapes never stack. The new shape is selected, so its own
+  points are ready for the next step.
+* A **Connector** row at the bottom switches the preset for this connection
+  (it also becomes the default).
+* Keyboard: the picker is a dialog; the arrow keys move between tiles,
+  `Enter` picks and `Esc` closes. The connection points are real buttons
+  ("Connect from right side of In stock?"), so a keyboard user can reach
+  them by tabbing.
+
+**Engine changes (`engine.js`)**
+
+```js
+addConnected(sourceId, side, opts?)  // opts: {kind, props, preset, at:{x,y}}; defaults keep today's behaviour
+connect(sourceId, targetId, props?)  // props gains sourceSide/targetSide ('r'|'l'|'t'|'b') to pin the ports
+setConnectorPreset(name), getConnectorPreset()
+setPortMode('hover'|'always'|'off')
+beginConnect(sourceId, side, clientX, clientY)  // drag-to-connect from a point; fires 'connect-preview' events
+```
+
+`beginConnect` uses its own pointer handling on the overlay, as the corner
+resize does today, rather than mxGraph's `connectionHandler`. That keeps
+one look for the preview and snap, and the snap targets are exactly our
+four points. The `A` tool moves onto the same code path.
+
+**Decisions (made by the user, 2026-10-20)**
+
+1. **Connection points replace the `+` handles.** Two sets of handles on
+   one shape would be noisy. Clicking a point does what `+` did, but with
+   a choice of shape.
+2. **Four points per shape**, one at the middle of each side, with no
+   corner points. That matches `autoPorts` and the elbow routing.
+3. **An armed preset goes back to Select after one connection**, like the
+   `A` tool.
+4. **The six presets above**: Arrow, Straight, Curved, Dashed, Two-way and
+   Line. No Dotted or Open arrow preset; every head and line style is
+   still in the connector inspector.
 
 ---
 

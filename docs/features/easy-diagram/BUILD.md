@@ -161,6 +161,15 @@ returns:
 }
 ```
 
+*Approved 2026-10-20, not built yet:* `addConnected` would take a
+`{kind, props, preset, at}` options argument, and `connect` would take
+`sourceSide`/`targetSide`. New calls would be `setConnectorPreset`,
+`setPortMode` and `beginConnect`. They support the connectors dock group,
+the connection points and the connect picker described in
+`docs/features/easy-diagram.md` ("Connectors: dock group, connection points
+and shape picker"). Until it is built, the contract above is the one
+that's in the code.
+
 Options: `createEngine(container, {theme: 'dark'|'light', grid: 'dots'|'lines'|'none', snap: true, motion: true})`.
 The engine owns the stage background and grid inside its container.
 
