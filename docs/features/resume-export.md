@@ -187,6 +187,12 @@ None. Both exports derive entirely from the existing `resume_profile` /
   `resume_pdf.go` if the PDF should follow.
 * The Word document intentionally does **not** carry site branding —
   default Word-native styling only.
+* **Word content mirrors the page**: banner and contact links, Summary
+  with its stats line, Core Expertise, Experience (each role's
+  "Title — Company — Location", date range and a "Current" marker,
+  sub-projects), Education, then Featured Projects with their links (minus
+  "See all projects", as in the PDF). It follows the PDF's order except
+  that Core Expertise stays ahead of Experience.
 * A role with `end_date IS NULL` renders "Current"/"PRESENT" in both
   exports, same rule as the live page (`resume.md`'s Business Rules).
 * `**bold**` mini-markup renders as real bold text in both exports (Figtree
@@ -203,9 +209,11 @@ None. Both exports derive entirely from the existing `resume_profile` /
   budgets) via `scoreSubmitLimiter` + `middleware.ClientKey`, matching every
   other unauthenticated route that does real per-request work.
 * **Only safe link schemes become clickable**: resume content is editable
-  via `/settings/resume`, so the PDF only creates link annotations for
-  `http(s)://`, `mailto:` and `tel:` hrefs (`pdfLinkable`); anything else
-  (e.g. `javascript:`) renders as plain text with no link.
+  via `/settings/resume`, so the PDF's link annotations and the Word
+  file's hyperlinks are created only for `http(s)://`, `mailto:` and
+  `tel:` hrefs (`linkableHref`, the same rule `/resume`'s contact links
+  use); anything else (e.g. `javascript:`, `file:`, a relative path)
+  renders as plain text with no link.
 * **No SSRF or subprocess surface**: generation is in-process Go; there's
   no browser, no URL fetch, no child process.
 * **`Content-Disposition` filenames are hardcoded literals**, never built
@@ -232,8 +240,11 @@ layer below.
 * [x] Only `http(s)`/`mailto`/`tel` hrefs become link annotations; a
       `javascript:` href never reaches the file.
 * [x] An empty resume still produces a valid one-page PDF.
-* [x] `buildResumeDocx` produces a valid zip with the expected content and
-      XML-escaped special characters (`resume_docx_test.go`).
+* [x] `buildResumeDocx` produces a valid zip with the expected content —
+      stats, "Company — Location", "Current", Featured Projects, in page
+      order — and XML-escaped special characters; `javascript:`/`file:`
+      contact hrefs stay plain text with no hyperlink relationship
+      (`resume_docx_test.go`).
 * [x] A generation failure returns a clean 500 with no attachment headers
       and no leaked error detail (`resume_export_test.go`).
 * [x] Requests beyond the rate limit get 429 before reaching generation;

@@ -484,13 +484,19 @@ Considerations).
   literal `&lt;b&gt;`. Every character that reaches the output unescaped
   must be a Go string literal (`<b>`, `</b>`), never a byte taken directly
   from the DB.
-* **Link hrefs must stay `template.URL`-free**: `contact_links[].href`,
-  `featured_projects[].links[].href`, and project links render as plain
-  `href="{{.Href}}"`. `html/template` automatically sanitizes the URL
-  context (a `javascript:`-scheme value is neutralized) as long as the value
-  isn't wrapped in `template.URL`, which asserts "already safe" and turns
-  that protection off. Don't add such a wrapper here — there's no reason to,
-  since these are plain HTTP(S)/`tel:`/`mailto:` links.
+* **Contact-link hrefs go through one scheme allowlist**:
+  `linkableHref` (`internal/service/resume_service.go`) allows only
+  `https://`, `http://`, `mailto:` and `tel:`. An allowed
+  `contact_links[].href` reaches the banner as `template.URL` via
+  `safeHref` — needed because `html/template`'s own URL filter allows only
+  http/https/mailto and otherwise rewrites the seeded `tel:` link to
+  `#ZgotmplZ`. A disallowed href (`javascript:`, `file:`, relative) becomes
+  `""` and the banner renders the label as plain text, no `<a>`. The
+  `/settings/resume` banner form rejects such an href on save
+  (`ErrContactLinkHrefInvalid`), and the PDF/DOCX exports use the same
+  rule. `featured_projects[].links[].href` still renders as a plain
+  `href="{{.Href}}"` string (site-relative links such as `/fishing-game`
+  are allowed there), so `html/template` neutralizes unsafe schemes itself.
 * **Print button**: `resume-print.js` is an external file, no inline
   handlers, consistent with `home.md`'s CSP precedent (compatible with a
   strict CSP with no `'unsafe-inline'` for scripts).
@@ -591,12 +597,12 @@ covered by those suites are noted inline.
 * [x] `**bold**` rendering is verified via the actual `template.HTML`
       output (not just visual inspection) — confirms escape-then-wrap
       ordering, not tag-then-escape — `TestBoldMarkup`.
-* [ ] A `contact_links[].href` value with a `javascript:` scheme (simulated
-      bad data) renders neutralized, not as a clickable `javascript:` link —
-      confirms no `template.URL` wrapper was added around it. Not tested;
-      relies on `html/template`'s built-in contextual auto-escaping, which
-      is well-established behavior but unverified specifically for this
-      field.
+* [x] A `contact_links[].href` with a `javascript:`/`file:` scheme renders
+      as plain text, and `tel:` as a live link with no `#ZgotmplZ`
+      (`TestBuildResumeView_ContactHrefAllowlist`,
+      `TestResumeBannerContactLinks`, e2e "phone contact link keeps its
+      tel: href"); the banner form rejects it on save
+      (`TestValidateBannerInput_ContactHrefAllowlist`).
 
 ---
 

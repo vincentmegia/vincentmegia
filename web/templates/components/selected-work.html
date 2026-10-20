@@ -14,7 +14,13 @@
      (External: true). Kept in sync with that template rather than
      factored into a shared component, since the two cards otherwise
      differ (this one has no image/tags) and htmx-ui's "avoid excessively
-     small components" guidance argues against a two-line partial. */}}
+     small components" guidance argues against a two-line partial.
+
+     An internal LiveURL that fullPageRoute reports true for (a
+     FullPageLoad /projects card's route — /bus-stops, /easy-diagram,
+     which set their own route CSP) renders as a plain same-tab "Open"
+     link with no hx-* swap, matching projects.html's FullPageLoad
+     branch. */}}
 {{define "selected-work"}}
 {{if .SelectedWork}}
 <section aria-labelledby="selected-work-heading" class="py-10">
@@ -49,6 +55,17 @@
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
 					<path d="M7 7h10v10" />
 					<path d="M7 17 17 7" />
+				</svg>
+			</a>
+			{{else if fullPageRoute .LiveURL}}
+			<a
+				href="{{.LiveURL}}"
+				class="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+			>
+				Open
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
+					<path d="M5 12h14" />
+					<path d="m13 6 6 6-6 6" />
 				</svg>
 			</a>
 			{{else}}

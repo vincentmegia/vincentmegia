@@ -283,6 +283,11 @@ type CarouselSlide struct {
 }
 ```
 
+It lives in `internal/model` (`model.CarouselSlide`, Postgres-backed —
+`docs/features/landing-content-authoring.md`). An internal `LinkURL` is a
+plain `<a href>` with no `hx-*` (a real document load), so a slide can link
+to a full-page route like `/bus-stops` or `/easy-diagram` safely.
+
 **DOM structure and hooks** (`carousel.html`'s output):
 
 ```text

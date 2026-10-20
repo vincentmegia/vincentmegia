@@ -1,9 +1,9 @@
 // /projects page: heading + subhead, and a grid of project cards
-// (internal/handler/pages.go's projectItems). All seven — Fishing Game,
-// Kitchen Shift, Puzzle Solver, Library Shift, Bus Stop Finder, Bus Rush and
-// Hospital Shift — are real (this site's own shipped mini-games/demos, each linked via an
-// internal "Play now" HTMX nav link, except Bus Stop Finder's full-page
-// "Open") — the pulled-in
+// (internal/handler/pages.go's projectItems). All eight — Fishing Game,
+// Kitchen Shift, Puzzle Solver, Library Shift, Bus Stop Finder, Bus Rush,
+// Hospital Shift and Easy Diagram — are real (this site's own shipped
+// mini-games/demos, each linked via an internal "Play now" HTMX nav link,
+// except Bus Stop Finder's and Easy Diagram's full-page "Open") — the pulled-in
 // design mockup's four fictional sample cards (Fieldnotes/Tidewatch/Loom
 // UI/Nightlight, from a claude.ai/design "Personal website and portfolio"
 // project's Projects.dc.html) were removed once real projects existed. See
@@ -42,7 +42,7 @@ const PROJECTS = [
 	},
 	{
 		title: 'Bus Rush',
-		description: 'A top-down arcade getaway — flee the police in a stolen bus across five Singapore districts, dodge oncoming traffic, bait cruisers into wrecks, and upgrade at the depot, with a public leaderboard for the best runs.',
+		description: 'A top-down arcade getaway — flee the police in a stolen bus across six Singapore districts, dodge oncoming traffic, bait cruisers into wrecks, and upgrade at the depot, with a public leaderboard for the best runs.',
 		tags: ['Go', 'Canvas', 'PostgreSQL'],
 	},
 	{

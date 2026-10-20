@@ -89,6 +89,7 @@ var (
 	ErrBannerRoleTitleRequired     = errors.New("role title is required")
 	ErrBannerTenureLabelRequired   = errors.New("tenure label is required")
 	ErrBannerLocationLabelRequired = errors.New("location label is required")
+	ErrContactLinkHrefInvalid      = errors.New("contact link URL must start with https://, http://, mailto: or tel:")
 
 	ErrSkillGroupNameRequired   = errors.New("skill group name is required")
 	ErrSkillGroupSkillsRequired = errors.New("skill group must have at least one skill")
@@ -114,6 +115,7 @@ var resumeAdminValidationErrors = []error{
 	ErrBannerRoleTitleRequired,
 	ErrBannerTenureLabelRequired,
 	ErrBannerLocationLabelRequired,
+	ErrContactLinkHrefInvalid,
 	ErrSkillGroupNameRequired,
 	ErrSkillGroupSkillsRequired,
 	ErrEducationDegreeRequired,
@@ -138,10 +140,11 @@ func IsResumeValidationError(err error) bool {
 }
 
 // ValidateBannerInput trims and validates a banner-form submission.
-// ContactLinks are trimmed but otherwise unvalidated field-by-field
-// (label/href/icon are all optional per model.ContactLink's existing
-// shape) — mirrors resume.md's original seed data, which never required
-// every contact link to be fully populated.
+// ContactLinks are trimmed; label/href/icon are all optional per
+// model.ContactLink's existing shape — mirrors resume.md's original seed
+// data, which never required every contact link to be fully populated —
+// but a non-empty href must pass linkableHref, the same scheme allowlist
+// /resume and both exports render links with.
 func ValidateBannerInput(roleTitle, tenureLabel, locationLabel string, contactLinks []model.ContactLink, fontStyle string) (model.Profile, error) {
 	p := model.Profile{
 		RoleTitle:     strings.TrimSpace(roleTitle),
@@ -164,9 +167,13 @@ func ValidateBannerInput(roleTitle, tenureLabel, locationLabel string, contactLi
 	p.BannerFontStyle = style
 
 	for _, c := range contactLinks {
+		href := strings.TrimSpace(c.Href)
+		if href != "" && !linkableHref(href) {
+			return model.Profile{}, ErrContactLinkHrefInvalid
+		}
 		p.ContactLinks = append(p.ContactLinks, model.ContactLink{
 			Label: strings.TrimSpace(c.Label),
-			Href:  strings.TrimSpace(c.Href),
+			Href:  href,
 			Icon:  strings.TrimSpace(c.Icon),
 		})
 	}
@@ -228,8 +235,9 @@ func ValidateEducationInput(entries []model.Education, fontStyle string) ([]mode
 
 // ValidateFeaturedProjectsInput trims and validates a Featured Projects
 // submission. Each entry needs a name and a description; links are
-// trimmed but otherwise unvalidated, same reasoning as ValidateBannerInput's
-// contact links.
+// trimmed but otherwise unvalidated — unlike contact links, a site-relative
+// href (e.g. /fishing-game) is a legitimate project link on /resume; the
+// exports render anything linkableHref rejects as plain text.
 func ValidateFeaturedProjectsInput(projects []model.FeaturedProject, fontStyle string) ([]model.FeaturedProject, string, error) {
 	style, err := ValidateFontStyle(fontStyle)
 	if err != nil {

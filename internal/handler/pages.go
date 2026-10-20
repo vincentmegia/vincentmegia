@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vincentmegia/vincentmegia/internal/service"
@@ -142,7 +143,8 @@ func (h *PagesHandler) Projects(w http.ResponseWriter, r *http.Request) {
 // Bus Rush (docs/features/bus-rush.md) is the sixth; its screenshot
 // (web/static/images/busrush/screenshot.png) is a staged 16:10 crop of the
 // portrait canvas, set up via window.__busRushTestHooks. Hospital Shift
-// (docs/features/hospital-shift.md) is the seventh.
+// (docs/features/hospital-shift.md) is the seventh, and Easy Diagram
+// (docs/features/easy-diagram.md) the eighth.
 var projectItems = []Project{
 	{
 		Title:       "Fishing Game",
@@ -187,7 +189,7 @@ var projectItems = []Project{
 	},
 	{
 		Title:       "Bus Rush",
-		Description: "A top-down arcade getaway — flee the police in a stolen bus across five Singapore districts, dodge oncoming traffic, bait cruisers into wrecks, and upgrade at the depot, with a public leaderboard for the best runs.",
+		Description: "A top-down arcade getaway — flee the police in a stolen bus across six Singapore districts, dodge oncoming traffic, bait cruisers into wrecks, and upgrade at the depot, with a public leaderboard for the best runs.",
 		Tags:        []string{"Go", "Canvas", "PostgreSQL"},
 		TagTint:     "primary",
 		LiveURL:     "/bus-rush",
@@ -213,6 +215,26 @@ var projectItems = []Project{
 		ImagePath:    "/static/images/easydiagram/screenshot.png",
 		FullPageLoad: true,
 	},
+}
+
+// isFullPageRoute reports whether an internal link to path must be a real
+// document load rather than an HTMX swap — true for the LiveURL of every
+// FullPageLoad project card (Bus Stop Finder, Easy Diagram), so
+// projectItems stays the one list of such routes. Owner-edited landing
+// content (Selected work cards) can link to these too, so
+// components/selected-work.html checks this via the "fullPageRoute"
+// template func instead of always using hx-get. A query string or
+// fragment is ignored, so "/bus-stops?code=…" still matches.
+func isFullPageRoute(path string) bool {
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	for _, p := range projectItems {
+		if p.FullPageLoad && !p.External && p.LiveURL == path {
+			return true
+		}
+	}
+	return false
 }
 
 // PuzzleSolver renders GET /puzzle-solver. See docs/features/puzzle-solver.md.

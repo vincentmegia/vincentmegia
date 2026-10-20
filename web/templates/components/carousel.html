@@ -1,8 +1,9 @@
 {{/* Landing-page image carousel: up to 5 slides, crossfade transition,
      prev/next arrows, dot indicators, pause/play toggle. Dot is the full
-     PageData so it can read .CarouselSlides (set only by PagesHandler.Home,
-     see docs/features/landing-carousel.md's Data Model — static,
-     hand-authored slides, no DB).
+     PageData so it can read .CarouselSlides (set only by PagesHandler.Home
+     from Postgres, see docs/features/landing-content-authoring.md). A
+     slide's LinkURL is always a plain <a href> (a real document load, no
+     hx-*), so it's safe for full-page routes like /bus-stops too.
 
      DOM structure/IDs/data-attributes/ARIA below are a FIXED CONTRACT (see
      that doc's "Implementation Contract (DOM / Data)") shared with

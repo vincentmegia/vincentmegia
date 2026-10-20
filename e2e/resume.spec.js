@@ -121,6 +121,16 @@ test('external contact/project links open in a new tab safely', async ({ page })
 	await expect(githubLink).toHaveAttribute('rel', /noreferrer/);
 });
 
+test('phone contact link keeps its tel: href', async ({ page }) => {
+	await page.goto('/resume');
+
+	// html/template alone rewrites tel: to "#ZgotmplZ"; the service's
+	// scheme allowlist must let it through as a real link.
+	const phone = page.locator('#resume-banner a[href^="tel:"]');
+	await expect(phone).toHaveCount(1);
+	await expect(page.locator('#resume-banner a[href*="ZgotmplZ"]')).toHaveCount(0);
+});
+
 test('dark mode toggle changes the resume page theme', async ({ page }) => {
 	await page.goto('/resume');
 	const html = page.locator('html');

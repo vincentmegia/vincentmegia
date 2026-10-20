@@ -122,22 +122,6 @@ func (s textStyle) baseline(top float64) float64 {
 func setFill(pdf *fpdf.Fpdf, c pdfColor) { pdf.SetFillColor(c.r, c.g, c.b) }
 func setDraw(pdf *fpdf.Fpdf, c pdfColor) { pdf.SetDrawColor(c.r, c.g, c.b) }
 
-// pdfLinkable reports whether href may become a live link in the PDF.
-// Resume content is owner-authored but editable via /settings/resume, so
-// only the schemes the seeded content actually uses are ever made
-// clickable — never e.g. a javascript: URI or a relative path that would
-// resolve to nothing inside a downloaded file. Anything else still renders
-// as plain text.
-func pdfLinkable(href string) bool {
-	h := strings.ToLower(strings.TrimSpace(href))
-	for _, prefix := range []string{"https://", "http://", "mailto:", "tel:"} {
-		if strings.HasPrefix(h, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // pdfBlock is one measurable, drawable piece of the layout. Every block is
 // measured before it's drawn so the pager can keep cards together across
 // page breaks — fpdf's own auto page break knows nothing about cards.
@@ -334,8 +318,8 @@ func (f *inlineFlow) draw(pdf *fpdf.Fpdf, x, y, w float64) {
 		}
 		f.style.apply(pdf)
 		pdf.Text(bx+padX, f.style.baseline(by+padY), b.item.text)
-		if pdfLinkable(b.item.href) {
-			pdf.LinkString(bx, by, b.w, b.h, b.item.href)
+		if u := safeHref(b.item.href); u != "" {
+			pdf.LinkString(bx, by, b.w, b.h, string(u))
 		}
 	}
 }

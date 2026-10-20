@@ -159,3 +159,20 @@ func TestValidateRoleInput(t *testing.T) {
 		t.Errorf("subprojects not trimmed/filtered correctly: %+v", in.Subprojects)
 	}
 }
+
+func TestValidateBannerInput_ContactHrefAllowlist(t *testing.T) {
+	for _, href := range []string{"javascript:alert(1)", "file:///etc/passwd", "/projects", "data:text/html,x"} {
+		_, err := ValidateBannerInput("title", "tenure", "location", []model.ContactLink{{Label: "x", Href: href}}, "")
+		if err != ErrContactLinkHrefInvalid {
+			t.Errorf("href %q: error = %v, want ErrContactLinkHrefInvalid", href, err)
+		}
+		if !IsResumeValidationError(err) {
+			t.Errorf("href %q: ErrContactLinkHrefInvalid not reported as a validation error", href)
+		}
+	}
+	for _, href := range []string{"", "tel:+6512345678", "mailto:a@b.c", "https://x.com", "HTTP://x.com"} {
+		if _, err := ValidateBannerInput("title", "tenure", "location", []model.ContactLink{{Label: "x", Href: href}}, ""); err != nil {
+			t.Errorf("href %q: unexpected error %v", href, err)
+		}
+	}
+}

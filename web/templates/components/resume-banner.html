@@ -17,6 +17,9 @@
 	<ul class="mt-6 flex flex-wrap gap-x-6 gap-y-3">
 		{{range .ContactLinks}}
 		<li>
+			{{/* .Href is "" when service.safeHref rejected it (scheme not on
+			     the http/https/mailto/tel allowlist): label as plain text. */}}
+			{{if .Href}}
 			<a
 				href="{{.Href}}"
 				target="_blank"
@@ -26,6 +29,12 @@
 				{{if .Icon}}{{.Icon}}{{end}}
 				<span>{{.Label}}</span>
 			</a>
+			{{else}}
+			<span class="inline-flex items-center gap-2 text-sm text-banner-ink">
+				{{if .Icon}}{{.Icon}}{{end}}
+				<span>{{.Label}}</span>
+			</span>
+			{{end}}
 		</li>
 		{{end}}
 	</ul>

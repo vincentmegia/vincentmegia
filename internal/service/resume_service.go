@@ -57,7 +57,11 @@ type ResumeView struct {
 // ContactLinkView is one resolved contact link.
 type ContactLinkView struct {
 	Label string
-	Href  string
+	// Href is already vetted by safeHref: an allowlisted URL the template
+	// may emit as-is (html/template on its own rewrites tel: to
+	// "#ZgotmplZ"), or "" for a disallowed/missing one, which renders the
+	// label as plain text with no link.
+	Href template.URL
 	// Icon is trusted, already-resolved inline SVG (see resolveIcon) —
 	// empty if the DB's icon key wasn't recognized, which renders the
 	// contact item with no icon rather than failing the request.
@@ -98,7 +102,12 @@ func (s *ResumeService) Get(ctx context.Context) (ResumeView, error) {
 	if err != nil {
 		return ResumeView{}, err
 	}
+	return buildResumeView(profile, roles), nil
+}
 
+// buildResumeView is the pure, DB-free half of Get, unit-testable against
+// fixture data the same way buildResumePDF/buildResumeDocx are.
+func buildResumeView(profile model.Profile, roles []model.Role) ResumeView {
 	view := ResumeView{
 		RoleTitle:                 profile.RoleTitle,
 		TenureLabel:               profile.TenureLabel,
@@ -117,7 +126,7 @@ func (s *ResumeService) Get(ctx context.Context) (ResumeView, error) {
 	for _, c := range profile.ContactLinks {
 		view.ContactLinks = append(view.ContactLinks, ContactLinkView{
 			Label: c.Label,
-			Href:  c.Href,
+			Href:  safeHref(c.Href),
 			Icon:  resolveIcon(c.Icon),
 		})
 	}
@@ -130,7 +139,36 @@ func (s *ResumeService) Get(ctx context.Context) (ResumeView, error) {
 		view.Roles = append(view.Roles, toRoleView(r))
 	}
 
-	return view, nil
+	return view
+}
+
+// linkableHref reports whether href may become a live link — the one rule
+// /resume's contact links and every link in the PDF and DOCX share
+// (docs/features/resume.md's Security Considerations). Resume content is owner-authored but editable
+// via /settings/resume, so only the schemes the seeded content actually
+// uses are ever made clickable — never e.g. a javascript: URI, or a
+// relative path that would resolve to nothing inside a downloaded file.
+// Anything else still renders, as plain text.
+func linkableHref(href string) bool {
+	h := strings.ToLower(strings.TrimSpace(href))
+	for _, prefix := range []string{"https://", "http://", "mailto:", "tel:"} {
+		if strings.HasPrefix(h, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// safeHref returns href as a template.URL when linkableHref allows it, ""
+// otherwise. The conversion is safe only because of that allowlist: it
+// stops html/template's own URL filter, which allows just
+// http/https/mailto, from turning tel: links into "#ZgotmplZ". The value
+// is still attribute-escaped when rendered.
+func safeHref(href string) template.URL {
+	if !linkableHref(href) {
+		return ""
+	}
+	return template.URL(strings.TrimSpace(href))
 }
 
 // fetch runs the two fixed queries backing every resume read — Get (the

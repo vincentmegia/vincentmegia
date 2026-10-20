@@ -223,7 +223,7 @@ func TestBuildResumePDF_EmptyResume(t *testing.T) {
 	assertPDFContains(t, text, "Vincent Megia")
 }
 
-func TestPDFLinkable(t *testing.T) {
+func TestLinkableHref(t *testing.T) {
 	for href, want := range map[string]bool{
 		"https://github.com/x": true,
 		"http://example.com":   true,
@@ -235,8 +235,8 @@ func TestPDFLinkable(t *testing.T) {
 		"":                     false,
 		"file:///etc/passwd":   false,
 	} {
-		if got := pdfLinkable(href); got != want {
-			t.Errorf("pdfLinkable(%q) = %v, want %v", href, got, want)
+		if got := linkableHref(href); got != want {
+			t.Errorf("linkableHref(%q) = %v, want %v", href, got, want)
 		}
 	}
 }

@@ -85,7 +85,7 @@ test('no console errors on load, including no CSP violations', async ({ page }) 
 test.describe('container survives an HTMX nav swap (not just a direct page load)', () => {
 	const cases = [
 		['resume', (page) => page.getByRole('link', { name: 'Résumé', exact: true }).click()],
-		['a placeholder route', (page) => page.locator('#primary-nav').getByRole('link', { name: 'Projects', exact: true }).click()],
+		['a placeholder route (About)', (page) => page.locator('#primary-nav').getByRole('link', { name: 'About', exact: true }).click()],
 	];
 
 	for (const [label, click] of cases) {

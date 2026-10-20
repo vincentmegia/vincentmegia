@@ -34,8 +34,8 @@ the editor. None of the eight is a mockup. The four fictional sample cards the p
 mockup originally shipped with (Fieldnotes, Tidewatch, Loom UI,
 Nightlight) were deliberately removed rather than left sitting next to
 real projects — see Open Questions for the reasoning and what replaces
-them over time. `e2e/projects.spec.js` covers all six cards, including
-each one's "Play now" link (or Bus Stop Finder's full-page "Open"); only the
+them over time. `e2e/projects.spec.js` covers all eight cards, including
+each one's "Play now" link (or Bus Stop Finder's and Easy Diagram's full-page "Open"); only the
 Fishing Game and Kitchen Shift cards
 have a dedicated "navigates via HTMX into the real game shell" regression
 test (Puzzle Solver's own equivalent page-load coverage lives in
@@ -93,7 +93,7 @@ were removed rather than left in place until real replacements existed
 **Out of scope:**
 
 * Real project content — copy, screenshots, and live links for more of
-  Vincent's actual work, to grow the grid beyond the current six cards
+  Vincent's actual work, to grow the grid beyond the current eight cards
   (see Open Questions).
 * Postgres-backed / admin-editable project data — same as
   `docs/features/landing-carousel.md`'s Data Model stance, this is static,
@@ -114,7 +114,7 @@ were removed rather than left in place until real replacements existed
 ```text
 1. User navigates to /projects (via the primary nav "Projects" link, the
    Resume sidebar's "See all projects" link, or a direct URL).
-2. Page renders: a "Projects" heading and subhead, then a grid of six
+2. Page renders: a "Projects" heading and subhead, then a grid of eight
    real cards (projectItems). More real projects append here as they're
    written up (see Open Questions); the grid isn't padded with placeholder
    cards in the meantime.
@@ -123,7 +123,7 @@ were removed rather than left in place until real replacements existed
    a description, and its tag pills.
 4. Every card has an internal LiveURL (External: false), so it renders a
    "Play now" link rather than a "Live demo" link — except Bus Stop Finder
-   (FullPageLoad: true), which renders a plain same-tab "Open" link. A
+   and Easy Diagram (FullPageLoad: true), which render a plain same-tab "Open" link. A
    "Live demo" link would render for a future card whose LiveURL is
    off-site (External: true).
 5. Clicking "Play now" navigates to the route via the same HTMX swap every
@@ -184,8 +184,8 @@ the two.
   | `External` | Label | Behavior |
   | --- | --- | --- |
   | `true` | "Live demo" | `target="_blank" rel="noopener noreferrer"`, inline external-link icon, `text-primary` — the original design's only case; not currently exercised by any entry in `projectItems`. |
-  | `false` (default/zero value) | "Play now" | `hx-get="{{.LiveURL}}" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#nav-loading" data-nav-link`, same tab, same swap mechanism `#primary-nav`'s links already use (`components/header.html`), `text-primary`, with a play-triangle icon instead of the external-link icon — five of the six entries take this branch; none sets `External: true`. |
-  | `false` + `FullPageLoad: true` | "Open" | A plain same-tab `<a href>` with no `hx-*` attributes, so the browser does a real document load — for a route that sets its own Content-Security-Policy (Bus Stop Finder), which only takes effect on a real load. |
+  | `false` (default/zero value) | "Play now" | `hx-get="{{.LiveURL}}" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#nav-loading" data-nav-link`, same tab, same swap mechanism `#primary-nav`'s links already use (`components/header.html`), `text-primary`, with a play-triangle icon instead of the external-link icon — six of the eight entries take this branch; none sets `External: true`. |
+  | `false` + `FullPageLoad: true` | "Open" | A plain same-tab `<a href>` with no `hx-*` attributes, so the browser does a real document load — for a route that sets its own Content-Security-Policy (Bus Stop Finder, Easy Diagram), which only takes effect on a real load. |
 
 ---
 
@@ -210,7 +210,7 @@ States this feature's UI must handle:
 | State                          | Behavior |
 | -------------------------------- | -------- |
 | Default                          | Grid renders all entries in `projectItems`. |
-| Card with `ImagePath` set         | Renders a real `<img>`, `object-cover`'d into the `aspect-[16/10]` tile — five of the six cards. |
+| Card with `ImagePath` set         | Renders a real `<img>`, `object-cover`'d into the `aspect-[16/10]` tile — all eight cards. |
 | Card with no `ImagePath`          | Renders the "Screenshot coming soon" placeholder tile instead of an `<img>` — no current card (all eight have screenshots). |
 | Card with no `LiveURL`            | Omits the "Live demo"/"Play now" link entirely — no disabled/greyed-out link. |
 | Loading                          | Nav swap into `/projects` uses the shell's existing `#nav-loading` indicator — no new indicator needed. |
@@ -283,16 +283,16 @@ type Project struct {
 	External    bool   // true if LiveURL is off-site (rendered "Live demo",
 	                    // new tab); false (default) means an internal route
 	                    // (rendered "Play now", same-tab HTMX nav swap) —
-	                    // mirrors CarouselSlide's own field, below
+	                    // mirrors model.CarouselSlide's own field
 	ImagePath   string // optional, "" renders a placeholder tile instead of
 	                    // a screenshot
 	FullPageLoad bool  // internal LiveURL rendered as a plain same-tab
 	                    // "Open" link with no hx-* swap — for a route that
-	                    // sets its own CSP (Bus Stop Finder)
+	                    // sets its own CSP (Bus Stop Finder, Easy Diagram)
 }
 ```
 
-The six current entries (`internal/handler/pages.go`'s `projectItems`), in
+The eight current entries (`internal/handler/pages.go`'s `projectItems`), in
 grid order:
 
 * The **Fishing Game** — `LiveURL: "/fishing-game"`, `External: false` (so
@@ -325,6 +325,9 @@ grid order:
   "/static/images/bus/screenshot.png"`.
 * **Bus Rush** — `LiveURL: "/bus-rush"`, tags `Go`/`Canvas`/`PostgreSQL`,
   `TagTint: "primary"`, `ImagePath: "/static/images/busrush/screenshot.png"`.
+* **Hospital Shift** — `LiveURL: "/hospital-shift"`, tags
+  `Go`/`Canvas`/`PostgreSQL`, `TagTint: "accent"`, `ImagePath:
+  "/static/images/hospital/screenshot.png"`.
 * **Easy Diagram** — `LiveURL: "/easy-diagram"`, `FullPageLoad: true`, tags
   `JavaScript`/`SVG`/`Local-first` (no "draw.io" tag: trademark rule in
   `docs/features/easy-diagram.md`), `TagTint: "primary"`, `ImagePath:
@@ -361,16 +364,19 @@ what copy, is now content, not code.
   exercised by any entry in `projectItems`.
 * `LiveURL` set, `External: false` and `FullPageLoad: true` → a plain
   same-tab "Open" link with no `hx-*` attributes (a real document load) —
-  Bus Stop Finder's case, because `/bus-stops` sets its own
-  Content-Security-Policy, which an HTMX swap would never apply.
+  Bus Stop Finder's and Easy Diagram's case, because `/bus-stops` and
+  `/easy-diagram` set their own Content-Security-Policy, which an HTMX swap
+  would never apply. These cards are also the one list of full-page routes:
+  `isFullPageRoute` (`internal/handler/pages.go`) derives from them, and the
+  landing page's Selected work cards use it (`docs/features/landing-page.md`).
 * `LiveURL` set and `External: false` (the default/zero value) → the link
   reads "Play now", stays in the same tab, and uses the same HTMX swap
   every `#primary-nav` link uses (`hx-get`/`hx-target="#main-content"`/
   `hx-swap="outerHTML"`/`hx-push-url="true"`/`data-nav-link`,
   `components/header.html`), with a play-triangle icon instead of the
-  external-link icon — every card except Bus Stop Finder.
-* `External` mirrors `CarouselSlide`'s own field (`internal/handler/
-  template.go`) — same name, same true/off-site vs. false/internal-route
+  external-link icon — every card except Bus Stop Finder and Easy Diagram.
+* `External` mirrors `CarouselSlide`'s own field (`internal/model/
+  landing_content.go`) — same name, same true/off-site vs. false/internal-route
   meaning, so the two link-shaped fields on this site stay consistent with
   each other.
 * `TagTint` is authored per card (`"primary"` or `"accent"`), not derived
@@ -400,9 +406,10 @@ what copy, is now content, not code.
 ## Testing Plan
 
 * [x] `GET /projects` renders each card (Fishing Game, Kitchen Shift, Puzzle
-      Solver, Library Shift, Bus Stop Finder, Bus Rush) with correct title,
+      Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift, Easy
+      Diagram) with correct title,
       description, and tag pills — `e2e/projects.spec.js`'s `PROJECTS`
-      fixture (all six entries) and `cards.toHaveCount(PROJECTS.length)`
+      fixture (all eight entries) and `cards.toHaveCount(PROJECTS.length)`
       assertion cover the current grid.
 * [x] A card with `ImagePath` set renders a real `<img>`; a card without it
       renders the "Screenshot coming soon" placeholder tile —
@@ -415,7 +422,7 @@ what copy, is now content, not code.
       without `LiveURL` renders no such link — `e2e/projects.spec.js` asserts
       zero "Live demo" links exist (no entry sets `External: true`) and
       separately asserts each "Play now" card has no "Live demo" link.
-* [x] A `FullPageLoad` card (Bus Stop Finder) renders "Open" with no
+* [x] A `FullPageLoad` card (Bus Stop Finder, Easy Diagram) renders "Open" with no
       `hx-get`, and clicking it is a real document load, not an HTMX swap —
       `e2e/projects.spec.js`.
 * [x] Every non-`FullPageLoad` card has a "Play now" link; the Fishing
@@ -472,7 +479,7 @@ what copy, is now content, not code.
   Rush followed the same way (Bus Stop Finder as a `FullPageLoad` card;
   Bus Rush, whose screenshot came later).
 * More of Vincent's actual work (copy, screenshots, live links) to keep
-  growing the grid beyond these six cards.
+  growing the grid beyond these eight cards.
 * Should `projectItems` move to Postgres, following the same path
   `docs/features/resume.md` took for resume content, once there's a
   concrete reason (e.g. an admin/CMS UI, or wanting to edit project content

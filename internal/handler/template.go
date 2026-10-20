@@ -313,6 +313,7 @@ var templateFuncs = template.FuncMap{
 		}
 		return *s
 	},
+	"fullPageRoute": isFullPageRoute,
 }
 
 // Renderer renders PageData through the shared template set, branching on

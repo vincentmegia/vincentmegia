@@ -48,13 +48,10 @@ which is why it's worth the added implementation complexity documented below.
   grid (`web/templates/components/selected-work.html`), pulled from a
   claude.ai/design "Personal website and portfolio" project's Home.dc.html
   (see DesignSync and `internal/handler/nav.go`'s `primaryNavItems` doc
-  comment for the same project's header/nav pull). Its cards are this
-  site's three real shipped mini-games/demos — Fishing Game
-  (`docs/features/fishing-game.md`), Kitchen Shift
-  (`docs/features/cooking-game.md`), and Puzzle Solver
-  (`docs/features/puzzle-solver.md`) — each added once it shipped and was
-  verified the same way, each clickable straight into its game/demo via the
-  same "Play now" HTMX link `/projects` uses. The mockup's three fictional
+  comment for the same project's header/nav pull). Its cards are
+  Postgres-backed content (`landing_selected_work_items`), each linking
+  straight into a game/demo the same way `/projects` does (see Business
+  Rules for the full-page-route exception). The mockup's three fictional
   placeholder cards
   (Fieldnotes/Tidewatch/Loom UI) were removed so this teaser always
   matches what `/projects`' "See all projects" link actually leads to.
@@ -207,6 +204,17 @@ on this page has its own data model.
   `afterSwap`/`popstate`-based reset above.
 * On mobile, the header is always solid regardless of scroll — enforced by
   `home.md`, consumed here without exception.
+* A Selected work card's internal link uses the same "Play now" HTMX nav
+  swap as `/projects`, except for a full-page route — the LiveURL of a
+  `FullPageLoad` `/projects` card (`/bus-stops`, `/easy-diagram`, which set
+  their own route CSP) — which renders as a plain same-tab "Open"
+  `<a href>` with no `hx-*`. The set comes from `isFullPageRoute`
+  (`internal/handler/pages.go`, derived from `projectItems`), exposed to
+  `components/selected-work.html` as the `fullPageRoute` template func;
+  owner-edited content can link to these, so no per-row flag is stored.
+  Carousel slide links are already plain `<a href>`s (no `hx-boost`), so
+  they need no such check. Covered by `internal/handler/
+  selected_work_test.go`.
 
 ---
 
