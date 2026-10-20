@@ -352,6 +352,21 @@ test.describe('shelving books', () => {
 		expect(after.staffHelps).toBe(1);
 	});
 
+	test('Han Ji-ho collects the first fine in line for you, skipping Fines Sort', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnFineNow(40));
+		const jiho = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('jiho'));
+		await clickCanvasPoint(page, { x: jiho.x, y: jiho.y - 34 * jiho.scale });
+		await waitUntilArrived(page);
+
+		await expect(page.locator('#library-toast')).toContainText('Ji-ho collects the fine');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.carriedFine.amountGard).toBe(40);
+		expect(state.finesQueue).toHaveLength(0);
+		expect(await getOverlay(page)).toBe(null);
+	});
+
 	test('Min-jun asks for a book when you click him empty-handed', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

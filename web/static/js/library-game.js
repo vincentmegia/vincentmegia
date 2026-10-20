@@ -51,6 +51,7 @@ import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.
 import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
 import { drawDirectorSeo } from './library/director-seo.js';
+import { drawJiho } from './library/jiho.js';
 import { applyWalk, drawWalkProp } from './library/walk-styles.js';
 import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
@@ -364,6 +365,12 @@ const AMBIENT_STAFF = [
   { key: 'libShelver', name: 'Shelver · 정리 담당', floor: FLOOR_1, waypoints: [[680, 214], [760, 216]] },
   { key: 'libStoryteller', name: 'Storyteller · 동화 선생님', floor: FLOOR_2, waypoints: [[200, 505], [340, 510]] },
   { key: 'libArchivist', name: 'Archivist · 기록관', floor: FLOOR_2, waypoints: [[620, 200], [760, 210]] },
+  // Han Ji-ho (한지호, library/jiho.js), a high-school student who studies
+  // here and helps Eun-mi ("add another super detailed character a boy
+  // again"): he paces a short stretch of the 1st Floor's lower aisle, between
+  // Security's and the Janitor's routes, and
+  // collects the first fine in line when asked.
+  { key: 'jiho', name: 'Ji-ho · 지호', floor: FLOOR_1, scale: 1, waypoints: [[470, 548], [540, 550]] },
 ];
 const AMBIENT_SPEED = 60;
 
@@ -409,6 +416,10 @@ function personalityForId(id) {
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
   const t = performance.now() / 1000;
   const scale = opts.scale ?? 1;
+  if (opts.personalityKey === 'jiho') {
+    drawJiho(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, t, walking: Boolean(opts.walking) });
+    return;
+  }
   if (opts.personalityKey === 'libDirector') {
     drawDirectorSeo(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, t, walking: Boolean(opts.walking) });
     return;
@@ -610,6 +621,7 @@ export function init(canvas, elements) {
     libJanitor: { verb: 'tidy up', done: 'The Janitor tidies up — the library feels calmer (+Mood).', nothing: 'Janitor: "Spotless already!"' },
     volunteer: { verb: 'coffee for you', done: 'The Volunteer brings you a coffee (+Sanity).', nothing: 'Volunteer: "You look wide awake — maybe later!"' },
     libArchivist: { verb: 'find the book', done: (b) => `The Archivist finds “${b}” — take it to the desk to check it out.`, nothing: 'Archivist: "Take a borrow request first, and I\'ll find the book."' },
+    jiho: { verb: 'collect a fine', done: 'Ji-ho collects the fine for you — take it to the Front Desk till.', nothing: 'Ji-ho: "No fines waiting right now. Back to my vocab cards…"' },
     libStoryteller: { verb: 'story time', done: 'Story time! Everyone waiting calms down (+patience).', nothing: 'Storyteller: "No one is waiting right now."' },
   };
 
@@ -642,7 +654,9 @@ export function init(canvas, elements) {
       if (a.floor !== currentFloor || (a.key !== 'minjun' && !STAFF_HELP_TEXT[a.key])) continue;
       const k = a.scale ?? LIBRARY_PERSON_SCALE;
       // Min-jun's renderer units (tote and books included) vs. the anime people's.
-      const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k] : [17 * k, 68 * k];
+      const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k]
+        : a.key === 'jiho' ? [18 * k * PLAYER_ART_SCALE, 72 * k * PLAYER_ART_SCALE]
+        : [17 * k, 68 * k];
       if (Math.abs(x - a.x) <= hw && y <= a.y + 8 * k && y >= a.y - top) return a;
     }
     return null;
@@ -4410,7 +4424,8 @@ export function init(canvas, elements) {
       getDaily: () => (daily ? { date: daily.date, twistId: daily.twist.id } : null),
       getStaff(key) {
         const a = ambient.find((s) => s.key === key);
-        return a ? { x: a.x, y: a.y, floor: a.floor, scale: a.scale ?? LIBRARY_PERSON_SCALE } : null;
+        // `scale` is in the anime-people units the click box uses (Ji-ho's renderer draws at PLAYER_ART_SCALE).
+        return a ? { x: a.x, y: a.y, floor: a.floor, scale: a.key === 'jiho' ? (a.scale ?? 1) * PLAYER_ART_SCALE : a.scale ?? LIBRARY_PERSON_SCALE } : null;
       },
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');

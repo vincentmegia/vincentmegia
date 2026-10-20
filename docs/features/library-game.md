@@ -981,6 +981,64 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   on clocking out, then several redesigns) and then removed at the user's
   request ("just remove him from the game"): no character, cutscene or
   renderer. Clocking out goes straight to the paycheck again.
+* **Han Ji-ho** (한지호; "add another super detailed character a boy
+  again" — asked: a high-school student who helps the player; the user
+  asked for a name other than "Do-yun"). His own renderer,
+  `library/jiho.js` (`drawJiho`, 3% shorter than adults): fluffy black
+  hair with a soft fringe of separate tapered locks and a small bobbing
+  cowlick, big round sleepy eyes with heavy lids (exam season; a sleepy
+  double-length blink; the shadows under them were removed — "remove ey
+  bags"), a plaster on his cheek and a mole;
+  a navy school blazer with gold-piped lapels, a gold book crest on the
+  breast pocket, a pen, gold buttons, flap pockets and a "한지호" name tag,
+  over a grey hoodie (hood on his shoulders, drawstrings, cuffs at his
+  wrists) and a white shirt with a loosened striped tie; grey trousers,
+  white crew socks and canvas high-tops with red-dot ankle patches; a
+  black backpack on both shoulders with stitched straps, buckles, a star
+  pin badge and a swinging plush bunny; one hand on a strap, the other
+  holding a ring of vocab flashcards ("단어" / "word", flipping) by a black
+  digital watch reading 23:00. Same knee-bend, heel-toe walk cycle as
+  Director Seo. He paces a short stretch of the 1st Floor's lower aisle
+  between Security and the Janitor, and helps like the other staff: click
+  him and he collects the first fine in line (`STAFF_HELP.jiho`, 60 s
+  cooldown) as if Fines Sort had succeeded — Eun-mi still counts it into
+  the till at the Front Desk. Covered by `engine-state.test.js` and a
+  Playwright test. A second pass ("even more detailed"): a red "수능 D-100"
+  exam-countdown pin on his left lapel; neon sticky tabs and a yellow
+  highlighter poking out of his left pocket; gold dashed stitching round
+  the blazer's pockets and down its sides; a mint-and-pink woven friendship
+  bracelet on his strap hand; button details on the digital watch; navy
+  stripes round his socks; scuffs and a blue ballpoint star doodled on his
+  high-tops; and a blue ink smudge on his jaw from sleeping on his notes. Then
+  "make him more handsome and even detailed": a slimmer, more defined
+  V-jaw with a soft shadow under the chin; almond eyes (the round sleepy
+  ones replaced) with a defined lash line that thickens at the outer
+  corner, a double-eyelid crease, finer iris lines and a warm lower
+  crescent; straight, tapering brows, the fringe shortened so they show;
+  a defined nose bridge; a calm closed half-smile with a lower-lip tint in
+  place of the open mouth; a fainter cheek flush; glossier hair strands;
+  and one wired white earphone, its cable curling into his hoodie collar.
+  The ink smudge was dropped. Then "make him better": his hair restyled from a blunt,
+  bowl-like fringe into a modern side-swept one — parted right of centre
+  with a little forehead showing, the main sweep falling left in tapered
+  locks of uneven length, strand lines following the sweep, a part line
+  and a soft glossy band across the crown — and warmer, lighter brown eyes
+  with a lighter lid shadow. And another pass ("more detaile"): a mint water bottle
+  in the backpack's mesh side pocket (white cap, yellow sticker); a silver
+  tie clip; three small gold buttons on each blazer cuff; metal eyelets and
+  a loose lace with an aglet on his high-tops; reflective silver strips on
+  both backpack straps; and a second pin, a green "A+", on the left strap. Then
+  "make him better" again: a tailored silhouette in place of the boxy one —
+  the blazer has sloped shoulders, a nipped-in waist and a curved hem that
+  falls a little lower, with cloth shading (the far side in shadow, folds
+  under the arms, a highlight down the near front); slimmer, tapered
+  trousers and sleeves; and a slightly narrower backpack. Then "change the
+  hair" (asked: fluffy messy, dark brown): his hair is now dark brown and
+  fluffy — a cloud of rounded tufts over the crown (outlined only on the
+  outside, with curl strokes, a soft shadow low down and two shine
+  arcs), a tousled fringe of tufts leaning different ways that stops above
+  his brows, side tufts flicking out over the ears, and a three-tuft
+  bouncing cowlick; the tufts bob gently.
 * **Director Seo** (서 관장; "add a new detailed director" — asked: a
   young, stylish, modern man, in an office cutscene at clock-out). His own
   renderer, `library/director-seo.js` (`drawDirectorSeo`), drawn 6%

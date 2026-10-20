@@ -985,3 +985,22 @@ describe('taking a book to read in the Reading Nook', () => {
     assert.equal(state.returnCart.length, 0);
   });
 });
+
+describe('Han Ji-ho collecting a fine', () => {
+  test('he takes the first fine in line and hands Eun-mi the payment, then needs a cooldown', () => {
+    let state = addFineToQueue(playingState(), { id: 'f1', amountGard: 40 });
+    state = addFineToQueue(state, { id: 'f2', amountGard: 30 });
+    assert.equal(staffHelpBlocker(state, 'jiho'), null);
+    state = staffHelp(state, 'jiho');
+    assert.equal(state.carriedFine.id, 'f1');
+    assert.deepEqual(state.finesQueue.map((f) => f.id), ['f2']);
+    assert.equal(state.mistakeCount, 0);
+    assert.equal(staffHelpBlocker(state, 'jiho'), 'cooldown');
+  });
+
+  test('nothing to do with no fines waiting, or while already holding one', () => {
+    assert.equal(staffHelpBlocker(playingState(), 'jiho'), 'nothing');
+    const holding = { ...addFineToQueue(playingState(), { id: 'f1', amountGard: 40 }), carriedFine: { id: 'x', amountGard: 10 } };
+    assert.equal(staffHelpBlocker(holding, 'jiho'), 'nothing');
+  });
+});

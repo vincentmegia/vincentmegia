@@ -959,6 +959,7 @@ export function staffHelpBlocker(state, key, ctx = {}) {
     volunteer: state.sanity < SANITY_MAX,
     libArchivist: state.activeBorrow?.stage === 'searching',
     libStoryteller: someoneWaiting,
+    jiho: state.finesQueue.length > 0 && !state.carriedFine && !state.finesSortActive,
   }[key];
   return can ? null : 'nothing';
 }
@@ -974,6 +975,8 @@ export function staffHelpBlocker(state, key, ctx = {}) {
  * - volunteer: brings Eun-mi a coffee — Sanity + STAFF_HELP.volunteer.sanity.
  * - libArchivist: finds the requested book, exactly like a successful Find
  *   the Book (the request moves on to checkout).
+ * - jiho: Han Ji-ho collects the first fine in line, as if Fines Sort had
+ *   succeeded — Eun-mi carries it to the Front Desk till.
  * - libStoryteller: story time — every waiting patron's timer (and the
  *   searching borrower's patience) gets STAFF_HELP.libStoryteller.patience
  *   seconds back, up to their maximum.
@@ -997,6 +1000,11 @@ export function staffHelp(state, key, ctx = {}) {
     next = { ...state, sanity: clampSanity(state.sanity + help.sanity) };
   } else if (key === 'libArchivist') {
     next = { ...state, activeBorrow: { ...state.activeBorrow, stage: 'checkout' } };
+  } else if (key === 'jiho') {
+    // He takes the first fine payment in line and hands it to Eun-mi: she
+    // still counts it into the till at the Front Desk.
+    const [fine, ...rest] = state.finesQueue;
+    next = { ...state, finesQueue: rest, carriedFine: fine };
   } else if (key === 'libStoryteller') {
     const calm = (e) => (e.waitRemainingSeconds == null ? e : { ...e, waitRemainingSeconds: Math.min(e.waitMaxSeconds ?? Infinity, e.waitRemainingSeconds + help.patience) });
     const borrow = state.activeBorrow;

@@ -938,6 +938,7 @@ export const STAFF_HELP = {
   volunteer: { cooldown: 60, sanity: 30 }, // brings Eun-mi a coffee
   libArchivist: { cooldown: 60 }, // finds the requested book (skips Find the Book)
   libStoryteller: { cooldown: 75, patience: 15 }, // story time calms everyone waiting
+  jiho: { cooldown: 60 }, // Han Ji-ho collects the first fine in line (skips Fines Sort)
 };
 
 // ---------------------------------------------------------------------------
