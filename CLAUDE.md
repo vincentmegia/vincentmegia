@@ -127,9 +127,17 @@ touching that area rather than expecting this section to carry it:
   `hospital/anime-ui.js`, and its page has its own anime theme
   (`.hospital-anime`/`ha-*` classes in `app.css`) instead of the site's
   Organic look.
+- **Easy Diagram** (`/easy-diagram`, a local-first diagram editor: our own
+  UI shell on draw.io's vendored graph engine, files saved as draw.io XML
+  with an `.ed` extension, no third-party requests; AWS icons, animations,
+  and a Connectors dock group plus click/drag connection points and a
+  categorized "Connect from…" picker) — `docs/features/easy-diagram.md`
+  and `docs/features/easy-diagram/BUILD.md` (the engine contract). It is a
+  full-viewport page with its own route CSP, reached from `/projects` by a
+  full page load.
 - **Projects** (`/projects` card grid: Fishing Game, Kitchen Shift, Puzzle
-  Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift) —
-  `docs/features/projects.md`.
+  Solver, Library Shift, Bus Stop Finder, Bus Rush, Hospital Shift, Easy
+  Diagram) — `docs/features/projects.md`.
 - **Content Authoring** (`/settings/content`: edit the landing page's
   hero/carousel/Selected work without a redeploy, Postgres-backed) —
   `docs/features/landing-content-authoring.md`. Code-complete but

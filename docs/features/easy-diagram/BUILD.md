@@ -161,16 +161,23 @@ returns:
 }
 ```
 
-*Approved 2026-10-20, not built yet:* `addConnected` would take a
-`{kind, props, preset, at}` options argument, and `connect` would take
-`sourceSide`/`targetSide`. New calls would be `setConnectorPreset`,
-`setPortMode` and `beginConnect`. They support the connectors dock group,
-the connection points and the connect picker described in
-`docs/features/easy-diagram.md` ("Connectors: dock group, connection points
-and shape picker"). Until it is built, the contract above is the one
-that's in the code.
+*Added 2026-10-20* for the connectors dock group, connection points and
+connect picker (see `docs/features/easy-diagram.md`, "Connectors: dock
+group, connection points and shape picker"):
 
-Options: `createEngine(container, {theme: 'dark'|'light', grid: 'dots'|'lines'|'none', snap: true, motion: true})`.
+```js
+addConnected(sourceId, side, opts?)  // opts: {kind, props, preset, at:{x,y}}; no opts = a Rounded "Next step" as before
+connect(sourceId, targetId, props?)  // props also takes preset, sourceSide, targetSide ('r'|'l'|'t'|'b')
+setConnectorPreset(name), getConnectorPreset()   // arrow|straight|curved|dashed|both|line (CONNECTOR_PRESETS)
+setPortMode('hover'|'always'|'off'), getPortMode()
+shapeAt(clientX, clientY)            // -> {id, side} | null
+on('connect-request', fn)            // a connection point was clicked, or a drag released on empty canvas
+```
+
+The four `+` quick-connect handles described under "Engine rules" below
+were replaced by connection points: four per shape, which you click or drag.
+
+Options: `createEngine(container, {theme: 'dark'|'light', grid: 'dots'|'lines'|'none', snap: true, motion: true, ports: 'hover'|'always'|'off'})`.
 The engine owns the stage background and grid inside its container.
 
 Models (`getCell` returns them and `update` patches them):

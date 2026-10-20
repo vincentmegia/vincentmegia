@@ -1,8 +1,9 @@
 // The stage: the engine's canvas plus the shell overlays drawn over it:
-// floating context bar, empty-page state, tool pill, status readout,
-// zoom controls and the toast host.
+// floating context bar, empty-page state, the connect picker, tool pill,
+// status readout, zoom controls and the toast host.
 import { h, icon, setPressed, MOD } from './dom.js';
 import { I, TOOLS, COLORS, KIND_NAMES } from './defs.js';
+import { buildConnectPicker } from './connect-picker.js';
 
 export function buildStage(ctx) {
   const { engine, store, actions, canvas } = ctx;
@@ -27,7 +28,8 @@ export function buildStage(ctx) {
     const sel = engine.getSelection();
     const id = sel.type === 'shape' ? sel.ids[0] : null;
     const b = id && typeof engine.getScreenBounds === 'function' ? engine.getScreenBounds(id) : null;
-    if (!b) { ctxBar.hidden = true; ctxFor = null; return; }
+    // Hidden while the connect picker is open: on a phone they'd overlap.
+    if (!b || store.get().picker) { ctxBar.hidden = true; ctxFor = null; return; }
     const c = engine.getCell(id);
     ctxSw.forEach((el) => setPressed(el, c && c.color === el.dataset.color));
     // AWS icons keep their category colour, so they get no fill swatches.
@@ -114,7 +116,7 @@ export function buildStage(ctx) {
   function renderEmpty() { empty.hidden = !engine.isEmpty(); }
 
   const stage = h('main.ed-stage', { 'aria-label': 'Diagram canvas' },
-    canvas, ctxBar, empty, tools, readout, zoom, ctx.toast.host);
+    canvas, ctxBar, empty, buildConnectPicker(ctx), tools, readout, zoom, ctx.toast.host);
 
   const refresh = () => { renderReadout(); renderEmpty(); placeCtx(); };
   engine.on('change', refresh);
@@ -123,7 +125,10 @@ export function buildStage(ctx) {
   engine.on('zoom', () => { renderZoom(); placeCtx(); });
   engine.on('view', placeCtx);
   engine.on('tool', (t) => renderTool(typeof t === 'string' ? t : t && t.tool));
-  store.subscribe((st, prev) => { if (st.snap !== prev.snap) renderReadout(); });
+  store.subscribe((st, prev) => {
+    if (st.snap !== prev.snap) renderReadout();
+    if (st.picker !== prev.picker) placeCtx();
+  });
   window.addEventListener('resize', placeCtx);
 
   renderTool('select');

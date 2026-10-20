@@ -4,8 +4,9 @@
 import { h, s, icon, setPressed, srOnly, segmented, toggleRow, MOD } from './dom.js';
 import {
   I, COLORS, EDGE_COLORS, KIND_NAMES, NODE_ANIMS, EDGE_ANIMS, TRIGGERS, SPEEDS,
-  NODE_DUR, EDGE_DUR, SPEED_MULT, animName,
+  NODE_DUR, EDGE_DUR, SPEED_MULT, CONNECTORS, animName,
 } from './defs.js';
+import { connectorArt } from './dock.js';
 import { AWS_SERVICES, AWS_CATEGORIES, awsService } from '../aws-icons.js';
 
 // [value, name, glyph: [line, marker, filled]]
@@ -272,18 +273,28 @@ export function buildInspector(ctx) {
     const pageIn = textInput({ 'aria-label': 'Page name' }, (v) => actions.renamePage(v));
     const grid = segmented([['dots', 'Dots'], ['lines', 'Lines'], ['none', 'None']], (v) => actions.setGrid(v), { ariaLabel: 'Canvas grid' });
     const snap = toggleRow('Snap to grid', () => actions.toggleSnap());
-    const shortcuts = [['Command palette', MOD + 'K'], ['Select', 'V'], ['Rectangle', 'R'], ['Connector', 'A'], ['Duplicate', MOD + 'D'], ['Undo', MOD + 'Z']];
+    const ports = segmented([['hover', 'On hover'], ['always', 'Always'], ['off', 'Off']], (v) => actions.setPortMode(v), { ariaLabel: 'Connection points' });
+    const conn = segmented(CONNECTORS.map((c) => [c.id, c.name, `Default connector: ${c.name}`, connectorArt(c, 26, 14)]),
+      (v) => actions.setConnector(v), { cls: 'seg six', ariaLabel: 'Default connector' });
+    const connName = h('span.ed-conn-name');
+    const shortcuts = [['Command palette', MOD + 'K'], ['Select', 'V'], ['Rectangle', 'R'], ['Connector', 'A'], ['Connect two selected', 'C'], ['Duplicate', MOD + 'D'], ['Undo', MOD + 'Z']];
     const el = h('div.ed-panel', { 'data-panel': 'none' },
       h('div.ed-group.tight', null, label('Page', true), h('label.field.title', null, srOnly('Page name'), pageIn)),
       h('div.ed-group', null, label('Canvas grid'), grid.el),
       snap.el,
+      h('div.ed-group', null, label('Connection points'), ports.el),
+      h('div.ed-group', null, h('div.ed-conn-head', null, label('Default connector'), connName), conn.el),
       h('div.ed-card.g10', null, label('Shortcuts'),
         shortcuts.map(([l, k]) => h('div.ed-shortcut', null, h('span', { text: l }), h('span.kbd', { text: k })))),
-      h('div.ed-hint', null, 'Select a shape or an arrow to style and animate it, or use the ', h('b', { text: '+' }), ' handles on a selected shape to grow the flow.'));
+      h('div.ed-hint', null, 'Select a shape or an arrow to style and animate it. Hover a shape and drag one of its dots to another shape to connect them, or click a dot to add a connected shape.'));
     function update() {
       setValue(pageIn, actions.currentPageName());
       grid.set(store.get().grid);
       snap.set(store.get().snap);
+      ports.set(store.get().portMode);
+      conn.set(store.get().connector);
+      const c = CONNECTORS.find((x) => x.id === store.get().connector);
+      connName.textContent = c ? c.name : '';
     }
     return { el, update };
   }
@@ -317,7 +328,9 @@ export function buildInspector(ctx) {
   engine.on('selection', render);
   engine.on('change', render);
   engine.on('page', render);
-  store.subscribe((st, prev) => { if (st.grid !== prev.grid || st.snap !== prev.snap) render(); });
+  store.subscribe((st, prev) => {
+    if (st.grid !== prev.grid || st.snap !== prev.snap || st.portMode !== prev.portMode || st.connector !== prev.connector) render();
+  });
   render();
   return aside;
 }

@@ -260,6 +260,22 @@ async function dropFile(page, name, text, mime = 'application/xml') {
 	await target.dispatchEvent('drop', { dataTransfer: dt });
 }
 
+// The selected shape's connection point on `side`.
+async function port(page, side) {
+	const [id] = (await sel(page)).ids;
+	return page.locator(`.ed-port[data-cell-id="${id}"][data-side="${side}"]`);
+}
+
+// Clicks (or taps) the selected shape's connection point and picks `shape`
+// from the connect picker's current tab: adds it on that side, connected.
+async function connectVia(page, side, shape = 'Rectangle', how = 'click') {
+	await (await port(page, side))[how]();
+	const picker = page.getByTestId('connect-picker');
+	await expect(picker).toBeVisible();
+	await picker.getByRole('button', { name: new RegExp(`^Add ${shape} `) })[how]();
+	await expect(picker).toBeHidden();
+}
+
 // Builds a three-step flowchart purely through the UI and returns ids.
 async function buildFlowchartViaUI(page) {
 	await page.getByRole('button', { name: 'Add a shape' }).click();
@@ -267,11 +283,11 @@ async function buildFlowchartViaUI(page) {
 	await label.fill('Receive order');
 	await label.press('Enter');
 	const [first] = (await sel(page)).ids;
-	await page.locator('.ed-plus[data-side="r"]').click();
+	await connectVia(page, 'r');
 	await label.fill('In stock?');
 	await label.press('Enter');
 	const [second] = (await sel(page)).ids;
-	await page.locator('.ed-plus[data-side="b"]').click();
+	await connectVia(page, 'b');
 	await label.fill('Ship it');
 	await label.press('Enter');
 	const [third] = (await sel(page)).ids;
@@ -451,12 +467,12 @@ test.describe('engine', () => {
 		expect(r.svg).not.toMatch(/drawio\.com|diagrams\.net|draw\.io/i);
 	});
 
-	test('the + handle adds a connected step; corner resize and drag move are undoable', async ({ page }) => {
+	test('a connection point adds a connected shape; corner resize and drag move are undoable', async ({ page }) => {
 		await openEditor(page);
 		const a = await E(page, () => window.__easyDiagram.engine.addShape('rect', { x: 100, y: 100, label: 'Source' }));
-		await expect(page.locator('.ed-plus')).toHaveCount(4);
-		await expect(page.locator('.ed-plus[data-side="r"]')).toHaveAttribute('aria-label', 'Add connected step to the right');
-		await page.locator('.ed-plus[data-side="r"]').click();
+		await expect(page.locator(`.ed-port[data-cell-id="${a}"]`)).toHaveCount(4);
+		await expect(await port(page, 'r')).toHaveAttribute('aria-label', 'Connect from the right side of Source');
+		await connectVia(page, 'r');
 		const s = await sel(page);
 		expect(s.type).toBe('shape');
 		const added = await cell(page, s.ids[0]);
@@ -872,7 +888,12 @@ test.describe('io', () => {
 		await openEditor(page);
 		await buildFlowchartViaUI(page);
 		const model = await cells(page);
-		await expect.poll(() => E(page, async () => !!(await window.__easyDiagram.io.loadDraft('Untitled.ed')))).toBe(true);
+		// Wait for the draft of the finished flowchart, not an earlier one
+		// (drafts are written 600 ms after the last change).
+		await expect.poll(() => E(page, async () => {
+			const d = await window.__easyDiagram.io.loadDraft('Untitled.ed');
+			return !!d && d.xml.includes('Ship it');
+		})).toBe(true);
 		await page.reload();
 		await page.waitForFunction(() => window.__easyDiagram);
 		const prompt = page.getByTestId('draft-prompt');
@@ -1419,7 +1440,7 @@ test.describe('ui', () => {
 	test('dock: search, category chips, click to add, drag a tile onto the canvas at the pointer', async ({ page }) => {
 		await openEditor(page);
 		const dock = page.getByRole('complementary', { name: 'Shapes' });
-		const visibleNames = () => dock.locator('.ed-tile:visible .ed-tile-name').allInnerTexts();
+		const visibleNames = () => dock.locator('.ed-tile[data-kind]:visible .ed-tile-name').allInnerTexts();
 		const OUTLINES = ['Rectangle', 'Rounded', 'Ellipse', 'Decision', 'Terminator', 'Data', 'Hexagon', 'Database', 'Document', 'Sticky'];
 		const AWS = ['EC2', 'Lambda', 'ECS', 'EKS', 'S3', 'EFS', 'RDS', 'DynamoDB', 'Aurora', 'VPC', 'CloudFront', 'Route 53',
 			'Load Balancer', 'API Gateway', 'SQS', 'SNS', 'Step Functions', 'EventBridge', 'IAM', 'Cognito', 'KMS', 'CloudWatch', 'Kinesis', 'SageMaker'];
@@ -1688,8 +1709,8 @@ test.describe('aws icons', () => {
 		const ctxBar = page.getByRole('toolbar', { name: 'Selection' });
 		await expect(ctxBar.locator('.swatch:visible')).toHaveCount(0);
 		await expect(ctxBar.getByRole('button', { name: 'Duplicate' })).toBeVisible();
-		// The bottom quick-connect handle sits below the label, not on top of it.
-		const plusB = await page.locator('.ed-plus[data-side="b"]').boundingBox();
+		// The bottom connection point sits below the label, not on top of it.
+		const plusB = await (await port(page, 'b')).boundingBox();
 		// The label's own text box: the smallest element in the canvas whose text is exactly "EC2".
 		const labelBottom = await E(page, () => {
 			const els = [...document.querySelectorAll('.ed-canvas svg *')].filter((el) => el.textContent.trim() === 'EC2' && !el.children.length);
@@ -1697,7 +1718,7 @@ test.describe('aws icons', () => {
 			boxes.sort((a, b) => a.width * a.height - b.width * b.height);
 			return boxes[0].bottom;
 		});
-		expect(plusB.y).toBeGreaterThanOrEqual(labelBottom);
+		expect(plusB.y + plusB.height / 2).toBeGreaterThanOrEqual(labelBottom);
 
 		await insp.getByLabel('AWS service').selectOption('rds');
 		expect(await cell(page, id)).toMatchObject({ service: 'rds', label: 'RDS' });
@@ -1855,6 +1876,257 @@ test.describe('aws icons', () => {
 	});
 });
 
+// ================================================================ Connectors
+
+test.describe('connectors', () => {
+	const dock = (page) => page.getByRole('complementary', { name: 'Shapes' });
+	const picker = (page) => page.getByTestId('connect-picker');
+	const portOf = (page, id, side) => page.locator(`.ed-port[data-cell-id="${id}"][data-side="${side}"]`);
+	async function portCenter(page, id, side) {
+		// The overlay draws on the next frame; wait for the point.
+		await expect(portOf(page, id, side)).toBeVisible();
+		const b = await portOf(page, id, side).boundingBox();
+		return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+	}
+	// Two shapes side by side (A left, B right) and one below B, nothing selected, 100% zoom.
+	async function three(page) {
+		return E(page, () => {
+			const e = window.__easyDiagram.engine;
+			const ids = [e.addShape('rect', { x: 80, y: 120, label: 'A' }), e.addShape('rect', { x: 420, y: 120, label: 'B' }),
+				e.addShape('rect', { x: 420, y: 320, label: 'C' })];
+			e.clearSelection();
+			e.zoomTo(1);
+			return ids;
+		});
+	}
+	const edgeStyle = (page, id) => E(page, (i) => window.__easyDiagram.engine._graph.getModel().getCell(i).style, id);
+
+	test('the Connectors group comes first in the dock; an armed preset drags between shapes and snaps to the points', async ({ page }) => {
+		await openEditor(page);
+		const [a, b] = await three(page);
+		await expect(dock(page).locator('.mono-label').first()).toHaveText('Connectors');
+		await expect(dock(page).locator('.ed-conn-tile .ed-tile-name')).toHaveText(['Arrow', 'Straight', 'Curved', 'Dashed', 'Two-way', 'Line']);
+		// Shape search and chips never hide the group.
+		await dock(page).getByRole('searchbox', { name: 'Search shapes' }).fill('zzz');
+		await expect(dock(page).locator('.ed-conn-tile:visible')).toHaveCount(6);
+		await dock(page).getByRole('searchbox', { name: 'Search shapes' }).fill('');
+
+		const dashed = dock(page).getByRole('button', { name: 'Dashed connector' });
+		await dashed.click();
+		await expect(dashed).toHaveAttribute('aria-pressed', 'true');
+		await expect(tool(page, 'connector')).toHaveAttribute('aria-pressed', 'true');
+		// Armed: every shape shows its four points.
+		await expect(page.locator('.ed-port')).toHaveCount(12);
+
+		const from = await portCenter(page, a, 'r');
+		const to = await portCenter(page, b, 'l');
+		await page.mouse.move(from.x, from.y);
+		await page.mouse.down();
+		await page.mouse.move(to.x + 6, to.y + 5, { steps: 12 });
+		// The preview snaps to B's left point before release.
+		await expect(page.locator('.ed-connect-snap')).toHaveCount(1);
+		await page.mouse.up();
+		const es = await edges(page);
+		expect(es).toHaveLength(1);
+		expect(es[0]).toMatchObject({ source: a, target: b, lineStyle: 'dashed', arrows: 'end', route: 'elbow' });
+		const st = await edgeStyle(page, es[0].id);
+		expect(st).toMatch(/exitX=1;exitY=0\.5/);
+		expect(st).toMatch(/entryX=0;entryY=0\.5/);
+		// One connection, then back to Select; the tile is no longer armed.
+		await expect(tool(page, 'select')).toHaveAttribute('aria-pressed', 'true');
+		await expect(dashed).toHaveAttribute('aria-pressed', 'false');
+		expect((await sel(page)).ids).toEqual([es[0].id]);
+
+		// Clicking the tile again, or Esc, disarms it.
+		const arrow = dock(page).getByRole('button', { name: 'Arrow connector' });
+		await arrow.click();
+		await expect(arrow).toHaveAttribute('aria-pressed', 'true');
+		await arrow.click();
+		await expect(tool(page, 'select')).toHaveAttribute('aria-pressed', 'true');
+		await arrow.click();
+		await page.keyboard.press('Escape');
+		await expect(tool(page, 'select')).toHaveAttribute('aria-pressed', 'true');
+		await expect(arrow).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	test('with two shapes selected a preset click, or C, joins them in selection order', async ({ page }) => {
+		await openEditor(page);
+		const [a, b, c] = await three(page);
+		await E(page, (ids) => window.__easyDiagram.engine.select(ids), [a, b]);
+		await dock(page).getByRole('button', { name: 'Straight connector' }).click();
+		let es = await edges(page);
+		expect(es).toHaveLength(1);
+		expect(es[0]).toMatchObject({ source: a, target: b, route: 'straight', arrows: 'end' });
+		await expect(tool(page, 'select')).toHaveAttribute('aria-pressed', 'true');
+
+		// C uses the default connector, which is now Straight.
+		await E(page, (ids) => window.__easyDiagram.engine.select(ids), [c, b]);
+		await page.keyboard.press('c');
+		es = await edges(page);
+		expect(es).toHaveLength(2);
+		expect(es[1]).toMatchObject({ source: c, target: b, route: 'straight' });
+		await page.keyboard.press('Control+z');
+		expect(await edges(page)).toHaveLength(1);
+
+		// C with one shape explains itself and changes nothing.
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), a);
+		await page.keyboard.press('c');
+		await expect(toast(page).last()).toContainText('Select two shapes');
+		expect(await edges(page)).toHaveLength(1);
+	});
+
+	test('dragging a connection point snaps to a shape; released on empty canvas it opens the picker there', async ({ page }) => {
+		await openEditor(page);
+		const [a, b, c] = await three(page);
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), b);
+		// Dropped anywhere on C (not near a point): enters by the side facing B's bottom point.
+		const from = await portCenter(page, b, 'b');
+		const cc = await centerOf(page, c);
+		await drag(page, from, { x: cc.x + 30, y: cc.y + 10 }, 12);
+		let es = await edges(page);
+		expect(es).toHaveLength(1);
+		expect(es[0]).toMatchObject({ source: b, target: c });
+		const st = await edgeStyle(page, es[0].id);
+		expect(st).toMatch(/exitX=0\.5;exitY=1/);
+		expect(st).toMatch(/entryX=0\.5;entryY=0/);
+
+		// Esc mid-drag cancels.
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), a);
+		const ar = await portCenter(page, a, 'b');
+		await page.mouse.move(ar.x, ar.y);
+		await page.mouse.down();
+		await page.mouse.move(cc.x, cc.y, { steps: 8 });
+		await page.keyboard.press('Escape');
+		await page.mouse.up();
+		expect(await edges(page)).toHaveLength(1);
+		await expect(page.locator('.ed-connect-line')).toHaveCount(0);
+
+		// Released on empty canvas: the picker adds the shape centred where you let go.
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), a);
+		const start = await portCenter(page, a, 'b');
+		const drop = { x: start.x + 10, y: start.y + 220 };
+		await drag(page, start, drop, 12);
+		await expect(picker(page)).toBeVisible();
+		await expect(picker(page)).toContainText('Adds the shape where you let go');
+		await picker(page).getByRole('button', { name: /^Add Database / }).click();
+		await expect(picker(page)).toBeHidden();
+		const [added] = (await sel(page)).ids;
+		expect((await cell(page, added)).kind).toBe('cyl');
+		const ac = await centerOf(page, added);
+		expect(Math.abs(ac.x - drop.x)).toBeLessThan(15);
+		expect(Math.abs(ac.y - drop.y)).toBeLessThan(15);
+		es = await edges(page);
+		expect(es[es.length - 1]).toMatchObject({ source: a, target: added });
+	});
+
+	test('the connect picker: categories, AWS, shapes on the page, connector style and keyboard', async ({ page }) => {
+		await openEditor(page);
+		const [a] = await three(page);
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), a);
+		await (await port(page, 'r')).click();
+		await expect(picker(page)).toBeVisible();
+		await expect(picker(page)).toContainText('Connect from “A”');
+		await expect(picker(page).getByRole('tab')).toHaveText(['Basic', 'Flowchart', 'AWS', 'On this page']);
+		await expect(picker(page).getByRole('tab', { name: 'Flowchart' })).toHaveAttribute('aria-selected', 'true');
+		await expect(picker(page).locator('.ed-tile-name')).toHaveText(['Rectangle', 'Decision', 'Terminator', 'Data', 'Database', 'Document']);
+		// The first choice has focus; arrows move, Enter picks.
+		await expect(picker(page).getByRole('button', { name: /^Add Rectangle / })).toBeFocused();
+		await page.keyboard.press('ArrowRight');
+		await expect(picker(page).getByRole('button', { name: /^Add Decision / })).toBeFocused();
+		await page.keyboard.press('Enter');
+		await expect(picker(page)).toBeHidden();
+		const [dec] = (await sel(page)).ids;
+		const d = await cell(page, dec);
+		expect(d.kind).toBe('diamond');
+		expect(d.x).toBeGreaterThan((await cell(page, a)).x + 150);
+
+		// AWS tab; the footer switches the connector to Two-way.
+		await (await port(page, 'b')).click();
+		await picker(page).getByRole('tab', { name: 'AWS' }).click();
+		await expect(picker(page).locator('.ed-tile[data-kind="aws"]')).toHaveCount(24);
+		await picker(page).getByRole('button', { name: 'Use Two-way connector' }).click();
+		await expect(picker(page).getByRole('button', { name: 'Use Two-way connector' })).toHaveAttribute('aria-pressed', 'true');
+		await picker(page).getByRole('button', { name: /^Add Amazon S3 below/ }).click();
+		const [s3] = (await sel(page)).ids;
+		expect(await cell(page, s3)).toMatchObject({ kind: 'aws', service: 's3', label: 'S3' });
+		let es = await edges(page);
+		expect(es[es.length - 1]).toMatchObject({ source: dec, target: s3, arrows: 'both' });
+		// The default connector follows, and the AWS tab is remembered.
+		await expect(dock(page).getByRole('button', { name: 'Two-way connector' })).toBeVisible();
+		expect(await E(page, () => window.__easyDiagram.engine.getConnectorPreset())).toBe('both');
+
+		// On this page: connect to a shape that's already there.
+		await (await port(page, 'l')).click();
+		await expect(picker(page).getByRole('tab', { name: 'AWS' })).toHaveAttribute('aria-selected', 'true');
+		await picker(page).getByRole('tab', { name: 'On this page' }).click();
+		await expect(picker(page).getByRole('button', { name: /^Connect to / })).toHaveCount(4);
+		await picker(page).getByRole('button', { name: 'Connect to A' }).click();
+		es = await edges(page);
+		expect(es[es.length - 1]).toMatchObject({ source: s3, target: a });
+		expect((await sel(page)).ids).toEqual([es[es.length - 1].id]);
+
+		// Esc closes it without clearing the selection; so does a click outside.
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), a);
+		await (await port(page, 't')).click();
+		await page.keyboard.press('Escape');
+		await expect(picker(page)).toBeHidden();
+		expect((await sel(page)).ids).toEqual([a]);
+		await (await port(page, 't')).click();
+		await expect(picker(page)).toBeVisible();
+		await page.mouse.click(700, 700);
+		await expect(picker(page)).toBeHidden();
+	});
+
+	test('connection points show on hover; the inspector sets Hover/Always/Off and the default connector, both remembered', async ({ page }) => {
+		await openEditor(page);
+		const [a, b] = await three(page);
+		const ca = await centerOf(page, a);
+		await page.mouse.move(ca.x, ca.y);
+		await expect(page.locator('.ed-port')).toHaveCount(4);
+		await expect(page.locator(`.ed-port[data-cell-id="${a}"]`)).toHaveCount(4);
+		await page.mouse.move(ca.x, ca.y + 200);
+		await expect(page.locator('.ed-port')).toHaveCount(0);
+
+		const insp = inspector(page);
+		const points = insp.getByRole('group', { name: 'Connection points' });
+		await expect(points.getByRole('button', { name: 'On hover' })).toHaveAttribute('aria-pressed', 'true');
+		await points.getByRole('button', { name: 'Always' }).click();
+		await expect(page.locator('.ed-port')).toHaveCount(12);
+		await points.getByRole('button', { name: 'Off' }).click();
+		await page.mouse.move(ca.x, ca.y);
+		await page.waitForTimeout(100);
+		await expect(page.locator('.ed-port')).toHaveCount(0);
+		await E(page, (i) => window.__easyDiagram.engine.select([i]), b);
+		await expect(page.locator('.ed-port')).toHaveCount(0);
+		await E(page, () => window.__easyDiagram.engine.clearSelection());
+
+		await insp.getByRole('button', { name: 'Default connector: Curved' }).click();
+		await expect(insp.getByRole('button', { name: 'Default connector: Curved' })).toHaveAttribute('aria-pressed', 'true');
+		expect(await E(page, () => window.__easyDiagram.engine.getConnectorPreset())).toBe('curved');
+
+		await page.reload();
+		await page.waitForFunction(() => window.__easyDiagram);
+		expect(await E(page, () => [window.__easyDiagram.engine.getPortMode(), window.__easyDiagram.engine.getConnectorPreset()])).toEqual(['off', 'curved']);
+		await expect(inspector(page).getByRole('group', { name: 'Connection points' }).getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	test('a dock connector dropped on a shape opens the picker from that shape', async ({ page }) => {
+		await openEditor(page);
+		const [, b] = await three(page);
+		const tile = await dock(page).getByRole('button', { name: 'Curved connector' }).boundingBox();
+		const cb = await centerOf(page, b);
+		await drag(page, { x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 }, { x: cb.left + cb.w - 10, y: cb.y }, 15);
+		await expect(picker(page)).toBeVisible();
+		await expect(picker(page)).toContainText('Connect from “B”');
+		await expect(picker(page)).toContainText('to the right');
+		await picker(page).getByRole('button', { name: /^Add Terminator / }).click();
+		const es = await edges(page);
+		expect(es).toHaveLength(1);
+		expect(es[0]).toMatchObject({ source: b, route: 'curved' });
+		expect((await cell(page, es[0].target)).kind).toBe('pill');
+	});
+});
+
 // ================================================================ Phone
 
 test.describe('phone width', () => {
@@ -1906,8 +2178,8 @@ test.describe('phone width', () => {
 		await page.locator('.ed-drawer-scrim').click({ position: { x: 20, y: 400 } });
 		await expect(page.locator('#ed-insp')).toBeHidden();
 
-		// Canvas still works by touch: tap the + handle.
-		await page.locator('.ed-plus[data-side="b"]').tap();
+		// Canvas still works by touch: tap a connection point, then a shape.
+		await connectVia(page, 'b', 'Rectangle', 'tap');
 		expect(await shapes(page)).toHaveLength(2);
 		await page.getByRole('button', { name: 'Export' }).click();
 		await expect(page.locator('#ed-export-pop')).toBeInViewport();
@@ -1928,7 +2200,7 @@ test.describe('evidence', () => {
 		const ids = await buildFlowchartViaUI(page);
 		// Branch off the decision and loop back, with the connector tool.
 		await E(page, (i) => window.__easyDiagram.engine.select([i]), ids.second);
-		await page.locator('.ed-plus[data-side="r"]').click();
+		await connectVia(page, 'r');
 		const label = inspector(page).getByRole('textbox', { name: 'Label', exact: true });
 		await label.fill('Back-order');
 		await label.press('Enter');

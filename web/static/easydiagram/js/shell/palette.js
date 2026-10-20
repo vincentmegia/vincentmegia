@@ -29,6 +29,7 @@ export function commandList(ctx) {
     ['Zoom to fit', SHIFT + '1', I.fit, () => actions.fit()],
     ['Undo', MOD + 'Z', I.undo, () => actions.undo(), !engine.canUndo()],
     ['Redo', SHIFT + MOD + 'Z', I.redo, () => actions.redo(), !engine.canRedo()],
+    ['Connect selected shapes', 'C', 'M5 19L19 5M11 5h8v8', () => actions.connectSelected(), sel.type !== 'multi'],
     ['Duplicate selection', MOD + 'D', I.dup, () => actions.duplicate(), sel.type === 'none'],
     ['Delete selection', '⌫', I.trash, () => actions.remove(), sel.type === 'none'],
   ];

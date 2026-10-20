@@ -1,5 +1,6 @@
 // Global keyboard shortcuts. Ignored while typing in a field, except the
-// few that are never text edits (⌘K, ⌘S, ⌘O, ⌘P, Esc).
+// few that are never text edits (⌘K, ⌘S, ⌘O, ⌘P, Esc). C connects the two
+// selected shapes with the default connector.
 import { isTyping } from './dom.js';
 
 const TOOL_KEYS = { v: 'select', h: 'hand', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', t: 'text', n: 'note' };
@@ -52,6 +53,7 @@ export function installShortcuts(ctx) {
       if (e.code === 'Digit1') { e.preventDefault(); actions.fit(); return; }
       return;
     }
+    if (key === 'c') { e.preventDefault(); actions.connectSelected(); return; }
     if (TOOL_KEYS[key]) { e.preventDefault(); actions.pickTool(TOOL_KEYS[key]); return; }
     if (key === '+' || key === '=') { e.preventDefault(); actions.zoomIn(); return; }
     if (key === '-') { e.preventDefault(); actions.zoomOut(); return; }

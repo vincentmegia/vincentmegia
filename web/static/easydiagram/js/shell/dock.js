@@ -1,7 +1,9 @@
 // Left dock: search, category chips, 3-column shape tiles (click to add,
-// drag onto the canvas to drop at a point) and a disabled "Libraries" row.
+// drag onto the canvas to drop at a point), the Connectors group (click to
+// arm, or with two shapes selected to join them; drop on a shape to pick
+// what to connect it to) and a disabled "Libraries" row.
 import { h, s, icon, setPressed, srOnly } from './dom.js';
-import { I, KINDS, CATS, shapePath } from './defs.js';
+import { I, KINDS, CATS, CONNECTORS, shapePath } from './defs.js';
 import { AWS_SERVICES, AWS_CATEGORIES, awsIconDataUri } from '../aws-icons.js';
 
 const AWS_SIZE = 64;
@@ -11,8 +13,28 @@ function tileSvg(kind) {
     s('path', { class: 'tp', d: shapePath(kind, 44, kind === 'diamond' ? 30 : 28), 'stroke-linejoin': 'round' }));
 }
 
+// Every shape tile: the outline shapes, then one per AWS service. Shared
+// with the connect picker, which offers the same shapes by category.
+export function shapeEntries() {
+  return Object.keys(KINDS).map((kind) => ({
+    kind, props: null, name: KINDS[kind].name, full: KINDS[kind].name, cats: KINDS[kind].cats, words: [KINDS[kind].label],
+    w: KINDS[kind].w, h: KINDS[kind].h, art: () => tileSvg(kind),
+  })).concat(AWS_SERVICES.map((svc) => ({
+    kind: 'aws', props: { service: svc.id }, name: svc.label, full: svc.name, cats: ['aws'],
+    words: [svc.name, AWS_CATEGORIES[svc.category].name, 'aws'], w: AWS_SIZE, h: AWS_SIZE,
+    art: () => h('img.ed-tile-aws', { src: awsIconDataUri(svc.id), alt: '', width: 30, height: 30, draggable: 'false' }),
+  })));
+}
+
+// A connector preset's picture (defs.js CONNECTORS), w×h CSS px.
+export function connectorArt(c, w = 44, ht = 24) {
+  return s('svg', { width: w, height: ht, viewBox: '0 0 44 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false' },
+  c.paths.map((d, i) => s('path', { d, 'stroke-dasharray': c.dashed && i === 0 ? '3.5 3' : null })));
+}
+
 export function buildDock(ctx) {
-  const { engine, actions } = ctx;
+  const { engine, store, actions } = ctx;
   let cat = 'all';
   let query = '';
 
@@ -23,26 +45,48 @@ export function buildDock(ctx) {
   const chips = CATS.map(([id, label]) => h('button.chip', { 'aria-pressed': 'false', text: label, onclick: () => { cat = id; renderTiles(); } }));
   const chipRow = h('div.ed-cats', { role: 'group', 'aria-label': 'Shape category' }, chips);
 
-  // Every dock entry: the outline shapes, then one tile per AWS service.
-  const entries = Object.keys(KINDS).map((kind) => ({
-    kind, props: null, name: KINDS[kind].name, cats: KINDS[kind].cats, words: [KINDS[kind].label],
-    w: KINDS[kind].w, h: KINDS[kind].h, art: () => tileSvg(kind),
-  })).concat(AWS_SERVICES.map((svc) => ({
-    kind: 'aws', props: { service: svc.id }, name: svc.label, cats: ['aws'],
-    words: [svc.name, AWS_CATEGORIES[svc.category].name, 'aws'], w: AWS_SIZE, h: AWS_SIZE,
-    art: () => h('img.ed-tile-aws', { src: awsIconDataUri(svc.id), alt: '', width: 30, height: 30, draggable: 'false' }),
-  })));
+  const entries = shapeEntries();
 
   const tiles = entries.map((e) => {
-    const full = e.kind === 'aws' ? `${e.words[0]}` : e.name;
+    const full = e.full;
     const el = h('button.ed-tile', { 'aria-label': `Add ${full}`, 'data-kind': e.kind, 'data-service': e.props ? e.props.service : null,
       title: `${full} (click, or drag onto the canvas)` },
       e.art(), h('span.ed-tile-name', { text: e.name }));
-    wireDrag(el, e);
+    wireDrag(el, e.art, e.name,
+      () => actions.addShape(e.kind, e.props ? Object.assign({}, e.props) : undefined),
+      (x, y) => dropAt(e, x, y));
     return el;
   });
   const grid = h('div.ed-tiles', null, tiles);
   const empty = h('div.ed-tiles-empty', { hidden: true, role: 'status' });
+
+  // Connectors: a group of its own, so shape search and chips never hide it.
+  const connTiles = CONNECTORS.map((c) => {
+    const el = h('button.ed-tile.ed-conn-tile', { 'aria-label': `${c.name} connector`, 'aria-pressed': 'false', 'data-connector': c.id,
+      title: `${c.desc}. Click, then drag between shapes; or drop it on a shape` },
+    connectorArt(c), h('span.ed-tile-name', { text: c.name }));
+    wireDrag(el, () => connectorArt(c), c.name, () => actions.armConnector(c.id), (x, y) => {
+      actions.setConnector(c.id);
+      const hit = engine.shapeAt(x, y);
+      if (hit) actions.openConnectPicker({ sourceId: hit.id, side: hit.side, client: { x, y }, at: null });
+    });
+    return el;
+  });
+  const connHint = h('p.ed-conn-hint');
+  const conns = h('section.ed-conns', { 'aria-label': 'Connectors' },
+    h('div.mono-label.ed-libs-title', { text: 'Connectors' }),
+    h('div.ed-tiles', null, connTiles), connHint);
+  function renderConns() {
+    const armed = engine.getTool() === 'connector';
+    const cur = store.get().connector;
+    connTiles.forEach((el) => setPressed(el, armed && el.dataset.connector === cur));
+    const c = CONNECTORS.find((x) => x.id === cur) || CONNECTORS[0];
+    connHint.textContent = armed
+      ? `${c.name} is on: drag from one shape to another. Esc cancels.`
+      : 'Click one, then drag between shapes. With two shapes selected, a click joins them.';
+  }
+  engine.on('tool', renderConns);
+  store.subscribe((st, prev) => { if (st.connector !== prev.connector) renderConns(); });
 
   const libs = h('div', null,
     h('div.mono-label.ed-libs-title', { text: 'Libraries' }),
@@ -66,12 +110,13 @@ export function buildDock(ctx) {
     empty.textContent = shown ? '' : `No shapes match “${query.trim()}”.`;
   }
 
-  // Pointer-driven drag so it works with mouse, pen and touch alike.
-  function wireDrag(tile, entry) {
+  // Pointer-driven drag so it works with mouse, pen and touch alike. A click
+  // runs onClick; a drag dropped on the canvas runs onDrop(clientX, clientY).
+  function wireDrag(tile, art, name, onClick, onDrop) {
     let start = null, ghost = null, suppressClick = false;
     tile.addEventListener('click', () => {
       if (suppressClick) { suppressClick = false; return; }
-      actions.addShape(entry.kind, entry.props ? Object.assign({}, entry.props) : undefined);
+      onClick();
     });
     tile.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -83,7 +128,7 @@ export function buildDock(ctx) {
       if (!start || e.pointerId !== start.id) return;
       if (!ghost) {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
-        ghost = h('div.ed-drag-ghost', { 'aria-hidden': 'true' }, entry.art(), h('span.ed-tile-name', { text: entry.name }));
+        ghost = h('div.ed-drag-ghost', { 'aria-hidden': 'true' }, art(), h('span.ed-tile-name', { text: name }));
         ctx.root.append(ghost);
       }
       ghost.style.transform = `translate(${e.clientX - 36}px, ${e.clientY - 30}px)`;
@@ -99,7 +144,7 @@ export function buildDock(ctx) {
       if (!wasDrag) return;
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 0);
-      if (e.type === 'pointerup' && overStage(e)) dropAt(entry, e.clientX, e.clientY);
+      if (e.type === 'pointerup' && overStage(e)) onDrop(e.clientX, e.clientY);
     };
     tile.addEventListener('pointerup', end);
     tile.addEventListener('pointercancel', end);
@@ -121,5 +166,8 @@ export function buildDock(ctx) {
   }
 
   renderTiles();
-  return h('aside.ed-dock', { id: 'ed-dock', 'aria-label': 'Shapes' }, search, chipRow, grid, empty, libs);
+  renderConns();
+  // Connectors first: always in view, above the long shape list.
+  return h('aside.ed-dock', { id: 'ed-dock', 'aria-label': 'Shapes' }, conns,
+    h('div.mono-label.ed-libs-title', { text: 'Shapes' }), search, chipRow, grid, empty, libs);
 }

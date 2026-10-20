@@ -17,6 +17,9 @@ import { installShortcuts } from './shell/shortcuts.js';
 import { installFiles } from './shell/files.js';
 
 const THEME_KEY = 'easyDiagram.theme';
+// Per-viewer conveniences, not stored in the file.
+const CONNECTOR_KEY = 'easyDiagram.connector';
+const PORTS_KEY = 'easyDiagram.ports';
 
 function savedTheme() {
   try {
@@ -24,6 +27,14 @@ function savedTheme() {
     if (t === 'light' || t === 'dark') return t;
   } catch (_) { /* storage unavailable */ }
   return 'dark';
+}
+
+function saved(key, allowed, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    if (allowed.indexOf(v) >= 0) return v;
+  } catch (_) { /* storage unavailable */ }
+  return fallback;
 }
 
 function boot() {
@@ -36,6 +47,9 @@ function boot() {
     motion: !reduceMotion,
     grid: 'dots',
     snap: true,
+    connector: saved(CONNECTOR_KEY, ['arrow', 'straight', 'curved', 'dashed', 'both', 'line'], 'arrow'),
+    portMode: saved(PORTS_KEY, ['hover', 'always', 'off'], 'hover'),
+    picker: null, // {sourceId, side, client, at}: the open "Connect from…" popover
     exportOpen: false,
     paletteOpen: false,
     drawer: null, // 'dock' | 'insp' on phone width
@@ -47,11 +61,12 @@ function boot() {
   mount.replaceChildren(root);
 
   const canvas = h('div.ed-canvas');
-  const ctx = { root, store, io, canvas, engine: null, actions: null, toast: null, THEME_KEY };
+  const ctx = { root, store, io, canvas, engine: null, actions: null, toast: null, THEME_KEY, CONNECTOR_KEY, PORTS_KEY };
   ctx.toast = createToasts(ctx);
 
   const s0 = store.get();
-  const engine = createEngine(canvas, { theme: s0.theme, grid: s0.grid, snap: s0.snap, motion: s0.motion });
+  const engine = createEngine(canvas, { theme: s0.theme, grid: s0.grid, snap: s0.snap, motion: s0.motion, ports: s0.portMode });
+  engine.setConnectorPreset(s0.connector);
   ctx.engine = engine;
   ctx.actions = createActions(ctx);
 

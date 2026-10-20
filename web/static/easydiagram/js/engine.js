@@ -103,11 +103,29 @@ const LINE_STYLES = ['solid', 'dashed', 'dotted'];
 const ARROW_ENDS = ['end', 'both', 'start', 'none'];
 const ARROW_HEADS = { block: { arrow: 'block', fill: '1' }, open: { arrow: 'open', fill: '0' }, oval: { arrow: 'oval', fill: '1' }, diamond: { arrow: 'diamond', fill: '1' } };
 const ROUTES = ['elbow', 'straight', 'curved'];
+// The dock's connector presets (docs/features/easy-diagram.md, "Connectors").
+// Each maps onto keys we already write, so files stay plain draw.io XML.
+export const CONNECTOR_PRESETS = {
+  arrow: { route: 'elbow', arrows: 'end', lineStyle: 'solid' },
+  straight: { route: 'straight', arrows: 'end', lineStyle: 'solid' },
+  curved: { route: 'curved', arrows: 'end', lineStyle: 'solid' },
+  dashed: { route: 'elbow', arrows: 'end', lineStyle: 'dashed' },
+  both: { route: 'elbow', arrows: 'both', lineStyle: 'solid' },
+  line: { route: 'elbow', arrows: 'none', lineStyle: 'solid' },
+};
+const PORT_MODES = ['hover', 'always', 'off'];
+// A shape's four connection points, as draw.io exit/entry fractions.
+const SIDES = { r: [1, 0.5], l: [0, 0.5], t: [0.5, 0], b: [0.5, 1] };
+const OPPOSITE = { r: 'l', l: 'r', t: 'b', b: 't' };
+const SIDE_WORD = { r: 'right side', l: 'left side', t: 'top', b: 'bottom' };
+// A drop this close (CSS px) to a connection point snaps to that point;
+// anywhere else on the shape uses the side facing the source.
+const PORT_SNAP = 28;
 // Arrowhead size grows with the line so a bold connector doesn't get a pin-head.
 function arrowSize(width) { return String(Math.round(7 + (Number(width) || 1.8) * 1.7)); }
 const TOOLS = ['select', 'hand', 'connector', 'text', 'rect', 'ellipse', 'diamond', 'note'];
 const PLACE_TOOLS = { text: 'text', rect: 'rect', ellipse: 'ellipse', diamond: 'diamond', note: 'note' };
-const EVENTS = ['change', 'selection', 'zoom', 'page', 'tool', 'view'];
+const EVENTS = ['change', 'selection', 'zoom', 'page', 'tool', 'view', 'connect-request'];
 const FONT_SANS = "IBM Plex Sans, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
 const FONT_MONO = "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const MIN_ZOOM = 0.1;
@@ -359,6 +377,10 @@ export function createEngine(container, options) {
   let gridMode = ['dots', 'lines', 'none'].indexOf(options.grid) >= 0 ? options.grid : 'dots';
   let snap = options.snap !== false;
   let tool = 'select';
+  let preset = 'arrow';
+  let portMode = PORT_MODES.indexOf(options.ports) >= 0 ? options.ports : 'hover';
+  let hoverCell = null; // shape under (or next to) the pointer: its points show
+  let connecting = null; // {source, side, target, tside, x, y} while dragging from a point
   let exporting = false;
   let destroyed = false;
   let suppress = 0; // >0 while switching pages/loading: no undo recording, no 'change'
@@ -703,6 +725,33 @@ export function createEngine(container, options) {
     return { edgeStyle: 'orthogonalEdgeStyle', orthogonalLoop: '1', jettySize: 'auto', curved: route === 'curved' ? '1' : null };
   }
 
+  function presetKeys(name, width) {
+    const p = CONNECTOR_PRESETS[name] || CONNECTOR_PRESETS.arrow;
+    return Object.assign({}, routeKeys(p.route), lineStyleKeys(p.lineStyle), arrowKeys(p.arrows, 'block', width || 1.8));
+  }
+
+  function sidePoint(g, side) {
+    return { x: g.x + g.width * SIDES[side][0], y: g.y + g.height * SIDES[side][1] };
+  }
+
+  function nearestSide(g, p) {
+    let best = 'l';
+    let bd = Infinity;
+    Object.keys(SIDES).forEach((k) => {
+      const q = sidePoint(g, k);
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bd) { bd = d; best = k; }
+    });
+    return best;
+  }
+
+  function portKeys(exit, entry) {
+    return {
+      exitX: SIDES[exit][0], exitY: SIDES[exit][1], exitDx: 0, exitDy: 0,
+      entryX: SIDES[entry][0], entryY: SIDES[entry][1], entryDx: 0, entryDy: 0,
+    };
+  }
+
   function edgeColorKeys(name) {
     return {
       edColor: name,
@@ -957,33 +1006,12 @@ export function createEngine(container, options) {
     });
   }
 
-  const PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
-  // Sides of a shape where a connector meets it near the middle, which is
-  // where that side's "+" handle sits.
-  function busySides(cell, b) {
-    const out = new Set();
-    (model.getEdges(cell) || []).forEach((edge) => {
-      const es = graph.view.getState(edge);
-      const pts = es && es.absolutePoints;
-      if (!pts || pts.length < 2) return;
-      const p = edge.target === cell ? pts[pts.length - 1] : pts[0];
-      if (!p) return;
-      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-      if (Math.abs(p.x - b.x) < 2 && Math.abs(p.y - cy) < 16) out.add('l');
-      else if (Math.abs(p.x - (b.x + b.w)) < 2 && Math.abs(p.y - cy) < 16) out.add('r');
-      else if (Math.abs(p.y - b.y) < 2 && Math.abs(p.x - cx) < 16) out.add('t');
-      else if (Math.abs(p.y - (b.y + b.h)) < 2 && Math.abs(p.x - cx) < 16) out.add('b');
-    });
-    return out;
-  }
-
-  const SIDE_LABEL = { r: 'Add connected step to the right', b: 'Add connected step below', l: 'Add connected step to the left', t: 'Add connected step above' };
   let resizing = null;
 
   function renderOverlay() {
     if (destroyed || resizing) return;
     overlay.textContent = '';
-    if (exporting) return;
+    if (exporting) { syncPorts([]); return; }
     const sel = graph.getSelectionCells().filter((c) => model.isVertex(c));
     const single = sel.length === 1 && graph.getSelectionCount() === 1;
     sel.forEach((cell) => {
@@ -997,12 +1025,6 @@ export function createEngine(container, options) {
       frame.style.top = (b.y - 6) + 'px';
       frame.style.width = (b.w + 12) + 'px';
       frame.style.height = (b.h + 12) + 'px';
-      // A label drawn under the shape (AWS icons): the bottom "+" handle
-      // goes below the label instead of on top of it.
-      if (st.text && st.text.boundingBox && st.style && st.style.verticalLabelPosition === 'bottom') {
-        const under = Math.max(0, st.text.boundingBox.y + st.text.boundingBox.height - (b.y + b.h));
-        frame.style.setProperty('--ed-plus-b', (14 + under) + 'px');
-      }
       if (single) {
         ['nw', 'ne', 'sw', 'se'].forEach((c) => {
           const k = document.createElement('span');
@@ -1012,27 +1034,289 @@ export function createEngine(container, options) {
           k.addEventListener('pointerdown', (e) => startResize(e, cell, c));
           frame.appendChild(k);
         });
-        if (!graph.isEditing() && !resizing) {
-          const busy = busySides(cell, b);
-          ['r', 'b', 'l', 't'].forEach((side) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'ed-plus';
-            btn.dataset.side = side;
-            // Slide off a connector end so the handle doesn't cover its arrowhead.
-            if (busy.has(side)) btn.dataset.shift = '1';
-            btn.setAttribute('aria-label', SIDE_LABEL[side]);
-            btn.innerHTML = PLUS_SVG;
-            btn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              api.addConnected(cell.id, side);
-            });
-            frame.appendChild(btn);
-          });
-        }
       }
       overlay.appendChild(frame);
     });
+    syncPorts(portCells(sel, single));
+  }
+
+  // ---- connection points
+  // Which shapes show their points: every shape while connecting (or with
+  // the connector tool, or "Always"); otherwise the hovered and the selected
+  // shape, unless points are turned off.
+  function portCells(sel, single) {
+    if (graph.isEditing() || pan) return [];
+    if (connecting || tool === 'connector' || portMode === 'always') return vertices();
+    if (portMode === 'off' || tool !== 'select') return [];
+    const out = new Set();
+    if (single) out.add(sel[0]);
+    if (hoverCell && model.contains(hoverCell)) out.add(hoverCell);
+    return Array.from(out);
+  }
+
+  // Screen point (CSS px, container-relative) of a shape's connection point.
+  // On a shape with its label underneath (AWS icons) the bottom point sits
+  // below the label, so it never covers the text.
+  function portScreen(st, side) {
+    const p = { x: st.x + st.width * SIDES[side][0], y: st.y + st.height * SIDES[side][1] };
+    if (side === 'b' && st.style && st.style.verticalLabelPosition === 'bottom' && st.text && st.text.boundingBox) {
+      p.y = Math.max(p.y, st.text.boundingBox.y + st.text.boundingBox.height + 6);
+    }
+    return p;
+  }
+
+  // Connection points live in their own layer and are kept across redraws
+  // (moved, not rebuilt), so focus, hover and their fade-in survive.
+  const portLayer = document.createElement('div');
+  portLayer.className = 'ed-overlay ed-ports';
+  container.appendChild(portLayer);
+  stopEvents.forEach((name) => portLayer.addEventListener(name, (e) => {
+    if (e.target !== portLayer) e.stopPropagation();
+  }));
+  const ports = new Map(); // cellId:side -> button
+
+  function syncPorts(cells) {
+    const keep = new Set();
+    cells.forEach((cell) => {
+      const st = graph.view.getState(cell);
+      if (!st) return;
+      const name = labelOf(cell) || 'shape';
+      Object.keys(SIDES).forEach((side) => {
+        const key = cell.id + ':' + side;
+        keep.add(key);
+        let btn = ports.get(key);
+        if (!btn) {
+          btn = makePort(cell, side);
+          ports.set(key, btn);
+          portLayer.appendChild(btn);
+        }
+        const p = portScreen(st, side);
+        btn.style.left = p.x + 'px';
+        btn.style.top = p.y + 'px';
+        btn.setAttribute('aria-label', `Connect from the ${SIDE_WORD[side]} of ${name}`);
+        if (connecting && connecting.source === cell && connecting.side === side) btn.dataset.active = '1';
+        else delete btn.dataset.active;
+      });
+    });
+    ports.forEach((btn, key) => {
+      if (!keep.has(key)) { btn.remove(); ports.delete(key); }
+    });
+  }
+
+  function makePort(cell, side) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ed-port';
+    btn.dataset.side = side;
+    btn.dataset.cellId = cell.id;
+    btn.title = 'Click to add a connected shape, or drag to another shape';
+    const request = () => {
+      const r = btn.getBoundingClientRect();
+      emit('connect-request', { sourceId: cell.id, side, client: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, at: null });
+    };
+    // A press without a drag is handled on pointerup (WebKit sends no
+    // click after a touch tap whose pointerdown was cancelled); click
+    // covers the keyboard.
+    btn.addEventListener('pointerdown', (e) => startConnect(e, cell, side, request));
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!portClickSuppressed) request();
+    });
+    return btn;
+  }
+
+  // The topmost shape whose bounds (its label included), grown by `margin`
+  // CSS px, contain the client point.
+  function cellNear(clientX, clientY, margin, except) {
+    const r = container.getBoundingClientRect();
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    const vs = vertices();
+    for (let i = vs.length - 1; i >= 0; i--) {
+      const c = vs[i];
+      if (c === except) continue;
+      const st = graph.view.getState(c);
+      if (!st) continue;
+      let x1 = st.x, y1 = st.y, x2 = st.x + st.width, y2 = st.y + st.height;
+      const tb = st.text && st.text.boundingBox;
+      if (tb && st.style && st.style.verticalLabelPosition === 'bottom') {
+        x1 = Math.min(x1, tb.x); x2 = Math.max(x2, tb.x + tb.width); y2 = Math.max(y2, tb.y + tb.height);
+      }
+      if (x >= x1 - margin && x <= x2 + margin && y >= y1 - margin && y <= y2 + margin) return c;
+    }
+    return null;
+  }
+
+  // The connection point of `cell` within PORT_SNAP of the client point, or null.
+  function portAt(cell, clientX, clientY) {
+    const st = graph.view.getState(cell);
+    if (!st) return null;
+    const r = container.getBoundingClientRect();
+    let best = null;
+    let bd = PORT_SNAP;
+    Object.keys(SIDES).forEach((side) => {
+      const p = portScreen(st, side);
+      const d = Math.hypot(p.x - (clientX - r.left), p.y - (clientY - r.top));
+      if (d <= bd) { bd = d; best = side; }
+    });
+    return best;
+  }
+
+  // Side of `target` a connector from `source` should enter: the point under
+  // the pointer when it's near one, else the side facing the source's point.
+  // Null when neither end is pinned (connector tool, dropped mid-shape):
+  // connect() then picks both sides with autoPorts.
+  function targetSide(source, side, target, clientX, clientY) {
+    const near = portAt(target, clientX, clientY);
+    if (near) return near;
+    return side ? nearestSide(target.geometry, sidePoint(source.geometry, side)) : null;
+  }
+
+  function onHover(e) {
+    if (connecting || pan || e.pointerType === 'touch') return;
+    const c = tool === 'select' ? cellNear(e.clientX, e.clientY, PORT_SNAP / 2) : null;
+    if (c !== hoverCell) {
+      hoverCell = c;
+      scheduleOverlay();
+    }
+  }
+  function onHoverLeave() {
+    if (hoverCell && !connecting) {
+      hoverCell = null;
+      scheduleOverlay();
+    }
+  }
+
+  // Dashed accent preview of the connector being dragged, with a ring on the
+  // point it will snap to. Its own layer, so overlay re-renders don't drop it.
+  const previewLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  previewLayer.setAttribute('class', 'ed-connect-preview');
+  previewLayer.setAttribute('aria-hidden', 'true');
+  container.appendChild(previewLayer);
+
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
+    return el;
+  }
+
+  function drawPreview() {
+    previewLayer.textContent = '';
+    if (!connecting) return;
+    const c = connecting;
+    const r = container.getBoundingClientRect();
+    const sst = graph.view.getState(c.source);
+    if (!sst) return;
+    const tst = c.target ? graph.view.getState(c.target) : null;
+    const tside = tst ? c.tside || nearestSide(c.target.geometry, { x: c.source.geometry.getCenterX(), y: c.source.geometry.getCenterY() }) : null;
+    const end = tst ? portScreen(tst, tside) : { x: c.x - r.left, y: c.y - r.top };
+    let side = c.side;
+    if (!side) {
+      // Connector tool: leave from the side facing the pointer (or target).
+      const s = graph.view.scale;
+      const t = graph.view.translate;
+      side = nearestSide(c.source.geometry, { x: end.x / s - t.x, y: end.y / s - t.y });
+    }
+    const a = portScreen(sst, side);
+    const n = SIDES[side];
+    const out = { x: a.x + (n[0] - 0.5) * 2 * 18, y: a.y + (n[1] - 0.5) * 2 * 18 };
+    const horizontal = side === 'l' || side === 'r';
+    const d = horizontal
+      ? `M${a.x} ${a.y}L${out.x} ${out.y}L${(out.x + end.x) / 2} ${out.y}L${(out.x + end.x) / 2} ${end.y}L${end.x} ${end.y}`
+      : `M${a.x} ${a.y}L${out.x} ${out.y}L${out.x} ${(out.y + end.y) / 2}L${end.x} ${(out.y + end.y) / 2}L${end.x} ${end.y}`;
+    previewLayer.appendChild(svgEl('path', { class: 'ed-connect-line', d }));
+    const ang = Math.atan2(end.y - (horizontal ? end.y : (out.y + end.y) / 2), end.x - (horizontal ? (out.x + end.x) / 2 : end.x));
+    const hx = (k, s) => end.x - 9 * Math.cos(ang + k) * s;
+    const hy = (k, s) => end.y - 9 * Math.sin(ang + k) * s;
+    previewLayer.appendChild(svgEl('path', { class: 'ed-connect-head', d: `M${end.x} ${end.y}L${hx(0.45, 1)} ${hy(0.45, 1)}L${hx(-0.45, 1)} ${hy(-0.45, 1)}Z` }));
+    if (tst) {
+      previewLayer.appendChild(svgEl('circle', { class: 'ed-connect-snap', cx: end.x, cy: end.y, r: 11 }));
+      previewLayer.appendChild(svgEl('circle', { class: 'ed-connect-dot', cx: end.x, cy: end.y, r: 4.5 }));
+    }
+  }
+
+  let portClickSuppressed = false;
+
+  // Drag from a connection point (side given) or, with the connector tool,
+  // from anywhere on a shape (side null: chosen when it's dropped).
+  // Dropped on a shape: connects, snapping to the nearest point. Dropped on
+  // empty canvas: asks the shell to pick a shape to add there. A press
+  // that never moves runs onTap instead.
+  function startConnect(e, cell, side, onTap) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const id = e.pointerId;
+    let moved = false;
+    const move = (ev) => {
+      if (ev.pointerId !== id) return;
+      if (!moved) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        moved = true;
+        connecting = { source: cell, side, target: null, tside: null, x: ev.clientX, y: ev.clientY };
+        container.classList.add('ed-connecting');
+        renderOverlay();
+      }
+      const t = cellNear(ev.clientX, ev.clientY, 6, cell);
+      connecting.x = ev.clientX;
+      connecting.y = ev.clientY;
+      connecting.target = t;
+      connecting.tside = t ? targetSide(cell, side, t, ev.clientX, ev.clientY) : null;
+      drawPreview();
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', cancel, true);
+      window.removeEventListener('keydown', key, true);
+    };
+    // The release's own click (if the browser sends one) is already handled.
+    const suppressClick = () => {
+      portClickSuppressed = true;
+      setTimeout(() => { portClickSuppressed = false; }, 0);
+    };
+    const reset = () => {
+      connecting = null;
+      container.classList.remove('ed-connecting');
+      previewLayer.textContent = '';
+      suppressClick();
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== id) return;
+      stop();
+      if (!moved) {
+        if (onTap) { suppressClick(); onTap(); }
+        return;
+      }
+      const c = connecting;
+      reset();
+      if (tool === 'connector') setToolInternal('select');
+      if (c.target) {
+        const edgeId = api.connect(cell.id, c.target.id, { preset, sourceSide: c.side || undefined, targetSide: c.tside || undefined });
+        api.select([edgeId]);
+      } else if (!cellNear(ev.clientX, ev.clientY, 0) && !(ev.target.closest && ev.target.closest('.ed-overlay *'))) {
+        emit('connect-request', { sourceId: cell.id, side: c.side || nearestSide(cell.geometry, api.clientToModel(ev.clientX, ev.clientY)),
+          client: { x: ev.clientX, y: ev.clientY }, at: api.clientToModel(ev.clientX, ev.clientY) });
+      }
+      scheduleOverlay();
+    };
+    const cancel = () => {
+      stop();
+      if (moved) reset();
+      scheduleOverlay();
+    };
+    const key = (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      cancel();
+    };
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', cancel, true);
+    window.addEventListener('keydown', key, true);
   }
 
   function startResize(e, cell, corner) {
@@ -1047,7 +1331,7 @@ export function createEngine(container, options) {
     const target = e.currentTarget;
     const frame = target.parentElement;
     target.setPointerCapture(e.pointerId);
-    overlay.querySelectorAll('.ed-plus').forEach((n) => n.remove());
+    syncPorts([]);
     resizing = { cell, bounds: null };
     const sx = e.clientX;
     const sy = e.clientY;
@@ -1215,6 +1499,14 @@ export function createEngine(container, options) {
       try { container.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
       return;
     }
+    if (isLeft && tool === 'connector') {
+      const cell = cellNear(e.clientX, e.clientY, 0);
+      if (cell) {
+        consumingGesture = true;
+        startConnect(e, cell, portAt(cell, e.clientX, e.clientY));
+      }
+      return;
+    }
     if (isLeft && PLACE_TOOLS[tool]) {
       e.preventDefault();
       e.stopPropagation();
@@ -1265,15 +1557,9 @@ export function createEngine(container, options) {
   container.addEventListener('wheel', onWheel, { passive: false });
   container.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 
-  // ---- connector tool
-  graph.connectionHandler.isValidSource = function (cell) {
-    return tool === 'connector' && model.isVertex(cell);
-  };
-  graph.connectionHandler.addListener(mxEvent.CONNECT, (sender, evt) => {
-    const edge = evt.getProperty('cell');
-    if (edge && model.isEdge(edge)) model.setStyle(edge, edgeStyle('default'));
-    setToolInternal('select');
-  });
+  // Hover shows a shape's connection points (startConnect does the rest).
+  container.addEventListener('pointermove', onHover, true);
+  container.addEventListener('pointerleave', onHoverLeave);
 
   function setToolInternal(name) {
     if (TOOLS.indexOf(name) < 0) return false;
@@ -1282,7 +1568,9 @@ export function createEngine(container, options) {
     const select = name === 'select';
     graph.graphHandler.setEnabled(select);
     rubberband.setEnabled(select);
-    graph.setConnectable(name === 'connector');
+    // Connectors are drawn by startConnect, never mxGraph's own handler.
+    graph.setConnectable(false);
+    if (name !== 'select') hoverCell = null;
     container.classList.toggle('ed-tool-hand', name === 'hand');
     container.classList.toggle('ed-tool-connector', name === 'connector');
     container.classList.toggle('ed-tool-place', !!PLACE_TOOLS[name]);
@@ -1526,39 +1814,61 @@ export function createEngine(container, options) {
       graph.setSelectionCell(cell);
       return cell.id;
     },
-    addConnected(sourceId, side) {
+    // opts (all optional): kind + props pick the new shape (default: a
+    // Rounded "Next step"), preset the connector, at {x, y} a model point
+    // to centre the shape on instead of the free slot beside the source.
+    addConnected(sourceId, side, opts) {
       const src = model.getCell(sourceId);
       if (!src || !model.isVertex(src)) throw new Error('addConnected: no shape ' + sourceId);
-      if (['r', 'l', 't', 'b'].indexOf(side) < 0) throw new Error('addConnected: side must be r|l|t|b');
+      if (!SIDES[side]) throw new Error('addConnected: side must be r|l|t|b');
+      opts = opts || {};
+      const props = opts.props || {};
+      const kind = opts.kind && KINDS[opts.kind] ? opts.kind : null;
+      const d = kind ? KINDS[kind] : null;
       const g = src.geometry;
       const sm = shapeModel(src);
-      const w = 150;
-      const h = 64;
-      let x = g.x + g.width / 2 - w / 2;
-      let y = g.y + g.height / 2 - h / 2;
-      if (side === 'r') x = g.x + g.width + 80;
-      if (side === 'l') x = g.x - 80 - w;
-      if (side === 'b') y = g.y + g.height + 70;
-      if (side === 't') y = g.y - 70 - h;
-      x = snapV(x);
-      y = snapV(y);
-      // Slide sideways to the nearest free slot so we never stack shapes.
-      const horiz = side === 'r' || side === 'l';
-      const stepLen = horiz ? h + 30 : w + 30;
-      for (let i = 1, k = 0; i < 12 && overlaps(x + (horiz ? 0 : k), y + (horiz ? k : 0), w, h, 12); i++) {
-        k = Math.ceil(i / 2) * stepLen * (i % 2 ? 1 : -1);
-        if (!overlaps(x + (horiz ? 0 : k), y + (horiz ? k : 0), w, h, 12)) {
-          if (horiz) y += k; else x += k;
-          break;
+      const w = d ? d.w : 150;
+      const h = d ? d.h : 64;
+      let x;
+      let y;
+      const at = opts.at && isFinite(opts.at.x) && isFinite(opts.at.y) ? opts.at : null;
+      if (at) {
+        x = snapV(at.x - w / 2);
+        y = snapV(at.y - h / 2);
+      } else {
+        // An icon's label hangs below it: leave room for it.
+        const under = side === 'b' && sm.kind === 'aws' ? 24 : 0;
+        x = g.x + g.width / 2 - w / 2;
+        y = g.y + g.height / 2 - h / 2;
+        if (side === 'r') x = g.x + g.width + 80;
+        if (side === 'l') x = g.x - 80 - w;
+        if (side === 'b') y = g.y + g.height + 70 + under;
+        if (side === 't') y = g.y - 70 - h - (kind === 'aws' ? 24 : 0);
+        x = snapV(x);
+        y = snapV(y);
+        // Slide sideways to the nearest free slot so we never stack shapes.
+        const horiz = side === 'r' || side === 'l';
+        const stepLen = horiz ? h + 30 : w + 30;
+        for (let i = 1, k = 0; i < 12 && overlaps(x + (horiz ? 0 : k), y + (horiz ? k : 0), w, h, 12); i++) {
+          k = Math.ceil(i / 2) * stepLen * (i % 2 ? 1 : -1);
+          if (!overlaps(x + (horiz ? 0 : k), y + (horiz ? k : 0), w, h, 12)) {
+            if (horiz) y += k; else x += k;
+            break;
+          }
         }
       }
-      const color = sm.kind === 'note' || sm.kind === 'text' ? 'blue' : sm.color;
-      const ports = { r: [1, 0.5, 0, 0.5], l: [0, 0.5, 1, 0.5], t: [0.5, 0, 0.5, 1], b: [0.5, 1, 0.5, 0] }[side];
+      let color = sm.kind === 'note' || sm.kind === 'text' || sm.kind === 'aws' || !COLORS[sm.color] ? 'blue' : sm.color;
+      if (COLORS[props.color]) color = props.color;
+      const service = kind === 'aws' ? (awsService(props.service) ? props.service : DEFAULT_AWS_SERVICE) : null;
+      const label = props.label != null ? String(props.label) : service ? awsService(service).label : d ? d.label : 'Next step';
+      const style = kind === 'aws' ? shapeStyle('aws', null, { edAws: service }) : shapeStyle(kind || 'round', color);
+      const entry = at ? nearestSide({ x, y, width: w, height: h }, sidePoint(g, side)) : OPPOSITE[side];
+      const name = CONNECTOR_PRESETS[opts.preset] ? opts.preset : preset;
       let created;
       edit(() => {
-        created = graph.insertVertex(graph.getDefaultParent(), null, 'Next step', x, y, w, h, shapeStyle('round', color));
+        created = graph.insertVertex(graph.getDefaultParent(), null, textToHtml(label), x, y, w, h, style);
         graph.insertEdge(graph.getDefaultParent(), null, '', src, created,
-          edgeStyle('default', { exitX: ports[0], exitY: ports[1], exitDx: 0, exitDy: 0, entryX: ports[2], entryY: ports[3], entryDx: 0, entryDy: 0 }));
+          setStyleKeys(edgeStyle('default', portKeys(side, entry)), presetKeys(name)));
       });
       graph.setSelectionCell(created);
       return created.id;
@@ -1572,12 +1882,19 @@ export function createEngine(container, options) {
       if (props.lineStyle) style = setStyleKeys(style, lineStyleKeys(props.lineStyle));
       const width = props.width != null && EDGE_WIDTHS.indexOf(Number(props.width)) >= 0 ? Number(props.width) : 1.8;
       style = setStyleKeys(style, { strokeWidth: String(width) });
+      if (CONNECTOR_PRESETS[props.preset]) style = setStyleKeys(style, presetKeys(props.preset, width));
       if (props.arrows || props.head) {
         style = setStyleKeys(style, arrowKeys(ARROW_ENDS.indexOf(props.arrows) >= 0 ? props.arrows : 'end', ARROW_HEADS[props.head] ? props.head : 'block', width));
       }
       if (ROUTES.indexOf(props.route) >= 0) style = setStyleKeys(style, routeKeys(props.route));
       if (props.anim) style = setStyleKeys(style, edgeAnimKeys(props.anim));
-      style = setStyleKeys(style, autoPorts(s.geometry, t.geometry));
+      // Pinned sides (a dragged connection point); one given picks the
+      // other as the side facing it; neither: autoPorts.
+      let ss = SIDES[props.sourceSide] ? props.sourceSide : null;
+      let ts = SIDES[props.targetSide] ? props.targetSide : null;
+      if (ss && !ts) ts = nearestSide(t.geometry, sidePoint(s.geometry, ss));
+      if (ts && !ss) ss = nearestSide(s.geometry, sidePoint(t.geometry, ts));
+      style = setStyleKeys(style, ss ? portKeys(ss, ts) : autoPorts(s.geometry, t.geometry));
       const label = props.label != null ? textToHtml(props.label) : '';
       const e = edit(() => graph.insertEdge(graph.getDefaultParent(), null, label, s, t, style));
       return e.id;
@@ -1633,6 +1950,37 @@ export function createEngine(container, options) {
     },
     getTool() {
       return tool;
+    },
+    setConnectorPreset(name) {
+      if (!CONNECTOR_PRESETS[name]) return false;
+      preset = name;
+      return true;
+    },
+    getConnectorPreset() {
+      return preset;
+    },
+    setPortMode(mode) {
+      if (PORT_MODES.indexOf(mode) < 0) return;
+      portMode = mode;
+      scheduleOverlay();
+    },
+    getPortMode() {
+      return portMode;
+    },
+    // The shape at a viewport point and its connection point nearest to it.
+    shapeAt(clientX, clientY) {
+      const c = cellNear(clientX, clientY, 0);
+      if (!c) return null;
+      const r = container.getBoundingClientRect();
+      const st = graph.view.getState(c);
+      let side = 'r';
+      let bd = Infinity;
+      Object.keys(SIDES).forEach((k) => {
+        const p = portScreen(st, k);
+        const dd = Math.hypot(p.x - (clientX - r.left), p.y - (clientY - r.top));
+        if (dd < bd) { bd = dd; side = k; }
+      });
+      return { id: c.id, side };
     },
     getZoom() {
       return graph.view.scale;
@@ -1752,11 +2100,15 @@ export function createEngine(container, options) {
       container.removeEventListener('pointercancel', onPointerUp, true);
       ['mousedown', 'touchstart', 'mousemove', 'mouseup'].forEach((n) => container.removeEventListener(n, consumeCapture, true));
       container.removeEventListener('wheel', onWheel);
+      container.removeEventListener('pointermove', onHover, true);
+      container.removeEventListener('pointerleave', onHoverLeave);
+      previewLayer.remove();
+      portLayer.remove();
       animator.destroy();
       rubberband.destroy();
       graph.destroy();
       overlay.remove();
-      container.classList.remove('ed-engine', 'ed-paused', 'ed-tool-hand', 'ed-tool-connector', 'ed-tool-place');
+      container.classList.remove('ed-engine', 'ed-paused', 'ed-tool-hand', 'ed-tool-connector', 'ed-tool-place', 'ed-connecting');
       EVENTS.forEach((e) => listeners[e].clear());
     },
 

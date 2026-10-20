@@ -1,6 +1,6 @@
 /*
- * Easy Diagram engine styles (WP2): canvas overlays, selection frame, quick
- * connect handles and the animation keyframes from the Precision prototype.
+ * Easy Diagram engine styles (WP2): canvas overlays, selection frame,
+ * connection points and the animation keyframes from the Precision prototype.
  * Everything is scoped under .ed-engine (the class engine.js adds to the
  * canvas container) and uses --ed-* custom properties that engine.js sets per
  * theme, so it never collides with the shell's own tokens.
@@ -32,7 +32,7 @@
   opacity: .6;
 }
 
-/* Overlay layer (selection frame, + handles) */
+/* Overlay layer (selection frame, connection points) */
 .ed-overlay {
   position: absolute;
   inset: 0;
@@ -65,35 +65,71 @@
 .ed-corner[data-c="sw"] { left: -4px; bottom: -4px; cursor: nesw-resize; }
 .ed-corner[data-c="se"] { right: -4px; bottom: -4px; cursor: nwse-resize; }
 
-.ed-plus {
+.ed-port {
   position: absolute;
-  width: 20px;
-  height: 20px;
-  margin: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
   padding: 0;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ed-surface);
-  border: 1.5px solid var(--ed-accent);
-  color: var(--ed-accent-text);
-  cursor: pointer;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: crosshair;
   pointer-events: auto;
-  animation: edPlusIn .25s .08s cubic-bezier(.2,0,0,1) both;
-  transition: background .18s, color .18s;
+  touch-action: none;
+  animation: edPortIn .2s .05s cubic-bezier(.2,0,0,1) both;
 }
-.ed-plus:hover { background: var(--ed-accent); color: var(--ed-on-accent); }
-.ed-plus:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
-.ed-plus svg { width: 12px; height: 12px; pointer-events: none; }
-.ed-plus[data-side="r"] { left: calc(100% + 14px); top: calc(50% - 10px); }
-.ed-plus[data-side="b"] { top: calc(100% + var(--ed-plus-b, 14px)); left: calc(50% - 10px); }
-.ed-plus[data-side="l"] { right: calc(100% + 14px); top: calc(50% - 10px); }
-.ed-plus[data-side="t"] { bottom: calc(100% + 14px); left: calc(50% - 10px); }
-.ed-plus[data-side="l"][data-shift],
-.ed-plus[data-side="r"][data-shift] { translate: 0 -26px; }
-.ed-plus[data-side="t"][data-shift],
-.ed-plus[data-side="b"][data-shift] { translate: 30px 0; }
+/* The visible ring; the button itself is a larger, invisible hit area. */
+.ed-port::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--ed-surface);
+  border: 1.6px solid var(--ed-accent);
+  transition: transform .12s, background .12s;
+}
+/* A "+" that appears on hover: clicking adds a connected shape. */
+.ed-port::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  opacity: 0;
+  background:
+    linear-gradient(var(--ed-surface), var(--ed-surface)) center / 6px 1.6px no-repeat,
+    linear-gradient(var(--ed-surface), var(--ed-surface)) center / 1.6px 6px no-repeat;
+  transition: opacity .12s;
+}
+.ed-port:hover::before,
+.ed-port[data-active]::before,
+.ed-port:focus-visible::before { transform: scale(1.4); background: var(--ed-accent); }
+.ed-port:hover::after,
+.ed-port:focus-visible::after { opacity: 1; }
+.ed-port:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 0; }
+.ed-connecting .ed-port:not([data-active]) { opacity: .55; }
+
+/* Drag-to-connect preview, above the overlay. */
+.ed-connect-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+.ed-connect-line { fill: none; stroke: var(--ed-accent); stroke-width: 1.8; stroke-dasharray: 6 5; }
+.ed-connect-head { fill: var(--ed-accent); }
+.ed-connect-snap { fill: none; stroke: var(--ed-accent); stroke-width: 2; }
+.ed-connect-dot { fill: var(--ed-accent); }
+.ed-engine.ed-connecting { cursor: crosshair; }
 
 /* Precision shadow on shapes (the file stores shadow=1; this is how it looks) */
 .ed-engine .ed-shadow { filter: drop-shadow(0 4px 10px var(--ed-shadow)); }
@@ -151,7 +187,7 @@
 @keyframes edEPulse { 0%, 100% { opacity: .06; } 50% { opacity: .42; } }
 @keyframes edEDraw { 0% { stroke-dashoffset: 100; opacity: 1; } 65% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 @keyframes edSelIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes edPlusIn { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+@keyframes edPortIn { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
 
 /* Reduced motion: no animation at all; overlays hidden, lines at full strength */
 @media (prefers-reduced-motion: reduce) {
@@ -160,5 +196,5 @@
   .ed-engine .ed-ea-overlay { display: none; }
   .ed-engine .ed-draw-base { opacity: 1; }
   .ed-engine .ed-e-dash { stroke-dasharray: none; }
-  .ed-frame, .ed-plus { animation: none; }
+  .ed-frame, .ed-port { animation: none; }
 }

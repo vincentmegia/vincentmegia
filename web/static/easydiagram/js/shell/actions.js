@@ -16,6 +16,13 @@ export function createActions(ctx) {
     return engine.getCell(sel.ids[0]);
   }
 
+  // The two selected shapes, in selection order, or null.
+  function selectedPair() {
+    const sel = engine.getSelection();
+    if (sel.type !== 'multi' || sel.ids.length !== 2) return null;
+    return sel.ids.every((id) => { const c = engine.getCell(id); return c && c.type === 'shape'; }) ? sel.ids : null;
+  }
+
   const a = {
     addShape(kind, props) {
       store.set({ paletteOpen: false, exportOpen: false });
@@ -32,6 +39,39 @@ export function createActions(ctx) {
       }
       engine.setTool(tool);
     },
+
+    // ---- connectors (docs/features/easy-diagram.md, "Connectors")
+    setConnector(id) {
+      if (!engine.setConnectorPreset(id)) return;
+      store.set({ connector: id });
+      try { localStorage.setItem(ctx.CONNECTOR_KEY, id); } catch (_) { /* ignore */ }
+    },
+
+    // A dock connector tile: with two shapes selected it joins them;
+    // otherwise it arms the connector tool (clicking it again disarms).
+    armConnector(id) {
+      const same = engine.getTool() === 'connector' && store.get().connector === id;
+      a.setConnector(id);
+      store.set({ picker: null });
+      if (selectedPair()) { a.connectSelected(); return; }
+      engine.setTool(same ? 'select' : 'connector');
+    },
+
+    connectSelected() {
+      const pair = selectedPair();
+      if (!pair) { toast('Select two shapes to connect them'); return; }
+      const edge = engine.connect(pair[0], pair[1], { preset: store.get().connector });
+      engine.select([edge]);
+    },
+
+    setPortMode(portMode) {
+      store.set({ portMode });
+      engine.setPortMode(portMode);
+      try { localStorage.setItem(ctx.PORTS_KEY, portMode); } catch (_) { /* ignore */ }
+    },
+
+    openConnectPicker(req) { store.set({ picker: req, paletteOpen: false, exportOpen: false }); },
+    closeConnectPicker() { store.set({ picker: null }); },
 
     duplicate() {
       const sel = engine.getSelection();
@@ -119,11 +159,12 @@ export function createActions(ctx) {
     // Esc: close the innermost overlay, else clear the selection.
     escape() {
       const st = store.get();
+      if (st.picker) { store.set({ picker: null }); return true; }
       if (st.paletteOpen) { store.set({ paletteOpen: false }); return true; }
       if (st.exportOpen) { store.set({ exportOpen: false }); return true; }
       if (st.drawer) { store.set({ drawer: null }); return true; }
+      if (has('setTool') && engine.getTool() !== 'select') { engine.setTool('select'); return true; }
       if (engine.getSelection().type !== 'none') { engine.clearSelection(); return true; }
-      if (has('setTool')) engine.setTool('select');
       return false;
     },
   };

@@ -26,6 +26,17 @@ export const KINDS = {
 export const KIND_NAMES = Object.assign(
   Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.name])), { text: 'Text', aws: 'AWS' });
 
+// The dock's Connectors group, in order. Ids are engine CONNECTOR_PRESETS;
+// art is drawn in a 44×24 box (the last path of each is its arrowhead).
+export const CONNECTORS = [
+  { id: 'arrow', name: 'Arrow', desc: 'Elbow line with an arrow at the end', paths: ['M4 19H20V5H38', 'M33 1.5L39 5L33 8.5'] },
+  { id: 'straight', name: 'Straight', desc: 'Straight line with an arrow at the end', paths: ['M4 19L38 5.5', 'M32 3.8L39 5L34.5 10.4'] },
+  { id: 'curved', name: 'Curved', desc: 'Curved line with an arrow at the end', paths: ['M4 19C18 19 24 5 38 5', 'M33 1.5L39 5L33 8.5'] },
+  { id: 'dashed', name: 'Dashed', desc: 'Dashed elbow line with an arrow, for async or optional steps', dashed: true, paths: ['M4 19H20V5H38', 'M33 1.5L39 5L33 8.5'] },
+  { id: 'both', name: 'Two-way', desc: 'Arrowheads on both ends', paths: ['M6 12H38', 'M33 8.5L39 12L33 15.5', 'M11 8.5L5 12L11 15.5'] },
+  { id: 'line', name: 'Line', desc: 'A plain line with no arrowheads', paths: ['M5 12H39', 'M5 9V15', 'M39 9V15'] },
+];
+
 export const CATS = [['all', 'All'], ['basic', 'Basic'], ['flow', 'Flowchart'], ['aws', 'AWS']];
 
 // Outline path for a shape kind at w×h (prototype shapePath).
