@@ -1,0 +1,7 @@
+# Paths graphify (graphify-out/) leaves out of the knowledge graph.
+# Third-party code: it drowns out our own code in queries
+# (mxClient.js alone was 2,040 of 7,519 nodes).
+web/static/easydiagram/vendor/
+*.min.js
+# Scratch output from Claude sessions, not part of the site.
+Claude outputs/
