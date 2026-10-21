@@ -2,16 +2,555 @@
 
 ## Status
 
-`Shipped` — implemented and covered by tests. JS: the pure modules in
-`web/static/js/hospital/` (155 `node --test` tests); `web/static/js/
-hospital-game.js` wires them to the canvas. Go: handler/service/validation
-tests plus a real-Postgres round trip in `cmd/server/e2e_test.go`.
-Playwright: `e2e/hospital-shift.spec.js` (49 tests, Chromium + WebKit),
-driving the real click/key paths with coordinates from
-`window.__hospitalShiftTestHooks`. Manually checked with screenshots of a
-full shift (every minigame, Karen, coffee, hallucinations, handover) with
-zero console errors. `/projects` card uses a real screenshot
-(`web/static/images/hospital/screenshot.png`).
+`Shipped`: implemented and covered by tests.
+
+* **JS unit** (`node --test`): `web/static/js/hospital/*.test.js` (rules,
+  engine-state, floor-plan, patient-names, anime-ui, anime-furniture,
+  cat-sound). Run with `npm run test:unit` (all games) or
+  `node --test web/static/js/hospital/*.test.js`.
+* **Go**: `internal/handler/hospital_shift_test.go`,
+  `internal/service/hospital_{service,validation,run}_test.go`, plus the
+  real-Postgres round trip in `cmd/server/e2e_test.go` (skipped without
+  `DATABASE_URL`). Run with `make test` (`go test ./...`).
+* **Playwright**: `e2e/hospital-shift.spec.js` (Chromium + WebKit), driven
+  through `window.__hospitalShiftTestHooks`. Run with `make test-e2e`
+  against a `make run-e2e` server (which sets `HOSPITAL_RUN_TIME_CHECK=off`).
+
+Known test gaps are listed under Testing Plan. The build narrative
+(version by version, with the user's requests quoted) is in **History** at
+the end of this doc.
+
+## Summary
+
+`/hospital-shift` is a canvas mini-game and a sibling of Kitchen Shift and
+Library Shift. The player is an ER nurse, Kimono Himura, working a 30-shift
+month. She triages arriving patients into four beds, then treats them
+through patient-care minigames (Vitals, Oxygen, IV, Bandage, Meds,
+Surgery) and earns **Gard**, the site's shared game currency. A Postgres
+leaderboard records month totals and a seeded Daily Challenge. No progress
+is saved: leaving the page in any way, refresh included, starts over at
+shift 1.
+
+## Problem / Motivation
+
+The user asked for a new project, "hospital shift." When asked, they chose:
+
+* **Role:** ER nurse: triage the queue, assign beds, treat patients.
+* **Structure:** mirror Library Shift: canvas top-down map, click-to-move,
+  timed shift, minigame overlays, Sanity + Coffee Machine, hallucinations,
+  a scripted difficult-visitor event, Postgres leaderboard. The original
+  brief also said `localStorage` progress and the shared `people.js` art.
+  Both were later dropped. Progress is now per-visit (see Scope,
+  "Progress resets on leaving"). Everyone is drawn by Hospital's own anime
+  renderers (`hospital/kimono-himura.js`, `hospital/anime-people.js`).
+  Only `people.js`'s `shadeColor` helper is still imported.
+* **Minigames:** all four offered (Triage sort, Meds dispensing, Vitals
+  check, Bandage/IV), plus skill checks for "the vitals checks and the
+  stuff that pumps oxygen and surgeries". Oxygen later became a
+  find-the-hearts search (see Scope).
+
+## Scope
+
+All numbers below are named constants in `web/static/js/hospital/rules.js`.
+The doc points to them rather than copying their tables. Architecture:
+the logic modules are pure and DOM-free
+(`web/static/js/hospital/{rules,engine-state,floor-plan,patient-names}.js`),
+and one canvas engine (`web/static/js/hospital-game.js`) drives them on a
+960×600 canvas (rendered at device pixel ratio, up to 3×,
+`syncBackingStore`).
+
+**In scope:**
+
+* **Month and tiers:** 30 shifts (`SHIFTS_PER_MONTH`) in three 10-shift
+  tiers. The clock runs 7:00 AM to 7:00 PM over 600/480/360 real seconds
+  (`ROUND_TIER_CLOCK_SECONDS`). Patients per shift are 12/16/22
+  (`ROUND_TIER_PATIENT_VOLUME`). Two arrive in the first 4–20 s and the
+  rest are spread evenly up to 85% of the shift (`patientArrivalTimes`).
+* **Floors:** the ER (1st Floor); the Supply Room (2nd Floor: Supply Cart,
+  Implant Shelf, battery shelf); a walk-in Operating Room (`FLOOR_OR`:
+  table, Instrument Tray, Organ Cooler); a walk-in Cafeteria
+  (`FLOOR_CAFE`). You move between floors by Stairs, the Elevator or the
+  HUD's `#hospital-floor-button`. Moving is instant and allowed in every
+  phase. Patients keep ticking while you're away. Geometry is in
+  `floor-plan.js`.
+* **Triage:** patients queue at the Triage Desk with a wait timer. The
+  Triage Sort shows complaint and vitals; you pick Red/Yellow/Green
+  (`vitalsForLevel`/`triageLevelForVitals`; the legend is printed on the
+  overlay). Either way the patient is bedded, and a wrong call is a
+  mistake. With no free bed, the patient keeps waiting.
+* **Beds (4):** each patient has an ordered plan from their condition
+  (`CONDITIONS`), a step chip and a treatment-patience bar. When patience
+  runs out, the patient is transferred: a mistake and −1.5★.
+* **Treatments** (one minigame per step; a failure is a mistake and the
+  minigame stays open to retry; × or Escape backs out with no mistake,
+  `cancelTask`):
+  * **Vitals** and **IV**: 1-hit timing-bar skill checks (`SKILL_CHECKS`).
+  * **Oxygen**: find-the-hearts. `OXYGEN_HEARTS` (3) hearts are pumps.
+    `OXYGEN_SKULLS` (5) skulls each count as a missed check (a mistake);
+    a skull fades after one hit.
+  * **Bandage**: needs a roll from the Supply Cart (or the Stock tech) in
+    your pocket. Your pocket is separate from your hands. You then trace
+    the wound (`gradeBandageTrace`). A finished dressing uses up the roll.
+  * **Meds**: search the Med Cabinet's 27 bottles (`medCabinetStock`:
+    the ordered drug exactly once, look-alikes guaranteed). A wrong bottle
+    is a mistake and greys out. Then pick the dose, carry it to the bed
+    and pass the 1-hit give-meds check (`SKILL_CHECKS.meds`).
+  * **Surgery**: the patient is wheeled to the OR, by the player carrying
+    the gurney or by the Orderly. The table only opens once the surgery
+    kit holds a scalpel plus the condition's organ or implant
+    (`SURGERY_ITEMS`, `surgeryItemFor`, `surgeryMissing`). Each item is
+    picked from a card close-up with decoys. Taking an unneeded item is a
+    mistake. Picking a needed one starts a `grab` check, where a miss just
+    drops the item. Surgery is three stages; finishing uses up the kit.
+  * Each finished step tips `TREATMENT_TIP_GARD` (5). The last step
+    discharges the patient for `DISCHARGE_GARD` (60/40/25 by level;
+    ×2 for a celebrity).
+* **Karen:** once per month, on shift 2 (`KAREN_SHIFT_MIN`/`MAX`). "Explain
+  Triage" gives +30 Gard. "Let Her Cut In" is a mistake and −50 Ward
+  Mood. "Call Security" gives no mistake and no tip. A 12 s timer
+  auto-resolves as "Let Her Cut In".
+* **Mel (easter egg):** at most once per shift, Mel in a dandelion kimono
+  (`STAFF_DESIGNS.mel`) joins the front of the triage line. Four triggers
+  bring her: a `MEL_ARRIVAL_CHANCE` (1/40) roll per arrival; always
+  halfway through shift `MEL_FIXED_SHIFT` (7); `MEL_VASE_CLICKS` (5)
+  clicks on the back-wall vase; or typing `MEL_SECRET_CODE` ("mel"). Her
+  card gives +40 Gard, +30 Sanity and +20 Mood, and sets the
+  start-screen badge (`#hospital-mel-badge`) for the visit.
+* **Nurse career rank:** XP from triage calls, steps, discharges, Karen
+  and Mel (`XP_*`) is banked at handover and on game over. Career XP lasts
+  across months within a visit. There are ten ranks (`NURSE_RANKS`),
+  each from 2 up with a perk (walk, skill-zone width, patience, Sanity
+  drain, pay). A later perk of the same kind replaces the earlier one
+  (`perksForRank`). Perks are fixed at shift start (engine-state's
+  `perks`), so a rank-up mid-shift applies next shift.
+* **Ward Mood:** starts at 100, −25 per mistake, and is raised by coffee,
+  Mel and the lost child. It scales new patients' wait and patience
+  (×1.0 to ×0.6) and sets the HUD status (Calm/Busy/Chaotic).
+* **Sanity, Coffee and hallucinations:** Sanity drains 100 to 0 in 150 s
+  and −15 per mistake. Coffee Pour (Library Shift's art and screen)
+  restores Sanity and also Ward Mood (`COFFEE_MOOD_RESTORE`). Below 25
+  Sanity, hallucinations start: a vignette, ghosts, whispers, shaky hands,
+  dropped meds/rolls, ghost patients in line, and a pay cut for time at
+  0 Sanity.
+* **Hunger and Thirst:** both drain over a shift. Under 25%
+  (`HUNGER_THIRST_LOW`) you walk 15% slower and skill zones are 15%
+  narrower. At 0% Sanity drains extra, and after 5 s you collapse
+  (`HUNGER_THIRST_COLLAPSE_SECONDS`). The vending machine (`VENDING_ITEMS`)
+  sells against spendable Gard (month total plus this shift's earnings).
+  Auntie Yumi's Cafeteria meal is free (`cafeteriaMeal`).
+* **Night shifts:** every 5th shift (`isNightShift`) and the Daily's Night
+  Shift twist run 7 PM to 7 AM with 80% volume. The ER and Supply Room
+  are dark and the Cafeteria is closed. The flashlight (F or the HUD
+  button) runs on a battery; spares (max 2) come from the Supply Room
+  shelf or the vending machine (`BATTERY_PRICE` 15, only if affordable).
+* **Helping staff:** Dr. Okafor finishes a non-surgery step for a patient
+  under 30% patience and refills them to 50%, with a 50 s cooldown. Click
+  the Orderly to wheel the most urgent surgery patient to the OR. Click
+  the Stock tech (who cycles 35 s upstairs, 25 s down) to get a bandage
+  roll. The janitor's mopped puddle slows you. The receptionist gives
+  ×1.1 queue wait. A pharmacist adds set dressing.
+* **Security:** a CCTV Security Desk and a guard, plus a night guard on
+  night shifts. From shift 2, one incident per shift at most (50% day,
+  80% night, never in the Daily): a rowdy visitor drains Mood and Sanity,
+  or a thief robs the vending machine. Click a guard to send him. An
+  ignored thief takes the vending machine out of order for the shift.
+* **Visitors:** a lost child on ~40% of shifts (+25 Gard, +15 Mood); the
+  hospital cat every shift (each pet meows via Web Audio in
+  `hospital/cat-sound.js`, but +6 Sanity only once per 30 s); a celebrity
+  patient on ~30% of shifts.
+* **Stars and game over:** 5★ per shift, −1.5★ per walk-out or transfer.
+  Reaching 0★, or 20 s at 0 Sanity (`ZERO_SANITY_COLLAPSE_SECONDS`), or 5 s
+  at 0% Hunger/Thirst ends the shift as `'game-over'` with payout 0.
+  "Retry Shift N" replays the same shift.
+* **Handover and paycheck:** at 7:00 PM a 20 s handover begins
+  (`CLOSING_WAIT_SECONDS`), then you walk into the Charge Nurse's office
+  to be paid (see Business Rules). After shift 30 comes the Final
+  Paycheck with the leaderboard form. "Start New Month" resets the month
+  but keeps rank.
+* **Daily Challenge:** one UTC-day shift at shift 12's clock and pace
+  (`DAILY_SHIFT_NUMBER`). Every patient is pre-rolled from
+  `seededRandom(dailySeed(date))`. It uses neutral perks plus the twist's
+  adjustment (`dailyPerksForTwist`), with one of six twists
+  (`DAILY_TWISTS`, `dailyTwistForDate`). Its own leaderboard tab shows
+  the day. It never touches the month run.
+* **Progress resets on leaving:** shift, month Gard, best run, rank/XP and
+  the Mel badge live in memory for one page visit (`defaultSave` in
+  `hospital-game.js`). The legacy `localStorage` key `hospital-game:v1` is
+  deleted on load. Playwright seeds mid-run state through a one-time
+  `window.__hospitalShiftTestSeed` (`takeTestSeed`).
+* **Characters:** 65 patient designs (`PATIENT_DESIGNS` in
+  `hospital/anime-people.js`, each with its own name/age pool in
+  `patient-names.js`). They include two 35%-larger showpieces: Hiko Maiko
+  and a shiromuku bride. Staff, Karen and Mel are in `STAFF_DESIGNS`. The
+  player is drawn by `hospital/kimono-himura.js`. Library Shift reuses
+  that renderer with `look: 'coral'`, so changes there show up in both
+  games.
+* **Leaderboard** (`hospital_scores`) with run-ticket anti-cheat (Security
+  Considerations), and the `/projects` card
+  (`web/static/images/hospital/screenshot.png`).
+
+**Out of scope:**
+
+* First Person Mode, Library-style Reading Nook mood restore, 0-Mood
+  penalties, shops/gear.
+* Saved progress of any kind (the user's decision: everything resets on
+  leaving).
+* Mobile-specific controls beyond tap-to-move.
+* Image or sound assets: canvas primitives only, and the meow is
+  synthesized.
+
+---
+
+## User Flow
+
+```text
+1. Player opens /hospital-shift (Projects grid "Play now").
+2. Start screen → "Start Shift" (also requests fullscreen), or "Play Daily Challenge".
+3. Patients arrive at the Triage Desk queue. Click one → walk to the desk →
+   Triage Sort: read vitals, pick Red/Yellow/Green → patient goes to a bed.
+4. Click a bed → walk to it → its current step opens:
+   - Vitals / IV: a skill check at the bed; Oxygen: find the hearts, avoid the skulls.
+   - Bandage: get a roll from the Supply Cart on the 2nd Floor (Stairs,
+     Elevator or "Go Upstairs"), come back down, trace the wound.
+   - Meds: walk to the Med Cabinet → search the shelves for the ordered
+     drug, pick the dose → carry it back to the bed → pass the give-meds
+     skill check.
+   - Surgery: take the gurney (or send the Orderly) into the walk-in OR;
+     collect the scalpel (Instrument Tray) and the organ (Organ Cooler) or
+     implant (Implant Shelf, 2nd Floor), each with a grab check → three-stage
+     skill check at the table → patient returns to the bed.
+5. Last step done → discharged (+Gard), bed frees.
+6. Coffee Machine any time: Coffee Pour restores Sanity and lifts Ward Mood.
+   Vending machine / Cafeteria for Hunger and Thirst.
+7. 7:00 PM (7:00 AM on a night shift) → 20 s handover → enter the Charge
+   Nurse's office → paycheck.
+8. Repeat for 30 shifts (Karen on shift 2). Shift 30: Final Paycheck +
+   optional leaderboard submission; "Start New Month" resets the month.
+```
+
+---
+
+## Visual Direction
+
+The game uses canvas primitives on a 960×600 canvas, drawn in an anime
+game-UI style, not the site's Organic look:
+
+* **Kit:** `web/static/js/hospital/anime-ui.js` provides the `ANIME`
+  palette, `animeChip`, `animeWindow`, `animeButton`, `animeBackdrop`, the
+  HUD plates and gauges, `speechBubble` and `sakuraBranch`. Library Shift
+  imports it too.
+* **Furniture:** `web/static/js/hospital/anime-furniture.js` draws every
+  station and the decor kinds. `floor-plan.js`'s `buildDecor()` places
+  set dressing clear of stations, the triage line and the player start.
+  The Coffee Machine keeps Library Shift's art
+  (`drawCoffeeMachineDetail` in `hospital-game.js`).
+* **People:** `kimono-himura.js` (player) and `anime-people.js`
+  (patients, staff, Karen, Mel). Bedded patients lie under a blanket.
+* **Page:** `.hospital-anime` on `<main>` scopes the page theme in
+  `web/static/css/app.css` (`ha-*` classes, including the leaderboard,
+  which is styled by id). Library Shift re-tints the same kit with
+  `.library-anime`. The rules never set `display`, so Tailwind's `hidden`
+  still works.
+
+---
+
+## UI
+
+```text
+web/templates/pages/hospital-shift.html          # {{define "hospital-shift-content"}}
+web/templates/components/hospital-leaderboard.html
+```
+
+| State   | Behavior |
+| ------- | -------- |
+| Default | Start screen → ER floor gameplay. |
+| Loading | HTMX nav uses `#nav-loading`; leaderboard uses `#leaderboard-loading`. |
+| Empty   | Leaderboard with no rows: "No scores yet — be the first!" (daily tab: "No one has worked today's shift yet — be the first!"). |
+| Error   | Leaderboard failure renders an inline "Couldn't load the leaderboard." fragment. A rejected score shows its reason under the form. |
+| Success | Score submission swaps in the refreshed leaderboard. |
+
+---
+
+## HTMX Interactions
+
+| Trigger                  | Method | Endpoint                       | Target                  | Swap        | Indicator |
+| ------------------------ | ------ | ------------------------------ | ----------------------- | ----------- | --------- |
+| Projects "Play now" card | GET    | `/hospital-shift`              | `#main-content`         | `outerHTML` | `#nav-loading` |
+| Leaderboard load / "All-time" tab | GET | `/hospital-shift/leaderboard` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| "Daily Challenge" tab    | GET    | `/hospital-shift/leaderboard?board=daily` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| Final Paycheck / daily submit | POST | `/hospital-shift/score`     | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+
+The tabs live inside the fragment (`data-board="all"|"daily"`,
+`aria-pressed`), so the server marks the active one. A daily submission
+answers with the daily board, following the Bus Rush leaderboard's
+pattern. The page fetches run tickets with plain `fetch`
+(`POST /hospital-shift/run`), not HTMX.
+
+---
+
+## Routes / Handlers
+
+| Method | Path                          | Handler                          | Auth | Notes |
+| ------ | ----------------------------- | -------------------------------- | ---- | ----- |
+| GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. No DB fetch. |
+| GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
+| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift, any other run 30), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
+| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min). Tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test. |
+
+---
+
+## Data Model
+
+`migrations/010_create_hospital_scores.sql` (its header comment still says
+progress is in `localStorage`, which is stale; migrations are left
+unedited):
+
+| Column           | Type        | Constraints |
+| ---------------- | ----------- | ----------- |
+| id               | BIGINT      | GENERATED ALWAYS AS IDENTITY PRIMARY KEY |
+| player_name      | TEXT        | NOT NULL, 1–20 chars |
+| total_earnings   | INT         | NOT NULL, 0–300000 |
+| shifts_completed | INT         | NOT NULL, 1–30 |
+| created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now() |
+| daily_date       | DATE        | nullable: the Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/012_add_hospital_daily_date.sql`. |
+| run_nonce        | TEXT        | nullable, UNIQUE (`hospital_scores_run_nonce_key`): the run ticket's nonce, so a ticket saves one row (Security Considerations). NULL for rows from before it. Added by `migrations/014_add_hospital_run_nonce.sql`. |
+
+There are two indexes: `idx_hospital_scores_earnings (total_earnings DESC)`,
+and `idx_hospital_scores_daily (daily_date, total_earnings DESC) WHERE
+daily_date IS NOT NULL` for the daily board. Unlike Bus Rush, the
+all-time board ranks only ordinary runs (`WHERE daily_date IS NULL`),
+because a one-shift daily paycheck isn't comparable to a month's
+earnings. Run state isn't stored anywhere: it lasts one visit to the page.
+
+---
+
+## Business Rules / Validation
+
+All numbers are named constants in `web/static/js/hospital/rules.js`.
+
+* **Tiers**: shifts 1–10 / 11–20 / 21–30; clock 600/480/360 s; patients
+  per shift 12/16/22 (×0.8 on night shifts); two arrive in the first
+  4–20 s, the rest spread evenly to 85% of the shift.
+* **Conditions** (`CONDITIONS`, 17 today): each has a triage level, a
+  complaint, an ordered treatment plan and, when it has a Meds step, a
+  drug + dose. Surgery and transplant cases are available from shift 1
+  (`SURGERY_START_SHIFT`, `TRANSPLANT_START_SHIFT`). Seven plans include a
+  Bandage step.
+* **Triage vitals**: `vitalsForLevel(level, rolls)` generates vitals that
+  `triageLevelForVitals` classifies back to that same level. Red: SpO₂ <
+  90, HR > 130 or systolic BP < 90. Yellow: temp ≥ 38.5 °C or HR 101–130.
+  Green: everything normal.
+* **Ramps:** shift-based difficulty uses `shiftRamp(shift, s) = 1 −
+  e^(−(shift−1)/s)`. This is an exponential approach that never reaches
+  its maximum; `s` is the time constant in shifts.
+  * Queue wait (`queueWaitSecondsForShift`): 90 s falling toward a 45 s
+    floor with `s = 10`. It is ~62 s at shift 11 and ~47.5 s at shift 30.
+  * Treatment patience (`treatmentPatienceSecondsFor`): Red 90 / Yellow
+    120 / Green 150 s, shrinking toward 35% with `s = 12`. The shrink is
+    ~21% at shift 12 and ~32% at shift 30.
+  * Skill-check sweep speed (`skillCheckSweepSpeed`): 0.6 rising toward
+    1.5 bar/s with `s = 12`, times the kind's `speedMultiplier`.
+  * Wait and patience are both multiplied by the Ward Mood multiplier at
+    arrival/bedding; the perk's patience applies too. A patient on the
+    gurney, with the Orderly or on the OR table has patience paused.
+* **Skill checks** (`SKILL_CHECKS`), zone width / hits: Vitals 0.22 / 1,
+  Meds (giving) 0.18 / 1, IV 0.16 / 1, Surgery 0.14 / 3, grab 0.24 / 1.
+  Shaky hands shrink the zone to 50% and speed it 1.6× at full
+  hallucination. Rank perks widen zones; low Hunger/Thirst narrows them.
+* **Bandage trace**: graded by `gradeBandageTrace(samples, path)`.
+  Success needs ≥ 85% of the path covered (`BANDAGE_MIN_COVERAGE`) and
+  ≥ 70% of samples within 16 px of it (`BANDAGE_MIN_ACCURACY`). Releasing
+  early grades what was traced.
+* **Hands vs pocket**: only one item (meds or a gurney) can be in your
+  hands. A bandage roll goes in your pocket, and the surgery kit is its
+  own pocket; neither blocks the hands.
+* **Payout** (`enterOffice`, `engine-state.js`):
+  `round(max(0, shiftPaycheck(mistakes) + bonusGard) × rating/5 ×
+  hallucinationPayMultiplier(zeroSanitySeconds) × perks.pay)`.
+  `shiftPaycheck` is 4000 − 500 per mistake, with a floor of 500.
+  Bonuses are step tips, discharges, coffee tips, Karen, Mel, the lost
+  child and a caught thief. Vending and battery purchases deduct from
+  `bonusGard`. `perks.pay` is 1.1 / 1.25 at ranks 8 / 10, and 1 in the
+  Daily unless the twist changes it.
+* **Game over**: payout 0; the month total is untouched and Retry replays
+  the shift.
+* **Closing**: in-flight work is abandoned at 7:00 PM, with no penalty
+  beyond what already happened.
+
+---
+
+## Security Considerations
+
+* `/hospital-shift` and its leaderboard GET are public. The score POST and
+  the run POST each have their own per-IP rate limiter.
+* `player_name`, `total_earnings` and `shifts_completed` are validated
+  server-side against the same bounds as the CHECK constraints
+  (`internal/service/hospital_validation.go`). In names, invalid UTF-8 and
+  control/format characters (Unicode Cc/Cf) are rejected
+  (`validatePlayerName`, `internal/service/player_name.go`, shared by
+  every game). Player names render through html/template auto-escaping.
+  `daily_date` must be YYYY-MM-DD within a day of today's UTC date
+  (`ValidateHospitalDailyDate`). A daily run must report exactly 1 shift;
+  an ordinary run must report exactly 30 (`hospitalMonthShifts`).
+* **Leaderboard anti-cheat** (`internal/service/hospital_run.go`). The
+  game runs client-side, so a score can't be proven. These checks make
+  faking one take about as long as playing:
+  * *Run tickets.* When a run starts, the page asks
+    `POST /hospital-shift/run` for a ticket,
+    `v1.<issued unix>.<nonce>.<HMAC-SHA256>`, and the Final Paycheck
+    submits it as `run_ticket`. These tickets get a 400: missing,
+    tampered or foreign-signed tickets; tickets older than 12 h
+    (`hospitalRunTicketMaxAge`); and tickets whose issue time is in the
+    future.
+  * *Minimum time.* A score is rejected ("faster than those shifts can be
+    played") unless 90% of its shifts' clock time has really passed since
+    the ticket was issued: 3.6 h for a month and 7.2 min for a Daily. The
+    Go side mirrors the clock table (`hospitalShiftClockSeconds`), so
+    change both together.
+  * *Single use.* The ticket's nonce is stored with the score row in
+    `hospital_scores.run_nonce` under a UNIQUE constraint (migration 014).
+    A second submission with the same ticket is a 400 ("already
+    submitted"). This holds across restarts and instances. Spending the
+    ticket and saving the score are one insert, so a failed insert leaves
+    the ticket unspent.
+  * *Plausible earnings.* At most 10,000 Gard per claimed shift
+    (`hospitalMaxEarningsPerShift`).
+  * *Limits.* These checks raise the cost of a fake score; they don't
+    prove one. A ticket isn't tied to any play. Anyone can
+    `POST /hospital-shift/run` from a script, wait out the minimum time
+    and submit any total up to the per-shift cap (300,000 for a month,
+    10,000 for a Daily) without opening the page. A ticket also isn't
+    bound to a run kind, so a month's ticket can submit a Daily after
+    7.2 min. A real-time player can edit the final number within the cap.
+    The Playwright hooks (`window.__hospitalShiftTestHooks`,
+    `window.__hospitalShiftTestSeed`) ship in production. What the checks
+    stop is instant fake submissions and replaying one ticket into many
+    rows.
+  * *Config.* `HOSPITAL_RUN_SECRET` signs tickets. If it is unset, a
+    random per-process secret is used and `cmd/server/main.go` logs a
+    startup warning, because runs in progress across a deploy then can't
+    submit. **Set it in production.** `HOSPITAL_RUN_TIME_CHECK=off` (only
+    `make run-e2e`) skips the time check and logs a SECURITY error.
+* The score form stops `htmx:responseError` from reaching `nav-menu.js`'s
+  page-wide handler (`hospital-game.js`), which would otherwise replace
+  the game with "Couldn't load this page".
+* The score routes have the same documented no-CSRF gap as the other
+  games' score routes.
+
+---
+
+## Testing Plan
+
+* [x] Go handler (`internal/handler/hospital_shift_test.go`): index,
+      leaderboard empty/populated, score valid / validation-rejected /
+      out-of-range / rate-limited, a short month (< 30 shifts) rejected
+      (`TestHospitalShiftHandler_SubmitScore_ShortMonthRejected`), the
+      daily board, a daily submit answering with it, and a stale daily
+      date → 400 (`TestHospitalShiftHandler_DailyBoard`). Also the ticket
+      route: no-store, "no ticket" and "faster than" 400s, and the 429
+      (`TestHospitalShiftHandler_RunTickets`).
+* [ ] Go handler DB-error path: the fake repo has `insertErr`/`topErr`,
+      but no handler test sets them, so the leaderboard error fragment and
+      a failed score insert at the handler are untested. Only the service
+      covers a repository error
+      (`TestHospitalService_SubmitScore_RepositoryError`).
+* [x] Go service/validation (`hospital_service_test.go`,
+      `hospital_validation_test.go`): valid submit, validation rejections,
+      repository error, leaderboard, the daily board, and daily rows kept
+      off the all-time board.
+* [x] Anti-cheat (`hospital_run_test.go`): month/Daily minimum durations
+      (`TestHospitalMinRunDuration`); an honest run accepted once, then
+      replay rejected, including from a fresh service as after a restart
+      (`TestHospitalService_SubmitScore_AntiCheat`); still usable after a
+      failed insert (`…_FailedInsertKeepsTicket`); missing, garbage,
+      tampered, foreign-signed, too-fast and expired tickets rejected
+      (`TestHospitalRunTickets_Rejects`); the time check's off switch; the
+      per-shift earnings cap (`…_ImplausibleEarnings`).
+* [ ] Anti-cheat gaps: a future-dated ticket (`elapsed < 0`) and a month
+      ticket submitted as a Daily have no test. (The single-use Release
+      path no longer exists. It was replaced by the `run_nonce` UNIQUE
+      insert, so there is nothing to test there.)
+* [x] Real Postgres (`cmd/server/e2e_test.go`, "hospital shift routes
+      round-trip…"): page, leaderboard, a score round trip with a ticket,
+      a bad form without a raw DB error, a replayed ticket refused by the
+      real `run_nonce` constraint, and a daily run landing on
+      `?board=daily` and not the all-time board.
+* [x] JS (`node --test web/static/js/hospital/*.test.js`): tiers/clock,
+      Karen shift, vitals ↔ triage agreement, condition gating,
+      skill-check zones, bandage grading, cabinet stock, the engine-state
+      transitions (triage, bed tasks, meds, surgery kit and transport,
+      patience transfers, Karen, Mel, coffee, closing, payout including
+      the pay perk: engine-state.test.js "perks: longer patience, slower
+      Sanity drain, bigger pay"), name pools, career rank, the Daily
+      (seeded determinism, twists, Rush Hour/Flu Season), hunger/thirst,
+      night/flashlight, security incidents, visitors, floor-plan geometry
+      and decor clearance, and anime-ui/anime-furniture smoke tests.
+* [ ] JS gap: `anime-people.js` and `kimono-himura.js` (the character
+      renderers) have no draw smoke test. Only `PATIENT_DESIGN_KEYS` is
+      imported (by patient-names.test.js).
+* [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start,
+      triage, the deep-cut vitals/bandage/meds flow, oxygen, gurney
+      surgery with the walk-in OR kit, transplant mistakes, × backs out,
+      floors, helping staff, coffee, Karen, career rank, Mel (code and
+      vase), hallucination ghost, vending/Cafeteria/collapse, night
+      shifts and batteries, Security incidents and night guard, lost
+      child, cat, both game-over kinds, office/handover, the shift-30
+      leaderboard submit, the run ticket and rejection reason, Daily
+      (seeded replay, daily board/tabs, twists), and the refresh/HTMX
+      revisit resetting to shift 1. Plus "no console errors on load and
+      during play".
+* [ ] Playwright gap: "clicking a staff member wins over the cat at their
+      feet" (`hospital-game.js` click priority) has no test.
+* [x] Manual browser check: a click-driven shift with zero console errors
+      (recorded during the build; see History).
+
+---
+
+## Open Questions
+
+* Tuning (patience, zone widths, volumes) is implementation-time and
+  expected to change after the user plays it.
+* **Anti-cheat strength (owner decision):** tickets aren't tied to play.
+  The month cap (10,000 × 30 = 300,000, the DB cap) is about twice an
+  honest strong month. Options include a realistic per-shift cap, a cap
+  on tickets per IP, per-shift check-ins, or binding the run kind
+  (month/daily) into the ticket.
+* Should the page's Playwright hooks ship in production (shared with the
+  other games)?
+
+---
+
+## Definition of Done
+
+* [x] User flow works end-to-end (Playwright, above).
+* [x] All UI states implemented (empty/error fragments in
+      `hospital-leaderboard.html` and `hospital_shift.go`).
+* [x] Migrations with a working Down (010, 012, 014 each have
+      `-- +goose Down`).
+* [x] Handler/service/repository boundaries followed
+      (`internal/{handler,service,repository}/hospital*`).
+* [x] Accessibility: Enter on a hovered station walks to it; skill checks
+      accept Space/Enter; Triage Sort accepts 1/2/3; Meds accepts number
+      keys for the dose; Escape closes an overlay (`onKeyDown` in
+      `hospital-game.js`). The cabinet search, Oxygen hearts and the
+      Bandage trace stay pointer-only, the same stance as Library Shift's
+      scene search.
+* [ ] Every Testing Plan item covered: see the unticked gaps above.
+* [x] `/hospital-shift` on the Projects grid (real screenshot).
+
+---
+
+## History
+
+The sections below are moved verbatim from earlier revisions of this doc.
+They record how the feature was built and the user's requests. Where they
+disagree with the current sections above, the current sections (and the
+code) win. Examples: the old Business Rules said "shrinking up to 35% by
+shift 30"; the actual ramp is exponential and reaches ~32% by shift 30.
+The old payout formula omitted `× perks.pay`. The old line "bandage now
+appears in 7 of 14 plans" is now 7 of 17.
+
+### Build notes (from the old Status)
 
 Additions made during the build, beyond the original scope list: an ×
 button (and Escape) backs out of any minigame without a mistake
@@ -20,32 +559,7 @@ the Med Cabinet always shows the ordered drug's look-alikes (Amoxicillin/
 Amoxapine, Albuterol/Atenolol, Epinephrine/Ephedrine…), and is now a
 search across 27 bottles with a skill check to give the meds at the bed.
 
-## Summary
-
-A fourth "Shift" canvas mini-game, `/hospital-shift`, sibling to Kitchen
-Shift and Library Shift: the player is an ER nurse working 30 shifts —
-triaging arriving patients, then treating them in the ward's beds through
-patient-care minigames (Vitals Check, Oxygen, IV, Bandage, Meds Dispensing,
-Surgery), earning **Gard** (the site's shared game currency).
-
-## Problem / Motivation
-
-The user asked for a new project, "hospital shift." When asked, they chose:
-
-* **Role:** ER nurse — triage the queue, assign beds, treat patients.
-* **Structure:** mirror Library Shift — canvas top-down map, click-to-move,
-  timed shift, minigame overlays, Sanity + Coffee Machine, hallucinations,
-  a scripted difficult-visitor event, Postgres leaderboard, `localStorage`
-  progress, shared `people.js` art. (Progress was later made per-visit —
-  see "Progress resets on leaving".)
-* **Minigames:** all four offered (Triage sort, Meds dispensing, Vitals
-  check, Bandage/IV), plus, in their words: "for the vitals checks and the
-  stuff that pumps oxygen and surgeries i want there to be skill checks
-  when they did it." So Vitals, Oxygen (bag-valve pumping) and Surgery
-  started as timing-bar **skill checks**; Oxygen later became a
-  find-the-hearts search where skulls stand for missed checks (see Scope).
-
-## Scope
+### Original Scope and build narrative (verbatim)
 
 **In scope (v1):**
 
@@ -665,34 +1179,7 @@ The user asked for a new project, "hospital shift." When asked, they chose:
 * Mobile-specific controls beyond tap-to-move.
 * Image assets (canvas primitives only, as every game here).
 
----
-
-## User Flow
-
-```text
-1. Player opens /hospital-shift (Projects grid "Play now").
-2. Start screen → "Start Shift" (also requests fullscreen).
-3. Patients arrive at the Triage Desk queue. Click one → walk to the desk →
-   Triage Sort: read vitals, pick Red/Yellow/Green → patient goes to a bed.
-4. Click a bed → walk to it → its current step opens:
-   - Vitals / IV: a skill check at the bed; Oxygen: find the hearts, avoid the skulls.
-   - Bandage: get a roll from the Supply Cart on the 2nd Floor (Stairs,
-     Elevator or "Go Upstairs"), come back down, trace the wound.
-   - Meds: the bed says "Meds"; walk to the Med Cabinet → search the shelves
-     for the ordered drug, pick the dose → carry it back to the bed → pass
-     the give-meds skill check.
-   - Surgery: at the bed you take the gurney; walk to the Operating Room →
-     three-stage skill check → patient returns to the bed.
-5. Last step done → discharged (+Gard), bed frees.
-6. Coffee Machine any time: Coffee Pour restores Sanity and lifts Ward Mood.
-7. 7:00 PM → 20 s handover → enter the Charge Nurse's office → paycheck.
-8. Repeat for 30 shifts (Karen once, on shift 2). Shift 30: Final Paycheck +
-   optional leaderboard submission; "Start New Month" resets.
-```
-
----
-
-## Visual Direction
+### Original Visual Direction (verbatim)
 
 Same as Library Shift: canvas primitives at 960×600, Organic palette, big
 characters at Library Shift's 1.55 scale, label chips, the Caprasimo
@@ -774,273 +1261,13 @@ area are unchanged; only the drawing moved to an anime game-UI style.
   Tailwind's `hidden` still hides what the game toggles. The `/projects`
   card screenshot was retaken in the new look.
 
----
+### Original Business Rules: Patience and Payout (superseded wording)
 
-## UI
-
-```text
-web/templates/pages/hospital-shift.html          # {{define "hospital-shift-content"}}
-web/templates/components/hospital-leaderboard.html
-```
-
-| State   | Behavior |
-| ------- | -------- |
-| Default | Start screen → ER floor gameplay. |
-| Loading | HTMX nav uses `#nav-loading`; leaderboard uses `#leaderboard-loading`. |
-| Empty   | Leaderboard with no rows: "No scores yet — be the first!" |
-| Error   | Leaderboard failure renders an inline "Couldn't load the leaderboard." fragment. |
-| Success | Score submission swaps in the refreshed leaderboard. |
-
----
-
-## HTMX Interactions
-
-| Trigger                  | Method | Endpoint                       | Target                  | Swap        | Indicator |
-| ------------------------ | ------ | ------------------------------ | ----------------------- | ----------- | --------- |
-| Projects "Play now" card | GET    | `/hospital-shift`              | `#main-content`         | `outerHTML` | `#nav-loading` |
-| Leaderboard load / "All-time" tab | GET | `/hospital-shift/leaderboard` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
-| "Daily Challenge" tab    | GET    | `/hospital-shift/leaderboard?board=daily` | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
-| Final Paycheck / daily submit | POST | `/hospital-shift/score`     | `#hospital-leaderboard` | `outerHTML` | `#leaderboard-loading` |
-
-The tabs live inside the fragment (`data-board="all"|"daily"`,
-`aria-pressed`), so the server marks the active one; a daily submission
-answers with the daily board (the Bus Rush leaderboard's pattern).
-
----
-
-## Routes / Handlers
-
-| Method | Path                          | Handler                          | Auth | Notes |
-| ------ | ----------------------------- | -------------------------------- | ---- | ----- |
-| GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. |
-| GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
-| POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift, any other run 30), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
-| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed, single-use run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min — tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test). |
-
----
-
-## Data Model
-
-`migrations/010_create_hospital_scores.sql`:
-
-| Column           | Type        | Constraints |
-| ---------------- | ----------- | ----------- |
-| id               | BIGINT      | GENERATED ALWAYS AS IDENTITY PRIMARY KEY |
-| player_name      | TEXT        | NOT NULL, 1–20 chars |
-| total_earnings   | INT         | NOT NULL, 0–300000 (30 clean shifts with bonuses can pass Library Shift's 100000 cap) |
-| shifts_completed | INT         | NOT NULL, 1–30 |
-| created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now() |
-| daily_date       | DATE        | nullable — the Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/012_add_hospital_daily_date.sql`. |
-| run_nonce        | TEXT        | nullable, UNIQUE (`hospital_scores_run_nonce_key`) — the run ticket's nonce, so a ticket saves one row (Security Considerations). NULL for rows from before it. Added by `migrations/014_add_hospital_run_nonce.sql`. |
-
-Index `idx_hospital_scores_earnings (total_earnings DESC)`, plus
-`idx_hospital_scores_daily (daily_date, total_earnings DESC) WHERE
-daily_date IS NOT NULL` for the daily board. Unlike Bus Rush, the
-all-time board ranks only ordinary runs (`WHERE daily_date IS NULL`): a
-one-shift daily paycheck isn't comparable to a month's earnings. Leaderboard-only,
-like every other game; run state isn't stored anywhere — it lasts one
-visit to the page.
-
----
-
-## Business Rules / Validation
-
-All numbers are named constants in `web/static/js/hospital/rules.js`.
-
-* **Tiers**: shifts 1–10 / 11–20 / 21–30; clock 600/480/360 s; patients
-  per shift 12/16/22; two arrive in the first 4–20 s, the rest spread evenly.
-* **Conditions** (`CONDITIONS`): each has a triage level, a complaint, an
-  ordered treatment plan and (when it has a Meds step) a drug + dose.
-  Surgery cases (appendicitis, crash injuries, and the kidney/liver/heart
-  transplants) arrive from shift 1 (`SURGERY_START_SHIFT` and
-  `TRANSPLANT_START_SHIFT`; surgery was gated to shift 4, then shift 2,
-  until the user asked to "make it so that surgeries start on shift 1").
-* **Triage vitals**: `vitalsForLevel(level, rolls)` generates vitals that
-  `triageLevelForVitals` classifies back to that same level — Red: SpO₂ <
-  90, HR > 130 or systolic BP < 90; Yellow: temp ≥ 38.5 °C or HR 101–130;
-  Green: everything normal. The overlay prints this legend, so it's a real
-  read-the-chart decision, not a guess.
 * **Patience**: queue wait 90 s → 45 s floor by shift (Library Shift's
   `queueWaitSecondsForShift`); treatment patience by level (Red 90, Yellow
   120, Green 150 s) shrinking up to 35% by shift 30. Both × Ward Mood
   multiplier at arrival/bedding. A patient in surgery (gurney carried) has
   their patience paused.
-* **Skill checks** (`SKILL_CHECKS`): zone width / hits — Vitals 0.22 / 1,
-  Meds (giving) 0.18 / 1, IV 0.16 / 1, Surgery 0.14 / 3. Sweep speed ramps with
-  shift number; shaky hands shrink the zone to 50% and speed it 1.6× at full
-  hallucination.
-* **Bandage trace**: graded by `gradeBandageTrace(samples, path)` —
-  success needs ≥ 85% of the path covered (`BANDAGE_MIN_COVERAGE`) and ≥ 70%
-  of samples within 16 px of it (`BANDAGE_MIN_ACCURACY`). Releasing early
-  grades what was traced.
-* **Meds**: the cabinet fills the oldest bed whose current step is Meds.
-  Only one item (meds or a gurney) can be in your hands at a time; a
-  bandage roll goes in your pocket and doesn't count.
 * **Payout**: `max(0, shiftPaycheck(mistakes) + bonusGard) × rating/5 ×
   hallucinationPayMultiplier`. Bonuses: step tips, discharges, coffee tips,
   Karen.
-* **Closing**: in-flight work is abandoned at 7:00 PM; no penalty beyond
-  what already happened.
-
----
-
-## Security Considerations
-
-* `/hospital-shift` and its leaderboard GET are public; the score POST is
-  rate-limited per IP with its own limiter.
-* `player_name`/`total_earnings`/`shifts_completed` validated server-side
-  against the same bounds as the CHECK constraints
-  (`internal/service/hospital_validation.go`; in names, invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game)); player names are rendered
-  through html/template auto-escaping. `daily_date` must be YYYY-MM-DD
-  within a day of today's UTC date (`ValidateHospitalDailyDate`, Bus
-  Rush's window — a run finished across midnight still counts, old days
-  can't be back-filled), and a daily run must report exactly 1 shift; an
-  ordinary run must report exactly 30 (the page submits only at the
-  month's end, `SHIFTS_PER_MONTH`).
-* **Leaderboard anti-cheat** (the user: "add security", choosing it;
-  `internal/service/hospital_run.go`). The game runs client-side, so a
-  score can't be proven — but faking one now takes about as long as
-  playing:
-  * *Run tickets.* When a run starts, the page asks
-    `POST /hospital-shift/run` for a ticket, `v1.<issued unix>.<nonce>.<HMAC-SHA256>`,
-    and the Final Paycheck submits it as `run_ticket`. No ticket, a
-    tampered or foreign-signed one, or one older than 12 h is a 400.
-  * *Minimum time.* Shifts run a fixed real-time clock (10/8/6 minutes by
-    tier, `ROUND_TIER_CLOCK_SECONDS`) that can't end early, and progress
-    never survives leaving the page, so a 30-shift run is one ~4-hour page
-    session. A score is rejected ("faster than those shifts can be
-    played") unless 90% of its shifts' clock time has really passed since
-    the ticket was issued: 3.6 h for a month, 7.2 min for a Daily (shift
-    12's clock). The Go side mirrors the clock table
-    (`hospitalShiftClockSeconds`) — change both together.
-  * *Single use.* The ticket's nonce is stored with the score row in
-    `hospital_scores.run_nonce`, which has a UNIQUE constraint (migration
-    014), so a second submission with the same ticket is a 400 ("already
-    submitted") — durable across restarts and shared by every server
-    instance. Spending the ticket and saving the score are the same
-    insert, so a failed insert leaves the ticket unspent.
-  * *Plausible earnings.* At most 10,000 Gard per claimed shift
-    (`hospitalMaxEarningsPerShift`, above a perfect shift at the +25% rank
-    perk), so a 1-shift Daily can't claim a month's pay.
-  * Limits: this raises the cost of a fake score, it doesn't prove one.
-    A ticket isn't tied to any play — anyone can `POST /hospital-shift/run`
-    from a script (120/min per IP), wait out the minimum time (3.6 h for a
-    month, 7.2 min for a Daily), and submit any total up to the per-shift
-    cap (300,000 for a month, 10,000 for a Daily) without opening the page.
-    A real-time player can likewise edit the final number within the cap.
-    The page's Playwright hooks (`window.__hospitalShiftTestHooks`,
-    `window.__hospitalShiftTestSeed`) also ship in production, so the page
-    itself is easy to drive from the console. What the checks stop is
-    instant fake submissions and replaying one ticket into many rows. The
-    server logs a startup warning when `HOSPITAL_RUN_SECRET` is unset or
-    the time check is off.
-  * Config: `HOSPITAL_RUN_SECRET` signs tickets; unset, a random secret is
-    made per process, so a run in progress across a deploy can't submit —
-    **set it in production**. `HOSPITAL_RUN_TIME_CHECK=off` (only
-    `make run-e2e`) skips the time check for the Playwright suite, which
-    seeds a run straight to shift 30.
-* A rejected score's reason shows under the Final Paycheck form. The form
-  stops the `htmx:responseError` from reaching `nav-menu.js`'s page-wide
-  handler, which would otherwise replace the whole game with "Couldn't
-  load this page" (the other games' score forms still have that problem).
-* Same documented no-CSRF gap as the other games' score routes.
-
----
-
-## Testing Plan
-
-* [x] Go: handler tests (index, leaderboard, score happy/validation/
-      rate-limit/DB-error, the daily board and a daily submit answering
-      with it, a stale daily date → 400), validation + service tests
-      (daily date window/format, a daily run must be 1 shift, daily rows
-      kept off the all-time board), real-Postgres round trips in
-      `cmd/server/e2e_test.go` (including a daily run landing on
-      `?board=daily` and not the all-time board). Anti-cheat
-      (`hospital_run_test.go`, `TestHospitalShiftHandler_RunTickets`): the
-      month/Daily minimum durations; an honest run accepted once, then
-      replay rejected (also from a fresh ticket checker, as after a
-      restart), and still usable after a failed insert; missing,
-      garbage, tampered, foreign-signed, too-fast and expired tickets
-      rejected; the time check's off switch; the per-shift earnings cap; the
-      handler's ticket route (no-store, rate-limited) and its 400 reasons.
-      The real-Postgres round trips start a run first, and a replayed
-      ticket is refused by the real `run_nonce` UNIQUE constraint.
-* [x] JS (`node --test`): tiers/clock label, Karen seed range, vitals ↔
-      triage agreement, condition gating, skill-check zones, bandage
-      grading, the cabinet's stock (ordered drug exactly once), every engine-state transition (triage, bed tasks, meds,
-      surgery transport, patience transfers, Karen, Mel, coffee, closing,
-      payout), Mel's arrival roll / secret code / card lines, patient name
-      pools (one per design, no name shared, ages in range), career rank
-      (thresholds, progress, stacking perks, XP from each source, perks on
-      patience/Sanity drain/pay), the Daily Challenge (UTC date, seeded
-      stream determinism, every twist reachable, neutral perks + twist,
-      Rush Hour volume, Flu Season bias), the surgery kit (items per
-      condition and stage names, wrong organ/decoy = mistake, the table
-      waits for the full kit, a finished operation uses it up), floor-plan
-      geometry (the OR room and Implant Shelf, the Cafeteria, floor-aware
-      entry points), hunger/thirst (drain, low effects, extra Sanity drain
-      and collapse at 0, vending prices, the free meal), visitors (the lost
-      child once per shift, petting the cat, a celebrity's double discharge,
-      Security ending Karen's event) (decor clear
-      of stations, the triage line and the player start), anime-furniture
-      smoke tests (every station and decor drawer runs; every decor kind
-      has one).
-* [x] Playwright (`e2e/hospital-shift.spec.js`, Chromium + WebKit): start →
-      triage a patient → vitals skill check → meds → bandage → surgery →
-      coffee → Karen → Mel (typing "mel" → card → gift → badge, gone after
-      a reload; five vase clicks bring her in) → career rank (XP ranks you
-      up with a toast, the paycheck shows it, the perk applies next shift,
-      a reload resets it; the HUD doesn't double-count banked XP; a Charge
-      Nurse starts with every top perk) → handover → paycheck →
-      final-shift leaderboard submit; leaving resets (a refresh goes back
-      to shift 1 with rank/badge reset and the old save cleared; an HTMX
-      revisit after finishing shift 1 starts at 1/30 again); Daily
-      Challenge (the start card shows today and its twist, the daily plays
-      shift 12 with neutral perks, Try Again replays identical patients,
-      the paycheck carries daily_date/1 shift, Back to Start leaves the
-      month run untouched; a daily submit lands on the daily board and the
-      tabs switch boards; Short Staffed has no Dr. Okafor and Coffee
-      Machine Broken refuses to pour); the walk-in OR (the table refuses
-      without a kit; scalpel from the tray, mesh patch from the Implant
-      Shelf upstairs, then three stages; a transplant where the wrong organ
-      and a decoy are mistakes and a dropped grab isn't; the HUD button
-      leaves the OR); hunger/thirst (the vending machine sells water and an
-      onigiri off the shift pay; the Cafeteria's free meal fills both bars;
-      5 s at 0% Thirst is a collapse); night shifts (shift 5 is a night
-      with a PM clock, F toggles the light, the shelf's spare swaps in when
-      the battery runs flat, then it dies; the vending machine sells a
-      battery; day shifts have no flashlight); more characters (Call
-      Security ends Karen's scene with no mistake, the lost child's scene
-      pays +25g, petting the cat meows every time but restores Sanity only once per cooldown). The
-      deep-cut and gurney-surgery flows, the suite's longest, have a 60 s
-      timeout. Security: sending a guard walks a rowdy visitor out; a
-      thief caught pays, one that escapes leaves the vending machine out
-      of order; night shifts add the night guard; the score carries the
-      run ticket fetched at the shift start, and a rejected score shows its
-      reason under the form. Clicking a staff member wins over the cat at their feet.
-      Uses
-      `window.__hospitalShiftTestHooks` for exact coordinates/timing.
-* [x] Manual browser check: a click-driven shift with zero console errors,
-      (the canvas uses its own fixed palette, like the other games).
-
----
-
-## Open Questions
-
-* Tuning (patience, zone widths, volumes) is implementation-time and
-  expected to change after the user plays it.
-
----
-
-## Definition of Done
-
-* [x] User flow works end-to-end.
-* [x] All UI states implemented.
-* [x] Migration with a working Down.
-* [x] Handler/service/repository boundaries followed.
-* [x] Accessibility: Enter on a hovered station walks to it; skill checks
-      accept Space/Enter; Triage Sort accepts 1/2/3; Meds accepts number
-      keys for the dose. The cabinet search and the Bandage trace stay pointer-only (precision tracing has no
-      keyboard equivalent — same stance as Library Shift's scene search).
-* [x] Tests in the Testing Plan pass.
-* [x] `/hospital-shift` on the Projects grid (real screenshot).

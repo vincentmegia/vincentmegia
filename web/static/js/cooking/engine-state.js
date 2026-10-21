@@ -490,13 +490,11 @@ export function startleFromHallucination(state) {
 /**
  * The shift's payout at Duke's office, Library Shift's formula: flat Gard
  * first (base paycheck for the mistake count, plus bonus Gard, minus
- * complaint letters, floored at 0), then the 0-Sanity and 0-Reputation
- * pay-cut multipliers. Returns the parts too, for the paycheck screen.
+ * complaint letters and skipped closing chores — v4.7, `skippedChores` —
+ * floored at 0), then the 0-Sanity and 0-Reputation pay-cut multipliers.
+ * Returns the parts too, for the paycheck screen.
  *
  * @param {ShiftState} state
- * Skipped closing chores (v4.7, `skippedChores`) are flat deductions
- * too, alongside complaint letters.
- *
  * @returns {{base: number, bonusGard: number, complaintGard: number, chores: object, sanityMultiplier: number, reputationMultiplier: number, payout: number}}
  */
 export function shiftPayout(state) {

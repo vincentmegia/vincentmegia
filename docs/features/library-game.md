@@ -2,6 +2,490 @@
 
 ## Status
 
+`Shipped`. The game runs at `/library-game` and has a card on the
+`/projects` grid (`web/static/images/library/screenshot.png`). There is no
+score anti-cheat; see Security Considerations.
+
+Tests:
+
+* Go: `internal/handler/library_game_test.go`,
+  `internal/service/library_service_test.go`,
+  `internal/service/library_validation_test.go`, plus the DB-gated subtest
+  "library shift routes round-trip through the real library_scores table"
+  in `cmd/server/e2e_test.go`. Run them with `go test ./...`; the e2e
+  subtest needs `DATABASE_URL`.
+* JS unit tests: `web/static/js/library/*.test.js`, run with `node --test`.
+  They cover the pure logic modules (`rules.js`, `engine-state.js`,
+  `floor-plan.js`, `first-person.js`, `stories.js`, `book-titles.js`,
+  `walk-styles.js`, `minjun-actions.js`) and smoke-test the renderers
+  (`minjun.js`, `jiho.js`, `director-seo.js`, `library-people.js`,
+  `anime-furniture.js`).
+* Playwright: `e2e/library-game.spec.js`, run with `make test-e2e` on
+  Chromium and WebKit. It drives the game through
+  `window.__libraryGameTestHooks` (exact coordinates, clock control,
+  `makeKarenAvailableNow`, etc.) so it doesn't have to wait out the
+  600/480/360-second shift clocks. See the spec's header comment. Some
+  tests can be flaky under heavy load: the staff-help tests click NPCs
+  that are moving, and the Coffee Pour tests depend on how long a
+  wall-clock hold lasts.
+
+The version-by-version changelog (v1.1 to v2.21 and the character passes)
+is in **History** at the end of this doc.
+
+## Summary
+
+`/library-game` is a canvas mini-game in the same family as Kitchen Shift
+and Hospital Shift. The player is Eun-mi, a librarian, and plays a
+30-shift month in a two-floor library. Each shift she shelves returned
+books, collects fines, fulfils borrow requests and keeps her Sanity and
+the library's Mood up. She earns **Gard** (the site's in-game currency),
+which is paid out at the Director's office at closing. A disruptive patron
+("Karen") shows up once a month. A seeded Daily Challenge offers one
+shared shift per UTC day. Postgres stores only the public leaderboard.
+
+## Problem / Motivation
+
+The user asked for a library-themed game that reuses this site's game
+conventions: a shift structure, Gard, a Karen beat and expressive
+characters. Its own core loop is book-shelving skill checks and fine
+handling, in place of Kitchen Shift's cooking and serving.
+
+## Scope
+
+**In scope:**
+
+* `GET /library-game`, a canvas game with click-to-move (Enter walks to
+  the station under the cursor). It also has a First Person camera
+  (`#library-camera-button`), which uses billboard sprites and its own
+  turn/move/interact controls (`library/first-person.js`).
+* A 30-shift month in three 10-shift tiers. The clock gets shorter and
+  volumes grow with each tier. Progress is saved to `localStorage`.
+* Two floors on one canvas, switched with the Stairs, the Elevator or the
+  HUD floor button, in any phase including `closing-wait`.
+  * 1st Floor: Boss's Office, Return Cart, Front Desk, Fines Counter (a
+    small room), Coffee Machine, and 3 genre bookcases.
+  * 2nd Floor: 2 genre bookcases and the Reading Nook.
+  * Positions are in `buildStations` (`library/floor-plan.js`). Genres are
+    `GENRES` in `rules.js`: Mystery, Romance, Sci-Fi, Kids, Reference.
+* Minigames, all drawn on the canvas:
+  * **Shelf Skill-Check**: a timing bar for a normal book.
+  * **Coin Hunt**: find the hidden coins and bills in a marked book.
+  * **Fines Sort**: find the coins and Gard bills among clutter at the
+    Fines Counter.
+  * **Count the Till**: tap the denominations to make the exact fine
+    amount at the Front Desk.
+  * **Find the Book**: pick the requested book from decoys on its shelf.
+  * **Checkout Skill-Check**: the same timing bar, at the Front Desk.
+  * **Coffee Pour**: hold to pour and release in the target band.
+  * **Reading Nook**: a page-turning short story.
+  * **Karen's event**: a two-button confirm.
+* Helpful staff, patron queues with wait timers, a star rating, Library
+  Mood, player Sanity, hallucinations at low Sanity, penalties at 0 Mood,
+  shelving incentives, and a Gard counter. See Business Rules.
+* Director Seo's office cutscene at clock-out, then the paycheck.
+* A Daily Challenge, which has its own leaderboard tab.
+* A Postgres leaderboard (`library_scores`) with all-time and daily
+  boards.
+
+**Out of scope:**
+
+* Gear/shop upgrades or leveling.
+* Touch-specific controls beyond tap-to-move and the on-screen First
+  Person buttons.
+* Image or sprite assets. Everything is drawn with canvas primitives.
+* A manual "Reset progress" button. The owner decided against it. The
+  only way to restart a month is **Start New Month**, which appears on the
+  shift-30 Final Paycheck.
+* Server-side per-player state and score anti-cheat (see Security
+  Considerations).
+
+---
+
+## User Flow
+
+```text
+1. Player opens /library-game (Projects grid "Play now", an HTMX nav).
+2. Start screen: "Start Shift" continues the saved month at its current
+   shift. The Daily Challenge card plays today's seeded shift instead.
+3. During the shift:
+   - Returned books pile up on the Return Cart. Click a book or the cart to
+     carry one, then walk to the bookcase for its genre. That starts the
+     Shelf Skill-Check, or Coin Hunt for a marked book. The wrong bookcase
+     does nothing.
+   - Borrow patrons queue at the Front Desk. Accept one, find the book on
+     its shelf (Find the Book), then return to the desk for the Checkout
+     Skill-Check.
+   - Fine patrons queue at the Fines Counter, starting from a shift rolled
+     between 5 and 8. Collect a payment there (Fines Sort). Eun-mi then
+     carries it (carriedFine) to the Front Desk and counts it into the till
+     (Count the Till). An exact count banks it.
+   - Coffee Machine: Coffee Pour restores Sanity. Reading Nook (2nd
+     Floor): a story restores Mood.
+   - Staff can be clicked for help (see Business Rules).
+   - On Karen's shift she joins the Front Desk line. Walking up to her
+     starts her event, with 12 s to choose "collect the fine" or "let it
+     slide". Security can escort her out before that.
+4. At 11:00 PM in-game, a 20-second closing wait starts. After it, the
+   Boss's Office opens. Entering plays Director Seo's cutscene, then the
+   paycheck screen (base, bonuses, penalties, rating).
+5. Next shift, and so on to shift 30. The shift-30 Final Paycheck offers a
+   leaderboard submission and "Start New Month".
+   A Daily Challenge paycheck is the score itself. It can be submitted to
+   the daily board, retried, or dismissed with Back to Start.
+```
+
+---
+
+## Visual Direction
+
+* The game uses Hospital Shift's anime style (v2.21). The UI kit (tiles,
+  gauges, chips, backdrops, windows, speech bubbles, `DISPLAY_FONT` =
+  Caprasimo) comes from `hospital/anime-ui.js`. Stairs, elevator and decor
+  come from `hospital/anime-furniture.js`.
+* Library fixtures (bookcases, Front Desk, Return Cart, Fines room, Boss
+  door, Reading Nook) are drawn by the library's own
+  `library/anime-furniture.js`.
+* Characters:
+  * Eun-mi is `hospital/kimono-himura.js` with `look: 'coral'`.
+  * Patrons and generic staff are `hospital/anime-people.js` designs, plus
+    the library's own 19 patrons and 4 staff in `library/library-people.js`.
+  * Kang Min-jun is drawn by `library/minjun.js`, with his idle actions in
+    `minjun-actions.js`.
+  * Han Ji-ho is drawn by `library/jiho.js`.
+  * Director Seo is drawn by `library/director-seo.js`.
+  * Walk styles are in `library/walk-styles.js`.
+* Book titles are bilingual (`library/book-titles.js`). Reading Nook
+  stories come from `library/stories.js`.
+* A changed Hospital module also changes this game.
+* The page uses Hospital's anime page kit, re-tinted by `.library-anime`
+  in `app.css`.
+* There is a decorative wall clock on the 1st Floor (`drawWallClock`). The
+  HUD's `#library-hud-clock` is the clock that actually counts.
+
+---
+
+## UI
+
+```text
+web/templates/pages/
+└── library-game.html          # {{define "library-game-content"}}; header
+                                # comment maps every #library-* element
+web/templates/components/
+└── library-leaderboard.html   # leaderboard fragment with All-time/Daily tabs
+web/static/js/
+├── library-game.js            # canvas wiring, overlays, save, test hooks
+└── library/                   # pure logic + library-only renderers
+```
+
+| State    | Behavior |
+| -------- | -------- |
+| Default  | Start screen (month progress + Daily card) → floor gameplay. |
+| Loading  | HTMX nav uses `#nav-loading`; leaderboard requests use `#leaderboard-loading`. |
+| Empty    | Leaderboard with zero rows shows an empty-state message. |
+| Error    | Leaderboard fetch/insert failure renders an inline error in the fragment. |
+| Success  | Score submission re-renders the fragment with the new row (daily submits return the daily board). |
+
+---
+
+## HTMX Interactions
+
+| Trigger                       | Method | Endpoint                                | Target                 | Swap        | Indicator |
+| ----------------------------- | ------ | --------------------------------------- | ---------------------- | ----------- | --------- |
+| Projects "Play now" card      | GET    | `/library-game`                         | `#main-content`        | `outerHTML` | `#nav-loading` |
+| Leaderboard initial load (`hx-trigger="load"`) | GET | `/library-game/leaderboard` | `#library-leaderboard` (`this`) | `outerHTML` | `#leaderboard-loading` |
+| "All-time" tab                | GET    | `/library-game/leaderboard`             | `#library-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| "Daily Challenge" tab         | GET    | `/library-game/leaderboard?board=daily` | `#library-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+| Final Paycheck / daily submit | POST   | `/library-game/score`                   | `#library-leaderboard` | `outerHTML` | `#leaderboard-loading` |
+
+The tabs live inside the fragment (`data-board="all"|"daily"`,
+`aria-pressed`), so the server marks which one is active.
+
+No destructive actions. "Start New Month" only appears after shift 30, so
+it needs no confirmation.
+
+---
+
+## Routes / Handlers
+
+| Method | Path                        | Handler                          | Auth required | Notes |
+| ------ | --------------------------- | -------------------------------- | ------------- | ----- |
+| GET    | `/library-game`             | `LibraryGameHandler.Index`       | no            | Sets `ContentTemplate: "library-game-content"`; no DB call. |
+| GET    | `/library-game/leaderboard` | `LibraryGameHandler.Leaderboard` | no            | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
+| POST   | `/library-game/score`       | `LibraryGameHandler.SubmitScore` | no            | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC, `ValidateLibraryDailyDate`; a daily run must be 1 shift). Rate-limited per IP. No run ticket. |
+
+Registered in `cmd/server/main.go`'s `newMux`. Service and repository:
+`internal/service/library_service.go`,
+`internal/repository/library_repository.go`.
+
+---
+
+## Data Model
+
+`migrations/007_create_library_scores.sql` and
+`migrations/013_add_library_daily_date.sql`. Both have a working `Down`.
+
+| Table          | Column           | Type        | Constraints                              | Notes |
+| -------------- | ---------------- | ----------- | ---------------------------------------- | ----- |
+| library_scores | id               | BIGINT      | GENERATED ALWAYS AS IDENTITY PRIMARY KEY | |
+| library_scores | player_name      | TEXT        | NOT NULL, length 1–20                    | |
+| library_scores | total_earnings   | INT         | NOT NULL, range 0–100000                 | Gard total for the run (or the one daily shift). |
+| library_scores | shifts_completed | INT         | NOT NULL, range 1–30                     | Same range as `cooking_scores` (widened to 1–30 by its migration 004). |
+| library_scores | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now()                   | |
+| library_scores | daily_date       | DATE        | nullable                                 | Daily Challenge UTC day; NULL for a month run. Partial index `idx_library_scores_daily (daily_date, total_earnings DESC) WHERE daily_date IS NOT NULL`. The all-time board ranks only NULL rows. |
+
+Also `idx_library_scores_earnings (total_earnings DESC)`.
+
+Everything else is client-side in `localStorage`:
+
+* `library-game:v1`: `{version, monthToDateGard, currentShift,
+  bestRunTotal, karenSeed}`.
+* `library-game:daily-best`: this browser's best daily paycheck for the
+  current date.
+
+In-shift state is not saved. Reloading in the middle of a shift restarts
+that shift.
+
+---
+
+## Business Rules / Validation
+
+Tuning constants live in `web/static/js/library/rules.js`, grouped into
+numbered sections. Shift state transitions live in `engine-state.js`.
+Look values up there rather than relying on this doc.
+
+* **Tiers and clock**: shifts 1–10, 11–20 and 21–30. Each tier sets:
+  * Real-time clock: `ROUND_TIER_CLOCK_SECONDS`, 600/480/360 s. This is
+    much slower than Kitchen Shift, as the user asked.
+  * Volumes: `ROUND_TIER_RETURN_VOLUME`, `ROUND_TIER_FINE_VOLUME` and
+    `ROUND_TIER_BORROW_VOLUME`.
+  * In-game time runs from 8:00 AM to 11:00 PM (`inGameTimeLabel`).
+* **Month seed**: `karenSeed` is stored once per month and re-rolled by
+  Start New Month. Two values come from it:
+  * Karen's shift: `karenShiftForSeed`, 10–15.
+  * The shift fines start on: `finesStartShiftForSeed`, 5–8, an
+    independent stream. Before that shift `fineVolumeForShift` returns 0.
+* **Shelving**:
+  * Carrying a book to the wrong genre's bookcase does nothing
+    (`arriveAtShelf`), so a wrong shelf never counts as a mistake.
+  * `COIN_HUNT_FREQUENCY` (0.2) of books are Coin Hunt books, each with
+    `COIN_HUNT_ITEMS_PER_BOOK` items worth `COIN_HUNT_ITEM_VALUE_GARD`.
+  * Every shelved book tips `SHELVED_BOOK_TIP_GARD` (5).
+  * More than `MESSY_CART_THRESHOLD` (8) books on the cart drains Mood.
+  * Books still unshelved at closing cost `UNSHELVED_BOOK_PENALTY_GARD`
+    (10) each.
+* **Fines** (since v2.4):
+  * Fine patrons queue at the **Fines Counter** (`finesQueue`). Arriving
+    there opens Fines Sort for the first patron (`arriveAtFinesCounter`).
+  * Finding every real coin and bill makes the payment `carriedFine`
+    (`resolveFinesSort`). Decoys do nothing when clicked. In the game
+    Fines Sort has no fail path. The engine's failure branch (mistake,
+    patron back to the front) exists but nothing calls it.
+  * Walking to the **Front Desk** with `carriedFine` opens Count the Till
+    (`arriveAtFrontDeskWithFine`), using `TILL_DENOMINATIONS` [1, 5, 10,
+    20].
+  * An exact count banks the amount into `bonusGard`. Going over counts as
+    a mistake, resets the count and keeps the till open for a retry
+    (`resolveTillCount`).
+  * Eun-mi can't collect another fine while carrying one.
+  * Fines are Gard only, 20–80 (`fineAmountForRoll`).
+* **Borrowing**:
+  * After a request is accepted, its search patience is
+    `borrowPatienceSeconds` (60 s down to 30 s) times
+    `patienceMultiplierForLibraryMood`, fixed at arrival.
+  * Clicking a wrong book in Find the Book only shows a toast.
+  * If patience runs out while searching, the request is dropped and
+    counts as a mistake and a walk-out.
+  * A failed Checkout Skill-Check is a mistake, and the player can retry
+    straight away.
+* **Queues and star rating**:
+  * Every queued patron has a wait timer (`queueWaitSecondsForShift`, 90 s
+    falling to 45 s, scaled by Mood at arrival).
+  * When it runs out the patron walks out, costing
+    `RATING_PENALTY_PER_WALKOUT` (1.5★). A walk-out is not a mistake.
+  * The rating starts at 5★ and scales the whole payout (`rating ÷ 5`).
+* **Karen** has three outcomes (`karen.outcome`):
+  * `collectFine` banks `KAREN_FINE_AMOUNT_GARD` (60) with no cost.
+  * `letItSlide`, also the result when her 12 s
+    `KAREN_EVENT_TIMER_SECONDS` runs out, counts a mistake, −50 Mood
+    (`KAREN_MOOD_PENALTY`) and the standard Sanity hit.
+  * `escorted`: Security walked her out of the line before her event
+    started (`staffHelp('guard')`). No fine, no mistake, no Mood hit.
+* **Staff help** (`STAFF_HELP` in `rules.js` §20, `staffHelp` and
+  `staffHelpBlocker` in `engine-state.js`): click a staff member to walk
+  over and ask. Each helps only when there's something to do, then goes on
+  cooldown.
+
+  | Staff | Floor | Help | Cooldown |
+  | ----- | ----- | ---- | -------- |
+  | Security (`guard`) | 1st | Escorts Karen out while she's waiting in line | none (once) |
+  | Shelver (`libShelver`) | 1st | Shelves the oldest Return Cart book (usual tip, no Coin Hunt coins) | 45 s |
+  | Janitor (`libJanitor`) | 1st | +15 Mood | 60 s |
+  | Han Ji-ho (`jiho`) | 1st | Collects the first fine in line (skips Fines Sort) → `carriedFine`, still counted at the till | 60 s |
+  | Volunteer (`volunteer`) | 2nd | +30 Sanity | 60 s |
+  | Archivist (`libArchivist`) | 2nd | Finds the requested book (skips Find the Book) | 60 s |
+  | Storyteller (`libStoryteller`) | 2nd | +15 s to every waiting patron's timer and the searcher's patience | 75 s |
+  | Kang Min-jun (`minjun`) | 2nd | Shelves the book Eun-mi is carrying (`minjunShelveCarriedBook`) | 60 s (`MINJUN_HELP_COOLDOWN_SECONDS`) |
+
+  Staff help is not available in First Person Mode, where a canvas click
+  is the interact action.
+* **Library Mood** (0–100):
+  * Starts each shift at 100.
+  * −25 per mistake. Also drained by Karen and a messy cart.
+  * Raised by the Reading Nook (+20, `READING_MOOD_RESTORE`, then a 45 s
+    cooldown) and the Janitor.
+  * Scales patron patience at arrival. Drives the HUD status text.
+  * **At 0 Mood**:
+    * Pay is cut 2% per 10 s, capped at 30% (`moodPayMultiplier`).
+    * Every 20 s a patron storms out (−1.5★).
+    * Every 30 s a complaint letter takes 25 Gard off the payout.
+* **Sanity** (0–100, the player's own):
+  * Drains passively (`SANITY_DRAIN_PER_SECOND`) and by 15 per mistake.
+  * Low Sanity slows walking (`walkSpeedMultiplierForSanity`).
+  * **Coffee Pour** (`gradeCoffeePour`) has no cooldown. The target band
+    sits at 62–86% full.
+    * Perfect: back to full Sanity plus a 10 Gard tip.
+    * Good: +70.
+    * Sloppy: +40.
+    * Spilled (reaching the brim): −50 Sanity, with stains for 6 s.
+  * Reading a book Eun-mi took off a shelf herself adds +10 Sanity
+    (`READING_CHOSEN_SANITY_RESTORE`). The book then goes onto the Return
+    Cart.
+  * **Below 25 Sanity**, hallucinations start (`hallucinationIntensity`):
+    * Scare visuals.
+    * Shaky hands: the skill-check zone shrinks to as little as 50% and
+      the sweep runs up to 1.6× faster.
+    * Carried books can slip back onto the cart.
+    * Ghost patrons appear in line. Walking up to one costs −5 Sanity.
+    * Each 10 s at 0 Sanity cuts pay by 2%, capped at 30%.
+* **Payout** (`enterBossOffice`):
+  `max(0, shiftPaycheck(mistakes) + bonusGard − complaints×25 −
+  unshelved×10) × rating/5 × hallucinationPayMultiplier ×
+  moodPayMultiplier`.
+  * `shiftPaycheck` is 4000 − 500 per mistake, with a floor of 500.
+  * `bonusGard` covers Coin Hunt finds, fines, Karen's fine, coffee tips
+    and shelving tips.
+* **Closing wait**: at 11:00 PM the game enters `closing-wait` for
+  `CLOSING_WAIT_SECONDS` (20 s). The Boss's Office is locked until then.
+  Arriving early explains the wait, and the player is let in
+  automatically once it ends.
+* **Daily Challenge** (`rules.js` §19):
+  * One shift per UTC day (`libraryDailyDate`), played as shift 12
+    (`DAILY_SHIFT_NUMBER`).
+  * Fines are always on.
+  * Every arrival comes from a stream seeded by the date (`dailySeed`), so
+    everyone gets the same shift.
+  * One of `DAILY_TWISTS` applies each day: more returns, borrows or
+    fines, no coffee, a Karen day, or Min-jun's day off.
+  * The paycheck is the score, submitted with `daily_date`.
+  * A daily run doesn't change the month save.
+
+---
+
+## Security Considerations
+
+* **Authz**: every route is unauthenticated, the same as the other games.
+  `POST /library-game/score` is rate-limited per IP by its own
+  `scoreSubmitLimiter` (`libraryScoreSubmitLimit`/`libraryScoreSubmitWindow`
+  in `library_game.go`).
+* **Input handling**: the name, earnings, shifts and daily date are checked
+  against the DB CHECK bounds before insert
+  (`internal/service/library_validation.go`).
+  `validatePlayerName` (`player_name.go`) rejects invalid UTF-8 and Cc/Cf
+  characters.
+* **No anti-cheat**: unlike Hospital Shift, this game has no run tickets,
+  minimum-time check or per-shift cap. Any total within range is accepted.
+  This is a known gap; see Open Questions.
+* No secrets or config.
+
+---
+
+## Testing Plan
+
+* [x] Go handler tests: index, empty and populated leaderboard, valid
+      submit, validation rejection, out-of-range earnings, rate limit and
+      daily board (`internal/handler/library_game_test.go`).
+* [x] Go service and validation tests (`library_service_test.go`,
+      `TestLibraryService_DailyChallenge`, `TestValidateLibraryScoreSubmission`).
+* [x] Real-Postgres round trip (`cmd/server/e2e_test.go`, "library shift
+      routes round-trip through the real library_scores table").
+* [x] JS unit tests:
+      * Tier math, `karenShiftForSeed`, `finesStartShiftForSeed`, payout,
+        coffee grading and daily seeding (`rules.test.js`).
+      * The fines flow ("Fines flow (Fines Counter -> Front Desk till)"),
+        all three Karen outcomes including the timeout and Security's
+        escort, staff help, and Ji-ho ("Han Ji-ho collecting a fine") in
+        `engine-state.test.js`.
+      * Floor geometry (`floor-plan.test.js`) and the First Person maths
+        (`first-person.test.js`).
+* [x] Playwright (`e2e/library-game.spec.js`):
+      * Start screen; floor switching, including during closing-wait.
+      * Shelving, including the wrong shelf, the cart click and Coin Hunt.
+      * Borrowing.
+      * Fines: banked; a miscount followed by a keyboard recount; fines
+        starting on a shift rolled 5–8.
+      * Coffee Pour: mouse, keyboard and spill.
+      * Karen: collect and let it slide.
+      * Closing-wait lock, Director Seo's cutscene and the Boss's Office
+        wait.
+      * Gard counter, hallucinations, zero Mood, shelving incentives, star
+        rating and the Reading Nook (both kinds).
+      * Daily Challenge (four tests) and the shift-30 submission round trip.
+      * First Person Mode.
+      * An HTMX revisit, and no console or CSP errors.
+      * Staff help tests: Min-jun (shelving and empty-handed), the Shelver,
+        the Volunteer and Ji-ho.
+* [ ] Playwright coverage for Security escorting Karen, the Janitor, the
+      Archivist and the Storyteller. These are covered only by unit tests
+      in `engine-state.test.js`'s "staff helping the player".
+
+---
+
+## Open Questions
+
+* **Leaderboard cap and a full-month total.** 30 perfect shifts at
+  `SHIFT_PAYCHECK_FULL` (4000) come to 120,000 Gard before bonuses. That
+  is above the 100,000 cap (`libraryScoreEarningsMax` and the CHECK
+  constraint), so a very strong month would be rejected as out of range.
+  Should the cap rise, or should the client clamp?
+* Score anti-cheat (run tickets like Hospital Shift's) is not built.
+* Playwright flakiness: the staff-help tests click moving NPCs, and the
+  Coffee Pour tests hold for a wall-clock duration. Hooks to freeze NPCs
+  and to set the pour level would make them deterministic.
+* Tuning magnitudes in `rules.js` are still illustrative.
+* The Fines Sort failure branch in `engine-state.js` is never used by the
+  game. Either give Fines Sort a fail path or drop the branch.
+
+---
+
+## Definition of Done
+
+* [x] The user flow works end to end. Covered by `e2e/library-game.spec.js`
+      as listed above.
+* [x] All states in the UI table are implemented
+      (`library-leaderboard.html` covers empty and error;
+      `TestLibraryGameHandler_Leaderboard_Empty`).
+* [x] Migrations 007 and 013 are written, each with a working `Down`.
+* [x] Handler/service/repository boundaries are followed.
+* [x] Accessibility:
+      * Enter walks to the hovered station (`onKeyDown` in
+        `library-game.js`).
+      * The skill checks, Count the Till, Coffee Pour, the Reading Nook
+        and the cutscene accept Space/Enter.
+      * Coin Hunt, Fines Sort and Find the Book need a pointer.
+* [x] Tests cover the Testing Plan (except the unticked item).
+* [x] `/library-game` is on the Projects grid with a real screenshot.
+* [ ] No open questions remain. See Open Questions.
+
+---
+
+## History
+
+The changelog and the original v1 plan, moved here verbatim from the top of this
+doc. Version notes describe the game as it was at each step; where they
+disagree with the sections above, the sections above (and the code) win.
+
+### Original Shipped status note (v1)
+
 `Shipped` — implemented and covered by tests. Go: handler tests
 (`internal/handler/library_game_test.go`), service/validation tests
 (`internal/service/library_service_test.go`/`library_validation_test.go`),
@@ -1224,26 +1708,12 @@ that walking to the Coffee Machine opens its pour. It used to check for
 an instant Sanity refill on arrival, from before the Coffee Pour
 minigame, and only passed while the walk was short.
 
-## Summary
+### Superseded v1 plan: Scope, User Flow and Visual Direction
 
-A third canvas mini-game, `/library-game`, sibling to Kitchen Shift and the
-Fishing Game: the player works library shifts, returning books to their
-correct shelves (via one of several book-specific skill-check minigames) and
-processing patron fines (via a coin/bill-sorting minigame at the fines
-counter), earning **Gard** — this site's existing in-game currency, already
-established by Kitchen Shift's shift payouts — over a 30-shift run. A
-scripted disruptive patron ("Karen") appears once, on a shift randomly chosen
-from 10–15.
+The original v1 plan, before the v2.x changes (fines reversed in v2.4, the
+anime restyle in v2.21, new minigames and staff). Kept for reference only.
 
-## Problem / Motivation
-
-The user asked for a new library-themed game reusing this codebase's
-existing game conventions (shift structure, Gard currency, a Karen-style
-disruptive-customer beat, procedural pixel-art characters with faces) but
-with its own core mechanic: book-shelving skill checks and a fines-counter
-sorting minigame, instead of Kitchen Shift's cooking/serving loop.
-
-## Scope
+#### Scope (v1)
 
 **In scope (v1):**
 
@@ -1368,7 +1838,7 @@ sorting minigame, instead of Kitchen Shift's cooking/serving loop.
 
 ---
 
-## User Flow
+#### User Flow (v1)
 
 ```text
 1. Player navigates to /library-game (via the Projects grid's "Play now").
@@ -1402,7 +1872,7 @@ sorting minigame, instead of Kitchen Shift's cooking/serving loop.
 
 ---
 
-## Visual Direction
+#### Visual Direction (v1)
 
 Canvas-primitive rendering, matching Kitchen Shift's proven approach (flat
 shapes scaled to a fixed internal resolution — no external image/sprite
@@ -1451,331 +1921,3 @@ assets exist or are generatable in this environment):
   area than a HUD-sized panel.
 
 ---
-
-## UI
-
-```text
-web/templates/pages/
-└── library-game.html          # {{define "library-game-content"}}
-web/templates/components/
-└── library-leaderboard.html   # leaderboard fragment (mirrors
-                                # cooking-leaderboard.html)
-```
-
-States (see `tailwind-ui` for the full state list):
-
-| State    | Behavior |
-| -------- | -------- |
-| Default  | Start screen → floor plan gameplay. |
-| Loading  | HTMX nav swap uses `#nav-loading`, same as every other route. |
-| Empty    | Leaderboard with zero rows renders an empty-state message, same as Kitchen Shift's leaderboard fragment. |
-| Error    | Leaderboard fetch failure renders an inline error state in the fragment, same as `writeCookingLeaderboardError`'s pattern. |
-| Success  | Score submission refreshes the leaderboard fragment with the new row visible. |
-
----
-
-## HTMX Interactions
-
-| Trigger                     | Method | Endpoint                       | Target                    | Swap        | Indicator |
-| ---------------------------- | ------ | -------------------------------- | -------------------------- | ----------- | --------- |
-| Projects "Play now" card     | GET    | `/library-game`                  | `#main-content`            | `outerHTML` | `#nav-loading` |
-| Leaderboard panel open/refresh | GET  | `/library-game/leaderboard`      | `#library-leaderboard`     | `innerHTML` | local     |
-| "Daily Challenge" tab        | GET    | `/library-game/leaderboard?board=daily` | `#library-leaderboard` | `outerHTML` | `#leaderboard-loading` |
-| Final Paycheck / daily submit | POST  | `/library-game/score`            | `#library-leaderboard`     | `outerHTML` | `#leaderboard-loading` |
-
-The All-time / Daily Challenge tabs live inside the fragment
-(`data-board="all"|"daily"`, `aria-pressed`), so the server marks the
-active one; a daily submission answers with the daily board (Hospital
-Shift's pattern).
-
-Confirmation required for destructive actions:
-
-* "Reset progress" (clears `localStorage` save) — same confirm-dialog
-  convention as Kitchen Shift/Fishing Game.
-
----
-
-## Routes / Handlers
-
-| Method | Path                       | Handler                       | Auth required | Notes |
-| ------ | --------------------------- | -------------------------------- | ------------- | ----- |
-| GET    | `/library-game`              | `LibraryGameHandler.Index`       | no            | Sets `ContentTemplate: "library-game-content"`. |
-| GET    | `/library-game/leaderboard`  | `LibraryGameHandler.Leaderboard`  | no            | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
-| POST   | `/library-game/score`        | `LibraryGameHandler.SubmitScore`  | no            | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC, `ValidateLibraryDailyDate`; a daily run must be 1 shift). Rate-limited per-IP. Unlike Hospital Shift there's no run ticket. |
-
-Registered in `cmd/server/main.go`'s `newMux`, following the exact
-Fishing/Cooking game registration pattern (handler + service + repository
-wiring in `cmd/server/main.go`'s dependency construction).
-
----
-
-## Data Model
-
-```sql
--- migrations/005_create_library_scores.sql
-```
-
-| Table           | Column           | Type        | Constraints                                         | Notes |
-| ---------------- | ---------------- | ----------- | ----------------------------------------------------- | ----- |
-| library_scores   | id               | BIGINT      | GENERATED ALWAYS AS IDENTITY PRIMARY KEY              | |
-| library_scores   | player_name      | TEXT        | NOT NULL, length 1–20                                 | |
-| library_scores   | total_earnings   | INT         | NOT NULL, range 0–100000                              | Gard total across the run. |
-| library_scores   | shifts_completed | INT         | NOT NULL, range 1–30                                  | Wider than `cooking_scores`' 1-20 since this game always runs 30 shifts. |
-| library_scores   | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now()                                | |
-| library_scores   | daily_date       | DATE        | nullable                                              | The Daily Challenge's UTC day; NULL for an ordinary run. Added by `migrations/013_add_library_daily_date.sql`, with `idx_library_scores_daily (daily_date, total_earnings DESC) WHERE daily_date IS NOT NULL`. The all-time board ranks only `daily_date IS NULL` rows. |
-
-Same "leaderboard only, no per-player server-side state" posture as
-`cooking_scores`/`fishing_scores` — in-progress shift state, Gard, and
-shelf/book layout live in `localStorage` (`library-game:v1` key), not
-Postgres, per this doc's Security Considerations and every other game's
-established precedent.
-
----
-
-## Business Rules / Validation
-
-* **Shift tiers**: Tier 1 (shifts 1-10), Tier 2 (11-20), Tier 3 (21-30) —
-  each with its own shift-clock budget and Return Cart/fine volume,
-  mirroring Kitchen Shift's round-tier shape (`SHIFTS_PER_MONTH = 30`,
-  reused directly rather than picking a different number).
-* **In-game clock, paced slower than Kitchen Shift's**: each shift covers
-  an 8:00 AM–11:00 PM library day (15 in-game hours, same
-  `inGameTimeLabel`-style formatting as Kitchen Shift's clock), but the
-  user explicitly asked that time not "go so fast" — Kitchen Shift
-  compresses its own full day into a 120-300s real-time shift clock,
-  which reads as very fast. This game's real-time shift-clock budgets per
-  tier must be long enough that the 15-hour day advances at a noticeably
-  slower, more readable pace: **600s/480s/360s (10/8/6 real minutes)**
-  for Tiers 1/2/3, not Kitchen Shift's 300s/180s/120s — still shrinking
-  per tier for difficulty, just from a much higher floor. (Tunable at
-  implementation time like everything else in this section, but must stay
-  well above Kitchen Shift's numbers, not just copy them.)
-* **Karen shift**: chosen once per save as `randomInt(10, 15)` at month
-  start (a fresh "Start New Month" re-rolls it, same as any other
-  per-month scripted state), stored in the `localStorage` save so it's
-  stable across a page reload mid-run.
-* **Book routing**: every book has a genre/shelf id; shelving at the wrong
-  shelf either blocks the skill-check from starting (preferred, avoids a
-  silent wrong-shelf mistake — mirrors Kitchen Shift's dish-must-match-
-  order strictness) or counts as a mistake if forced through, deferred as
-  an implementation-agent decision within this doc's spirit.
-* **Coin Hunt frequency**: a configurable fraction of returned books (e.g.
-  ~1 in 5) are Coin Hunt books, tuned by a named constant, not hardcoded
-  inline — matching this codebase's convention of named, doc-referenced
-  tuning constants (`SHIFT_PAYCHECK_FULL`, etc. in Kitchen Shift's
-  `rules.js`).
-* **Payout**: `shiftPaycheck(mistakeCount)` — a base amount minus a flat
-  per-mistake penalty, floored above zero (never a hard game-over),
-  matching Kitchen Shift's `shiftPaycheck` shape exactly; Coin Hunt finds
-  and fines processed add on top rather than replacing the base.
-* **Closing wait**: when the shift clock reaches 11:00 PM, the game enters
-  a `closing-wait` phase (named alongside Kitchen Shift's own
-  `closing-clean`/`closing-dishes` phase-naming convention) lasting
-  exactly 20 real seconds; the Boss's Office station is non-interactive
-  until that timer elapses, at which point it becomes enterable and
-  walking in immediately triggers the paycheck (no further confirmation
-  step) — "the boss will let you inside" once the wait is over, not
-  before.
-* **Library Mood**: `libraryMood` starts each shift at 100 and only
-  moves down: −25 per mistake (`LIBRARY_MOOD_DRAIN_PER_MISTAKE`), −50 for
-  letting Karen's fine slide (`KAREN_MOOD_PENALTY`). It never recovers
-  within a shift. Since v2.3 it scales patron patience: each borrow
-  request's patience is `borrowPatienceSeconds(shift) ×
-  patienceMultiplierForLibraryMood(mood)` (1.0 at 100 mood, down to 0.6 at
-  0), fixed when the patron arrives (`addBorrowRequest`), the same
-  fold-in-at-spawn shape as Kitchen Shift's Reputation. It also drives the
-  HUD status text (Calm > 70, Tense > 30, else Frustrated patrons). The
-  Reading Nook (+20) is the only way to raise it mid-shift. **At 0 Mood**
-  (v2.17), three penalties run:
-  - **Pay cut:** −2% per full 10 s, capped at 30% (`moodPayMultiplier`,
-    tracked in `zeroMoodSeconds`).
-  - **Storm-outs:** every 20 s the queued patron with the least wait left
-    storms out, a walk-out worth −1.5★. If nobody is in line, the next
-    arrival storms out immediately.
-  - **Complaint letters:** one every 30 s, each taking 25 Gard off the
-    payout (`complaints`; the Gard counter shows the net, with a red
-    "−25g" pop).
-
-  The paycheck lists each penalty that applied.
-* **Star rating** (v2.9): every shift starts at 5★ (`RATING_MAX`). Every
-  queued patron, borrow and fine alike, has a wait timer:
-  `queueWaitSecondsForShift` (90 s, shrinking to a 45 s floor), scaled by
-  Library Mood at arrival. It shows as a bar under their name chip. A
-  patron whose wait runs out walks out and costs 1.5★
-  (`RATING_PENALTY_PER_WALKOUT`, toast "−1.5★"). So does a borrow patron
-  whose search-phase patience runs out, on top of that case's existing
-  mistake. Queue walk-outs are *not* mistakes. The rating, never below
-  0★, multiplies the whole payout (base + bonuses): `rating ÷ 5`, so
-  3.5★ = 70%. The paycheck screen shows "N★ rating (P% pay)". Shown on
-  canvas as five half-fillable stars beside the Sanity/Mood bars. Mood is
-  unchanged and separate.
-* **Reading Nook** (v2.10): a 2nd-Floor station (480, 480). Arriving opens
-  a page-turning minigame. Since v2.11 it shows a real short story (one
-  of five in `library/stories.js`, 12 pages shown as 6 two-page spreads,
-  `READING_PAGES`), read at your own pace. Each spread has a 2.5 s
-  minimum (`READING_SECONDS_PER_PAGE`, an anti-skip floor shown as a slim
-  bar). →/Space/Enter/click turns a page, and ← goes back a spread.
-  Turning before the minimum only nudges.
-  Finishing restores +20 Library Mood (`READING_MOOD_RESTORE`, clamped)
-  and starts a 45 s cooldown (`READING_COOLDOWN_SECONDS`), shown in the
-  station label ("Reading Nook (32s)"). The × button puts the book down
-  with no reward and no cooldown. The shift clock and patron timers keep
-  running while you read, which is the intended trade-off.
-* **Hallucinations** (v2.16): below 25 Sanity (`HALLUCINATION_START_SANITY`)
-  `hallucinationIntensity` rises from 0 to 1 at 0 Sanity.
-  - **Scare visuals:** a pulsing dark vignette closing in, red-eyed shadow
-    figures, drifting whispers ("overdue…", "turn around"), light
-    flickers, screen shake above 0.6, and occasional jump scares at full
-    intensity.
-  - **Work penalties:** shaky hands (skill-check zone shrinks to 50% and
-    the sweep speeds up to 1.6×); carried books can slip back onto the
-    Return Cart (`dropCarriedBook`, 6%/s at full intensity); ghost
-    patrons ("???") appear in the Front Desk line from 0.5 intensity, and
-    walking up to one costs 5 Sanity (`startleFromHallucination`).
-  - **Pay:** every full 10 s at 0 Sanity cuts the payout 2%, capped at
-    30% (`hallucinationPayMultiplier`, tracked in `zeroSanitySeconds`;
-    only the part of a tick after Sanity actually hits 0 counts). The
-    paycheck shows "−N% for hallucinating".
-  - **Eun-mi's face:** the player's expression shifts with it (`opts.stress`
-    on `drawLibraryPerson`): worried brows, a frown, smaller pupils, eye
-    bags and a sweat drop, plus stray hairs near 0.
-  - **Recovery:** restoring Sanity (coffee) ends everything.
-* **Shelving incentives** (v2.18):
-  - **Tip:** every shelved book tips +5 Gard (`SHELVED_BOOK_TIP_GARD`, on
-    a successful Shelf Skill-Check or a finished Coin Hunt).
-  - **Messy cart:** with more than 8 books waiting
-    (`MESSY_CART_THRESHOLD`), Library Mood drains 0.25/s
-    (`MESSY_CART_MOOD_DRAIN_PER_SECOND`), with a pulsing "Messy cart!"
-    warning under the cart.
-  - **Docked at closing:** books still on the cart or in hand when the
-    shift clock runs out (`unshelvedAtClose`) cost 10 Gard each at payout
-    (`UNSHELVED_BOOK_PENALTY_GARD`), listed on the paycheck.
-* **Sanity/Coffee Machine**: Sanity drains passively and per-mistake
-  exactly as Kitchen Shift's does (same constants, reused). Since v2.2,
-  visiting the Coffee Machine opens the **Coffee Pour** minigame instead of
-  refilling instantly: hold (mouse/touch, or Space/Enter) to pour and
-  release inside a gold target band whose position varies per pour
-  (62–86% full). Graded by `gradeCoffeePour`: perfect (in the band) adds
-  100 Sanity plus a 10 Gard tip, good (within 10% of the band) +70, sloppy
-  +40. Spilled (reaching the brim, which ends the pour automatically)
-  originally gave +40, per the user's first choice of "graded, never
-  zero"; since v2.19 it splashes you for **−50 Sanity** instead, with
-  coffee stains steaming on Eun-mi for 6 s. Still no cooldown or usage limit. The original instant full
-  refill matched Kitchen Shift's Coffee Machine rule; the two games now
-  differ here on purpose.
-* **Fines are Gard-only**: the Fines Sort minigame's clutter never
-  includes any other currency type as a "correct" pick — only coins and
-  Gard bills count; other clutter items are decoys that do nothing if
-  clicked (not penalized), keeping the minigame about finding the right
-  items, not punishing exploration.
-* **Find the Book decoys**: the Find the Book minigame's shelf scene
-  includes several visually-similar wrong books (same shelf/genre color,
-  different title) alongside the one correct match — clicking a wrong
-  book is a miss (costs time/patience) but not an instant mistake,
-  matching the Fines Sort minigame's "decoys do nothing punitive by
-  themselves" posture; only running out of the patron's patience while
-  searching counts as a mistake.
-
----
-
-## Security Considerations
-
-* **Authz**: `/library-game` and its leaderboard GET are unauthenticated,
-  matching Fishing Game/Kitchen Shift. `POST /library-game/score` is
-  rate-limited per-IP via a dedicated `scoreSubmitLimiter` instance (own
-  limit/window, not shared with the other two games' limiters).
-* **Input handling**: `player_name`/`total_earnings`/`shifts_completed`
-  validated server-side against the same bounds as the DB CHECK
-  constraints before insert (mirrors `internal/service/
-  cooking_validation.go`'s pattern) — never trust client-submitted Gard
-  totals beyond range-checking them. In `player_name`, invalid UTF-8 and control/format characters (Unicode Cc/Cf: newlines, bidi overrides, zero-width characters) are rejected (`validatePlayerName`, `internal/service/player_name.go`, shared by every game).
-* **No new secrets/config** introduced by this feature.
-
----
-
-## Testing Plan
-
-* [x] Go: handler tests for `/library-game`, `/library-game/leaderboard`,
-      `/library-game/score` (happy path, validation-rejection path,
-      rate-limit path) — mirrors `cooking_game_test.go`.
-* [x] Go: `internal/service/library_validation_test.go` /
-      `library_service_test.go` — mirrors the cooking-game equivalents.
-* [x] Real-Postgres end-to-end subtest in `cmd/server/e2e_test.go` — round
-      trip through the real `library_scores` table.
-* [x] JS (`node --test`): shift-tier math, Karen-shift selection range
-      (always 10-15), `shiftPaycheck` payout math, Coin Hunt frequency
-      constant, Shelf Skill-Check pass/fail thresholds (`library/rules.test.js`,
-      `library/engine-state.test.js`, `library/floor-plan.test.js` — 109
-      pure game-logic tests plus the floor-plan geometry suite).
-* [x] Playwright (`e2e/library-game.spec.js`): start screen → floor plan →
-      shelve a normal book (Shelf Skill-Check) → shelve a Coin Hunt book →
-      process a fine at the Fines Counter (Fines Sort) → fulfill a borrow
-      request (Find the Book → Checkout Skill-Check) → full shift →
-      payout screen → leaderboard submission round-trip; plus the
-      HTMX-revisit regression class already known to bite every canvas
-      game on this site (`docs/features/cooking-game.md`'s "Another real
-      bug" note) — visiting `/library-game`, navigating away, and
-      returning must still be fully interactive. Also covers the two-floor
-      Stairs/Elevator/HUD-button switch (including mid-`closing-wait`) and
-      both Karen outcomes. 17 tests, passing on both Chromium and WebKit.
-      Real click-to-play coordinates come from `window.__libraryGameTestHooks`
-      (see that file's header comment) rather than waiting out this game's
-      600/480/360-real-second shift clocks or guessing at randomly-scattered
-      item positions.
-* [x] Manual verification in a real browser: a full click-driven shift
-      (shelving, Coin Hunt, a fine, a borrow request, the Coffee Machine,
-      a forced Karen event, closing-wait, payout) and dark mode, both with
-      zero console errors.
-
----
-
-## Open Questions
-
-* Exact skill-check difficulty curve per tier, exact Coin Hunt frequency
-  constant, and exact fine/Return Cart volume per tier are left as
-  implementation-time tuning, same as Kitchen Shift's own recipe/gear
-  magnitudes ("illustrative/tunable... nothing in that tuning blocks
-  calling this Shipped"). **Landed values** (`web/static/js/library/
-  rules.js`): `COIN_HUNT_FREQUENCY=0.2`, `ROUND_TIER_RETURN_VOLUME=[6,10,16]`,
-  `ROUND_TIER_FINE_VOLUME=[4,6,9]`, `ROUND_TIER_BORROW_VOLUME=[5,8,12]` (both raised from [2,4,6] in v2.8),
-  `ROUND_TIER_CLOCK_SECONDS=[600,480,360]` (per the "don't go so fast"
-  request — deliberately far above Kitchen Shift's 300/180/120).
-* **Resolved**: wrong-shelf attempts block the Shelf Skill-Check from
-  starting at all (`arriveAtShelf`) rather than counting as a forced
-  mistake — no silent wrong-shelf penalty is possible.
-* **Resolved**: Karen's scripted beat — a forced, two-outcome event with a
-  12-second timer (`KAREN_EVENT_TIMER_SECONDS`) firing once on her
-  deterministically-seeded shift (`karenShiftForSeed`, stable per save,
-  re-rolled on "Start New Month"). `collectFine` (handled well) banks
-  `KAREN_FINE_AMOUNT_GARD` (60) with no cost; `letItSlide` (mishandled) —
-  or letting her 12-second timer expire unresolved, which auto-resolves
-  as `letItSlide` — counts as a mistake and drains `libraryMood` by
-  `KAREN_MOOD_PENALTY` (50, double the normal per-mistake drain) plus the
-  standard Sanity hit. See `engine-state.js`'s `startKarenEvent`/
-  `resolveKarenEvent`.
-* Failure semantics for the other minigames (landed, not left open): Shelf/
-  Checkout Skill-Check and Fines Sort failures count a mistake but let the
-  player retry immediately with the item still in hand; only a borrow
-  request's search-phase patience timing out drops the request outright,
-  matching this doc's "only running out of the patron's patience while
-  searching counts as a mistake" Business Rule for Find the Book.
-
----
-
-## Definition of Done
-
-* [x] User flow works end-to-end, including edge cases above.
-* [x] All states in the UI table are implemented.
-* [x] Migration written, reviewed, includes a working `Down`.
-* [x] Handler/service/repository boundaries followed (`go-backend`).
-* [x] Accessibility checked: hovering a station and pressing Enter walks to
-      it, same as Kitchen Shift's own click-only-plus-Enter posture; the
-      shared Shelf/Checkout Skill-Check overlay also accepts Space/Enter as
-      a non-pointer alternative to clicking. The two "search the scene"
-      minigames (Coin Hunt, Fines Sort, Find the Book) remain pointer-only,
-      matching Kitchen Shift's precedent that scene-search interactions
-      need pointer precision ("where feasible" — a keyboard equivalent for
-      *finding* a specific scattered item isn't).
-* [x] Tests cover the behavior in the Testing Plan above.
-* [x] `/library-game` added to the Projects grid with a real screenshot.
-* [x] No open questions remain unresolved.

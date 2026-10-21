@@ -2,55 +2,28 @@
 
 ## Status
 
-`Shipped` — implemented, running against a real Postgres instance, and
-covered by unit tests (Go: validation/leaderboard; JS: `rules.js`/
-`engine-state.js` via `node --test`), a real-Postgres end-to-end test
-(`cmd/server/e2e_test.go`), and a Playwright suite (`e2e/fishing-game.spec.js`,
-Chromium + WebKit). Point values, token costs, and gear magnitudes remain
-illustrative/tunable, as called out throughout Business Rules and Open
-Questions — nothing in that tuning blocks calling this Shipped.
+`Shipped` — implemented and running against a real Postgres instance.
+Point values, the streak curve, token conversion and gear costs are final
+(Business Rules; Open Questions); the seaweed-wall cadence and gap curve
+are still tunable.
 
-**Later change**: the header nav was redesigned to a flat Home/Projects/About
-link row (`docs/features/home.md`'s Status note, `internal/handler/nav.go`'s
-`primaryNavItems`), which dropped the Home dropdown this game's "Fishing
-Game" entry lived in. The game itself is unaffected — still fully working at
-`/fishing-game` — but it's no longer linked from the header at all, desktop
-or mobile; the "Home dropdown"/"Home ▾" references below predate that change.
-It's since been re-linked from elsewhere, though: `/projects` now leads with
-a card that links straight into the game via a "Play now" button
-(`docs/features/projects.md`'s `Project.External` field), so it isn't
-reachable only by typing the URL directly.
+Reachability: the game is linked from the `/projects` card ("Play now",
+`internal/handler/pages.go`'s `projectItems`) and the landing page's
+Selected work, not from the header nav (which is a flat Home/Projects/About
+row, `internal/handler/nav.go`'s `primaryNavItems`).
 
-**Later change**: seaweed obstacle walls — a depth-triggered gap the player
-must steer through, distinct from the continuous dodge-a-hazard rotation —
-were added on top of the original hazard system (Business Rules "Seaweed
-obstacle walls"). Unit-tested (`rules.js`'s `seaweedGapWidth`) and manually
-verified end-to-end in a real session (wall spawns at the documented depth,
-renders with a navigable gap, and a strand collision costs a life exactly
-like any other hazard) — nothing about the original hazard rotation or its
-own tests changed.
+How to run the tests:
 
-**Later change**: a real bug, first reported against Puzzle Solver
-(`docs/features/puzzle-solver.md`'s own "Later change" note has the full
-writeup) but confirmed to affect this game identically — `fishing-game.js`'s
-DOM wiring (`bootstrap()`) only ran from a plain top-level call, and a
-`<script type="module">`'s top-level code executes at most once per
-resolved URL for the page's whole lifetime (per spec). htmx recreates and
-re-inserts the `<script>` tag on every HTMX navigation, but the browser
-does not re-execute an already-evaluated module — so a second visit to
-`/fishing-game` in the same browser tab (navigate away, then back) left the
-freshly swapped-in canvas/start screen completely unwired. It was invisible
-here (unlike Puzzle Solver, where it was obvious) because the start screen
-is static HTML that still renders correctly even when totally inert — only
-clicking "Start Dive" revealed nothing happened. Fixed by also re-running
-`bootstrap()` from a persistent `htmx:afterSwap` listener on
-`document.body`. Covered by a new regression test in
-`e2e/fishing-game.spec.js` ("revisiting via HTMX after navigating away")
-that drives the exact real-world path (`/projects` → Play now → back →
-Play now again) and asserts genuine interactivity (the depth HUD advancing
-after Start Dive), not just that the canvas is present. Verified against a
-real Postgres instance — the full spec's leaderboard/round-over/shop tests
-all still pass.
+* Go: `go test ./...` — `internal/service/fishing_validation_test.go`,
+  `fishing_service_test.go`, `internal/handler/fishing_game_test.go`, plus
+  the `DATABASE_URL`-gated subtest "fishing game routes round-trip through
+  the real fishing_scores table" in `cmd/server/e2e_test.go`.
+* JS unit: `node --test web/static/js/fishing/*.test.js` (`rules`,
+  `engine-state`, `world-scroll`, `boat-visuals`).
+* Playwright: `make test-e2e` runs `e2e/fishing-game.spec.js`.
+
+The seaweed-wall and HTMX-revisit changes made after first ship are
+recorded under History at the end of this doc.
 
 ## Summary
 
@@ -100,8 +73,9 @@ read-mostly structured-content use case.
 * A small public leaderboard (Postgres-backed): top scores across all
   visitors, submitted voluntarily after a round with a self-chosen display
   name, visible to everyone.
-* Nav integration: "Fishing Game" added as a fourth item in the existing Home
-  dropdown, alongside Resume/Projects/Blogs (`docs/features/home.md`).
+* A `/projects` card and a landing "Selected work" card linking into the
+  game. (It was originally a Home-dropdown nav item; that dropdown was
+  removed when the header became a flat link row — see History.)
 * Hand-authored SVG illustrations for the fish varieties and hazards,
   matching the placeholder-illustration approach already used for the landing
   carousel (`docs/features/landing-carousel.md`).
@@ -127,7 +101,8 @@ read-mostly structured-content use case.
 ## User Flow
 
 ```text
-1. User opens Home ▾ → Fishing Game (or navigates directly to /fishing-game).
+1. User clicks "Play now" on the /projects card (or the landing page's
+   Selected work card, or navigates directly to /fishing-game).
    Page loads: a start screen shows current tokens, best depth/score (read
    from localStorage), the gear shop, and a "Start Dive" button, plus the
    public leaderboard fragment loaded alongside it.
@@ -175,7 +150,7 @@ read-mostly structured-content use case.
    player spends their token balance leveling up gear: each upgrade shows its
    current level, effect, and next-level token cost; buying deducts tokens
    and immediately applies for the next round.
-8. User can return to Home ▾ or any other nav item at any time; an
+8. User can follow any nav link away at any time; an
    in-progress round is abandoned (no partial-round token award) if the user
    navigates away mid-dive.
 ```
@@ -307,7 +282,7 @@ the leaderboard.
 
 | Trigger                          | Method | Endpoint                  | Target                  | Swap        | `hx-push-url` | Indicator            |
 | ---------------------------------- | ------ | --------------------------- | -------------------------- | ----------- | -------------- | ---------------------- |
-| Home ▾ → Fishing Game               | GET    | `/fishing-game`             | `#main-content`            | `outerHTML` | `true`         | `#nav-loading`          |
+| `/projects` "Play now" → Fishing Game | GET    | `/fishing-game`             | `#main-content`            | `outerHTML` | `true`         | `#nav-loading`          |
 | Page load (leaderboard fragment)     | GET    | `/fishing-game/leaderboard` | `#fishing-leaderboard`     | `innerHTML` | n/a            | `#leaderboard-loading`  |
 | "Submit to leaderboard" (round over) | POST   | `/fishing-game/score`       | `#fishing-leaderboard`     | `outerHTML` | n/a            | `#leaderboard-loading`  |
 
@@ -463,6 +438,20 @@ with `docs/features/home.md`'s CSP rule) owns everything HTMX cannot model:
   just on a full page unload — otherwise a backgrounded game loop from a
   previous visit to `/fishing-game` would keep running after an HTMX swap
   replaces `#main-content`.
+
+---
+
+### Test-only hook
+
+`fishing-game.js` defines `window.__fishingGameTestHooks.forceRoundOver(outcome)`
+(`outcome` is `'caught'` (default) or `'reached-abyss'`). It ends the
+in-progress round through the real transitions — repeated
+`applyHazardHit` calls (an Emergency Ballast charge absorbs the first, as
+in play) or `advance(state, DEPTH_CAP_MILES, 0)` — then the real
+`endRound()`, so `e2e/fishing-game.spec.js` can reach the round-over
+screen without waiting on random spawns. It is a no-op unless a round is
+running. It is installed unconditionally (no env flag); it only ends the
+visitor's own local round.
 
 ---
 
@@ -786,112 +775,77 @@ holds only voluntarily-submitted, already-finished round results.
 
 ## Testing Plan
 
-* [ ] Fish spawn pool shifts toward higher-value varieties as depth
-      increases (unit test on the spawn-weighting function, not the canvas
-      rendering itself).
-* [ ] Streak multiplier increases with hit-free distance, caps at its
-      documented max, and resets to 1.0x immediately on a hit — verified as
-      a unit test on the multiplier function, independent of canvas timing.
-* [ ] A hazard collision decrements lives by exactly one, resets the streak
-      multiplier, and starts the invulnerability window; a second hazard
-      collision during that window is a no-op (no further life loss). Zero
-      lives ends the round in the "caught" state.
-* [ ] Reaching 1000 miles ends the round in the "reached the abyss" state,
-      not the "caught" state, even at full lives.
-* [ ] Descent speed increases with both depth and elapsed round time
-      (unit test on the speed function at representative depth/time inputs).
-* [ ] Emergency Ballast (once purchased) absorbs exactly one hit per round
-      without costing a life or resetting the streak, then is unavailable
-      again until the next round; it also starts the same invulnerability
-      window as a real hit, so a hazard immediately following the absorbed
-      one doesn't cost a life either.
-* [ ] Descent speed approaches its documented maximum as depth/time increase
-      but never exceeds it, at extreme (near-max-depth, long-duration) inputs.
-* [ ] `world-scroll.js`: a sprite spawned near the bottom edge moves upward
-      (never downward) as the scroll offset accumulates, and is reported as
-      off-screen once it passes the top edge — unit-tested independent of
-      canvas rendering, the same way the other pure modules are.
-* [ ] `sonarLookaheadSeconds` (`rules.js`): level 0 → 0s, a mid-level value
-      between the two endpoints, max level 5 → exactly 2.0s, a level above 5
-      clamps to the same 2.0s rather than exceeding it, and negative or
-      non-finite input → 0.
-* [x] `seaweedGapWidth` (`rules.js`): exactly the max gap width at depth 0,
-      exactly the documented min at the depth cap (and still the min past
-      it, never narrower), narrows monotonically as depth increases, and
-      negative/non-finite input is treated as depth 0.
-* [x] Manual/visual verification: the first seaweed wall appears once depth
-      crosses 80 miles, renders as a row of strands with a clear gap (not a
-      solid unbroken wall), and steering the boat outside the gap's x-range
-      when the wall reaches the boat costs exactly one life via the same
-      hit/invulnerability system every other hazard uses — verified via a
-      real Playwright session (not just reading the code): held the boat at
-      its clamped left edge through a wall and confirmed lives dropped from
-      3 to 2.
-* [ ] Manual/visual verification: every fish variety and hazard type renders
-      as its real `fish-*.svg`/`hazard-*.svg` illustration, not a flat
-      colored circle, once its image has loaded; a simulated load failure
-      (or the frames before an image finishes loading) falls back to the
-      original colored-circle rendering rather than a blank gap or a
-      broken-image glyph, and doesn't block or delay the rest of the game
-      loop while that happens. Multiple on-screen sprites of the same
-      variety share one loaded `Image`, not one fetch per sprite instance.
-* [ ] The boat/line/hook's on-screen vertical position never changes during
-      play, regardless of depth/elapsed time — only its horizontal position
-      moves, and only in response to input.
-* [ ] All three input methods (arrow keys, WASD, mouse) move the same single
-      horizontal position — never two independently-tracked positions that
-      could drift apart.
-* [ ] Pressing and releasing a keyboard movement key while the mouse sits
-      stationary over the canvas leaves the boat exactly where the keyboard
-      left it — it must not snap or ease back toward the mouse's (stale,
-      unmoved) position the instant the key is released. Mouse steering only
-      resumes once the cursor genuinely moves again. Mouse movement itself
-      tracks the cursor's canvas x with no perceptible lag (instant, not
-      rate-limited like keyboard/drag) — including while the mouse button is
-      held down and moved (a desktop mouse click/hold must not fall onto the
-      drag-to-steer path and reintroduce the capped-speed lag; only a real
-      touch pointer should engage that path).
-* [ ] The boat's fade-opacity-from-depth calculation is a small pure
-      function (not inlined in the draw call) so it's unit-testable
-      independent of canvas rendering: opacity is 1.0 at depth 0, decreases
-      monotonically as depth increases, never goes below its documented
-      minimum, and never affects the line/hook's own (constant, full)
-      opacity.
-* [ ] A hazard/fish spawning during the initial cast-animation window, or
-      after the boat has fully faded, is caught/collides exactly as it
-      would at any other point in the round — the cast animation and fade
-      never gate or delay collision/scoring.
-* [ ] Manual/visual verification (real rendering can't be asserted through
-      the DOM the way element states can): the cast animation plays once at
-      the start of every round including "Dive Again," the line reaches its
-      full normal length by the time the animation ends, and the boat is
-      visibly faded (not just conceptually) by partway through a longer
-      dive.
-* [ ] Manual/visual verification: the Sonar callout shows the correct
-      upcoming hazard's name once the countdown enters the gear's lookahead
-      window, clears the instant that hazard actually spawns, never appears
-      at Sonar Range level 0, and never delays or alters real spawn
-      timing/collision while it's visible.
-* [ ] Round-end token calculation matches the documented formula for a few
-      representative (score, depth) pairs.
-* [ ] Gear level effects apply starting the next round, not mid-round.
-* [ ] `localStorage` progress persists across a page reload; corrupted or
-      missing `localStorage` data falls back to defaults without an error.
-* [ ] `POST /fishing-game/score` rejects out-of-range score/depth and
-      oversized/blank `player_name` with a clear validation error, not a raw
-      DB constraint error.
-* [ ] `player_name` containing HTML/script-like content renders as literal
-      text on the leaderboard, never executes (auto-escaping regression test).
-* [ ] Leaderboard fragment renders correctly empty, populated, and on a
-      simulated fetch error.
-* [ ] Rate limiting on `POST /fishing-game/score` rejects rapid repeated
-      submissions from the same source.
-* [ ] `e2e/`: nav → Fishing Game → play a round (deterministic/seeded test
-      mode if needed to avoid flaky canvas timing) → round-over screen →
-      submit score → leaderboard shows the new entry.
-* [ ] `e2e/`: shop purchase deducts tokens and the effect is reflected next
-      round (e.g. an extra life from a purchased Hull Plating level).
-* [ ] No console errors (including no CSP violations) on `/fishing-game`.
+Unit files below are under `web/static/js/fishing/`; Go tests under
+`internal/`.
+
+* [x] Fish spawn pool shifts toward higher-value varieties as depth
+      increases (`rules.test.js` `fishSpawnPool`: band selection per depth
+      range, streak bias, no low-tier extinction).
+* [x] Streak multiplier increases with hit-free distance, caps at 2.5x,
+      and a hit resets streak distance (`rules.test.js` `streakMultiplier`;
+      `engine-state.test.js` "a hit decrements lives by exactly one and
+      resets streak distance").
+* [x] A hazard collision costs exactly one life, starts invulnerability; a
+      second hit inside the window is a no-op; zero lives → `caught`
+      (`engine-state.test.js` `applyHazardHit`).
+* [x] Reaching 1000 miles ends in `reached-abyss` even at full lives
+      (`engine-state.test.js` `advance`).
+* [x] Descent speed increases with depth and elapsed time, and approaches
+      but never exceeds its max (`rules.test.js` `descentSpeed`).
+* [x] Emergency Ballast absorbs exactly one hit without a life or streak
+      loss, starts the invulnerability window, and stays spent until
+      recharged (`engine-state.test.js` "Emergency Ballast").
+* [x] `world-scroll.js`: sprites move upward only and report off-screen
+      past the top edge (`world-scroll.test.js`).
+* [x] `sonarLookaheadSeconds`: 0 at level 0, 2.0 s at level 5, clamps
+      above, negative/non-finite → 0 (`rules.test.js`).
+* [x] `seaweedGapWidth`: max at depth 0, min at the cap and beyond,
+      monotonic, bad input → depth 0 (`rules.test.js`).
+* [x] Manual: the first seaweed wall appears past 80 miles with a
+      navigable gap, and hitting a strand costs one life (recorded at the
+      time in a real Playwright session — see History).
+* [x] Boat fade is a pure function: 1.0 at depth 0, monotonic, never
+      below its minimum (`boat-visuals.test.js` `boatOpacityForDepth`);
+      the cast-progress curve likewise (`castProgress`).
+* [x] Round-end tokens match the formula (`rules.test.js` `roundTokens`).
+* [x] `POST /fishing-game/score` rejects out-of-range score/depth and
+      blank/oversized names with a clear 400
+      (`TestValidateFishingScoreSubmission`,
+      `TestFishingGameHandler_SubmitScore_ValidationRejected`,
+      `TestFishingGameHandler_SubmitScore_OutOfRangeScore`).
+* [x] HTML/script in `player_name` renders as literal text
+      (`TestFishingGameHandler_Leaderboard_Populated`).
+* [x] Leaderboard fragment renders empty and populated
+      (`TestFishingGameHandler_Leaderboard_Empty`/`_Populated`; e2e
+      "leaderboard fragment loads on page load…").
+* [x] Rate limiting rejects rapid repeated submissions
+      (`TestFishingGameHandler_SubmitScore_RateLimited`).
+* [x] e2e: Start Dive advances the depth HUD; round-over for both outcomes
+      (via `forceRoundOver`); leaderboard submission round trip (the test
+      deletes its own row); Dive Again resets; shop lists all six gear rows;
+      Reset progress confirm/decline; revisiting via HTMX from `/projects`;
+      no console errors (`e2e/fishing-game.spec.js`).
+
+Not covered by any automated test (implemented, but verify by hand or add
+a test):
+
+* [ ] A shop purchase deducts tokens and its effect shows next round (the
+      e2e shop test only checks the rows with 0 tokens).
+* [ ] `localStorage` progress persists across a reload, and corrupted or
+      missing data falls back to defaults without an error.
+* [ ] Pressing a movement key clears a stale mouse target, so the boat
+      stays where the keyboard left it (`fishing-game.js` sets
+      `input.mouseTargetX = null` on a movement key); all three input
+      methods share one horizontal position.
+* [ ] The leaderboard fragment's fetch-error state.
+* [ ] Gear levels apply from the next round, not mid-round (only
+      `createInitialState`'s overrides are unit-tested).
+* [ ] Visual checks: fish/hazard SVG sprites render (with the
+      colored-circle fallback before load or on failure) and share one
+      `Image` per variety; the boat's vertical position never changes;
+      the cast animation plays every round; spawns during the cast or
+      after the fade still collide; the Sonar callout names the next
+      hazard inside the lookahead window and never at level 0.
 
 ---
 
@@ -952,25 +906,83 @@ holds only voluntarily-submitted, already-finished round results.
 
 ## Definition of Done
 
-* [ ] User flow works end-to-end, including edge cases above (hit-based
-      round-over, depth-cap round-over, abandoned round, leaderboard submit).
+* [x] User flow works end-to-end, including hit-based round-over,
+      depth-cap round-over and leaderboard submit (`e2e/fishing-game.spec.js`).
+      The abandoned-round rule (no partial award on nav-away) has no test.
 * [ ] All states in the UI table are implemented.
 * [x] ~~"Fishing Game" appears in the Home dropdown and mobile nav panel~~ —
-      superseded: the Home dropdown was later removed (see Status); the game
+      superseded: the Home dropdown was later removed (see History); the game
       itself remains fully reachable at `/fishing-game` directly, just not
       linked from the header.
-* [ ] Migration written, reviewed, and includes a working `Down`.
-* [ ] Handler/service/repository boundaries followed (`go-backend`) for the
-      leaderboard routes.
-* [ ] `player_name` is rendered through `html/template` auto-escaping, with a
-      passing XSS-regression test.
-* [ ] `POST /fishing-game/score` is rate-limited and CSRF-protected.
-* [ ] No inline `<script>` tags; CSP-clean on load.
-* [ ] `fishing-game.js` cleans up its `requestAnimationFrame` loop and
-      listeners on HTMX nav-away, not just on full page unload.
+* [x] Migration written and includes a working `Down`
+      (`migrations/002_create_fishing_scores.sql` drops the index and table).
+* [x] Handler/service/repository boundaries followed for the leaderboard
+      routes (`internal/handler/fishing_game.go` → `internal/service/fishing_service.go`
+      → `internal/repository/fishing_repository.go`).
+* [x] `player_name` is rendered through `html/template` auto-escaping, with a
+      passing XSS-regression test (`TestFishingGameHandler_Leaderboard_Populated`).
+* [x] `POST /fishing-game/score` is rate-limited
+      (`TestFishingGameHandler_SubmitScore_RateLimited`) and covered by
+      `middleware.CrossOriginProtection` (`TestCrossOriginProtection`,
+      `TestHandlerChain_RejectsCrossSiteWrites` — the latter exercises
+      `/logout`, not this route specifically).
+* [x] No inline `<script>` tags; CSP-clean on load (e2e "no console errors
+      on load, including no CSP violations").
+* [x] `fishing-game.js` cleans up its `requestAnimationFrame` loop and
+      listeners on HTMX nav-away (`teardown` on `htmx:beforeSwap` of
+      `#main-content`; exercised by the e2e HTMX-revisit test).
 * [ ] Accessibility checked for all non-canvas UI (keyboard, focus, contrast,
       semantic HTML); the one deliberate `prefers-reduced-motion` gap
       (gameplay canvas) is documented, not accidental.
-* [ ] Tests cover the behavior in the Testing Plan above.
+* [ ] Tests cover the behavior in the Testing Plan above — see its
+      "Not covered" list.
 * [ ] No open questions remain unresolved (or remaining ones are explicitly
       accepted as implementation-time tuning, not design gaps).
+
+---
+
+## History
+
+### Status notes added after first ship (kept verbatim)
+
+**Later change**: the header nav was redesigned to a flat Home/Projects/About
+link row (`docs/features/home.md`'s Status note, `internal/handler/nav.go`'s
+`primaryNavItems`), which dropped the Home dropdown this game's "Fishing
+Game" entry lived in. The game itself is unaffected — still fully working at
+`/fishing-game` — but it's no longer linked from the header at all, desktop
+or mobile; the "Home dropdown"/"Home ▾" references below predate that change.
+It's since been re-linked from elsewhere, though: `/projects` now leads with
+a card that links straight into the game via a "Play now" button
+(`docs/features/projects.md`'s `Project.External` field), so it isn't
+reachable only by typing the URL directly.
+
+**Later change**: seaweed obstacle walls — a depth-triggered gap the player
+must steer through, distinct from the continuous dodge-a-hazard rotation —
+were added on top of the original hazard system (Business Rules "Seaweed
+obstacle walls"). Unit-tested (`rules.js`'s `seaweedGapWidth`) and manually
+verified end-to-end in a real session (wall spawns at the documented depth,
+renders with a navigable gap, and a strand collision costs a life exactly
+like any other hazard) — nothing about the original hazard rotation or its
+own tests changed.
+
+**Later change**: a real bug, first reported against Puzzle Solver
+(`docs/features/puzzle-solver.md`'s own "Later change" note has the full
+writeup) but confirmed to affect this game identically — `fishing-game.js`'s
+DOM wiring (`bootstrap()`) only ran from a plain top-level call, and a
+`<script type="module">`'s top-level code executes at most once per
+resolved URL for the page's whole lifetime (per spec). htmx recreates and
+re-inserts the `<script>` tag on every HTMX navigation, but the browser
+does not re-execute an already-evaluated module — so a second visit to
+`/fishing-game` in the same browser tab (navigate away, then back) left the
+freshly swapped-in canvas/start screen completely unwired. It was invisible
+here (unlike Puzzle Solver, where it was obvious) because the start screen
+is static HTML that still renders correctly even when totally inert — only
+clicking "Start Dive" revealed nothing happened. Fixed by also re-running
+`bootstrap()` from a persistent `htmx:afterSwap` listener on
+`document.body`. Covered by a new regression test in
+`e2e/fishing-game.spec.js` ("revisiting via HTMX after navigating away")
+that drives the exact real-world path (`/projects` → Play now → back →
+Play now again) and asserts genuine interactivity (the depth HUD advancing
+after Start Dive), not just that the canvas is present. Verified against a
+real Postgres instance — the full spec's leaderboard/round-over/shop tests
+all still pass.

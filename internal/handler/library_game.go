@@ -62,9 +62,10 @@ func (h *LibraryGameHandler) Index(w http.ResponseWriter, r *http.Request) {
 }
 
 // Leaderboard handles GET /library-game/leaderboard, returning the
-// library-leaderboard fragment (innerHTML target, per the HTMX
-// Interactions table). Always a bare fragment, never wrapped in the page
-// shell. ?board=daily returns today's Daily Challenge board instead.
+// library-leaderboard fragment, which the page swaps outerHTML into
+// #library-leaderboard (per the HTMX Interactions table). Always a bare
+// fragment, never wrapped in the page shell. ?board=daily returns
+// today's Daily Challenge board instead.
 func (h *LibraryGameHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	daily := ""
 	if r.URL.Query().Get("board") == "daily" {
@@ -101,10 +102,9 @@ func (h *LibraryGameHandler) renderBoard(w http.ResponseWriter, r *http.Request,
 // r.FormValue — not JSON. Same reasoning as
 // CookingGameHandler.SubmitScore's doc comment.
 //
-// TEMPORARY, matching CookingGameHandler.SubmitScore's exact same
-// documented gap: no CSRF mechanism exists anywhere in this codebase yet
-// (see PagesHandler.Logout's doc comment) — this route's exposure is
-// identical to, not worse than, that already-accepted gap.
+// CSRF: covered the same way as FishingGameHandler.SubmitScore — a
+// cross-site browser POST is refused by middleware.CrossOriginProtection
+// before this runs; see that handler's doc comment.
 func (h *LibraryGameHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many submissions — please slow down and try again shortly.", http.StatusTooManyRequests)

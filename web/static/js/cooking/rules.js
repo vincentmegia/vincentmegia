@@ -5,9 +5,10 @@
 // so it can be unit-tested with `node --test` and imported unchanged by the
 // canvas game loop (cooking-game.js). All numeric constants below are
 // illustrative/tunable per the feature doc ("tune during build") — what is
-// NOT optional is the *shape* of each rule: the paycheck's binary
-// upset/no-upset outcome, the "bands grow, never shrink" recipe unlock
-// shape, and the ramp directions described in the doc.
+// NOT optional is the *shape* of each rule: the per-mistake paycheck
+// (engine-state.js's shiftPayout builds the full payout on top of it), the
+// "bands grow, never shrink" recipe unlock shape, and the ramp directions
+// described in the doc.
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -129,7 +130,7 @@ export const COOKWARE_ITEMS = ['Pan', 'Baking Tray', 'Rice Cooker'];
  * (a later band's dishes join the pool; earlier ones never drop out) —
  * matching the Fishing Game's fish-band gating shape.
  *
- * @param {number} shiftNumber - 1-20 (out-of-range/non-finite clamps into that range).
+ * @param {number} shiftNumber - 1..SHIFTS_PER_MONTH (out-of-range/non-finite clamps into that range).
  * @returns {{name: string, station: string, ingredients: string[]}[]}
  */
 export function availableDishes(shiftNumber) {
@@ -202,7 +203,7 @@ const COOK_SWEEP_SHIFT_SATURATION = 12;
  * the Fishing Game's descentSpeed ramping with depth. Approaches
  * COOK_SWEEP_SPEED_MAX asymptotically, never reaching or exceeding it.
  *
- * @param {number} shiftNumber - 1-20.
+ * @param {number} shiftNumber - 1..SHIFTS_PER_MONTH.
  * @returns {number}
  */
 export function cookSweepSpeed(shiftNumber) {
@@ -225,7 +226,7 @@ const ARRIVAL_SHIFT_SATURATION = 10;
  * (busier) as shift number increases. Approaches, but never goes below,
  * ARRIVAL_INTERVAL_MIN_SECONDS.
  *
- * @param {number} shiftNumber - 1-20.
+ * @param {number} shiftNumber - 1..SHIFTS_PER_MONTH.
  * @returns {number}
  */
 export function customerArrivalIntervalSeconds(shiftNumber) {
@@ -285,7 +286,7 @@ const PATIENCE_SECONDS_PER_REGULARS_PATIENCE_LEVEL = 4;
  * shift number (shorter fuse in later, busier shifts) but increased per
  * level of the Regular's Patience gear upgrade.
  *
- * @param {number} shiftNumber - 1-20.
+ * @param {number} shiftNumber - 1..SHIFTS_PER_MONTH.
  * @param {number} regularsPatienceLevel - gear level (negative/non-finite treated as 0).
  * @returns {number}
  */
@@ -429,9 +430,9 @@ export function karenEncounter(shiftNumber) {
 
 // ---------------------------------------------------------------------------
 // 6. Mel — a recurring regular, the opposite of Karen: sweet, kind, and
-//    caring, and always the very first customer seated every single
-//    shift (not a random-chance appearance — the user described her as
-//    "always come[s] here"). Favorite color yellow, favorite flower
+//    caring, guaranteed exactly once every shift (v3.35: at a random
+//    point in the shift, not forced first — cooking-game.js's
+//    maybeSpawnCustomer). Favorite color yellow, favorite flower
 //    dandelion — both show up as her look (cooking-game.js's rendering),
 //    not gameplay math.
 // ---------------------------------------------------------------------------
@@ -460,8 +461,8 @@ export const MEL_FAVORITE_COLOR = '#ffd23f';
 
 // ---------------------------------------------------------------------------
 // 7. Olive & Oliver — an engaged couple, recurring regulars who always
-//    arrive together (one table, two people) right after Mel every
-//    shift. Olive: brave, smart, neat, favorite color green, favorite
+//    arrive together (one table, two people), once every shift at a
+//    random point (v3.35, same as Mel). Olive: brave, smart, neat, favorite color green, favorite
 //    flower tulips. Oliver: intelligent, brave, favorite color blue,
 //    favorite flower rose — his usual order is the same as his fiancée's.
 //    Both favorite-flower details are cosmetic only (no gameplay math

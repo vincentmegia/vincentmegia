@@ -51,7 +51,7 @@ const CONSTRUCTION_MIN_DISTANCE_M = 300;
  * the run on contact regardless of lives left or post-hit grace. `weight`
  * (default 1) is the relative chance pickVehicle picks it once unlocked —
  * buses (`bus: true`) are lighter so they add variety without crowding
- * out the trucks. Public buses (city, double-decker, bendy) are lethal; the
+ * out the trucks. Public buses (city, double-decker, bendy) and coaches are lethal; the
  * school bus only costs a life. A `fuel` tanker isn't lethal on contact: it
  * stuns the bus and then explodes (FUEL_STUN_SECONDS, FUEL_FUSE_SECONDS). A
  * `construction` vehicle (the dump truck) only turns up while a
@@ -411,8 +411,8 @@ export function pickBlockedLanes(rng, distanceMeters, prevOpen, closed = []) {
 }
 
 /**
- * Lives left after a collision. A lethal vehicle (truck, semi) takes them
- * all; anything else takes one, unless the bus is still in its post-hit
+ * Lives left after a collision. Anything `lethal` (every truck kind, public
+ * buses and coaches, police, SWAT, trains) takes them all; anything else takes one, unless the bus is still in its post-hit
  * grace window. Lethal vehicles ignore grace — a flashing bus still can't
  * survive a truck.
  */

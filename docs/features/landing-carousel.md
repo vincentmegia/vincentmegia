@@ -2,25 +2,20 @@
 
 ## Status
 
-`Shipped`. The Implementation Contract below is implemented exactly as
-specified — `model.CarouselSlide`, `migrations/005_create_landing_content.sql`,
-`components/carousel.html`, and `carousel.js` all match it — and slide
-content is Postgres-backed and editable via `/settings/content`, per Open
-Questions' "Resolved" note below. This doc's Status previously read
-`Proposed` well after the feature actually shipped; a documentation-drift
-audit caught it.
+`Shipped`. `components/carousel.html` + `web/static/js/carousel.js` implement
+the Implementation Contract below; slides are rows in
+`landing_carousel_slides` (`model.CarouselSlide`, migration
+`005_create_landing_content.sql`), edited via `/settings/content`
+(`docs/features/landing-content-authoring.md`) or the JSON API
+(`docs/features/landing-content-api.md`).
 
-Test coverage: `carousel.js`'s two pieces of non-trivial decision logic —
-1-based wraparound index arithmetic and the "three independent pause
-sources" autoplay rule (both cited in the Testing Plan below) — are
-extracted into `carousel-nav.js` and unit-tested by
-`carousel-nav.test.js` (`npm run test:unit`), the same pure-logic-module
-pattern `puzzle/dfs.js` and `fishing/rules.js` already use. Everything
-else in the Testing Plan below — rendering, DOM structure/ARIA, keyboard
-and touch interaction, visual/contrast states, theme-toggle backdrop
-swaps — remains unaudited by any automated test; there is no Playwright
-spec for this page's carousel behavior specifically. Treat an unchecked
-box below as "not yet verified," not as "not implemented."
+Tests: the pure decision logic (wraparound index math, the three-source
+autoplay pause rule) lives in `web/static/js/carousel-nav.js` and is
+unit-tested by `carousel-nav.test.js` (`npm run test:unit`). The DB-gated
+`TestEndToEnd` "home page renders the shared shell" (`go test ./cmd/server/`
+with `DATABASE_URL`) asserts a seeded slide's alt text renders. DOM, ARIA,
+keyboard, touch and visual behavior have no automated test (no Playwright
+spec for the carousel).
 
 ## Summary
 
@@ -31,13 +26,11 @@ support, and respects `prefers-reduced-motion`.
 
 ## Problem / Motivation
 
-The landing page's hero and everything below it is still undesigned (see
-`docs/features/landing-page.md`'s Open Questions) — right now `/` renders the bare
-placeholder page. A carousel gives the landing page a second, visually rich section
+A carousel gives the landing page a second, visually rich section
 beyond the hero: general-purpose enough to show photos, project highlights, or
 whatever the site owner wants surfaced first, without needing the Projects/Blogs
-features (or a database schema) built first. Content is hand-authored in Go for now
-— see Open Questions for when that stops being enough.
+features. Slides started as hand-authored Go data and are now Postgres rows
+editable without a redeploy.
 
 ## Scope
 
@@ -64,10 +57,10 @@ features (or a database schema) built first. Content is hand-authored in Go for 
 
 **Out of scope:**
 
-* Postgres-backed / admin-editable slide content — slides are static image files
-  and hand-authored Go data for now (see Open Questions).
-* The hero itself and any other landing-page section — separate, still-undesigned
-  scope owned by `docs/features/landing-page.md`.
+* Editing slides — `docs/features/landing-content-authoring.md` (HTML editor)
+  and `docs/features/landing-content-api.md` (JSON API). Image files are still
+  static assets referenced by path; there is no upload.
+* The hero and the other landing-page sections — `docs/features/landing-page.md`.
 * Video slides, more than 5 images, or a full-screen/lightbox view on click.
 * Deep-linking to a specific slide (e.g. via URL fragment).
 
@@ -158,45 +151,20 @@ excess) and its Cards/Spacing guidance:
     between). Both themes layer a handful of large, soft `radialGradient`
     glow circles on top at varied opacity for depth/movement, plus a light
     dusting of fine grain-texture dots for a tactile finish.
-  * **Light mode**: exactly one color, by explicit request — a single warm
-    cream (`#E7D8AE`) layered over a lighter cream base (`#FBF7EC`, not pure
-    white) at five deliberately varied opacities (~0.10–0.45). No
-    `linearGradient` at all here, unlike dark mode — the base is a flat fill,
-    and every bit of depth/movement comes from that one accent's opacity
-    layering, since a second gradient hue would violate the one-color
-    constraint. Superseded revisions, not to be reintroduced: a two-color
-    cream + creamy-yellow version; before that a 5-stop pastel wash
-    (periwinkle → orchid → blush → peach → cream) that tinted the whole
-    canvas evenly and read as flat/washed out; and before that a "mostly
-    white with a bold violet/magenta/orange corner bloom" version — each
-    superseded by a follow-up request narrowing the palette further, not by
-    a technical problem with that revision.
-  * **Dark mode**: deep indigo → violet → magenta-plum → warm amber → umber
-    — richer/more saturated at each stop than a naive "darken the light
-    palette" pass would produce; muted jewel tones transitioning directly
-    into each other read as brown mud (shipped once, corrected) — matching
-    `tailwind-ui`'s Dark Mode guidance to design it as its own first-class
-    theme, not an inversion or a shared-gradient-recolor of light mode.
-  * **Earlier revisions, not to be re-tried**: (1) a constellation/line-graph
-    illustration read as a generic "tech network diagram," not art; (2) an
-    orange/pink/blue *pool*-based version (overlapping `radialGradient`
-    circles with gaps between them, no continuous base gradient) had a
-    two-tier opacity falloff that produced a visible ring artifact where two
-    circles' edges coincided, and an evenly-spaced layout that read as
-    mechanical rather than abstract; (3) a version using `feGaussianBlur`
-    with large `stroke-width` produced a visible hard-edged rectangular seam
-    in Chromium (large blur combined with large stroke-width on an elongated
-    bounding box hit a filter-region/tiling artifact) — this is why the
-    shipped version avoids `feGaussianBlur` entirely; (4) tinting the whole
-    light-mode canvas evenly with pastels (see above) read as flat/washed out.
+  * **Light mode**: a single warm cream (`#E7D8AE`) over a lighter cream
+    base (`#FBF7EC`) at several opacities — one color by explicit request,
+    no `linearGradient`.
+  * **Dark mode**: a 5-stop deep indigo → violet → magenta-plum → amber →
+    umber gradient, designed as its own theme.
+  * `feGaussianBlur` is deliberately avoided (it produced a rectangular
+    seam in Chromium). Earlier palettes that were tried and dropped are
+    listed under History.
 
   It's a full viewport-width layer, not confined to `#main-content`'s own
   `max-w-5xl` column — see "Full-bleed technique" below for why and how.
-  This is really `docs/features/landing-page.md`'s territory (that doc owns
-  "what renders inside `#main-content`" for `/`) — documented here because
-  it shipped alongside the carousel work and touches the same `landing.html`
-  file; `landing-page.md` cross-references this, but still owns the actual
-  hero copy/headline/CTA decision, which remains open.
+  This is really `docs/features/landing-page.md`'s territory — documented
+  here because it shipped alongside the carousel work in the same
+  `landing.html`.
 * **Full-bleed technique**: a plain `background-image` directly on
   `#main-content` confines the artwork to that element's own `max-w-5xl`
   column — visually barely bigger than the carousel card itself, not an
@@ -223,17 +191,15 @@ excess) and its Cards/Spacing guidance:
 web/templates/
 ├── pages/
 │   └── landing.html          # defines "landing-content" (PagesHandler.Home sets
-│                              # ContentTemplate to this) — the hero placeholder
-│                              # text plus <section id="carousel"> below it; the
-│                              # hero itself is still undesigned, see landing-page.md
+│                              # ContentTemplate to this): hero, carousel,
+│                              # Selected work — see landing-page.md
 └── components/
     └── carousel.html         # up to 5 slides; each takes {ImagePath, Alt, Caption?, LinkURL?}
 
 web/static/
 ├── images/
 │   ├── carousel/
-│   │   └── 1.svg … 5.svg     # hand-authored illustrative SVGs (not photos) — see
-│   │                          # Data Model; swap for real photography/screenshots later
+│   │   └── 1.svg … 5.svg     # illustrative SVGs (not photos) the seed rows point at
 │   ├── landing-bg-light.svg       # decorative backdrop behind the carousel card
 │   ├── landing-bg-dark.svg        # (Visual Direction) — referenced only from carousel.html's CSS
 │   ├── landing-page-bg-light.svg  # decorative backdrop behind the whole #main-content
@@ -258,7 +224,8 @@ States this feature's UI must handle:
 | Reduced motion                   | No autoplay, no pause/play button; manual navigation only; no slide transition animation. |
 | Slide with a link                | The slide's anchor wraps only its image and caption — never the arrow/dot/pause controls, which are DOM siblings positioned over the carousel, not nested inside any slide's link. |
 | Fewer than 5 slides configured   | With exactly 1 slide, arrows, dots, and the pause/play toggle are omitted entirely (nothing to navigate to or pause); with 2–4 slides, all controls render normally, just with fewer dots. |
-| Image failed to load              | Broken slide shows a neutral placeholder background (not a broken-image icon) so one bad asset doesn't visually break the section. |
+| Image failed to load              | `carousel.js` hides the failed `<img>` (`error` listener), so the track's neutral `bg-surface-2` shows instead of a broken-image icon. |
+| No slides                         | Not guarded: `carousel.html` still renders the bordered section with an empty track (see Open Questions). |
 | Keyboard focus                    | Visible focus ring on arrows, the active dot, the pause/play toggle, and any slide link. |
 
 ---
@@ -271,7 +238,9 @@ independently — `carousel.js` should be written and tested against this contra
 is just wiring the two together at the end.
 
 **Go-side data shape**, passed into `carousel.html` as `.CarouselSlides` (a
-`[]CarouselSlide`, max 5 entries) from whichever handler owns `/`:
+`[]model.CarouselSlide`, max 5 entries) from `PagesHandler.Home`
+(`internal/model`; the struct also carries `ID` and `SortOrder` — the fields
+below are the ones the template reads):
 
 ```go
 type CarouselSlide struct {
@@ -409,10 +378,10 @@ feature to ship.
 
 ## Routes / Handlers
 
-None. The carousel has no dedicated endpoint — it's static markup rendered as part
-of whichever handler owns `/` (`PagesHandler.Home`, per `internal/handler/pages.go`;
-`docs/features/home.md`'s Routes/Handlers table names this `HomeHandler.Index`, which
-predates the actual implementation).
+None of its own. The carousel renders as part of `GET /` (`PagesHandler.Home`,
+`internal/handler/pages.go`). Slide writes go through
+`/settings/content/carousel*` and `/api/internal/v1/landing/slides*` (see the
+authoring and API docs).
 
 ---
 
@@ -458,44 +427,46 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
   technology by construction, which is correct here: it's pure ornament with no
   informational content, unlike the carousel's actual slide images. The same
   applies to `landing-page-bg-*.svg` on `#main-content`.
-* The page background sits behind the "Welcome" hero placeholder text, not just
-  the carousel — its node/line density was deliberately kept low enough that
-  `ContentTitle`/`ContentMessage` (`text-slate-900 dark:text-slate-100` /
-  `text-slate-600 dark:text-slate-400`) stay legible without needing a scrim;
-  revisit this if that copy is ever replaced with something requiring stronger
-  contrast guarantees (see `landing-page.md`'s Open Questions).
+* The page background sits behind the hero copy too; it is kept soft enough
+  that the hero's `text-ink`/`text-muted` copy stays legible without a scrim.
 
 ---
 
 ## Security Considerations
 
-* **No dynamic/untrusted input**: slide captions and links are hand-authored in
-  Go code (`internal/handler/pages.go`), and images are static asset files —
-  neither is sourced from user input or the database, so there's no escaping
-  concern beyond what `html/template` already guarantees by default for any Go
-  value passed into a template. This changes if slides become DB-driven (see
-  Open Questions), at which point captions/links must go through the same
-  auto-escaping as any other dynamic content, same as `home.md`'s note on the
-  header identity fields.
-* **External links**: `rel="noopener noreferrer"` on any slide link that opens in
-  a new tab, consistent with `home.md`'s footer social links.
-* **No inline `<script>` tags**: `carousel.js` is an external file, keeping the
-  page compatible with the strict CSP already in place for the rest of the shell
-  (`home.md`'s Security Considerations).
+* **Database-sourced content**: slide alt text, captions and links come from
+  Postgres and are rendered through `html/template` auto-escaping (`href` and
+  `src` are URL contexts, so a `javascript:` value would be neutralised).
+  On write, the content service validates them
+  (`internal/service/landing_content_validation.go`): `ImagePath` must be
+  under `/static/`, `LinkURL` must be `https://` or a single-`/` site path,
+  both capped at 2048 bytes.
+* **External links**: `rel="noopener noreferrer"` on any slide link that opens
+  in a new tab.
+* **No inline `<script>`**: `carousel.js` is an external module; the image
+  error fallback uses `addEventListener`, not an inline `onerror`.
 
 ---
 
 ## Testing Plan
 
 * [ ] All 5 slides render with correct images, alt text, captions, and links.
+      (`TestEndToEnd` only checks one seeded alt text is present.)
 * [ ] Autoplay advances slides on a timer and loops from the last slide back to
-      the first.
+      the first. (The wraparound arithmetic is unit-tested —
+      `carousel-nav.test.js` "wraps from the last slide back to the first" —
+      but not the timer in a browser.)
 * [ ] Hovering or focusing inside the carousel pauses autoplay; leaving
       hover/focus resumes it, unless also user-paused.
 * [ ] Scrolling the carousel out of the viewport pauses autoplay; scrolling it
       back into view resumes it, unless also user-paused.
+* [x] The pause rule: a user pause stays in force after hover/offscreen
+      pauses clear; autoplay resumes only when all three sources clear, and
+      never runs with one slide or under reduced motion —
+      `carousel-nav.test.js` (`shouldAutoplay` tests). The DOM wiring
+      (toggle click, hover, IntersectionObserver) is untested.
 * [ ] Clicking the pause button stops autoplay and stays stopped across a
-      hover-out or scroll-out/back-in; clicking play resumes it.
+      hover-out or scroll-out/back-in; clicking play resumes it (in a browser).
 * [ ] Arrow buttons, dot indicators, and touch swipe all navigate correctly and
       reset the autoplay interval.
 * [ ] Keyboard-only: `Tab` reaches prev arrow, the active dot, next arrow, and
@@ -545,9 +516,13 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
 * Does the carousel belong on `/` specifically, or could it become a reusable
   component other pages (e.g. Projects) also mount? Scoped to the landing page
   only for now.
-* Exact autoplay interval (e.g. 5s vs 7s) and transition duration — left as an
-  implementation detail to tune visually rather than a decision to pre-specify
-  here.
+* Autoplay interval is 6000 ms (`data-autoplay-interval` in `carousel.html`,
+  `DEFAULT_INTERVAL_MS` fallback in `carousel.js`); transition is
+  `duration-150`. Retune visually if needed.
+* An empty carousel (all slides deleted) still renders an empty bordered
+  section — add an `{{if .CarouselSlides}}` guard like `selected-work.html`'s?
+* No Playwright coverage of the carousel; the unticked Testing Plan items
+  need one.
 
 ---
 
@@ -555,14 +530,95 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
 
 * [ ] User flow works end-to-end, including reduced-motion and all pause/resume
       paths above.
-* [ ] All states in the UI table are implemented.
+* [ ] All states in the UI table are implemented (all except the no-slides
+      state, which isn't guarded).
 * [ ] Fully keyboard operable, with correct ARIA roles/labels/live-region
       behavior per the WAI-ARIA carousel pattern.
 * [ ] Touch swipe works on mobile; arrows/dots work on desktop.
-* [ ] No inline `<script>` tags; CSP stays clean.
-* [ ] External slide links use `rel="noopener noreferrer"`.
+* [x] No inline `<script>` tags — `carousel.js` loads via `src` from
+      `base.html`; `e2e/nav.spec.js` "no console errors on load…" loads `/`
+      with the carousel and fails on any CSP violation.
+* [x] External slide links use `rel="noopener noreferrer"` —
+      `carousel.html` (`{{if $slide.External}}target="_blank" rel="noopener noreferrer"{{end}}`).
 * [ ] Accessibility checked (focus visibility, contrast on overlay captions,
       reduced-motion respected, screen reader announcement behavior).
 * [ ] Tests cover the behavior in the Testing Plan above.
-* [ ] No open questions remain unresolved, or are explicitly deferred with a
-      reason (e.g. Postgres migration deferred until the admin area exists).
+* [x] Slide content moved to Postgres (the original open question).
+
+---
+
+## History
+
+### Status before the wave-3 rewrite
+
+`Shipped`. The Implementation Contract below is implemented exactly as
+specified — `model.CarouselSlide`, `migrations/005_create_landing_content.sql`,
+`components/carousel.html`, and `carousel.js` all match it — and slide
+content is Postgres-backed and editable via `/settings/content`, per Open
+Questions' "Resolved" note below. This doc's Status previously read
+`Proposed` well after the feature actually shipped; a documentation-drift
+audit caught it.
+
+Test coverage: `carousel.js`'s two pieces of non-trivial decision logic —
+1-based wraparound index arithmetic and the "three independent pause
+sources" autoplay rule (both cited in the Testing Plan below) — are
+extracted into `carousel-nav.js` and unit-tested by
+`carousel-nav.test.js` (`npm run test:unit`), the same pure-logic-module
+pattern `puzzle/dfs.js` and `fishing/rules.js` already use. Everything
+else in the Testing Plan below — rendering, DOM structure/ARIA, keyboard
+and touch interaction, visual/contrast states, theme-toggle backdrop
+swaps — remains unaudited by any automated test; there is no Playwright
+spec for this page's carousel behavior specifically. Treat an unchecked
+box below as "not yet verified," not as "not implemented."
+
+### Page-background revisions (moved verbatim from Visual Direction)
+
+  * **Light mode**: exactly one color, by explicit request — a single warm
+    cream (`#E7D8AE`) layered over a lighter cream base (`#FBF7EC`, not pure
+    white) at five deliberately varied opacities (~0.10–0.45). No
+    `linearGradient` at all here, unlike dark mode — the base is a flat fill,
+    and every bit of depth/movement comes from that one accent's opacity
+    layering, since a second gradient hue would violate the one-color
+    constraint. Superseded revisions, not to be reintroduced: a two-color
+    cream + creamy-yellow version; before that a 5-stop pastel wash
+    (periwinkle → orchid → blush → peach → cream) that tinted the whole
+    canvas evenly and read as flat/washed out; and before that a "mostly
+    white with a bold violet/magenta/orange corner bloom" version — each
+    superseded by a follow-up request narrowing the palette further, not by
+    a technical problem with that revision.
+  * **Dark mode**: deep indigo → violet → magenta-plum → warm amber → umber
+    — richer/more saturated at each stop than a naive "darken the light
+    palette" pass would produce; muted jewel tones transitioning directly
+    into each other read as brown mud (shipped once, corrected) — matching
+    `tailwind-ui`'s Dark Mode guidance to design it as its own first-class
+    theme, not an inversion or a shared-gradient-recolor of light mode.
+  * **Earlier revisions, not to be re-tried**: (1) a constellation/line-graph
+    illustration read as a generic "tech network diagram," not art; (2) an
+    orange/pink/blue *pool*-based version (overlapping `radialGradient`
+    circles with gaps between them, no continuous base gradient) had a
+    two-tier opacity falloff that produced a visible ring artifact where two
+    circles' edges coincided, and an evenly-spaced layout that read as
+    mechanical rather than abstract; (3) a version using `feGaussianBlur`
+    with large `stroke-width` produced a visible hard-edged rectangular seam
+    in Chromium (large blur combined with large stroke-width on an elongated
+    bounding box hit a filter-region/tiling artifact) — this is why the
+    shipped version avoids `feGaussianBlur` entirely; (4) tinting the whole
+    light-mode canvas evenly with pastels (see above) read as flat/washed out.
+
+### Security Considerations before the wave-3 rewrite
+
+#### Security Considerations
+
+* **No dynamic/untrusted input**: slide captions and links are hand-authored in
+  Go code (`internal/handler/pages.go`), and images are static asset files —
+  neither is sourced from user input or the database, so there's no escaping
+  concern beyond what `html/template` already guarantees by default for any Go
+  value passed into a template. This changes if slides become DB-driven (see
+  Open Questions), at which point captions/links must go through the same
+  auto-escaping as any other dynamic content, same as `home.md`'s note on the
+  header identity fields.
+* **External links**: `rel="noopener noreferrer"` on any slide link that opens in
+  a new tab, consistent with `home.md`'s footer social links.
+* **No inline `<script>` tags**: `carousel.js` is an external file, keeping the
+  page compatible with the strict CSP already in place for the rest of the shell
+  (`home.md`'s Security Considerations).

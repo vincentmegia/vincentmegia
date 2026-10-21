@@ -2,87 +2,27 @@
 
 ## Status
 
-`Shipped` — implemented and verified. `GET /puzzle-solver` renders the real
-page (toolbar + 600×600 canvas grid); `web/static/js/puzzle/dfs.js` and
-`web/static/js/puzzle/grid-state.js` are pure, DOM-free logic modules
-covered by `node --test` unit tests (23 tests, all passing); `web/static/js/
-puzzle-solver.js` wires them to the canvas (pointer/touch grid editing,
-theme-reactive redraws, the animated DFS reveal); `e2e/puzzle-solver.spec.js`
-covers the full user flow (empty-grid load state, Solve-button gating,
-toolbar tool switching, a solvable case, a fully-enclosed no-path case,
-Reset Grid, a revisit-via-HTMX regression case (below), and a
-no-console-errors smoke test) — 16 tests, passing on both Chromium and
-WebKit. `/projects` and the landing page's "Selected work" section each
-picked up a third card linking into it
-(`docs/features/projects.md`, `docs/features/landing-page.md`); the header
-nav is untouched, same gradual-rollout pattern the other two games started
-with.
+`Shipped`. `GET /puzzle-solver` renders the toolbar + 600×600 canvas grid;
+`web/static/js/puzzle/dfs.js` and `web/static/js/puzzle/grid-state.js` are
+pure, DOM-free modules; `web/static/js/puzzle-solver.js` wires them to the
+canvas (pointer/touch grid editing, theme-reactive redraws, the animated
+DFS reveal). It is linked from a `/projects` card (with a real screenshot,
+`web/static/images/puzzle/screenshot.png`) and a landing "Selected work"
+card (seeded in `migrations/005_create_landing_content.sql`), but not from
+the header nav.
 
-`grid-state.js` ended up **immutable** — every function returns a new
-`GridState` rather than mutating its input — because that's what this
-codebase's actual `fishing/engine-state.js` convention turned out to be
-when checked, not the "mutate in place" guess this doc's Business Rules
-discussion assumed while it was still `Proposed`. Callers reassign, e.g.
-`state = setStart(state, row, col)`.
+Tests:
 
-`puzzle-solver.js` exposes a test-only `window.__puzzleSolverTestHooks
-.setAnimationIntervalMs(ms)` hook (mirroring `fishing-game.js`'s equivalent)
-so `e2e/puzzle-solver.spec.js` can collapse the per-cell reveal animation
-during a solve instead of waiting out several real seconds on a
-near-full-grid DFS — the production default interval is untouched and still
-just a first-pass "tuned by eye" value, per this doc's earlier note that
-speed isn't a user-facing control.
+* Unit: `web/static/js/puzzle/dfs.test.js`, `grid-state.test.js` —
+  `node --test web/static/js/puzzle/*.test.js`.
+* Playwright: `e2e/puzzle-solver.spec.js` (Chromium + WebKit) —
+  `make test-e2e`. It uses the test-only hook
+  `window.__puzzleSolverTestHooks.setAnimationIntervalMs(ms)` to collapse
+  the per-cell reveal animation; the production interval is unchanged.
+* There is no Go test for `GET /puzzle-solver` (see Testing Plan).
 
-The `/projects` card now has a real screenshot too
-(`web/static/images/puzzle/screenshot.png`), same live-Playwright-capture
-convention as the other two games: Start/End placed, a hand-built maze
-drawn (a fully enclosed 7×6 dead-end pocket with a single doorway, plus a
-couple of smaller obstacles further along), solved, then captured — so the
-pocket's fully-explored "visited" cells (amber), the maze walls (black),
-and the solved path threading out to End (sage, ending at the terracotta
-End marker) are all visible at once, clipped to the card's 16:10 aspect
-the same way the Fishing Game screenshot's own doc comment describes.
-
-**Later change**: a real, user-reported bug — navigating to `/puzzle-solver`
-via the `/projects` "Play now" link, then away, then back again via that
-same link within the same browser tab, rendered a completely blank,
-non-interactive canvas the second time (gridlines gone, every button
-inert). Root cause: `puzzle-solver.js`'s DOM wiring (`bootstrap()`) only
-ran from a plain top-level call executed once when the module's code first
-ran — but a `<script type="module">`'s top-level code executes at most once
-per resolved URL for the whole page's lifetime, by spec. htmx recreates and
-re-inserts the `<script>` tag on every HTMX navigation back to the page,
-but the browser does not re-execute an already-evaluated module, so that
-top-level call never fired again and the freshly swapped-in `#puzzle-canvas`
-was left completely unwired. Fixed by also re-running `bootstrap()` from a
-persistent `htmx:afterSwap` listener on `document.body` — registered once,
-during whichever visit happens to be this file's one actual execution, and
-still alive for every later swap since `document.body` survives every
-`#main-content` swap (`init()`'s existing tear-down-previous-instance guard
-already made re-running `bootstrap()` safe; the fix only needed to make sure
-it actually got called again). Covered by a new regression test in
-`e2e/puzzle-solver.spec.js` ("revisiting via HTMX after navigating away")
-that drives the exact real-world path and asserts genuine interactivity
-(not just that the canvas element is present) on the second visit.
-
-This is a **systemic bug in this codebase's `type="module"` +
-htmx-navigation pattern, not something specific to this feature** —
-`fishing-game.js` and `cooking-game.js` use the exact same bootstrap-once
-pattern and were confirmed, while investigating this report, to have the
-identical latent bug (their "Start Dive"/equivalent button silently does
-nothing on a second HTMX visit in the same tab). It was invisible there
-only because their idle start screen is static HTML that still looks
-correct even when totally unwired, unlike this feature's canvas, which
-draws its entire primary content immediately and so fails loudly. The user
-confirmed they wanted both fixed too, so the identical `htmx:afterSwap`
-re-bootstrap fix was applied to `fishing-game.js` and `cooking-game.js` in
-the same pass, each with its own new regression test
-(`e2e/fishing-game.spec.js`'s "revisiting via HTMX after navigating away";
-`e2e/projects.spec.js`'s "revisiting Kitchen Shift via HTMX after
-navigating away", since no dedicated `e2e/cooking-game.spec.js` exists) —
-see those two docs' own "Later change" notes for the full per-game
-writeup. Both full suites were re-verified afterward, including
-Fishing Game's against a real Postgres instance.
+The bootstrap-on-`htmx:afterSwap` fix for revisiting the page via HTMX is
+described under History.
 
 ## Summary
 
@@ -127,8 +67,11 @@ and build while still fitting the same "canvas demo, own URL" shape.
 * A lighter "Clear Path" control that clears only the last solve's
   visited/path visualization, keeping the current walls/Start/End so the
   visitor can tweak walls and re-solve without rebuilding the whole grid.
-* Basic keyboard/touch-friendly interaction (tap-to-place, touch-drag to
-  paint walls) — no mouse-only requirement.
+* Touch-friendly interaction (tap-to-place, touch-drag to paint walls) —
+  no mouse-only requirement. Grid editing itself is pointer-only (there is
+  no keyboard cursor over the canvas); the toolbar buttons are ordinary
+  `<button>`s, so they are keyboard-reachable and expose the active tool
+  via `aria-pressed`.
 * A third `/projects` card and a third landing-page "Selected work" card,
   both linking straight into `/puzzle-solver`, matching how Fishing Game and
   Kitchen Shift are listed (`docs/features/projects.md`,
@@ -258,6 +201,7 @@ States this feature's UI must handle:
 | Solved — path found             | Path highlighted over visited cells; status line shows step count. |
 | Solved — no path found          | All reachable cells shown visited; status line reports unreachable. |
 | Reset                           | "Reset Grid" returns to the Empty grid state. |
+| Clear Path                      | "Clear Path" removes only the visited/path overlay, keeping walls/Start/End. |
 
 ---
 
@@ -310,6 +254,10 @@ persist (see Scope's Out of scope).
 * **Grid is locked during the solve animation.** Wall/Erase Wall/Start/End
   tools are disabled while a solve is animating, re-enabled once it
   finishes (path found or exhausted).
+* **Grid state is immutable.** Every `grid-state.js` function returns a
+  new `GridState` rather than mutating its input (the same convention as
+  `fishing/engine-state.js`); callers reassign, e.g.
+  `state = setStart(state, row, col)`.
 * **Editing walls after a solve implicitly clears the stale
   visited/path overlay** — same effect as clicking "Clear Path" — so a
   visualization never renders next to walls that no longer produced it.
@@ -327,41 +275,154 @@ persist (see Scope's Out of scope).
 
 ---
 
+---
+
 ## Testing Plan
 
-* `dfs.js` unit tests (`node --test`, matching the `rules.js` convention in
-  `web/static/js/fishing/`, `web/static/js/cooking/`): solvable grid
-  returns a path connecting Start→End via only orthogonal steps; grid fully
-  enclosing End returns no path; deterministic explore order given a fixed
-  neighbor-visit order; Start-adjacent-to-End trivial case; Start-equals-
-  End edge case if reachable via the UI at all (should be prevented per
-  Business Rules, but the pure function should still handle it sanely).
-* `grid-state.js` unit tests: wall drag skips Start/End cells; placing
-  Start/End clears a wall at that cell; Reset clears every piece of state;
-  Clear Path clears only visited/path, not walls/Start/End.
-* Playwright e2e (`e2e/puzzle-solver.spec.js`, Chromium + WebKit): place
-  Start and End, draw a wall, run Solve, assert the path/visited cells
-  render and the status line reflects success; build a fully enclosing wall
-  around End and assert the "no path found" status line.
-* `internal/handler/template_test.go`-style Go test asserting `GET
-  /puzzle-solver` renders 200 with the expected content template, mirroring
-  the other pages' route tests.
+* [x] `dfs.js`: an open grid yields a Start→End path of orthogonal steps
+      only; a fully enclosed End returns `path: null` with every reachable
+      cell visited; explore order is deterministic (up, right, down,
+      left); Start adjacent to End and Start equal to End are handled;
+      walls are never stepped on (`dfs.test.js`, `solveDFS` suite).
+* [x] `grid-state.js`: wall painting skips Start/End; placing Start/End
+      clears a wall at that cell; Start/End on the other marker is a
+      no-op; `resetGrid` clears everything; functions never mutate their
+      input (`grid-state.test.js`).
+* [ ] Clear Path clears only the visited/path overlay, not
+      walls/Start/End — the overlay lives in `puzzle-solver.js`
+      (`clearVisualization`), not `grid-state.js`, and no unit or e2e
+      test clicks Clear Path.
+* [ ] Editing the grid after a solve clears the stale overlay
+      (`applyToolToCell` → `clearVisualization`) — not tested.
+* [x] e2e: empty-grid load state with Solve disabled; Solve enables only
+      once Start and End are set; `aria-pressed` on the active tool; a
+      solvable case; a fully enclosed no-path case; Reset Grid; revisiting
+      via HTMX; no console errors (`e2e/puzzle-solver.spec.js`).
+* [x] The `/projects` card renders and links to `/puzzle-solver`
+      (`e2e/projects.spec.js`).
+* [ ] A Go handler test asserting `GET /puzzle-solver` renders 200 with
+      `puzzle-solver-content` — none exists
+      (`internal/handler/*_test.go` has no PuzzleSolver test).
+
+---
+
+## Open Questions
+
+* `e2e/puzzle-solver.spec.js`'s "a reachable Start/End with a non-blocking
+  wall finds a path" test (line 114) sets a 0 ms animation interval and
+  then acts on the result; under heavy load this has raced and flaked.
+  Freezing the animation or setting and asserting inside one hook would
+  make it deterministic.
+* Whether to add the missing tests above (Clear Path, edit-after-solve
+  clearing, the Go route test).
 
 ---
 
 ## Definition of Done
 
-* [ ] User flow works end-to-end, including edge cases above (no path
-      found, Start/End click-on-other-marker no-op, wall-through-marker
-      prevention).
-* [ ] All states in the UI table are implemented.
-* [ ] `GET /puzzle-solver` wired into the mux, `/projects`, and the landing
-      page's Selected work section.
-* [ ] Handler/service/repository boundaries followed where they apply
-      (`go-backend`) — here, effectively just the handler, since there's no
-      service/repository layer.
-* [ ] Accessibility checked (keyboard reachability of toolbar controls,
-      focus states, contrast of cell-state colors, semantic HTML for the
-      toolbar/status line — the canvas itself is inherently non-semantic,
-      same accepted tradeoff as the other two canvas games).
-* [ ] Tests cover the behavior in the Testing Plan above.
+* [x] User flow works end-to-end, including no path found, the Start/End
+      click-on-other-marker no-op, and wall-through-marker prevention
+      (e2e solving tests; `grid-state.test.js`).
+* [x] All states in the UI table are implemented (`puzzle-solver.js`;
+      Clear Path is implemented but untested — Testing Plan).
+* [x] `GET /puzzle-solver` is wired into the mux (`cmd/server/main.go`),
+      `/projects` (`internal/handler/pages.go`'s `projectItems`), and the
+      landing Selected work seed (`migrations/005_create_landing_content.sql`).
+* [x] Handler boundaries: a single `PagesHandler.PuzzleSolver` method, no
+      service/repository layer, since there is no server-side state.
+* [ ] Accessibility checked: toolbar buttons are real `<button>`s with
+      `aria-pressed`, but no recorded keyboard/focus/contrast audit exists,
+      and the canvas grid is pointer-only.
+* [ ] Tests cover the behavior in the Testing Plan above (three gaps listed
+      there).
+
+---
+
+## History
+
+### Status notes from the original ship (kept verbatim)
+
+> Written at the time; some details are now out of date — e.g. the test
+> counts, and `e2e/cooking-game.spec.js` does exist now.
+
+`Shipped` — implemented and verified. `GET /puzzle-solver` renders the real
+page (toolbar + 600×600 canvas grid); `web/static/js/puzzle/dfs.js` and
+`web/static/js/puzzle/grid-state.js` are pure, DOM-free logic modules
+covered by `node --test` unit tests (23 tests, all passing); `web/static/js/
+puzzle-solver.js` wires them to the canvas (pointer/touch grid editing,
+theme-reactive redraws, the animated DFS reveal); `e2e/puzzle-solver.spec.js`
+covers the full user flow (empty-grid load state, Solve-button gating,
+toolbar tool switching, a solvable case, a fully-enclosed no-path case,
+Reset Grid, a revisit-via-HTMX regression case (below), and a
+no-console-errors smoke test) — 16 tests, passing on both Chromium and
+WebKit. `/projects` and the landing page's "Selected work" section each
+picked up a third card linking into it
+(`docs/features/projects.md`, `docs/features/landing-page.md`); the header
+nav is untouched, same gradual-rollout pattern the other two games started
+with.
+
+`grid-state.js` ended up **immutable** — every function returns a new
+`GridState` rather than mutating its input — because that's what this
+codebase's actual `fishing/engine-state.js` convention turned out to be
+when checked, not the "mutate in place" guess this doc's Business Rules
+discussion assumed while it was still `Proposed`. Callers reassign, e.g.
+`state = setStart(state, row, col)`.
+
+`puzzle-solver.js` exposes a test-only `window.__puzzleSolverTestHooks
+.setAnimationIntervalMs(ms)` hook (mirroring `fishing-game.js`'s equivalent)
+so `e2e/puzzle-solver.spec.js` can collapse the per-cell reveal animation
+during a solve instead of waiting out several real seconds on a
+near-full-grid DFS — the production default interval is untouched and still
+just a first-pass "tuned by eye" value, per this doc's earlier note that
+speed isn't a user-facing control.
+
+The `/projects` card now has a real screenshot too
+(`web/static/images/puzzle/screenshot.png`), same live-Playwright-capture
+convention as the other two games: Start/End placed, a hand-built maze
+drawn (a fully enclosed 7×6 dead-end pocket with a single doorway, plus a
+couple of smaller obstacles further along), solved, then captured — so the
+pocket's fully-explored "visited" cells (amber), the maze walls (black),
+and the solved path threading out to End (sage, ending at the terracotta
+End marker) are all visible at once, clipped to the card's 16:10 aspect
+the same way the Fishing Game screenshot's own doc comment describes.
+
+**Later change**: a real, user-reported bug — navigating to `/puzzle-solver`
+via the `/projects` "Play now" link, then away, then back again via that
+same link within the same browser tab, rendered a completely blank,
+non-interactive canvas the second time (gridlines gone, every button
+inert). Root cause: `puzzle-solver.js`'s DOM wiring (`bootstrap()`) only
+ran from a plain top-level call executed once when the module's code first
+ran — but a `<script type="module">`'s top-level code executes at most once
+per resolved URL for the whole page's lifetime, by spec. htmx recreates and
+re-inserts the `<script>` tag on every HTMX navigation back to the page,
+but the browser does not re-execute an already-evaluated module, so that
+top-level call never fired again and the freshly swapped-in `#puzzle-canvas`
+was left completely unwired. Fixed by also re-running `bootstrap()` from a
+persistent `htmx:afterSwap` listener on `document.body` — registered once,
+during whichever visit happens to be this file's one actual execution, and
+still alive for every later swap since `document.body` survives every
+`#main-content` swap (`init()`'s existing tear-down-previous-instance guard
+already made re-running `bootstrap()` safe; the fix only needed to make sure
+it actually got called again). Covered by a new regression test in
+`e2e/puzzle-solver.spec.js` ("revisiting via HTMX after navigating away")
+that drives the exact real-world path and asserts genuine interactivity
+(not just that the canvas element is present) on the second visit.
+
+This is a **systemic bug in this codebase's `type="module"` +
+htmx-navigation pattern, not something specific to this feature** —
+`fishing-game.js` and `cooking-game.js` use the exact same bootstrap-once
+pattern and were confirmed, while investigating this report, to have the
+identical latent bug (their "Start Dive"/equivalent button silently does
+nothing on a second HTMX visit in the same tab). It was invisible there
+only because their idle start screen is static HTML that still looks
+correct even when totally unwired, unlike this feature's canvas, which
+draws its entire primary content immediately and so fails loudly. The user
+confirmed they wanted both fixed too, so the identical `htmx:afterSwap`
+re-bootstrap fix was applied to `fishing-game.js` and `cooking-game.js` in
+the same pass, each with its own new regression test
+(`e2e/fishing-game.spec.js`'s "revisiting via HTMX after navigating away";
+`e2e/projects.spec.js`'s "revisiting Kitchen Shift via HTMX after
+navigating away", since no dedicated `e2e/cooking-game.spec.js` exists) —
+see those two docs' own "Later change" notes for the full per-game
+writeup. Both full suites were re-verified afterward, including
+Fishing Game's against a real Postgres instance.

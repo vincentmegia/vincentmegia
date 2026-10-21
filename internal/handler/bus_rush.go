@@ -88,7 +88,7 @@ func (h *BusRushHandler) renderBoard(w http.ResponseWriter, r *http.Request, dai
 // score, distance_meters, and daily_date for a Daily Challenge run) and
 // returns the refreshed leaderboard fragment — the daily board for a daily
 // run.
-// Same CSRF gap as FishingGameHandler.SubmitScore — see its doc comment.
+// CSRF: covered as for FishingGameHandler.SubmitScore — see its doc comment.
 func (h *BusRushHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many submissions — please slow down and try again shortly.", http.StatusTooManyRequests)

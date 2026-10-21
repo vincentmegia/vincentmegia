@@ -297,7 +297,9 @@ export function dailyConditionForRolls(twist, biasRoll, roll) {
 //     over hospital stages/severity levels/level select). XP is earned in
 //     every shift — correct triage calls, finished treatment steps,
 //     discharges (sicker = more), calming Karen, Mel's visit — and adds up
-//     across months in the save (`careerXp`; Start New Month keeps it).
+//     across months within one visit to the page (hospital-game.js's
+//     in-memory `save.careerXp`; Start New Month keeps it, leaving the page
+//     resets it — nothing is persisted).
 //     Each rank from 2 up unlocks one perk; a later perk of the same kind
 //     replaces the earlier one.
 // ---------------------------------------------------------------------------
@@ -646,11 +648,13 @@ export function gradeMedsPick(order, pickedDrug, pickedDose) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Skill checks — the timing bar behind Vitals, Oxygen, IV and Surgery
-//    (the user: "for the vitals checks and the stuff that pumps oxygen and
-//    surgeries i want there to be skill checks"). Same centered gold zone
-//    and bouncing sweep as Library Shift's, with a per-treatment width and
-//    hit count: Oxygen takes three good pumps, Surgery three stages.
+// 7. Skill checks — the timing bar behind Vitals, IV, Surgery, giving Meds
+//    and grabbing surgery items (the user: "for the vitals checks and the
+//    stuff that pumps oxygen and surgeries i want there to be skill
+//    checks"). Same centered gold zone and bouncing sweep as Library Shift's,
+//    with a per-treatment width and hit count: Surgery takes three stages.
+//    Oxygen started here as a 3-hit bar but is now find-the-hearts (§7.5,
+//    OXYGEN_HEARTS/OXYGEN_SKULLS), so it has no entry below.
 // ---------------------------------------------------------------------------
 
 export const SKILL_CHECKS = {

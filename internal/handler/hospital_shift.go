@@ -54,8 +54,9 @@ func NewHospitalShiftHandler(renderer *Renderer, hospitalService *service.Hospit
 }
 
 // Index handles GET /hospital-shift. There's no database fetch here: every
-// player-specific value (Gard, current shift) loads client-side from
-// localStorage, and the leaderboard itself loads via its own request
+// player-specific value (Gard, current shift, rank) lives in the page's
+// memory for one visit and resets when the player leaves (nothing is saved
+// client-side), and the leaderboard itself loads via its own request
 // (GET /hospital-shift/leaderboard), not inline — see
 // docs/features/hospital-shift.md's Routes/Handlers table.
 func (h *HospitalShiftHandler) Index(w http.ResponseWriter, r *http.Request) {
@@ -104,10 +105,9 @@ func (h *HospitalShiftHandler) renderBoard(w http.ResponseWriter, r *http.Reques
 // r.FormValue — not JSON. Same reasoning as
 // CookingGameHandler.SubmitScore's doc comment.
 //
-// TEMPORARY, matching CookingGameHandler.SubmitScore's exact same
-// documented gap: no CSRF mechanism exists anywhere in this codebase yet
-// (see PagesHandler.Logout's doc comment) — this route's exposure is
-// identical to, not worse than, that already-accepted gap.
+// CSRF: covered the same way as FishingGameHandler.SubmitScore — a
+// cross-site browser POST is refused by middleware.CrossOriginProtection
+// before this runs; see that handler's doc comment.
 func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many submissions — please slow down and try again shortly.", http.StatusTooManyRequests)

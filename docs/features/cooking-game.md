@@ -2,6 +2,413 @@
 
 ## Status
 
+`Shipped`. Playable at `/kitchen-shift`, linked from the `/projects` card
+and the landing page's Selected work (not the header nav). Recipe, gear
+and ramp magnitudes are illustrative and tunable.
+
+The rules are split across three sibling docs, which this doc doesn't
+repeat:
+
+* `cooking-game-food-server.md` — orders, the order pad, serving,
+  mistakes, the shift payout, closing chores, gear, Sanity, Coffee Pour,
+  hallucinations, the Gard counter, mid-month resume.
+* `cooking-game-customer.md` — arrival/patience ramp, Reputation,
+  per-customer sanity, Mel, Olive & Oliver, Karen, walk-ins, 0-Reputation
+  penalties.
+* `cooking-game-kitchen.md` — recipes, cookware, cook timing, station art,
+  collision avoidance, the Dining/Kitchen room split.
+* `cooking-game-food-server-leveling.md` — the three round tiers.
+
+Tests and how to run them:
+
+* Go: `go test ./...` — `internal/service/cooking_validation_test.go`,
+  `cooking_service_test.go`, `internal/handler/cooking_game_test.go`, and
+  the `DATABASE_URL`-gated subtest "kitchen shift routes round-trip through
+  the real cooking_scores table" in `cmd/server/e2e_test.go`.
+* JS unit: `node --test web/static/js/cooking/*.test.js` (`rules`,
+  `engine-state`, `floor-plan`).
+* Playwright: `make test-e2e` runs `e2e/cooking-game.spec.js` plus the
+  Kitchen cases in `e2e/projects.spec.js` (the card's "Play now" link and
+  revisiting via HTMX), on Chromium and WebKit.
+
+The long version-by-version changelog (v1 through v4.8) and the previous,
+superseded body of this doc are under History at the end.
+
+## Summary
+
+A top-down, click-controlled restaurant-shift sim at `/kitchen-shift`, set
+at **Startime Diner**. Across an 8:30 AM–11:30 PM shift the player takes
+orders by writing them on an order pad at the table, gathers ingredients
+from the Fridge/Cabinet and cookware from the Cookware Closet, cooks at the
+Stove/Oven/Rice Station with a timing gauge, and serves the dish. When the
+clock ends, Duke's office opens. Walking in pays the shift
+(`engine-state.js`'s `shiftPayout`): a base of 4,000 Gard minus 500 per
+mistake (floored at 500), plus bonus Gard (Karen's tip, perfect coffee
+pours), minus complaint letters and any skipped closing chores, then times
+the 0-Sanity and 0-Reputation pay-cut multipliers. Served customers also
+pay 50 Gard each at the Counter as they leave.
+
+A month is 30 shifts in three 10-shift round tiers (more tables, a shorter
+clock). After shift 30 the Final Paycheck can be submitted to a public
+leaderboard. Gard buys gear in a shop that persists across months in
+`localStorage`.
+
+Since v4 the game is drawn in Library Shift's earlier art style: people by
+`web/static/js/shared/people.js`'s `drawPerson` (via `drawKitchenPerson`),
+wooden-plank and glazed-tile floors, and Library-style station drawers.
+Sanity and Reputation bars, a Coffee Pour minigame, low-Sanity
+hallucinations, 0-Reputation penalties and a Gard counter are ported from
+Library Shift. Recurring characters: Mel and engaged couple Olive & Oliver
+each appear once per shift at a random point; Karen comes on shifts 12 and
+18 (an angrier rematch). A security guard stands by the door.
+
+## Problem / Motivation
+
+Same motivation as the Fishing Game (`docs/features/fishing-game.md`):
+CLAUDE.md names "Personal interests" as planned content, and a second
+just-for-fun game fills it. It reuses the same pattern (canvas game,
+`localStorage` meta-progression, a small Postgres leaderboard) on a
+different gameplay shape — station-to-station movement and order
+fulfillment instead of an auto-scrolling descent.
+
+## Scope
+
+**In scope (implemented):**
+
+* A 960×600 canvas with click/tap-only movement: click a station and the
+  player walks there and interacts on arrival; click empty floor to walk.
+  Enter acts on the hovered station. Two rooms share the canvas: **Dining**
+  (tables, Counter, Coffee Machine, Duke's office, restroom, trash bin,
+  kitchen door) and **Kitchen** (Fridge, Cabinet, Cookware Closet,
+  Cleaning Closet, Stove, Oven, Rice Station, trash bin, dining door).
+* Orders via the on-canvas order pad; a side order notepad of tickets.
+* Ingredients on a limited tray; cookware (Pan, Baking Tray, Rice Cooker)
+  picked up once per shift; a binary-zone cook gauge.
+* Serving, wrong-dish and missed-order mistakes, per-customer sanity, and
+  restaurant Reputation.
+* Optional closing chores in any order, with Duke's office open from
+  11:30 PM and skipped chores docked.
+* The paycheck screen itemizing the payout; the Final Paycheck after shift
+  30 with optional leaderboard submission and "Start New Month".
+* A gear shop, a Recipe Book panel, a Fullscreen toggle (requested
+  automatically on shift start), a Reset progress button (with `confirm()`).
+* Mid-month resume (shift number, month Gard, gear) via `localStorage`.
+* A one-time intro (the player walks in, a dialogue line) on the first
+  "Start Shift" ever on a device.
+* Sanity, Coffee Pour, hallucinations, 0-Reputation penalties, the Gard
+  counter, Mel, Olive & Oliver, Karen, the security guard.
+
+**Out of scope:**
+
+* Header nav link (reachable from `/projects` and the landing page only).
+* Server-authoritative gameplay or anti-cheat (Security Considerations).
+* Visitor accounts or server-side per-player state beyond the opt-in
+  leaderboard row.
+* Multiplayer, sound, native app packaging, more than one restaurant map.
+* Image/sprite assets — everything is canvas primitives.
+
+---
+
+## User Flow
+
+```text
+1. /kitchen-shift loads: start screen with month-to-date Gard, best month,
+   the upcoming shift's tier stars, the leaderboard, Shop, and "Start
+   Shift" (or "Resume Shift {n}" mid-month).
+2. Start Shift requests fullscreen. The first time ever on this device,
+   the intro plays first ("Let's get to work!" starts the shift).
+3. Customers walk in and sit at open tables. Clicking one opens the order
+   pad; picking their dish places the order (ticket on the notepad,
+   patience bar at the table).
+4. In the Kitchen: gather ingredients (Fridge/Cabinet panels) and the
+   right cookware (Cookware Closet), then click the Stove, Oven or Rice
+   Station; click "Cook!" while the sweep is in the gold zone. A miss
+   burns the ingredients (cookware is kept). Salad, Mel's and the
+   couple's orders need no cooking.
+5. Back in Dining, click the table to serve. Right dish: they eat, walk to
+   the Counter, pay 50 Gard and leave. Wrong dish or running out of
+   patience: a mistake.
+6. At 11:30 PM queued orders fail, a toast lists the closing chores, and
+   Duke's office opens. Clean tables, wash dishes, shut down at the
+   Counter — any order, or skip them and be docked.
+7. Walk into Duke's office: the paycheck screen shows the itemized
+   outcome, this shift's pay and the month total, with "Open Shop" and
+   "Start Next Shift".
+8. After shift 30: the Final Paycheck shows the month total, an optional
+   name field to submit to the leaderboard, and "Start New Month" (gear
+   persists; month Gard and shift reset; tier goes back to 1).
+9. Leaving or reloading mid-shift restarts that shift on return.
+```
+
+---
+
+## UI
+
+```text
+web/templates/
+├── pages/cooking-game.html          # shell: HUD, canvas, overlays, notepad, leaderboard
+└── components/
+    ├── cooking-shop.html             # gear rows
+    └── cooking-leaderboard.html      # top-20 fragment (also the HTMX partial)
+
+web/static/js/
+├── cooking-game.js                  # canvas loop, input, drawing, localStorage, test hooks
+├── shared/people.js                 # drawPerson + PEOPLE_TEMPLATES (also used by Bus Rush)
+└── cooking/
+    ├── rules.js                     # pure: recipes, ramps, paycheck, Karen/Mel, tiers, Coffee Pour,
+    │                                #       hallucinations, 0-Reputation, order pad, chore penalties
+    ├── engine-state.js              # pure: order queue, tables, phases, payout, skipped chores
+    └── floor-plan.js                # pure: stations, table layout, hit-testing, collision
+```
+
+| State | Behavior |
+|---|---|
+| Start screen | Month Gard, best month, tier stars, Shop, Start/Resume Shift, leaderboard. |
+| Intro (first ever start) | Player walks in; dialogue line; "Let's get to work!". |
+| Playing | HUD (Shift n/30, in-game clock, status), on-canvas Sanity/Reputation bars and Gard counter, order notepad. |
+| Hover | A hint names the hovered station (e.g. "Duke's Office (opens 11:30 PM)"), with "(Enter)". |
+| Order pad | Speech bubble + four dish choices; ✕ / Escape / click-off closes. |
+| Station panel | Fridge/Cabinet/Cookware list with tray status; full tray disables items. |
+| Cook gauge | Sweep with the gold zone and "Cook!". |
+| Coffee Pour | Hold-to-pour overlay with a target band. |
+| Toasts | Inside the fullscreen container (serving feedback, Karen, timeouts, tier up, chores). |
+| Closing | Dirty tables, dish badge, Duke's door unlocked. |
+| Paycheck | Itemized outcome, shift pay, month total, Open Shop / Start Next Shift. |
+| Final Paycheck (shift 30) | Month total, leaderboard form, Start New Month. |
+| Shop | Gear rows with level/effect/cost; unaffordable or maxed rows disabled; Reset progress. |
+| Recipe Book | Every dish's station, cookware, ingredients. |
+| Fullscreen | `#cooking-game-container` is the target; the canvas letterboxes. |
+| Leaderboard | Loading text, then the fragment; "No scores yet — be the first!" when empty; a server error renders an error fragment (`writeCookingLeaderboardError`). |
+| `localStorage` unavailable | Fully playable; `#cooking-storage-notice` explains progress won't save. |
+
+The canvas uses its own fixed warm palette regardless of dark mode; the
+surrounding chrome follows the site theme.
+
+---
+
+## HTMX Interactions
+
+The game loop is not modeled as HTTP (`htmx-ui`'s scoped exception). HTMX
+covers navigation and the leaderboard:
+
+| Trigger | Method | Endpoint | Target | Swap |
+|---|---|---|---|---|
+| `/projects` or landing "Play now" | GET | `/kitchen-shift` | `#main-content` | `outerHTML` |
+| Page load | GET | `/kitchen-shift/leaderboard` | `#cooking-leaderboard` | `outerHTML` (`hx-trigger="load"`) |
+| Final Paycheck "Submit" | POST | `/kitchen-shift/score` | `#cooking-leaderboard` | `outerHTML` |
+
+`POST /kitchen-shift/score` returns the refreshed fragment.
+
+---
+
+## Client-side Behavior (non-HTMX)
+
+`cooking-game.js` is one external ES module (no inline scripts):
+
+* **Loop**: `requestAnimationFrame`; pauses on `visibilitychange`.
+* **Delegation**: state transitions go through `engine-state.js`, numbers
+  through `rules.js`, geometry through `floor-plan.js`.
+* **Persistence**: one key, `cooking-game:v2`, holding `version: 1`,
+  `monthToDateGard`, `currentShift`, `gear`, `bestMonthTotal`,
+  `hasSeenIntro`. `loadSave` validates the shape and falls back to
+  defaults on missing/corrupt data; `persistSave` swallows storage errors.
+* **HTMX lifecycle**: `bootstrap()` runs at module load and again on every
+  `htmx:afterSwap` of `#main-content` (a module only executes once per
+  page); `teardown()` on `htmx:beforeSwap` of `#main-content` stops the
+  loop and removes listeners.
+* **Test hooks**: `window.__cookingGameTestHooks` (installed
+  unconditionally) for `e2e/cooking-game.spec.js` — e.g. `skipToClosing`,
+  `endClock`, `forceUpset`, `collectPaycheck`, `seatCustomerNow`,
+  `setHeldDish`, `setShiftStats`, `setCoffeePourFill`, `spawnGhostNow`,
+  `setCookGauge`, plus read-only getters (`getShiftState`, `getOrderPad`,
+  `getKarenEncounter`, `getCookZone`, `getGardPops`, …). They call the
+  same real transitions play uses.
+
+---
+
+## Routes / Handlers
+
+| Method | Path | Handler | Auth | Notes |
+|---|---|---|---|---|
+| GET | `/kitchen-shift` | `CookingGameHandler.Index` | no | Page shell. |
+| GET | `/kitchen-shift/leaderboard` | `CookingGameHandler.Leaderboard` | no | Top 20 fragment. |
+| POST | `/kitchen-shift/score` | `CookingGameHandler.SubmitScore` | no | Form-encoded `player_name`, `total_earnings`, `shifts_completed`; per-client rate limit; returns the fragment. |
+
+Registered in `cmd/server/main.go`'s `newMux`.
+
+---
+
+## Data Model
+
+`migrations/003_create_cooking_scores.sql`, widened by
+`004_widen_cooking_scores_round_tiers.sql`:
+
+| Column | Type | Constraint |
+|---|---|---|
+| `id` | `BIGINT` identity | PK |
+| `player_name` | `TEXT` | 1–20 chars |
+| `total_earnings` | `INT` | 0–150,000 |
+| `shifts_completed` | `INT` | 1–30 |
+| `created_at` | `TIMESTAMPTZ` | default `now()` |
+
+Index `idx_cooking_scores_earnings (total_earnings DESC)`. Both migrations
+have a working `Down` (004 restores the 100,000/20 bounds; 003 drops the
+index and table). `internal/service/cooking_validation.go` enforces the
+same bounds (`cookingScoreEarningsMax` = 150,000, shifts 1–30) before the
+insert. Gear, Gard and progress live only in `localStorage`.
+
+---
+
+## Business Rules / Validation
+
+See the three rules docs and the leveling doc (Status). The leaderboard
+submits `save.monthToDateGard` at the Final Paycheck — Gard earned that
+month minus anything spent in the shop — with `shifts_completed` = 30.
+
+---
+
+## Security Considerations
+
+* **Authz**: none; public and anonymous.
+* **Input**: `player_name` is trimmed and validated server-side
+  (`validatePlayerName`, shared by every game: 1–20 chars, no invalid
+  UTF-8 or control/format characters) and rendered through
+  `html/template` auto-escaping.
+* **Untrusted scores**: the game is client-side, so a score is only
+  bounds-checked (earnings 0–150,000, shifts 1–30). Accepted for a
+  stakes-free leaderboard.
+* **Abuse**: `SubmitScore` is rate-limited per client
+  (`middleware.ClientKey`, which honors `TrustProxyHeaders` behind Render's
+  proxy).
+* **CSRF**: every POST passes `middleware.CrossOriginProtection`, which
+  403s cross-site browser requests (`Sec-Fetch-Site`/`Origin`). There is
+  no session token; scripts posting directly are limited only by the rate
+  limit and validation.
+* **CSP**: no inline `<script>`; no inline `style=""` attributes (the CSP
+  blocks them).
+* **e2e pollution**: tests that submit a real score must delete their own
+  row (the Go e2e subtest does, via `t.Cleanup`).
+
+---
+
+## Testing Plan
+
+Unit files are under `web/static/js/cooking/`.
+
+* [x] Recipes: band gating, ingredient/cookware names resolve, cookware
+      matches station, every cookware item is used (`rules.test.js`
+      "RECIPE_BANDS…", `availableDishes`, `findDish`).
+* [x] Cook zone/sweep: in-zone succeeds, both sides fail, Sharp Knife
+      widens it up to the max; sweep speeds up with shift
+      (`cookSuccessZone / isCookSuccess`, `cookSweepSpeed`).
+* [x] Ramps: arrival interval, jitter, patience, table capacity
+      (`customerArrivalIntervalSeconds`, `jitteredArrivalIntervalSeconds`,
+      `customerPatienceSeconds`, `tableCapacity`).
+* [x] Round tiers (`roundTier`, `roundTierStars`, `shiftClockSecondsForShift`,
+      `tableUnlockLevelForShift`, `baseCapacityForShift`).
+* [x] Base paycheck 4,000 − 500/mistake floored at 500; `monthTotal`;
+      `COUNTER_PAYMENT_GARD` is small and positive (`rules.test.js`).
+* [x] `shiftPayout`: bonus adds, complaints subtract, pay cuts multiply,
+      flat deductions floor at 0 (`engine-state.test.js` `shiftPayout`).
+* [x] Closing chores in any order; idle-shift skip; `skippedChores`
+      amounts (`engine-state.test.js` "closing chores (any order after
+      11:30 PM, v4.8)", `tick`, `skippedChores`).
+* [x] Order queue, serve, wrong dish, `failOrderAt`, `annoyCustomer`,
+      timeouts (`engine-state.test.js`).
+* [x] Sanity, Reputation, Coffee Pour grading, hallucinations, 0-Sanity and
+      0-Reputation penalties (`engine-state.test.js`, `rules.test.js`
+      "Coffee Pour", "hallucinations").
+* [x] Karen on shifts 12 and 18 only, with the rematch's line/patience/tip
+      (`rules.test.js` `isKarenShift`, `karenEncounter`).
+* [x] Mel's and the couple's dishes never in the random pool
+      (`MEL_DISH`, `COUPLE_DISH` suites).
+* [x] `orderPadChoices` (`rules.test.js`).
+* [x] Floor plan: stations, table layout per level, hit-testing, approach
+      point, collision (`floor-plan.test.js`).
+* [x] `POST /kitchen-shift/score` validation, rate limiting, empty/populated
+      leaderboard, XSS escaping (`TestValidateCookingScoreSubmission`,
+      `TestCookingGameHandler_SubmitScore_*`,
+      `TestCookingGameHandler_Leaderboard_Empty`/`_Populated`).
+* [x] Real-Postgres round trip (`cmd/server/e2e_test.go`).
+* [x] e2e: order pad (right pick, wrong pick + number keys, ✕); ingredient
+      pickup and full tray; serving (right, wrong, timed out); Trash Bin;
+      Duke's office from 11:30 with chores docked; closing chores in any
+      order; order notepad; Rice Station; Karen's rematch; Coffee Pour
+      (perfect, spill); hallucinations; zero Reputation; Gard counter; no
+      console/CSP errors (`e2e/cooking-game.spec.js`).
+* [x] e2e: the `/projects` card navigates in via HTMX, and a second HTMX
+      visit stays interactive (`e2e/projects.spec.js`).
+
+Not covered by an automated test:
+
+* [ ] A full shift → paycheck → shop purchase → effect next shift.
+* [ ] The month total across shifts and its reset on Start New Month, and
+      the 30-shift Final Paycheck → submit flow in a browser.
+* [ ] `localStorage` persistence across reloads and the corrupt/missing
+      fallback (`loadSave`/`isValidSaveShape` have no tests).
+* [ ] The one-time intro and `hasSeenIntro`.
+* [ ] Mel and the couple each appear exactly once per shift.
+* [ ] The leaderboard's server-error fragment.
+* [ ] Coffee Machine/low-Sanity walking speed visible in play (only the
+      pure functions are tested).
+
+---
+
+## Open Questions
+
+* **Leaderboard cap (owner decision: keep 150,000 for now).**
+  `cookingScoreEarningsMax` and the DB CHECK were sized for 30 × 4,000 =
+  120,000 plus ~25% headroom. Counter payments (50g per served customer),
+  Karen's tips and perfect pours come on top, so a strong month that
+  spends nothing in the shop can exceed 150,000 — and the submit then
+  fails with a 400. Revisit if real playthroughs reach it.
+* Two e2e tests race under load: the Coffee Pour test (line 389) and the
+  Rice Station test (line 330) set state through a hook and then act in a
+  separate step, which the live loop can overtake. Freezing the loop or
+  setting and grading in one hook would make them deterministic.
+* Recipe, ramp and gear numbers still need a real playtesting pass.
+
+---
+
+## Definition of Done
+
+* [x] User flow works end-to-end: missed order, wrong dish, closing,
+      paycheck (e2e "serving food", "Duke's office", "closing chores…").
+      Mid-month resume and the full 30-shift month have no automated test
+      (Testing Plan).
+* [x] The UI states above are implemented (`cooking-game.html`,
+      `cooking-game.js`).
+* [x] Migrations written with a working `Down` (003, 004).
+* [x] Handler/service/repository boundaries followed
+      (`internal/handler/cooking_game.go` → `internal/service/cooking_service.go`
+      → `internal/repository/cooking_repository.go`).
+* [x] `player_name` auto-escaped, with an XSS regression test
+      (`TestCookingGameHandler_Leaderboard_Populated`).
+* [x] `POST /kitchen-shift/score` is rate-limited
+      (`TestCookingGameHandler_SubmitScore_RateLimited`) and behind
+      `CrossOriginProtection` (`TestHandlerChain_RejectsCrossSiteWrites`
+      covers the chain, via `/logout`).
+* [x] No inline `<script>`; CSP-clean (e2e "no console errors on load and
+      during play, including no CSP violations").
+* [x] The loop and listeners are torn down on HTMX nav-away (`teardown`).
+* [ ] Accessibility checked for the non-canvas UI — no recorded audit.
+* [ ] Tests cover the Testing Plan — see its "Not covered" list.
+
+---
+
+## History
+
+Everything below is kept verbatim from earlier versions of this doc. It
+describes how the game got here and is **not** a description of current
+behavior where it conflicts with the sections above (for example: the
+pre-v3.11 4,000/2,000 paycheck, the 20-shift month, the pixel-art and
+"coquette" art styles, Mel/Olive & Oliver as the fixed first two
+customers, Karen on shift 12 only, and strictly ordered closing chores
+were all replaced). Notes saying "no `e2e/cooking-game.spec.js` exists"
+predate v4, which added it.
+
+### Version changelog (v1 – v4.8), formerly the Status section
+
 `Shipped` — implemented and covered by tests: Go (validation/leaderboard,
 `internal/service/cooking_validation_test.go`/`cooking_service_test.go`,
 `internal/handler/cooking_game_test.go`), JS (`rules.js`/`engine-state.js`/
@@ -1216,7 +1623,9 @@ down."
   first, then shuts down with a table still dirty. Unit 213/213; e2e
   132/132 on Chromium + WebKit.
 
-## Summary
+### Previous doc body (superseded by the rewrite above)
+
+#### Summary
 
 A playable top-down, click-controlled restaurant sim at `/kitchen-shift`,
 set at a diner named **Startime Diner**: across an 8:30 AM–11:30 PM shift,
@@ -1240,7 +1649,7 @@ sweet regular Mel (always first), engaged couple Olive & Oliver (always
 right after her), and, on shift 12 only, a demanding one-off customer
 named Karen.
 
-## Problem / Motivation
+#### Problem / Motivation
 
 Same motivation as the Fishing Game (`docs/features/fishing-game.md`'s
 Problem / Motivation): CLAUDE.md names "Personal interests" as planned
@@ -1252,7 +1661,7 @@ meaningfully different gameplay shape — station-to-station movement and
 order fulfillment instead of an auto-scrolling descent — so it's a real
 second data point for that pattern rather than a reskin of the first game.
 
-## Scope
+#### Scope
 
 **In scope:**
 
@@ -1430,7 +1839,7 @@ second data point for that pattern rather than a reskin of the first game.
 
 ---
 
-## User Flow
+#### User Flow
 
 ```text
 1. User navigates to /kitchen-shift. Page loads: a start screen shows current
@@ -1518,7 +1927,7 @@ second data point for that pattern rather than a reskin of the first game.
 
 ---
 
-## Visual Direction
+#### Visual Direction
 
 Follows `tailwind-ui`'s Visual Style principles; specifics for this feature:
 
@@ -1643,7 +2052,7 @@ Follows `tailwind-ui`'s Visual Style principles; specifics for this feature:
 
 ---
 
-## UI
+#### UI
 
 ```text
 web/templates/
@@ -1696,7 +2105,7 @@ States this feature's UI must handle:
 
 ---
 
-## HTMX Interactions
+#### HTMX Interactions
 
 Same division of responsibility as the Fishing Game: the game loop itself
 (canvas rendering, input, station interaction, cooking, `localStorage`) is
@@ -1722,7 +2131,7 @@ Confirmation required for destructive actions:
 
 ---
 
-## Client-side Behavior (non-HTMX)
+#### Client-side Behavior (non-HTMX)
 
 `cooking-game.js` (one external file, no inline `<script>` tags, per this
 site's CSP):
@@ -1898,7 +2307,7 @@ site's CSP):
 
 ---
 
-## Routes / Handlers
+#### Routes / Handlers
 
 | Method | Path                          | Handler                            | Auth required | Notes |
 | ------ | ------------------------------- | ------------------------------------- | ------------- | ----- |
@@ -1908,7 +2317,7 @@ site's CSP):
 
 ---
 
-## Data Model
+#### Data Model
 
 ```sql
 -- migrations/003_create_cooking_scores.sql, widened by
@@ -1944,7 +2353,7 @@ only voluntarily-submitted, already-finished month results.
 
 ---
 
-## Rules Documents
+#### Rules Documents
 
 The gameplay rules that used to live in this section were split out
 (v3.11, "so it's more organized") into three sibling docs, one per rule
@@ -1970,7 +2379,7 @@ bounds, etc.) is covered in Security Considerations below.
 
 ---
 
-## Security Considerations
+#### Security Considerations
 
 * **Authz**: none required — public, anonymous feature like the rest of the
   unauthenticated site.
@@ -2004,7 +2413,7 @@ bounds, etc.) is covered in Security Considerations below.
 
 ---
 
-## Testing Plan
+#### Testing Plan
 
 * [x] Recipe/dish lookup returns the correct ingredient list for every dish;
       a shift number only unlocks dishes in bands up to and including its
@@ -2203,7 +2612,7 @@ bounds, etc.) is covered in Security Considerations below.
 
 ---
 
-## Open Questions
+#### Open Questions
 
 * Exact shift-clock duration and customer arrival/patience curves are all
   illustrative and need a real playtesting pass before being called final,
@@ -2278,7 +2687,7 @@ bounds, etc.) is covered in Security Considerations below.
 
 ---
 
-## Definition of Done
+#### Definition of Done
 
 * [ ] User flow works end-to-end, including edge cases above (missed order,
       wrong-dish serve, mid-month resume, full 30-shift month, final

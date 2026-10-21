@@ -2,33 +2,16 @@
 
 ## Status
 
-`Shipped`. Every item in Scope is implemented: `internal/handler/theme.go`'s
-`themeFromRequest` validates the cookie server-side against the exact
-`light`/`dark` allow-list this doc's Business Rules require; `base.html`
-reads it into the initial HTML; `nav-theme-toggle.html` defines the real
-toggle markup (sun/moon icons, `data-theme-toggle` hook, no `id` — exactly
-the collision-avoidance this doc's UI section calls for), mounted in both
-`header.html` and `mobile-nav-panel.html` via a shared `{{block
-"theme-toggle"}}` slot each reserves; `theme-toggle.js` handles the click,
-sets the cookie (`SameSite=Lax`, `Secure` in production), and is an
-external file with no inline `<script>`. `e2e/resume.spec.js` has a
-passing end-to-end test ("dark mode toggle changes the resume page theme")
-covering the toggle-and-persist path. This doc's Status previously read
-`Proposed` well after the feature actually shipped — a documentation-drift
-audit caught it, traced to `base.html`/`header.html`/`mobile-nav-panel.html`
-all still carrying stale "not yet built" comments alongside the real
-implementation, which is presumably why this field was never updated.
+`Shipped`. Server half: `themeFromRequest` (`internal/handler/theme.go`)
+allow-lists the `theme` cookie and `base.html` renders `class="dark"` /
+`class="light"` / no class on `<html>`. Client half: `theme-toggle.js` flips
+the class and sets the cookie. The `dark:` variant is a class-based
+`@custom-variant` in `web/static/css/app.css` that falls back to
+`prefers-color-scheme` when neither class is present.
 
-The Testing Plan and Definition of Done checklists below predate this
-correction and have not been re-audited item by item — treat an unchecked
-box there as "not yet re-verified against current code," not as "not
-implemented." One gap the audit found has since been closed:
-`internal/handler/theme_test.go`'s `TestThemeFromRequest` now covers the
-allow-list validation directly (valid `light`/`dark` values, a missing
-cookie, and several malformed/unexpected values including a
-suspicious-but-cookie-legal string, all asserted against `themeFromRequest`
-itself). The toggle-and-persist path remains covered only by
-`e2e/resume.spec.js`'s one Playwright test, as before.
+Tests: `internal/handler/theme_test.go` (`TestThemeFromRequest`, `go test
+./internal/handler/`) and `e2e/resume.spec.js` "dark mode toggle changes the
+resume page theme" (Playwright, `make test-e2e`).
 
 ## Summary
 
@@ -57,13 +40,11 @@ own instead of growing the layout doc further.
   so the initial response already has the correct theme.
 * Server-side validation of the cookie value against an exact allow-list.
 * Falling back to `prefers-color-scheme` when no cookie has been set yet.
-* `dark:` colors for the shell that already exists at the time this feature
-  ships — `base.html`'s `<body>`, `header.html`, `nav-menu.html`'s dropdown
-  panels, `mobile-nav-panel.html`, `footer.html`, and the `placeholder.html`
-  page content — so toggling is visibly correct today, not just
-  mechanically correct. Without this the toggle flips a cookie and an icon
-  but the rest of the page (including dropdown/panel surfaces) looks
-  unchanged, which reads as broken.
+* Dark colors for the shell. Today the shell uses the Organic semantic
+  tokens (`bg-surface`, `bg-paper`, `text-ink`, `border-line`, …), and
+  `app.css` redefines those tokens under the `dark:` variant, so header,
+  dropdown, mobile panel, footer and placeholder pages switch without
+  per-element `dark:` classes.
 
 **Out of scope:**
 
@@ -126,9 +107,8 @@ States this feature's UI must handle:
 | Dark (explicit, `theme=dark`)       | Renders dark regardless of OS preference. |
 | Toggle activated                   | Theme flips instantly, cookie is set, no page reload required. |
 
-The existing shell (`body`, header, footer, placeholder page) must carry
-matching `dark:` classes so these states are visibly, not just mechanically,
-correct — see Scope.
+The shell's colors come from the semantic tokens `app.css` redefines for dark
+mode, so these states are visible, not just a class change — see Scope.
 
 ---
 
@@ -199,6 +179,89 @@ None. Preference lives entirely in a client cookie, not the database.
 
 ## Testing Plan
 
+* [x] Toggle switches theme and sets the cookie, and the theme persists
+      across reload — `e2e/resume.spec.js` "dark mode toggle changes the
+      resume page theme" (clicks, asserts `html.dark`, reloads, asserts again).
+* [x] A malformed/unexpected cookie value is treated as not set —
+      `TestThemeFromRequest` (valid values, missing cookie, malformed and
+      suspicious values).
+* [ ] Persistence across an HTMX navigation (no reload) — untested; it holds
+      by construction since `<html>` is never swapped.
+* [ ] First visit with no cookie follows `prefers-color-scheme` — untested
+      (the CSS fallback is in `app.css`'s `@custom-variant dark`).
+* [ ] Toggle in the mobile panel works and matches the header's — untested.
+* [ ] Icon reflects state (sun in light, filled moon in dark via
+      `dark:hidden`/`dark:block`) — untested.
+* [ ] `prefers-reduced-motion` disables the toggle transition — untested
+      (`app.css`'s reduced-motion block lists `[data-theme-toggle]`).
+* [ ] Toggling visibly changes the shell's colors in a real browser —
+      untested (the test checks only the class).
+
+---
+
+## Definition of Done
+
+* [x] User flow works end-to-end, including persistence — the resume
+      Playwright test above; first-visit default is CSS-only and untested.
+* [x] All states in the UI table are implemented — `base.html`'s class,
+      `@custom-variant dark`, `theme-toggle.js`'s `isDark()` (reads the
+      class, else `matchMedia('(prefers-color-scheme: dark)')`).
+* [x] `theme` cookie value is validated server-side against an exact
+      allow-list before use — `themeFromRequest`, covered by
+      `TestThemeFromRequest`.
+* [x] Cookie set with `SameSite=Lax`, and `Secure` on HTTPS —
+      `theme-toggle.js`'s `setTheme` (`path=/; max-age=` one year).
+* [x] No inline `<script>` tags — `theme-toggle.js` is loaded with `src`
+      from `base.html`.
+* [x] No flash of the wrong theme on reload — the class is in the
+      server-rendered `<html>` tag; asserted after reload by the resume test.
+* [x] The shell uses the Organic color tokens (`bg-surface`, `text-ink`,
+      `border-line`, …), which `app.css` redefines for dark mode, so it
+      changes appearance when toggled.
+* [ ] Accessibility check (keyboard-operable toggle, focus visible,
+      reduced-motion) — the button is a native `<button>` with
+      `focus-visible` outline and a state-dependent `aria-label`, but no
+      check is recorded.
+* [ ] Tests cover the remaining unticked Testing Plan items.
+
+---
+
+## History
+
+### Status note before the wave-3 rewrite
+
+`Shipped`. Every item in Scope is implemented: `internal/handler/theme.go`'s
+`themeFromRequest` validates the cookie server-side against the exact
+`light`/`dark` allow-list this doc's Business Rules require; `base.html`
+reads it into the initial HTML; `nav-theme-toggle.html` defines the real
+toggle markup (sun/moon icons, `data-theme-toggle` hook, no `id` — exactly
+the collision-avoidance this doc's UI section calls for), mounted in both
+`header.html` and `mobile-nav-panel.html` via a shared `{{block
+"theme-toggle"}}` slot each reserves; `theme-toggle.js` handles the click,
+sets the cookie (`SameSite=Lax`, `Secure` in production), and is an
+external file with no inline `<script>`. `e2e/resume.spec.js` has a
+passing end-to-end test ("dark mode toggle changes the resume page theme")
+covering the toggle-and-persist path. This doc's Status previously read
+`Proposed` well after the feature actually shipped — a documentation-drift
+audit caught it, traced to `base.html`/`header.html`/`mobile-nav-panel.html`
+all still carrying stale "not yet built" comments alongside the real
+implementation, which is presumably why this field was never updated.
+
+The Testing Plan and Definition of Done checklists below predate this
+correction and have not been re-audited item by item — treat an unchecked
+box there as "not yet re-verified against current code," not as "not
+implemented." One gap the audit found has since been closed:
+`internal/handler/theme_test.go`'s `TestThemeFromRequest` now covers the
+allow-list validation directly (valid `light`/`dark` values, a missing
+cookie, and several malformed/unexpected values including a
+suspicious-but-cookie-legal string, all asserted against `themeFromRequest`
+itself). The toggle-and-persist path remains covered only by
+`e2e/resume.spec.js`'s one Playwright test, as before.
+
+### Testing Plan and Definition of Done before the wave-3 rewrite
+
+#### Testing Plan
+
 * [ ] Toggle switches theme instantly and sets the `theme` cookie.
 * [ ] Theme persists via cookie across reload and HTMX navigation.
 * [ ] First visit with no cookie defaults to `prefers-color-scheme`.
@@ -216,7 +279,7 @@ None. Preference lives entirely in a client cookie, not the database.
 
 ---
 
-## Definition of Done
+#### Definition of Done
 
 * [ ] User flow works end-to-end, including first-visit default and persistence.
 * [ ] All states in the UI table are implemented.

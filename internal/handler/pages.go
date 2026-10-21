@@ -9,11 +9,11 @@ import (
 	"github.com/vincentmegia/vincentmegia/internal/service"
 )
 
-// PagesHandler renders the shared shell (docs/features/home.md) for every
-// route that doesn't yet have real content of its own. Resume/Projects/
-// Blogs/Profile/Security content are each a separate, not-yet-built
-// feature; this handler only wires up the shell, placeholder content, and
-// the routing/auth contract those features will build on.
+// PagesHandler serves the shell-level routes (docs/features/home.md) that
+// have no handler of their own: the landing page (Home), /projects,
+// /puzzle-solver, the Blogs/About/Profile/Security placeholders, and the
+// stub POST /logout. Features with their own data (resume, the games, Bus
+// Stop Finder, content authoring) have their own handlers.
 type PagesHandler struct {
 	Renderer *Renderer
 	// LandingContent backs Home's hero/carousel/Selected work content —
@@ -296,10 +296,12 @@ func (h *PagesHandler) Security(w http.ResponseWriter, r *http.Request) {
 // just redirects to "/". The real implementation must still decide its
 // exact response mechanism (an HX-Redirect header vs. a plain non-hx form
 // POST causing a real browser navigation — left open by home.md's HTMX
-// Interactions), and must be covered by CSRF protection once the app has a
-// CSRF mechanism: none exists yet, since CSRF protection is normally tied
-// to session infrastructure that is explicitly out of scope here. Do not
-// consider this route CSRF-safe until the auth feature adds that.
+// Interactions). Cross-site forgery of this POST is already refused (403)
+// by middleware.CrossOriginProtection in the app's handler chain
+// (cmd/server/main.go's newHandlerChain; tested by
+// TestHandlerChain_RejectsCrossSiteWrites). There is no session-bound
+// CSRF token yet — that belongs to the auth feature, and the Sec-Fetch-
+// Site/Origin check stays as defence in depth alongside it.
 func (h *PagesHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }

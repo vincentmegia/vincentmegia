@@ -2,40 +2,32 @@
 
 ## Status
 
-`In Progress` — design approved and the site side is implemented; the
-change is **not yet complete end to end**. Written in response to a
-security decision made while working on `home-admin` ("HQ"), the separate
-private admin dashboard that edits this site's landing-page content.
+`Shipped (site side)` — all fourteen endpoints, bearer-token auth with a
+failure rate limit, and the shared service validation are implemented and
+verified against a local Postgres: the DB-gated `TestEndToEnd` landing-API
+subtests pass (auth rejection, hero round trip onto `/`, 422 on unsafe URLs,
+unknown fields, unknown ids, partial reorder lists, route precedence).
 
-Implemented here: the prep refactor, all fourteen endpoints, bearer-token
-auth with rate limiting, and tests (handler/auth/config tests run without a
-database; the round-trip case is in the DB-gated
-`cmd/server/e2e_test.go`).
+Tests: `internal/handler/api_auth_test.go`, `internal/handler/landing_api_test.go`,
+`cmd/server/landing_api_routes_test.go` (no database; `go test ./...`), and
+the `landing API …` subtests of `cmd/server/e2e_test.go` `TestEndToEnd`
+(needs `DATABASE_URL` and writes to that database — never point it at
+production).
 
-**Hosting changed since this was written, and it changes what "done" means
-here.** The database has since moved off Render entirely, onto Supabase
-(session pooler), for cost reasons — the web service stays on Render, but
-the two are no longer on the same infrastructure. The original plan below
-assumed the opposite: that this site's own database connection would move
-to *Render's* internal, private-network-only URL, making the database
-unreachable from the public internet regardless of what HQ did. That
-option never existed for a database hosted outside Render, so it is now
-permanently off the table, not just delayed — see Problem/Motivation and
-Decision 1 below for the corrected reasoning and Open Questions'
-downgraded, but still real, security goal.
+Still outstanding (outside this repo's code):
 
-Still outstanding:
+* Not exercised against the production Supabase database or a live HQ
+  (`home-admin`).
+* `LANDING_API_TOKEN` not yet set on Render and in HQ — until it is, the
+  API routes are not registered in production.
+* HQ's side (dropping its direct `landing_*` queries, relocating its
+  workflow tables) is separate work. Until HQ stops using its own database
+  credentials, this API is additive rather than protective.
 
-* Not yet verified against a real Postgres instance or a live HQ.
-* `LANDING_API_TOKEN` not yet set on both sides.
-* HQ's own side (dropping its direct `landing_*` queries, relocating its
-  workflow tables) is in progress separately.
-
-Until HQ actually stops using its own direct database credentials, this
-API is additive rather than protective — that part of the original
-reasoning still holds. What no longer holds is any expectation that
-finishing this makes the database itself unreachable from the internet;
-see Problem/Motivation.
+The database is on Supabase (session pooler), not Render, so the original
+goal of moving this site onto a Render-internal database URL is permanently
+unavailable — see Problem/Motivation and Decision 1. The original Status
+text is under History.
 
 ## Summary
 
@@ -85,7 +77,8 @@ surface:
 * No raw SQL and no Postgres wire protocol exposed — only six resource
   shapes with fixed, validated fields.
 * Compromise of the token grants "edit three content tables," not
-  "arbitrary SQL as the database owner" (which today includes `users`).
+  "arbitrary SQL as the database owner" (every table, including the
+  résumé and game leaderboards).
 * The token is revocable and rotatable in Render's dashboard without a
   database credential rotation.
 * Every mutation is logged with a request ID by existing middleware, so
@@ -129,7 +122,7 @@ the option exists.
 
 * **Any generic or raw-SQL endpoint.** Only these three resources.
 * **HQ's own tables** (`content_change_requests`,
-  `content_change_request_comments`) and the shared `users` table — see
+  `content_change_request_comments`) and any user/login store — see
   Open Questions, which argues these should be resolved a different way
   rather than by adding endpoints here.
 * **HQ's review workflow.** Submit → approve → apply stays entirely in HQ.
@@ -221,11 +214,15 @@ honored.
 * Never log the token, in full or in part. Log auth failures with the
   request ID and source only.
 
-**CSRF is not applicable** to these routes, and that's a genuine
-improvement over the cookie-session model: a bearer token is not
-automatically attached by browsers to cross-site requests, so the CSRF gap
-documented in `PagesHandler.Logout` and the game score endpoints does not
-extend here.
+**CSRF is not applicable** to these routes: a bearer token is not
+automatically attached by browsers to cross-site requests. The site-wide
+`middleware.CrossOriginProtection` (which refuses cross-site browser
+POST/PUT/PATCH/DELETE on the cookie/form routes) still runs in front of the
+API, but a non-browser caller like HQ sends neither `Sec-Fetch-Site` nor
+`Origin`, so it passes straight through to `RequireAPIToken` — covered by
+`cmd/server/hardening_test.go` `TestHandlerChain_RejectsCrossSiteWrites`.
+The API is also exempt from the site's 1 MiB body cap
+(`LimitRequestBody(…, "/api/")`) because it enforces its own 64 KiB cap.
 
 ---
 
@@ -236,8 +233,17 @@ audience (one trusted service, not the public web) even though the route is
 technically internet-reachable; `v1` leaves room to change shapes without
 breaking a deployed HQ.
 
-All routes require the bearer token. All requests and responses are
-`application/json`.
+All fourteen routes require the bearer token (`RequireAPIToken`, wrapped
+in `registerLandingAPI` in `cmd/server/main.go`). All requests and
+responses are `application/json`. The routes are registered only when
+`LANDING_API_TOKEN` is set; otherwise everything under the prefix is the
+mux's plain 404.
+
+**One unauthenticated route**: a catch-all `landingAPIPrefix + "/"` (any
+method) answers `handler.APINotFound` — a JSON `404 not_found` envelope
+instead of the mux's plain-text 404. It is deliberately not token-gated: it
+reveals only that a path doesn't exist, and gating it would make a typo'd
+path look like a bad credential (`TestLandingAPIUnknownPathReturnsJSON`).
 
 | Method | Path                          | Handler                       | Success | Notes |
 | ------ | ----------------------------- | ----------------------------- | ------- | ----- |
@@ -442,7 +448,7 @@ so the choice is deliberate.
 * **Blast radius, stated plainly**: a leaked token lets an attacker rewrite
   homepage copy, carousel slides, and project cards — defacement, including
   pointing `link_url`/`live_url` at a malicious site. It does not grant
-  database access, does not reach `users`, and does not permit arbitrary
+  database access, does not reach any other table, and does not permit arbitrary
   SQL. That is the entire point of the change, and it is a strictly smaller
   exposure than a shared database password — which is the actual comparison
   worth making now, not "internet-reachable vs. not." The database itself
@@ -506,6 +512,9 @@ only the reasoning underneath it is**, since the original reasoning
 depended on a Render-specific mechanism that no longer applies.
 
 `users` is confirmed a separate feature and does **not** block this one.
+(Correction: this site has no `users` table — no migration creates one, and
+auth is still a stub. The `users` references below are kept as the
+decision was recorded with HQ; read them as "a future login store".)
 The auth-architecture choice (API endpoint vs. HQ's own user store vs. a
 one-way sync) goes to Vincent separately.
 
@@ -609,10 +618,11 @@ leak forces a hurried rotation.
       fail-closed when unset, rate-limited failures, token never logged.
 * [x] Route precedence between `/{id}` and `/order` covered by a test.
 * [x] Handler/service/repository boundaries followed (`go-backend`).
-* [x] Tests written per Implementation Notes — **but the DB-gated round
-      trip has not actually been run**, since no reachable Postgres was
-      available in the implementing session.
-* [ ] Verified against a real database and a live HQ.
+* [x] Tests written per Implementation Notes, and the DB-gated round trip
+      passes against a local Postgres (`TestEndToEnd` "landing API hero
+      round-trips to the rendered page" and the other `landing API …`
+      subtests).
+* [ ] Verified against the production database and a live HQ.
 * [x] Hosting reality documented: the database is on Supabase (session
       pooler, TLS-enforced), not Render — the original "switch to Render's
       internal database URL" goal is recorded as permanently unavailable
@@ -622,3 +632,44 @@ leak forces a hurried rotation.
 * [ ] HQ's direct database credentials removed once its own tables are
       relocated per Decision 1 — this, not network isolation, is now the
       actual security finish line for this feature.
+
+---
+
+## History
+
+### Status before the wave-3 rewrite
+
+`In Progress` — design approved and the site side is implemented; the
+change is **not yet complete end to end**. Written in response to a
+security decision made while working on `home-admin` ("HQ"), the separate
+private admin dashboard that edits this site's landing-page content.
+
+Implemented here: the prep refactor, all fourteen endpoints, bearer-token
+auth with rate limiting, and tests (handler/auth/config tests run without a
+database; the round-trip case is in the DB-gated
+`cmd/server/e2e_test.go`).
+
+**Hosting changed since this was written, and it changes what "done" means
+here.** The database has since moved off Render entirely, onto Supabase
+(session pooler), for cost reasons — the web service stays on Render, but
+the two are no longer on the same infrastructure. The original plan below
+assumed the opposite: that this site's own database connection would move
+to *Render's* internal, private-network-only URL, making the database
+unreachable from the public internet regardless of what HQ did. That
+option never existed for a database hosted outside Render, so it is now
+permanently off the table, not just delayed — see Problem/Motivation and
+Decision 1 below for the corrected reasoning and Open Questions'
+downgraded, but still real, security goal.
+
+Still outstanding:
+
+* Not yet verified against a real Postgres instance or a live HQ.
+* `LANDING_API_TOKEN` not yet set on both sides.
+* HQ's own side (dropping its direct `landing_*` queries, relocating its
+  workflow tables) is in progress separately.
+
+Until HQ actually stops using its own direct database credentials, this
+API is additive rather than protective — that part of the original
+reasoning still holds. What no longer holds is any expectation that
+finishing this makes the database itself unreachable from the internet;
+see Problem/Motivation.

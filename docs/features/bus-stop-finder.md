@@ -3,10 +3,19 @@
 ## Status
 
 Implemented and verified end to end against the local fake LTA
-(`cmd/fakelta`): Go unit/DB tests, Playwright on Chromium + WebKit, and an
-independent conformance review whose fixes are applied. Not yet live:
-production needs `LTA_ACCOUNT_KEY` and a referrer-restricted
-`GOOGLE_MAPS_API_KEY` provisioned (see Open Questions).
+(`cmd/fakelta`) and fake OneMap. Not yet live: production needs
+`LTA_ACCOUNT_KEY` and a referrer-restricted `GOOGLE_MAPS_API_KEY`
+provisioned (see Open Questions).
+
+Tests: `internal/repository/bus_repository_test.go` (DB-gated, needs
+`DATABASE_URL`; each run uses its own throwaway schema),
+`internal/lta/client_test.go`, `internal/onemap/client_test.go`,
+`internal/service/bus_service_test.go` + `bus_validation_test.go`,
+`internal/handler/bus_stops_test.go` — all via `go test ./...`; and
+`e2e/bus-stops.spec.js` plus the card test in `e2e/projects.spec.js`
+(Chromium + WebKit, `make test-e2e`, which runs the server via
+`make run-e2e` against the fake LTA with the bus tables in a `bus_e2e`
+schema).
 
 ## Summary
 
@@ -201,8 +210,10 @@ Validation failures return a 400 with a small HTML message fragment
 (never an upstream error text). Rate-limit hits return 429 with a short
 message. Arrivals: invalid code → 400 (no polling), unknown stop → 404 (no
 polling), LTA unavailable or not configured → 200 with the unavailable
-copy (keeps polling), unexpected error → 500 (keeps polling). All three
-fragment routes send `Cache-Control: no-store`.
+copy (keeps polling), unexpected error → 500 (keeps polling). The nearby,
+search and arrivals fragment routes send `Cache-Control: no-store`; so do the route
+fragment's error answers (429/400/404/500), and only a found route is
+`public, max-age=300`.
 
 ---
 
@@ -230,7 +241,7 @@ fragment routes send `Cache-Control: no-store`.
 Indexes: `bus_stops (latitude, longitude)` for the bounding-box prefilter;
 `bus_routes (bus_stop_code)`.
 
-### Go contracts (all agents code against these)
+### Go contracts
 
 Shared types: `internal/model/bus.go`.
 
@@ -281,7 +292,7 @@ ErrBusPostalNotFound, ErrBusPostalUnavailable, ErrBusServiceInvalid, ErrBusRoute
 ```
 
 `internal/handler/bus_stops.go`, `NewBusStopsHandler(renderer *Renderer, svc busStopsService, version, mapsAPIKey string) *BusStopsHandler`.
-The handler declares `busStopsService` (Nearby/Search/Arrivals).
+The handler declares `busStopsService` (Nearby/Search/SearchPostal/Route/Arrivals).
 
 `internal/onemap` (new package), `NewClient(baseURL string, httpClient *http.Client) *Client`:
 
@@ -390,7 +401,7 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
   followed (net/http forwards custom headers like `AccountKey` across
   hosts on redirect; a 30x is treated as an error instead).
 * **Abuse**: per-IP fixed-window limits via `middleware.ClientKey`:
-  nearby 30/min, search 30/min, arrivals 120/min. Plus the outbound token
+  nearby 30/min, search 30/min, arrivals 120/min, route 60/min. Plus the outbound token
   bucket and unknown-code rejection above, so random codes can't spend the
   LTA quota.
 * **Untrusted LTA data**: rendered only through `html/template`
@@ -438,30 +449,66 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
 
 ## Testing Plan
 
-* [ ] Repository (DB-gated): nearest ordering and 500 m cutoff; search by
-      code prefix and by name with `%`/`_` escaped; service hours per day
-      type; Replace* transactional (failure leaves old rows).
-* [ ] LTA client (httptest): AccountKey header sent; URL built from
-      validated input only; non-200 and oversized bodies error; timeouts.
-* [ ] Service (fakes): every validation sentinel; label rounding at
-      59 s/60 s/negative; status logic incl. midnight wrap and unknown
-      hours; natural sort; cache hit within 20 s; singleflight collapses
-      concurrent misses; stale-on-error ≤ 2 min then unavailable; outbound
-      budget; sync pagination, row validation, 50% guard, page cap.
-* [ ] Handler (fakes): status codes and fragments for each error; 429
-      after the per-IP limit; CSP/Permissions-Policy on Index only; nonce
-      matches the script tag; no Maps script when key empty; LTA key never
-      appears in any response.
-* [ ] Playwright (Chromium + WebKit, against the real server + fake LTA,
-      started by `make run-e2e` with the bus tables isolated in a
-      `bus_e2e` schema):
-      explainer first; granted geolocation → 5 cards, nearest expanded,
-      arrival rows, "Arr", italic "~", crowding aria-labels, both status
-      messages; selecting another card swaps expansion; denied → Location
-      off panel + search works; outside Singapore message; no-Maps-key
-      list mode; Maps stub test verifies one marker per card with
-      textContent-safe titles; no console CSP violations; projects card
-      opens the page with a full load.
+* [x] Repository (DB-gated): nearest ordering and 500 m cutoff
+      (`TestBusRepositoryNearestStops`); search by code prefix and by name
+      with `%`/`_` escaped (`TestBusRepositorySearchStops`); service hours
+      per day type (`TestBusRepositoryServiceHoursAtStop`); Replace*
+      transactional, failure leaves old rows
+      (`TestBusRepositoryReplaceStopsIsAtomic`,
+      `TestBusRepositoryReplaceRoutesChunksAndRollsBack`); plus GetStop,
+      StopDescriptions/counts, RouteTermini and RouteThroughStop.
+* [x] LTA client (httptest, `internal/lta/client_test.go`): AccountKey
+      header sent and URL built (`TestClientBusArrivalSendsHeadersAndBuildsURL`);
+      invalid code never requested (`…RejectsInvalidCodeWithoutRequest`);
+      paging query; non-200 errors without the key (`TestClientNon200ErrorOmitsKey`);
+      oversized bodies (`TestClientOversizeBody`); timeouts/context
+      (`TestClientTimeoutAndContext`, `TestClientDefaultTimeout`);
+      redirects not followed (`TestClientDoesNotFollowRedirects`).
+* [x] OneMap client (`internal/onemap/client_test.go`): request/parse,
+      building-name label, exact-match only, non-postal never requested,
+      errors, 429 retry, give-up after max attempts, context cancel.
+* [x] Service (fakes, `bus_service_test.go`, `bus_validation_test.go`):
+      validation sentinels (`TestValidateBus*`); label at
+      −30 s/0/59 s/60 s (`TestArrivalLabel`); status incl. midnight wrap
+      and unknown hours (`TestServiceStatus`); natural sort
+      (`TestNaturalLess`); cache hit within 20 s
+      (`TestBusArrivalsCacheTTL`); singleflight
+      (`TestBusArrivalsSingleflight`); stale ≤ 2 min then unavailable
+      (`TestBusArrivalsStaleThenUnavailable`); outbound budget
+      (`TestBusArrivalsOutboundBudget`); sync pagination, row validation,
+      50% guard, page cap (`TestBusSync*`); scheduler (`TestRunScheduler*`,
+      `TestNextDailyRun`); postal search incl. hit cached past 24 h →
+      refetch after 25 h, misses cached, failures not cached
+      (`TestBusSearchPostal`), unavailable, OneMap budget
+      (`TestBusSearchPostalGeocodeBudget`); route (`TestBusRoute`); bus
+      positions.
+* [x] Handler (fakes, `bus_stops_test.go`): status codes and fragments for
+      each error (`TestBusStopsNearby_Errors`, `TestBusStopsArrivals_Errors`,
+      `TestBusStopsSearchPostal`, `TestBusStopsRoute`); 429 after the
+      per-IP limit for nearby/search/arrivals (`TestBusStops_RateLimits`);
+      site CSP kept and Permissions-Policy set with no Maps key, no Maps
+      script or map panel (`TestBusStopsIndex_NoMapsKey_…`); nonce CSP
+      matches every script tag and changes per request
+      (`TestBusStopsIndex_WithMapsKey_NonceCSPMatchesScriptTags`); an
+      LTA error carrying the AccountKey never reaches the response body
+      (`TestBusStopsArrivals_Errors`); route caching headers
+      (`TestBusStopsRoute`).
+* [x] Playwright (`e2e/bus-stops.spec.js`, Chromium + WebKit, real server
+      + fake LTA via `make run-e2e`, bus tables in `bus_e2e`): explainer
+      first; granted geolocation → 5 cards, nearest expanded, arrival rows,
+      "Arr", crowding aria-labels, both status messages; selecting another
+      card swaps expansion; keyboard-operable cards; phone width without
+      horizontal scroll; denied/timeout panels + search; postal search
+      (results, 5-digit stays a stop code, not-found/none-nearby/OneMap-down
+      messages); route view survives an arrivals refresh; outside-Singapore
+      and empty states; bad-input fragments; no-Maps-key list mode; Maps
+      stub: loads only after location, one marker per card, plain-text
+      titles, selection synced; no CSP violations (`watchCSP`). The
+      projects card's full page load is in `e2e/projects.spec.js`.
+
+Gaps (no test found): the route fragment's 60/min limit (429) isn't in
+`TestBusStops_RateLimits`; the postal cache's 1 h miss expiry and
+10,000-entry cap aren't exercised.
 
 ---
 
@@ -495,15 +542,25 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
   without a holiday calendar the status may be wrong on public holidays.
 * Google Maps key ownership/billing account, and the LTA key, need to be
   provisioned by the site owner before the page is useful in production.
+* Accessibility: keyboard operation and aria labels are covered by tests;
+  a contrast and screen-reader pass hasn't been done (DoD item left open).
 
 ---
 
 ## Definition of Done
 
-* [ ] User flow works end-to-end, including the edge cases above.
-* [ ] All states in the UI table are implemented.
-* [ ] Migration written with a working `Down`.
-* [ ] Handler/service/repository boundaries followed (`go-backend`).
-* [ ] Accessibility checked (keyboard, focus, contrast, semantic HTML).
-* [ ] Tests cover the Testing Plan above, all passing.
-* [ ] `/projects` card added with a real screenshot.
+* [x] User flow works end-to-end, including the edge cases above
+      (`e2e/bus-stops.spec.js` against the fake LTA/OneMap; not yet against
+      the real LTA in production — keys unprovisioned).
+* [x] All states in the UI table are implemented (each has a handler or
+      Playwright test above).
+* [x] Migration written with a working `Down`
+      (`migrations/009_create_bus_stops.sql`).
+* [x] Handler/service/repository boundaries followed (`go-backend`): the
+      handler and service depend on their own interfaces (Go contracts).
+* [ ] Accessibility checked (keyboard, focus, contrast, semantic HTML) —
+      keyboard operation and aria labels are tested, but no contrast or
+      full screen-reader audit was found.
+* [x] Tests cover the Testing Plan above, all passing (gaps noted there).
+* [x] `/projects` card added with a real screenshot
+      (`web/static/images/bus/screenshot.png`, `internal/handler/pages.go`).

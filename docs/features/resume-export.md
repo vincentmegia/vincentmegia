@@ -2,9 +2,25 @@
 
 ## Status
 
-`Implemented` — PDF and Word downloads work end to end locally, covered by
-unit, DB-backed end-to-end, and Playwright (Chromium + WebKit) tests. Not
-yet verified on the deployed site; see Definition of Done.
+`In Progress`: code-complete, and the PDF and Word downloads work end to
+end locally. It has not been verified on the deployed site yet (see
+Definition of Done).
+
+Tests:
+
+* Unit (no DB): `go test ./internal/service ./internal/handler`, which
+  covers `resume_pdf_test.go`, `resume_docx_test.go` and
+  `resume_export_test.go`.
+* DB-gated: `go test ./cmd/server` (`e2e_test.go`). It is skipped without
+  `DATABASE_URL`.
+* Browser: `make test-e2e` runs `e2e/resume.spec.js` in Chromium and
+  WebKit.
+
+**Rate limit and repeated e2e runs.** Each route allows 5 requests per IP
+per minute. The Playwright suite downloads each format once per browser
+project, so 2 per run. Re-running it more than twice within a minute
+against a reused dev server (`reuseExistingServer`) hits 429 on the
+download tests. Wait a minute between runs, or restart the server.
 
 ## Summary
 
@@ -266,6 +282,17 @@ layer below.
 
 ## Open Questions
 
+* **The two files use different section orders.** The DOCX
+  (`buildResumeDocx`) goes Summary → Core Expertise → Experience →
+  Education → Featured Projects. The PDF puts Core Expertise *after*
+  Experience. The owner decided the Word export mirrors the page, and on
+  the page Core Expertise sits in the sidebar to the left of Experience,
+  so the DOCX order is defensible. It is still not consistent with the
+  PDF. `TestBuildResumeDocx_ValidZipWithExpectedContent` asserts only
+  Summary → Experience → Education → Featured Projects, so either order
+  passes. Confirm or align.
+* The Error state is a plain-text 500 page, not an inline message. Is
+  that acceptable for a download link?
 * Exact Word-library choice (`github.com/fumiama/go-docx`) is a
   pseudo-versioned module with no tagged release — it has held up for
   nested bullets and bold runs so far; fall back to

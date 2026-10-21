@@ -1,10 +1,12 @@
 # Easy Diagram: build brief (multi-agent)
 
 This is the shared brief every agent working on Easy Diagram reads first. The
-feature doc is `docs/features/easy-diagram.md`, which covers the
-reverse-engineering survey and the functionality inventory. Some of its
-"Implementation plan" and "Open Questions" were superseded by the decisions
-below. The approved visual design is
+feature doc is `docs/features/easy-diagram.md`, which describes what is
+built; its original reverse-engineering survey, functionality inventory and
+"fork and host separately" plan were superseded by the decisions below and
+now sit under that doc's History. Where this brief and the code disagree,
+the code wins; the contract sections below were updated to the build on
+2026-10-21. The approved visual design is
 `docs/features/easy-diagram/prototype-precision.dc.html`, the "Precision" look.
 It is a design-canvas file, so read it for tokens, layout and behavior; it is
 not code to ship.
@@ -38,7 +40,9 @@ not code to ship.
 
 Upstream source to vendor from: a shallow clone of `jgraph/drawio` at
 `9034053` exists at
-`/private/tmp/claude-501/-Users-vince-Repository-vincentmegia/674f025b-7432-48d1-a3d2-95f5876f99d5/scratchpad/src/drawio/`.
+`/private/tmp/claude-501/-Users-vince-Repository-vincentmegia/674f025b-7432-48d1-a3d2-95f5876f99d5/scratchpad/src/drawio/`
+(a past session's scratch path, likely gone; the vendored commit is recorded in
+`web/static/easydiagram/vendor/NOTICE`).
 The webapp is under `src/main/webapp/`. Vendor only what the engine needs
 (e.g. `mxgraph/mxClient.js`, the `js/grapheditor/` sources it requires, and
 any sanitizer, deflate or shape files those pull in). Do not vendor the
@@ -86,23 +90,33 @@ Script loading:
   - Anything that builds markup strings with `style="..."` (e.g. `innerHTML`)
     needs `style-src 'self' 'unsafe-inline'`.
 - WP1 sets a **route-scoped CSP** on `/easy-diagram`, the way
-  `bus_stops.go`'s `busStopsMapsCSP` does. Use the strictest policy that
-  works:
-  - `script-src 'self'`, with no `unsafe-eval` unless WP2 proves the engine
-    needs it;
-  - `style-src 'self' 'unsafe-inline'`;
-  - `img-src 'self' data: blob:`;
-  - `font-src 'self'`;
-  - `connect-src 'self'`;
-  - `worker-src 'self' blob:`.
-- WP2 reports whether the engine needs `'unsafe-eval'` (e.g. `new Function`)
-  and avoids it if possible.
+  `bus_stops.go`'s `busStopsMapsCSP` does: the strictest policy that works.
+  The shipped policy is `easyDiagramCSP` in
+  `internal/handler/easy_diagram.go` (asserted exactly by
+  `TestEasyDiagramIndex_ExactCSP` and the `platform` Playwright spec):
+
+  ```text
+  default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:; font-src 'self'; connect-src 'self';
+  worker-src 'self'; object-src 'none'; base-uri 'self';
+  form-action 'none'; frame-ancestors 'none'
+  ```
+
+  Compared with this brief's first draft, `worker-src` dropped `blob:`
+  (nothing creates a Worker) and `form-action 'none'` was added (the editor
+  has no forms).
+- The engine needs no `'unsafe-eval'`: mxClient's eval paths are behind
+  `allowEval` flags, and `engine.js` switches off
+  `mxStencilRegistry.allowEval` and `dynamicLoading` (see the comment at the
+  top of `engine.js`).
+- An HTMX request to `/easy-diagram` gets `HX-Redirect` instead of the page,
+  so htmx does a full load (the CSP only applies to a real document load).
 - Fonts:
   - IBM Plex Sans/Mono must be **self-hosted** under
     `web/static/easydiagram/fonts/` (WP3). Google Fonts would break
     `connect-src`/`font-src 'self'` and the "no third-party requests" rule.
-  - If the woff2 files can't be fetched, fall back to
-    `system-ui`/`ui-monospace` and say so.
+  - The six woff2 files (Sans 400/500/600/700, Mono 400/500) are in
+    place; `system-ui`/`ui-monospace` remain as CSS fallbacks.
 
 ## Engine contract (WP2 implements; WP3/WP4 consume)
 
@@ -121,9 +135,9 @@ returns:
   selectPage(id), renamePage(id, name), removePage(id),
 
   // shapes & connectors
-  addShape(kind, props?),        // kind: rect|round|pill|ellipse|diamond|para|hex|cyl|doc|note|text; props: {x,y,w,h,label,color}; -> id (placed in free space if no x/y), selected
-  addConnected(sourceId, side),  // side: 'r'|'l'|'t'|'b' -> new shape id, connected by an edge, selected
-  connect(sourceId, targetId, props?), // -> edge id
+  addShape(kind, props?),        // kind: rect|round|pill|ellipse|diamond|para|hex|cyl|doc|note|text|aws; props: {x,y,w,h,label,color, service (aws only)}; -> id (placed in free space if no x/y), selected
+  addConnected(sourceId, side, opts?),  // side: 'r'|'l'|'t'|'b' -> new shape id, connected by an edge, selected (opts below)
+  connect(sourceId, targetId, props?), // -> edge id; props: label, color, lineStyle, width, arrows, head, route, anim, preset, sourceSide, targetSide
   getCell(id),          // ShapeModel | EdgeModel | null
   update(id, patch),    // one undoable edit; patch uses model keys below
   remove(ids), duplicate(ids),   // duplicate -> new ids
@@ -135,6 +149,8 @@ returns:
   // tools & view
   setTool(name),        // select|hand|rect|ellipse|diamond|connector|text|note
   getTool(),            // -> current tool name (added by WP2)
+  setConnectorPreset(name), getConnectorPreset(),  // added 2026-10-20, below
+  setPortMode(mode), getPortMode(), shapeAt(x, y), // added 2026-10-20, below
   getZoom(), zoomTo(scale), zoomIn(), zoomOut(), fit(),
   setGrid('dots'|'lines'|'none'), setSnap(bool),
   setTheme('dark'|'light'),
@@ -157,7 +173,7 @@ returns:
   getScreenBounds(id),  // -> {x, y, w, h} | null, CSS px relative to the engine container
 
   // events
-  on(event, fn), off(event, fn),      // 'change' | 'selection' | 'zoom' | 'page' | 'tool' | 'view' (pan/scroll/resize)
+  on(event, fn), off(event, fn),      // 'change' | 'selection' | 'zoom' | 'page' | 'tool' | 'view' (pan/scroll/resize) | 'connect-request'
   destroy()
 }
 ```
@@ -175,8 +191,8 @@ shapeAt(clientX, clientY)            // -> {id, side} | null
 on('connect-request', fn)            // a connection point was clicked, or a drag released on empty canvas
 ```
 
-The four `+` quick-connect handles described under "Engine rules" below
-were replaced by connection points: four per shape, which you click or drag.
+These replaced the four `+` quick-connect handles (see "Engine rules"
+below) with connection points: four per shape, which you click or drag.
 
 Options: `createEngine(container, {theme: 'dark'|'light', grid: 'dots'|'lines'|'none', snap: true, motion: true, ports: 'hover'|'always'|'off'})`.
 The engine owns the stage background and grid inside its container.
@@ -184,8 +200,9 @@ The engine owns the stage background and grid inside its container.
 Models (`getCell` returns them and `update` patches them):
 
 ```js
-ShapeModel { id, type: 'shape', kind, label, x, y, w, h,
+ShapeModel { id, type: 'shape', kind, label, x, y, w, h,   // kind includes 'aws'
              color,          // blue|green|violet|pink|amber|slate (stroke hues from the prototype; fill = tint derived per theme)
+             service,        // aws kind only: an AWS_SERVICES id from aws-icons.js (added 2026-10-17)
              strokeWidth,    // 1 | 1.5 | 3
              opacity,        // 20..100
              shadow,         // bool
@@ -197,7 +214,10 @@ EdgeModel  { id, type: 'edge', source, target, label,
              lineStyle,      // solid|dashed|dotted
              color,          // default|accent|blue|green|pink|amber
              width,          // 1.2 | 1.8 | 3
-             anim: { name,   // none|flow|dash|comet|pulse|draw
+             arrows,         // end|both|start|none   (added 2026-10-17)
+             head,           // block|open|oval|diamond
+             route,          // elbow|straight|curved
+             anim: { name,   // none|flow|dash|comet|pulse|draw (dash is "March" in the UI)
                      speed, direction } // direction: normal|reverse
            }
 ```
@@ -211,10 +231,14 @@ Engine rules:
   - small corner radius;
   - IBM Plex label;
   - dashed outline on `note`.
-- Edges render orthogonal with an arrowhead.
-- Selection shows the prototype's thin accent frame and the four `+`
-  quick-connect handles. These are DOM overlays drawn by WP2 that call
-  `addConnected`.
+- Edges render orthogonal (elbow) with an end arrowhead by default; `route`
+  and `arrows`/`head` change that.
+- Selection shows the prototype's thin accent frame. *(Superseded
+  2026-10-20: the original four `+` quick-connect handles are gone.)* Each
+  shape now has four connection points, DOM overlays drawn by the engine
+  (`portScreen` places them; on an AWS icon the bottom one sits below the
+  label). Clicking one fires `connect-request` (the shell opens the connect
+  picker, which calls `addConnected`); dragging one draws a connector.
 - Animations match the prototype keyframes. Shapes animate via CSS classes on
   the cell's SVG group; edges via overlay paths using
   `stroke-dasharray`/`pathLength`.
@@ -226,11 +250,13 @@ Engine rules:
 `io.js` is an ES module exporting:
 
 ```js
-openFile()                 // -> Promise<{name, xml, handle|null}>; accepts .drawio/.xml, plus .svg/.png with embedded diagram
+openFile()                 // -> Promise<{name, xml, handle|null}>; accepts .ed/.drawio/.xml, plus .svg/.png with embedded diagram (handle only for XML files)
 save(engine, file)         // file {name, handle|null} -> Promise<{name, handle|null}>; in place via handle, else showSaveFilePicker, else download
 saveAs(engine, file)
-exportFile(engine, {format: 'png'|'svg'|'html'|'ed', scale, transparent, embed, name})  // triggers a download
-saveDraft(xml), loadDraft() -> Promise<{xml, savedAt}|null>, clearDraft()          // IndexedDB, wrapped in try/catch
+exportFile(engine, {format: 'png'|'svg'|'html'|'ed', scale, transparent, embed, name})  // triggers a download; PDF is the shell's print()
+saveDraft(xml, name)       // IndexedDB, keyed by file name, debounced writes coalesce; at most 20 drafts kept
+loadDraft(name?)           // -> Promise<{name, xml, savedAt}|null>; no name = the newest draft (adopted from another tab if needed)
+clearDraft(name?)          // no name clears all; every draft call is wrapped in try/catch
 importDroppedFile(file: File) -> Promise<{name, xml}>
 ```
 
@@ -243,10 +269,14 @@ allowed.
 - **Top bar:** logo + "Easy Diagram", file name, save status, page tabs
   (underline style) with an add-page button, Motion on/off, undo/redo, theme
   toggle, "Search & commands ⌘K", and an Export popover. The popover offers
-  PNG/SVG/.drawio, transparent, embed and scale 1×/2×/3×. PDF goes through
+  PNG / SVG / HTML (animated) / PDF / `.ed` (`shell/export.js`), with
+  Transparent background, Keep it editable (embed) and Scale 1×/2×/3×;
+  options that don't apply to a format are disabled. PDF goes through
   `window.print()` with a print stylesheet.
 - **Left dock:**
-  - search box and category chips (All/Basic/Flowchart);
+  - a Connectors group (six presets) at the top, added 2026-10-20;
+  - search box and category chips (All/Basic/Flowchart/AWS; the AWS chip
+    was added 2026-10-17);
   - 3-column shape tiles; clicking one adds the shape;
   - dragging a tile onto the canvas adds it at the drop point.
   - The prototype's "Libraries" list is a disabled "coming soon" row; don't
@@ -263,9 +293,13 @@ allowed.
     its edge), X/Y/W/H, Duplicate/Delete.
   - **Connector:** from → to, label, Animation (6 tiles with previews,
     Speed/Direction), Line, Color, Width, Delete.
-  - **Nothing selected:** page name, Grid, Snap, Shortcuts.
+  - **Nothing selected:** page name, Grid, Snap, Connection points
+    (On hover/Always/Off), Default connector, Shortcuts.
+  - Connector panels also have Arrowheads, Head and Route; AWS shapes get a
+    Service picker in place of Fill and Stroke.
 - **Bottom-left status readout and bottom-right zoom controls.** The minimap
-  is optional. If it isn't done, leave it out rather than faking it.
+  is optional. If it isn't done, leave it out rather than faking it. (It was
+  not built.)
 - **Command palette:** filterable; runs real actions.
 - **Empty-page state** and **toasts**.
 - **Dark (default) and light themes**, via CSS custom properties.
@@ -310,7 +344,7 @@ any server you started when you are done.
   - phone width.
 - A **network log** from a full session (load, draw, save, export) showing
   zero requests to any origin other than the test server.
-- A round-trip check: save `.drawio` → reload → identical model, plus
+- A round-trip check: save `.ed` (originally `.drawio`) → reload → identical model, plus
   `edAnim*` keys present in the XML.
 - An exported PNG with an embedded diagram re-imports as an editable diagram.
 - A CSP check: no CSP violation console errors during the session.

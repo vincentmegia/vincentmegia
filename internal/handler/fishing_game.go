@@ -94,15 +94,13 @@ func (h *FishingGameHandler) Leaderboard(w http.ResponseWriter, r *http.Request)
 // needed to serialize a JSON body — consistent with htmx-ui's "avoid
 // unnecessary JavaScript" principle.
 //
-// TEMPORARY, matching PagesHandler.Logout's exact same documented gap:
-// there is no CSRF mechanism anywhere in this codebase yet — it is
-// explicitly deferred to a not-yet-built auth feature, tied to session
-// infrastructure that doesn't exist (see PagesHandler.Logout's doc
-// comment). This route is not CSRF-safe until that infra lands; do not
-// consider it protected in the meantime. (docs/features/fishing-game.md's
-// Security Considerations calls for CSRF coverage "same as POST /logout" —
-// this route's exposure is therefore identical to, not worse than, an
-// already-accepted gap elsewhere in the app.)
+// CSRF: a cross-site browser POST here is refused (403) before this
+// handler runs by middleware.CrossOriginProtection (cmd/server/main.go's
+// newHandlerChain), the same coverage POST /logout gets. That stops
+// browser-based forgery only — a script posting directly is unaffected,
+// which is what the per-IP limiter and the service's validation are for.
+// There is no session-bound CSRF token; none is needed until real auth
+// adds sessions (see PagesHandler.Logout's doc comment).
 func (h *FishingGameHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many submissions — please slow down and try again shortly.", http.StatusTooManyRequests)

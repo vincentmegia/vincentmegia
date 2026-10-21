@@ -2,48 +2,21 @@
 
 ## Status
 
-`Shipped` — the page, route, template, and data model are implemented and
-visually verified in both light and dark mode. The grid currently has eight
-cards, all real links into this site's own mini-games/demos (see Data Model
-for each entry): the Fishing Game, Kitchen Shift, Puzzle Solver, Library
-Shift, Bus Stop Finder, Bus Rush, Hospital Shift and Easy Diagram. The first three, in the order they
-were added: the Fishing Game
-(`docs/features/fishing-game.md`) at `/fishing-game`, with a real
-screenshot (`ImagePath: "/static/images/fishing/screenshot.png"`) — a live
-capture of an actual round in progress (boat, line, a fish, and a
-jellyfish hazard); Kitchen Shift (`docs/features/cooking-game.md`) at
-`/kitchen-shift`, added in a later pass once that game shipped, with its
-own real screenshot (`ImagePath: "/static/images/cooking/screenshot.png"`)
-— a live capture of the floor plan mid-shift (sink, all four tables, the
-player highlighting Table 2's interaction glow); and Puzzle Solver
-(`docs/features/puzzle-solver.md`) at `/puzzle-solver`, a 30×30 DFS
-pathfinding visualizer, added the same way once it shipped, with its own
-real screenshot (`ImagePath: "/static/images/puzzle/screenshot.png"`) —
-a live capture of a solved maze (a fully explored dead-end pocket shown in
-the "visited" amber tint, black wall cells, and the solved path threading
-out to the End marker). Library Shift (`docs/features/library-game.md`)
-followed with its own real screenshot; Bus Stop Finder
-(`docs/features/bus-stop-finder.md`) is a `FullPageLoad` card (a
-plain "Open" link, because its route sets its own CSP); Bus Rush
-(`docs/features/bus-rush.md`) has a staged gameplay capture (see Open
-Questions); Hospital Shift
-(`docs/features/hospital-shift.md`) has a real mid-shift screenshot; Easy
-Diagram (`docs/features/easy-diagram.md`) is the second `FullPageLoad` card
-(a standalone full-viewport page with its own CSP) with a real capture of
-the editor. None of the eight is a mockup. The four fictional sample cards the pulled-in design
-mockup originally shipped with (Fieldnotes, Tidewatch, Loom UI,
-Nightlight) were deliberately removed rather than left sitting next to
-real projects — see Open Questions for the reasoning and what replaces
-them over time. `e2e/projects.spec.js` covers all eight cards, including
-each one's "Play now" link (or Bus Stop Finder's and Easy Diagram's full-page "Open"); only the
-Fishing Game and Kitchen Shift cards
-have a dedicated "navigates via HTMX into the real game shell" regression
-test (Puzzle Solver's own equivalent page-load coverage lives in
-`e2e/puzzle-solver.spec.js` instead, per that doc's Testing Plan) — see
-Testing Plan. `internal/handler/template_test.go`'s Go-side placeholder-route
-test still doesn't exercise the real `projects-content` template directly
-(see Testing Plan), mirroring `docs/features/landing-carousel.md`'s same gap
-for its own hand-authored placeholder content.
+`Shipped`. `/projects` renders eight hand-authored cards
+(`projectItems` in `internal/handler/pages.go`), all links into this site's
+own games/demos: Fishing Game, Kitchen Shift, Puzzle Solver, Library Shift,
+Bus Stop Finder, Bus Rush, Hospital Shift and Easy Diagram. Every card has a
+real screenshot. Bus Stop Finder and Easy Diagram are `FullPageLoad` cards
+(a plain "Open" link, because their routes set their own CSP); the other six
+use an HTMX "Play now" link.
+
+Tests: `e2e/projects.spec.js` (Playwright, `make test-e2e`) — every card,
+the "Play now"/"Open" links, screenshots, active nav state, the
+`#main-content` swap contract, HTMX navigation into Fishing Game and Kitchen
+Shift, and no console/CSP errors; `e2e/resume.spec.js` covers the résumé's
+"See all projects" link; `internal/handler/selected_work_test.go` covers
+`isFullPageRoute`, which derives from these cards. The history of how the
+grid grew is under History.
 
 ## Summary
 
@@ -130,7 +103,7 @@ were removed rather than left in place until real replacements existed
    other in-site nav link uses (hx-get/hx-target="#main-content"/
    hx-swap="outerHTML"/hx-push-url="true"), dropping the visitor straight
    into the real game — not an external link or a new tab. "Open" (Bus
-   Stop Finder) is a full document load instead.
+   Stop Finder, Easy Diagram) is a full document load instead.
 ```
 
 ---
@@ -226,8 +199,8 @@ introduced: `PagesHandler.Projects` sets `PageData.ContentTemplate =
 "projects-content"` rather than leaving it empty (which would default to
 the shared placeholder `"content"`). `projects.html` defines
 `{{define "projects-content"}}`, not `{{define "content"}}`, so it doesn't
-collide with the shared placeholder still used by `/blogs` and
-`/settings/*`. `projects.html` is added to `LoadTemplates`'s explicit file
+collide with the shared placeholder still used by `/blogs`, `/about`,
+`/settings/profile` and `/settings/security`. `projects.html` is added to `LoadTemplates`'s explicit file
 list (`internal/handler/template.go`) — a manual step, since that list
 isn't a directory glob.
 
@@ -425,8 +398,9 @@ what copy, is now content, not code.
 * [x] A `FullPageLoad` card (Bus Stop Finder, Easy Diagram) renders "Open" with no
       `hx-get`, and clicking it is a real document load, not an HTMX swap —
       `e2e/projects.spec.js`.
-* [x] Every non-`FullPageLoad` card has a "Play now" link; the Fishing
-      Game's (and Kitchen Shift's) navigates to its route via the
+* [x] Every non-`FullPageLoad` card has a "Play now" link
+      (`e2e/projects.spec.js` 'the … card has a "Play now" link', one test
+      per card); the Fishing Game's (and Kitchen Shift's) navigates to its route via the
       same HTMX swap `#primary-nav` uses, not a full page reload —
       `e2e/projects.spec.js` covers this directly: the link is visible on the
       Fishing Game card, clicking it lands on `/fishing-game` with the real
@@ -448,8 +422,12 @@ what copy, is now content, not code.
       exercising `web/static/js/nav-menu.js`'s `updateActiveNavLinks()` for
       a destination outside the primary nav, not just between primary-nav
       pages.
-* [ ] The Resume page's "See all projects" link navigates to `/projects` via
-      HTMX, not a full reload — already covered by `e2e/resume.spec.js`.
+* [x] The Resume page's "See all projects" link navigates to `/projects` via
+      HTMX, not a full reload — `e2e/resume.spec.js` '"See all projects"
+      navigates to /projects via HTMX, not a full reload'.
+* [x] No console errors (including CSP violations) on `/projects` —
+      `e2e/projects.spec.js` "no console errors on load, including no CSP
+      violations".
 * [ ] Grid layout (1/2/3 columns) holds correctly across mobile, tablet, and
       desktop breakpoints, including WebKit, per `docs/features/home.md`'s
       precedent of Safari-specific layout bugs — not automated, visual
@@ -515,10 +493,57 @@ what copy, is now content, not code.
       structure, focus-visible styling on the "Live demo"/"Play now" links)
       alongside visual verification; no dedicated contrast/screen-reader pass
       done yet.
-* [ ] Tests cover the behavior in the Testing Plan above — several items
-      remain unchecked; tracked there rather than silently dropped.
-* [ ] No open questions remain unresolved — three remain, explicitly
-      deferred (real content, Postgres migration, Resume-list
-      reconciliation) rather than blocking this page's initial ship; the
-      other two (whether to trim the placeholder cards, and the Fishing
-      Game screenshot) are resolved.
+* [ ] Tests cover the behavior in the Testing Plan above — the grid
+      breakpoints and dark mode remain visual-only.
+* [x] Open questions are either resolved or explicitly deferred (more
+      real content, a Postgres move, reconciling with the résumé's Featured
+      Projects) — none blocks the page.
+
+---
+
+## History
+
+### Status before the wave-3 rewrite
+
+`Shipped` — the page, route, template, and data model are implemented and
+visually verified in both light and dark mode. The grid currently has eight
+cards, all real links into this site's own mini-games/demos (see Data Model
+for each entry): the Fishing Game, Kitchen Shift, Puzzle Solver, Library
+Shift, Bus Stop Finder, Bus Rush, Hospital Shift and Easy Diagram. The first three, in the order they
+were added: the Fishing Game
+(`docs/features/fishing-game.md`) at `/fishing-game`, with a real
+screenshot (`ImagePath: "/static/images/fishing/screenshot.png"`) — a live
+capture of an actual round in progress (boat, line, a fish, and a
+jellyfish hazard); Kitchen Shift (`docs/features/cooking-game.md`) at
+`/kitchen-shift`, added in a later pass once that game shipped, with its
+own real screenshot (`ImagePath: "/static/images/cooking/screenshot.png"`)
+— a live capture of the floor plan mid-shift (sink, all four tables, the
+player highlighting Table 2's interaction glow); and Puzzle Solver
+(`docs/features/puzzle-solver.md`) at `/puzzle-solver`, a 30×30 DFS
+pathfinding visualizer, added the same way once it shipped, with its own
+real screenshot (`ImagePath: "/static/images/puzzle/screenshot.png"`) —
+a live capture of a solved maze (a fully explored dead-end pocket shown in
+the "visited" amber tint, black wall cells, and the solved path threading
+out to the End marker). Library Shift (`docs/features/library-game.md`)
+followed with its own real screenshot; Bus Stop Finder
+(`docs/features/bus-stop-finder.md`) is a `FullPageLoad` card (a
+plain "Open" link, because its route sets its own CSP); Bus Rush
+(`docs/features/bus-rush.md`) has a staged gameplay capture (see Open
+Questions); Hospital Shift
+(`docs/features/hospital-shift.md`) has a real mid-shift screenshot; Easy
+Diagram (`docs/features/easy-diagram.md`) is the second `FullPageLoad` card
+(a standalone full-viewport page with its own CSP) with a real capture of
+the editor. None of the eight is a mockup. The four fictional sample cards the pulled-in design
+mockup originally shipped with (Fieldnotes, Tidewatch, Loom UI,
+Nightlight) were deliberately removed rather than left sitting next to
+real projects — see Open Questions for the reasoning and what replaces
+them over time. `e2e/projects.spec.js` covers all eight cards, including
+each one's "Play now" link (or Bus Stop Finder's and Easy Diagram's full-page "Open"); only the
+Fishing Game and Kitchen Shift cards
+have a dedicated "navigates via HTMX into the real game shell" regression
+test (Puzzle Solver's own equivalent page-load coverage lives in
+`e2e/puzzle-solver.spec.js` instead, per that doc's Testing Plan) — see
+Testing Plan. `internal/handler/template_test.go`'s Go-side placeholder-route
+test still doesn't exercise the real `projects-content` template directly
+(see Testing Plan), mirroring `docs/features/landing-carousel.md`'s same gap
+for its own hand-authored placeholder content.

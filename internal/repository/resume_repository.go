@@ -65,7 +65,9 @@ func (repo *ResumeRepository) GetProfile(ctx context.Context) (model.Profile, er
 	// docs/features/resume.md's Data Model: no CHECK constraints enforce
 	// the inner JSONB shape, so a decode error here is a real, expected
 	// failure mode (a malformed migration/manual edit) — the caller must
-	// treat it as a rendering failure, never a silently blank section.
+	// treat it as a rendering failure. Note json.Unmarshal only fails on
+	// invalid JSON or a type mismatch: a missing/misspelled key decodes to
+	// a zero value and renders blank, not as an error.
 	if err := json.Unmarshal(contactLinksRaw, &p.ContactLinks); err != nil {
 		return model.Profile{}, fmt.Errorf("decode contact_links: %w", err)
 	}
@@ -144,8 +146,9 @@ func (repo *ResumeRepository) ListRoles(ctx context.Context) ([]model.Role, erro
 // singleton row.
 // ---------------------------------------------------------------------------
 
-// UpdateBanner updates resume_profile's banner fields (name/title/tenure/
-// location/contact links) and its font style.
+// UpdateBanner updates resume_profile's banner fields (role title/tenure/
+// location/contact links) and its font style. The name itself is not a
+// column — it's hardcoded in resume-banner.html and both exports.
 func (repo *ResumeRepository) UpdateBanner(ctx context.Context, roleTitle, tenureLabel, locationLabel string, contactLinks []model.ContactLink, fontStyle string) error {
 	contactLinksRaw, err := json.Marshal(contactLinks)
 	if err != nil {

@@ -2,11 +2,15 @@
 
 ## Status
 
-`Shipped` — implemented and verified against a real Postgres: Go unit +
-DB-gated e2e tests, `node --test` rules tests, and `e2e/bus-rush.spec.js`
-(Chromium + WebKit). Tuning numbers remain illustrative. The `/projects`
-card uses `web/static/images/busrush/screenshot.png`, a staged 16:10 crop
-of the canvas.
+`Shipped` — implemented and verified against a real Postgres. Tests:
+`web/static/js/busrush/rules.test.js` (`node --test web/static/js/busrush/rules.test.js`),
+`internal/handler/bus_rush_test.go` and `internal/service/bus_rush*_test.go`
+(`go test ./...`), the DB-gated round trip in `cmd/server/e2e_test.go`
+(needs `DATABASE_URL`), and `e2e/bus-rush.spec.js` (Chromium + WebKit,
+`make test-e2e`). Tuning numbers remain illustrative — `rules.js` is the
+source of truth for every number quoted here. The `/projects` card uses
+`web/static/images/busrush/screenshot.png`, a staged 16:10 crop of the
+canvas.
 
 ## Summary
 
@@ -140,8 +144,9 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
   rather than instantly; another pile resets the timer. No life lost, but
   a slowed bus is slower than pursuing police (50% vs. 80%+ of stock top
   speed), so it must weave to avoid being caught. Police ignore garbage.
-* **Buses** (Depot Shop → Buses): buy once with tokens, then pick which to
-  drive; the choice is saved. Single-decker (free, balanced); Minibus (60:
+* **Buses** (Depot Shop → Buses, `BUSES`): four buses — the single-decker
+  is free, the other three are bought once with tokens; pick which to
+  drive and the choice is saved. Single-decker (free, balanced); Minibus (60:
   smaller, lane changes 25% quicker, one fewer life); Double-decker (100:
   +1 life, accelerates 30% slower); Electric bus (150: accelerates 60%
   faster). No bus is longer than `BUS_LENGTH` or steers slower than the
@@ -287,11 +292,17 @@ and its leaderboard stack, so it adds a new game without new infrastructure.
 3. Run: a "LEVEL 1 / CBD" banner, then traffic and fares scroll down while
    police close in from behind; the player switches lanes and manages
    speed. Every 800 m a new district begins (banner, bonus, lives refilled).
-4. A car, van or school bus hit costs a life; a banana skids the bus, garbage slows it;
-   a truck, semi, garbage truck, lorry, public bus or any police car ends the run at once. When the run ends, the Run Over screen ("Busted!" / "Flattened
-   by a truck!" / "New best run!") shows distance, fares, level reached,
-   police wrecked, score and tokens earned, with an optional leaderboard
-   submit.
+4. A car, van or school bus hit costs a life, as do a jaywalker, spike
+   strip or construction barrier; a banana skids the bus, garbage or sand
+   slows it, a pothole drops it to the speed floor. Any `lethal` vehicle
+   (every truck kind, lorries, public buses and coaches, snowplows and
+   wheel loaders), a police cruiser, roadblock or SWAT van, or an MRT train
+   ends the run at once; a fuel tanker or gasoline-carrying truck/semi
+   stuns the bus, then explodes unless it gets clear (WASTED). When the
+   run ends, the Run Over screen ("Busted!" / "Flattened by a <vehicle>!" /
+   "Hit by an MRT train!" / "WASTED", plus "New best run!") shows distance,
+   fares, level reached, police wrecked, score, tokens earned and any
+   mission/achievement bonus, with an optional leaderboard submit.
 5. "Depot Shop" spends tokens on buses and upgrades; "Drive Again" starts
    a new run.
 ```
@@ -465,15 +476,25 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   rows; a row never blocks all four lanes (`pickBlockedLanes`), so every
   row is passable. Rows get denser (`maxBlockedLanes`) and closer
   (`rowSpacingPx`, down to `ROW_SPACING_MIN`) with distance. `VEHICLES`
-  unlock by distance: school bus 150 m, city bus 200 m, van 300 m,
-  double-decker 400 m, garbage truck 500 m, truck 800 m, bendy bus
-  1000 m, semi 1500 m; `pickVehicle` picks by `weight` (buses 0.35–0.5,
-  everything else 1), and a unit test keeps late-game buses under 35% and
-  lethal vehicles over 35% of traffic.
-* **Collisions** (`livesAfterHit`): a vehicle marked `lethal` in
-  `VEHICLES` (truck, semi) or `POLICE_CAR` takes every life, even during
-  post-hit grace; anything else takes one life, or none while grace is
-  active. Bumpers therefore never save you from a truck or the police.
+  (26 kinds) each unlock at their own `minDistance` and carry an explicit
+  `weight` (default 1); `pickVehicle` picks by weight from the unlocked
+  pool. Two kinds are pool-gated rather than distance-gated: the
+  `construction` dump truck is only in the pool while a construction zone
+  is on the road, and the `snow` snowplow and wheel loader only while it's
+  SNOWED. See `VEHICLES`/`pickVehicle` in `rules.js` for the table rather
+  than a copy here; a unit test keeps late-game buses under 35% and lethal
+  vehicles over 35% of traffic.
+* **Collisions** (`livesAfterHit`): anything marked `lethal` takes every
+  life, even during post-hit grace — every `VEHICLES` kind except car,
+  van, school bus and fuel tanker (a unit test pins the exact list),
+  plus `POLICE_CAR` (pursuers and roadblocks), `SWAT_VAN` and `TRAIN`.
+  Anything else takes one life, or none while grace is active, so Bumpers
+  never save you from a lethal hit. Explosives are checked first
+  (`explosive`): a fuel tanker or a hazmat truck/semi starts the
+  stun-then-fuse crash (`crashTimings`) instead of a hit, even though the
+  hazmat truck/semi is itself `lethal`. A shield absorbs one lethal or
+  ordinary hit but never an explosive or a train (`shieldAbsorbs`); Ram
+  Plating changes police contact (`ramOutcome`).
 * **Spills** (`spillDrops`, `SPILLS`, `skidLane`): a vehicle drops only
   what its `spills` field says — bananas for trucks and semis (60% leaky,
   1–2 each), garbage for garbage trucks (80% leaky, 1–3 each) — at rear
@@ -486,16 +507,21 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   first), not oncoming traffic.
 * **Fare placement** (`fareOffset`): a fare sits centred in the clear gap
   behind its row — between the tail of the vehicle in its lane (if any)
-  and the next row's front — with `FARE_CLEARANCE` to spare. (It used to
-  sit at a fixed half-spacing, which overlapped semis at tight spacing.)
-  Fares and traffic scroll together, so clear at spawn stays clear; a unit
+  and the next row's front — with `FARE_CLEARANCE` to spare. Fares and traffic scroll together, so clear at spawn stays clear; a unit
   test checks every vehicle length at every spacing.
-* **Row spacing floor** must fit the longest vehicle (the semi), the bus,
-  and one unupgraded lane change at top speed — a unit test enforces this,
-  so adding a longer vehicle means raising `ROW_SPACING_MIN`.
-* **Score** = `floor(distance) + fares × 25 + bonus` — speed pays via
-  distance; the bonus is each wrecked cruiser's `policeWreckPoints(stars)`
-  (50 × stars) plus each district's `checkpointPoints`.
+* **Row spacing floor** (`ROW_SPACING_MIN`, 360 px) must fit the longest
+  vehicle, the bus, and one unupgraded lane change at the fastest
+  district's top speed — a unit test enforces this, so adding a longer
+  vehicle means raising `ROW_SPACING_MIN`.
+* **Score** (`runScore`) = `floor(distance) + fares × FARE_POINTS (25) +
+  bonus`, capped at 999999 — speed pays via distance. The bonus
+  (`r.bonus` in `bus-rush.js`) sums: each wrecked cruiser's
+  `policeWreckPoints(stars)` (50 × stars; a SWAT van counts double), each
+  district's `checkpointPoints` (250 × district index), each dodged
+  runaway coil truck (`RUNAWAY_DODGE_POINTS`, 150), each mixer toppled onto
+  the police (`MIXER_TOPPLE_POINTS`, 500) and each tanker/hazmat blast
+  escaped (`TANKER_ESCAPE_POINTS`, 300). Mission and achievement rewards
+  are tokens, not score.
 * **Wanted** = `min(5, district + 1 + floor(fares / 10))`.
 * **Tokens per run** = `fares × fareValue(fareBoxLevel) + floor(distance / 100) + wrecks × WRECK_TOKENS`.
 * **Police** (`wantedLevel`, `policeSpeed`, `maxPolice`,
@@ -503,9 +529,7 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   is pegged to an unupgraded bus's top speed *in the current district*
   (`POLICE_PACE`, 80% at one star up to 96% at five), so a stock bus at
   full throttle always pulls away — slowly at high stars — and police
-  catch you only when you brake or a hit drops you to the floor. (An
-  earlier flat per-star speed outpaced the per-level speed-up, so by
-  Heartland a stock bus could no longer outrun them.) The first cruiser
+  catch you only when you brake or a hit drops you to the floor. The first cruiser
   arrives `POLICE_FIRST_SECONDS` into a run, later ones every
   `POLICE_SPAWN_SECONDS` up to `maxPolice` (1/1/2/2/3 by star). New
   pursuers spawn just below the screen, 130 px behind the bus's rear.
@@ -521,8 +545,6 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
   parse as YYYY-MM-DD and be within one day of the server's UTC date
   (`ValidateBusRushDailyDate`) — a run finished across midnight or on a
   skewed clock still counts, but old days can't be back-filled.
-* **Row spacing** floor is now 360 px (was 350): the sixth district raised
-  the fastest top speed, and the floor must still fit a lane change there.
 * **Hazmat** (`isHazmat`, `explosive`, `crashTimings`): only kinds with a
   `hazmatChance` (truck, semi) can carry gasoline; an explosive vehicle
   (tanker or hazmat) starts the stun-then-fuse crash instead of a hit.
@@ -550,8 +572,12 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * **Destructive actions**: Reset Progress confirms first; local only.
 * **Input handling**: server validates bounds before insert; names are
   rendered via `html/template` escaping. Per-client in-memory rate limiter
-  (`scoreSubmitLimiter`, shared with the other games). Same CSRF gap as the
-  other score routes (no CSRF infra yet — see `PagesHandler.Logout`).
+  (`scoreSubmitLimiter`, shared with the other games). Cross-site POSTs
+  are refused (403) by the global `middleware.CrossOriginProtection`
+  (Sec-Fetch-Site/Origin check, wired in `cmd/server/main.go`); there are
+  no CSRF tokens. Scores are client-reported: unlike Hospital Shift there
+  are no signed run tickets, so the leaderboard only has coarse bounds
+  (see Open Questions).
 * **Secrets**: none.
 
 ---
@@ -569,7 +595,8 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
       the drop window), skids (always exactly one lane, never off the
       road), garbage slowdown (half, floored, bled off gradually), and
       buses (row spacing fits every bus; each bus's handling), oncoming
-      buses (non-lethal, unlock by distance, weighted below trucks),
+      buses (public buses and coaches lethal, the school bus one life,
+      weighted so they never crowd out trucks),
       tanker blast geometry (one lane caught, two clear, two lane changes
       fit the fuse), ram levels, SWAT/helicopter star thresholds, spike
       lead time, power-up odds and shield rules, no Expressway jaywalkers,
@@ -663,3 +690,41 @@ All numbers live in `web/static/js/busrush/rules.js` and are tunable; the
 * [x] Handler/service/repository boundaries followed.
 * [x] Keyboard and touch playable; overlays are focusable buttons.
 * [x] Tests in the Testing Plan pass.
+
+---
+
+## Open Questions
+
+* **Anti-cheat parity**: Hospital Shift's leaderboard has signed
+  single-use run tickets and a minimum-real-time check; Bus Rush accepts
+  any in-bounds score. Owner to decide whether to port that scheme.
+* **Flaky e2e tests under load**: in the audit, nine `e2e/bus-rush.spec.js`
+  tests failed in a parallel run and all passed serially. Likely causes:
+  the banana-skid and tanker-stun tests don't call `noTraffic()`, so
+  random traffic can interfere, and several tests poll with short
+  timeouts (tanker escape, gasoline semi, MRT ramp, missions).
+
+---
+
+## History
+
+Notes that used to sit inline in the current sections, kept verbatim:
+
+* Fare placement: "(It used to sit at a fixed half-spacing, which
+  overlapped semis at tight spacing.)"
+* Police pace: "(An earlier flat per-star speed outpaced the per-level
+  speed-up, so by Heartland a stock bus could no longer outrun them.)"
+* "**Row spacing** floor is now 360 px (was 350): the sixth district raised
+  the fastest top speed, and the floor must still fit a lane change there."
+
+Superseded rule text (replaced because it listed only the first
+unlocks/weights and an outdated lethal list):
+
+* Traffic: "`VEHICLES` unlock by distance: school bus 150 m, city bus
+  200 m, van 300 m, double-decker 400 m, garbage truck 500 m, truck 800 m,
+  bendy bus 1000 m, semi 1500 m; `pickVehicle` picks by `weight` (buses
+  0.35–0.5, everything else 1)"
+* Collisions: "a vehicle marked `lethal` in `VEHICLES` (truck, semi) or
+  `POLICE_CAR` takes every life"
+* Score: "the bonus is each wrecked cruiser's `policeWreckPoints(stars)`
+  (50 × stars) plus each district's `checkpointPoints`."

@@ -77,10 +77,11 @@ func (h *CookingGameHandler) Leaderboard(w http.ResponseWriter, r *http.Request)
 // r.FormValue — not JSON. Same reasoning as
 // FishingGameHandler.SubmitScore's doc comment.
 //
-// TEMPORARY, matching FishingGameHandler.SubmitScore's exact same
-// documented gap: no CSRF mechanism exists anywhere in this codebase yet
-// (see PagesHandler.Logout's doc comment) — this route's exposure is
-// identical to, not worse than, that already-accepted gap.
+// CSRF: same coverage as FishingGameHandler.SubmitScore — a cross-site
+// browser POST is refused (403) before this handler runs by
+// middleware.CrossOriginProtection (cmd/server/main.go's newHandlerChain).
+// There is no session-bound token; a script posting directly is limited
+// only by the per-client rate limit and the service's validation.
 func (h *CookingGameHandler) SubmitScore(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many submissions — please slow down and try again shortly.", http.StatusTooManyRequests)

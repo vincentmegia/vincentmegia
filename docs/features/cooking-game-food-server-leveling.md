@@ -2,29 +2,15 @@
 
 ## Status
 
-`Shipped` (v3.14). A sibling of `cooking-game-food-server.md` (which this
-extends — that doc's Gear upgrades section links here), not a replacement
-for any part of it. Fold this doc into `cooking-game-food-server.md` as a
-new section on its next full doc pass.
-
-**This doc originally proposed a different design** — a "food server
-level," 1 through 5, driven by a new persisted `totalShiftsCompleted`
-lifetime counter that never reset. That design was fully specified and
-partially implemented (`rules.js`'s `foodServerLevel`/
-`foodServerLevelStars`/`unlockedTableCount`/`baseCapacityForLevel`,
-`floor-plan.js`'s `isTableUnlocked`/`unlockedStations`) before the user
-asked for something different: each *round* (shift) to carry its own
-real-time limit as well, in three progressively harder ten-shift bands
-across the month, rather than a lifetime stat that only a returning
-veteran would ever see change. The floor-plan table-unlock geometry
-(`isTableUnlocked`/`unlockedStations`, still keyed 1-5) survived that
-pivot untouched; everything driven off lifetime shifts was replaced with
-functions driven off the *current* shift number. What follows describes
-the shipped round-tier design, not the original lifetime proposal.
+`Shipped` (v3.14). A sibling of `cooking-game-food-server.md` (whose Gear
+upgrades section links here). Code: `rules.js` §11 and `floor-plan.js`'s
+table layout. Tests: `node --test web/static/js/cooking/*.test.js` (see
+Testing Plan). The doc first specified a different, lifetime-based "food
+server level" design that was replaced before release — see History.
 
 ## Summary
 
-The month runs **30 shifts** (raised from 20), split into **three
+The month runs **30 shifts**, split into **three
 10-shift round tiers**. Each tier has its own real-time shift-clock
 budget and its own dining-room size — both grow harder together as the
 month goes on:
@@ -51,13 +37,6 @@ gear — maximal from a player's very first table, with no sense of
 sense of the *pace* of a shift changing either.
 
 ## Mechanic
-
-**This section describes the current, final implementation** — the
-unlock mechanism went through two earlier designs first (an entrance-
-first row scheme, then a center-out row scheme) before landing here; see
-"Table size doubled..." below for why, and don't take either earlier
-scheme as still-live behavior if you've seen an older version of this
-doc or an older commit.
 
 `floor-plan.js`'s `isTableUnlocked(tableId, level)` is now simply
 `tableId <= unlockedTableCount(level)` — the first N ids (1-indexed) are
@@ -107,6 +86,172 @@ Kitchen-station exemption is unchanged from the original proposal:
 kitchen-room stations (fridge, cabinet, cookware closet, stove, oven,
 cleaning closet) are never gated — only dining tables.
 
+### Table layout
+
+* Locked tables are not drawn at all, are not clickable, and never seat
+  customers (`drawStation` returns early; `unlockedStations` filters
+  hit-testing; `maybeSpawnCustomer` filters by `isTableUnlocked`).
+* Open tables have no "Table N" caption; the hover hint and the order
+  notepad still name the table.
+* `buildStations(tableIds, level)` lays out only the open tables in a
+  near-square grid (`TABLE_GRID_SHAPES`: 6→3×2, 18→6×3, 30→8×4), centered
+  in the room (`TABLE_AREA_X`/`TABLE_AREA_Y`). The stations are rebuilt at
+  each shift start.
+* Table size scales by level (`tableBoxSizeForLevel`: 64/73/82/91/100 px,
+  so 64/82/100 at the three tiers), with spacing `size × 1.6`. Tier 3's
+  8×4 grid is packed about 5 px tighter than a table is tall — an accepted
+  overlap.
+* Tables are drawn round (since v4, Library-style wood with a cream
+  cloth); hit-testing still uses the rectangular box.
+
+### Why shift number, not a lifetime stat
+
+The original proposal chose a lifetime counter specifically so a
+returning veteran wouldn't "de-level" every month. The user's follow-up
+request explicitly asked for the opposite once time limits entered the
+picture: **every month should build from a small, slow-paced service up
+to the full, fast-paced one**, the same shape every month, not a
+one-time unlock a veteran would only ever see once. Driving both the
+clock and the table count off `currentShift` (which already resets
+monthly) delivers that directly, and removes an entire persisted-field
+migration (`totalShiftsCompleted`) that the lifetime design needed and
+this one doesn't.
+
+### Why gear stays parallel, not sequential
+
+Unchanged reasoning from the original proposal: Extra Table Service is
+still purchasable at any shift — `tableCapacity`'s
+`Math.min(unlockedTableCountForShift(shiftNumber), ...)` means gear
+bought well ahead of a tier change doesn't raise capacity past however
+many tables are physically open yet, but isn't wasted either — it takes
+effect the moment the next tier opens more tables. No gear item in this
+shop is level-gated; this one isn't the exception either.
+
+### Why Tier 1 allows exactly one order at a time
+
+Tier 1 opens six tables but its base order capacity is 1, so with no
+Extra Table Service gear the player handles one order at a time — taken
+literally, not softened to 2. Olive & Oliver may queue behind Mel's table
+at that capacity — left as an ordinary consequence of the
+existing spawn-queue logic (`maybeSpawnCustomer`) rather than
+special-cased away, consistent with this game's "simple, uniform rules
+over special cases" philosophy. Both of Karen's shifts (12 and 18) are
+in Tier 2 (base capacity 3, 18 tables open).
+
+### UI/feedback
+
+* The start screen shows the upcoming shift's round tier as filled/empty
+  stars (`roundTierStars(roundTier(save.currentShift))`, e.g. "★★☆"),
+  alongside month-to-date/best-month Gard.
+* The moment a shift boundary crosses into a new tier (checked in
+  `endShift()` when `save.currentShift` advances), a **"Tier up!"** toast
+  (`showToast`, reused as-is) fires on the paycheck screen, naming the
+  new star rating and how many tables just opened.
+* Stars are plain `★`/`☆` Unicode characters, same as every other
+  star-branded UI in this game (Startime Diner's own star theme) — no new
+  image asset.
+
+## Data Model
+
+No new `localStorage` save field. Round tier is computed live from
+`save.currentShift`, which already existed and already resets on "Start
+New Month" — exactly the behavior this design wants. (The original
+proposal's `totalShiftsCompleted` field was implemented and then removed
+before shipping, once the round-tier request superseded it — it never
+reached a released save shape, so no migration/back-compat concern.)
+
+`SHIFTS_PER_MONTH` (`rules.js`) is 30 (was 20) so it divides evenly into
+three round tiers. The `cooking_scores` leaderboard table's CHECK
+constraints and the server-side validation bounds in
+`internal/service/cooking_validation.go` widened to match: `shifts_completed`
+up to 30 (was 20), `total_earnings` up to 150,000 (was 100,000 — the
+per-shift payout formula is unchanged, so the theoretical max rose from
+20 × 4,000 = 80,000 to 30 × 4,000 = 120,000; both bounds keep the same
+~25% headroom above their respective theoretical max). See migration
+`004_widen_cooking_scores_round_tiers.sql`. That headroom ignores Counter
+payments and bonus Gard, which can push a month past 150,000 — see the
+main doc's Open Questions.
+
+## Testing Plan
+
+All covered in `web/static/js/cooking/rules.test.js`:
+
+* [x] `roundTier`: correct tier at every 10-shift band boundary, never
+      exceeds `ROUND_TIER_COUNT`, monotonically non-decreasing across the
+      month, non-positive/non-finite input treated as shift 1.
+* [x] `roundTierStars`: always `ROUND_TIER_COUNT` characters, clamps
+      out-of-range/non-finite input.
+* [x] `shiftClockSecondsForShift`: matches `ROUND_TIER_CLOCK_SECONDS` at
+      the start of each tier, never increases as the shift number grows.
+* [x] `tableUnlockLevelForShift`/`unlockedTableCountForShift`: Tier 1
+      opens exactly 6 tables, Tier 3 opens all 30, monotonically
+      non-decreasing across the month.
+* [x] `baseCapacityForShift`: exactly 1 at shift 1, monotonically
+      non-decreasing, tops out at 5.
+* [x] `tableCapacity(shiftNumber, extraTableServiceLevel)`: Tier 3
+      reproduces the pre-round-tiers flat numbers exactly, for every
+      existing Extra Table Service level (0–8) — a regression guard that
+      an established player's end-game numbers are unchanged; a fresh
+      shift-1 save caps at exactly 1 regardless of gear level, gear never
+      raises capacity past that tier's unlocked table count.
+* [x] `inGameTimeLabel(clockSecondsRemaining, totalClockSeconds)`: honors
+      an explicit non-default total (e.g. Tier 1's 300s), not just the
+      legacy 90s default.
+
+`floor-plan.test.js`'s "buildStations table layout (v3.15 centered box
+grid)" suite additionally covers: unlocked tables' bounding box is
+centered on the room's exact x/y midpoints; every table stays within
+canvas bounds at every level; unlocked tables never overlap beyond a
+small, explicitly-tolerated amount (see "Table size doubled..." above)
+at the densest levels; the same table id lands at a different position
+at a different level (proving the layout really does recompute, not
+reuse a fixed grid); `buildStations` with no level argument defaults to
+the full 30-table layout.
+
+`floor-plan.test.js` additionally covers `tableBoxSizeForLevel` (exact
+values 64/73/82/91/100, monotonic, clamps out-of-range/non-finite input
+the same as every other level-clamping function in this file), a
+regression-pin proving level 5's table positions are byte-for-byte
+unchanged from before the size-scaling change, and that a level's tables
+all report `size === tableBoxSizeForLevel(level)`.
+
+---
+
+## Open Questions
+
+* This doc could be folded into `cooking-game-food-server.md` as a section
+  on a future doc pass.
+
+---
+
+## History
+
+Earlier text from this doc, kept verbatim.
+
+### Original Status note
+
+`Shipped` (v3.14). A sibling of `cooking-game-food-server.md` (which this
+extends — that doc's Gear upgrades section links here), not a replacement
+for any part of it. Fold this doc into `cooking-game-food-server.md` as a
+new section on its next full doc pass.
+
+**This doc originally proposed a different design** — a "food server
+level," 1 through 5, driven by a new persisted `totalShiftsCompleted`
+lifetime counter that never reset. That design was fully specified and
+partially implemented (`rules.js`'s `foodServerLevel`/
+`foodServerLevelStars`/`unlockedTableCount`/`baseCapacityForLevel`,
+`floor-plan.js`'s `isTableUnlocked`/`unlockedStations`) before the user
+asked for something different: each *round* (shift) to carry its own
+real-time limit as well, in three progressively harder ten-shift bands
+across the month, rather than a lifetime stat that only a returning
+veteran would ever see change. The floor-plan table-unlock geometry
+(`isTableUnlocked`/`unlockedStations`, still keyed 1-5) survived that
+pivot untouched; everything driven off lifetime shifts was replaced with
+functions driven off the *current* shift number. What follows describes
+the shipped round-tier design, not the original lifetime proposal.
+
+### Table positioning changed twice (from Mechanic)
+
 **Table positioning changed twice after first shipping** — history, not
 current behavior (see "Table size doubled..." below for what actually
 ships today): originally entrance-first (the row nearest the entrance
@@ -124,7 +269,9 @@ doubling the table size made a single 100px-tall row read as a thin
 strip rather than a box. No row-position concept exists in the code
 anymore at all.
 
-### Locked tables are not rendered at all
+### Table layout iterations (locked tables hidden, captions removed, size doubled, per-tier sizing)
+
+#### Locked tables are not rendered at all
 
 The original proposal called for a locked table to stay visible on
 canvas, desaturated/dimmed with an "Opens at ★★★" (later "Opens Shift
@@ -141,7 +288,7 @@ change is rendering-only. The `requiredTierForTable`/`tierStartShift`
 helpers that computed the old label's shift number were dead code once
 locked tables stopped drawing a label at all, and were removed.
 
-### Open tables no longer show a "Table N" caption
+#### Open tables no longer show a "Table N" caption
 
 Alongside the centering request, the user asked to "remove the table
 caption." `drawStation` now skips the label-chip draw entirely for
@@ -151,7 +298,7 @@ is still readable elsewhere when it matters: the hover tooltip
 (`hoverHintFor`) and the Orders sidebar both still say "Table N," since
 those are functional (which table an order belongs to), not decorative.
 
-### Table size doubled, decorative star pillows removed, and the layout redesigned around a centered box grid
+#### Table size doubled, decorative star pillows removed, and the layout redesigned around a centered box grid
 
 Next, the user asked to double the table's size, remove the decorative
 "star pillow" chairs (`cooking-game.js`'s `drawChairPillows`, drawn
@@ -188,7 +335,7 @@ draw *above* their box when it doesn't fit below the canvas edge — the
 room's usable y-range (`TABLE_AREA_Y`) accounts for that flipped-label
 space now, not just the fixtures' own boxes.
 
-### Table size now scales per tier, and tables are circles
+#### Table size now scales per tier, and tables are circles
 
 After the flat 100px size shipped, the user reported Tier 1's tables (a
 sparse 6-table room) looked "too big" and asked me to "use creative
@@ -234,115 +381,7 @@ split worked cleanly because `cooking-game.js`'s only obligation was "use
 the live `station.size`, never a hardcoded number," which is correct
 regardless of whatever specific values the sizing agent chose.
 
-### Why shift number, not a lifetime stat
-
-The original proposal chose a lifetime counter specifically so a
-returning veteran wouldn't "de-level" every month. The user's follow-up
-request explicitly asked for the opposite once time limits entered the
-picture: **every month should build from a small, slow-paced service up
-to the full, fast-paced one**, the same shape every month, not a
-one-time unlock a veteran would only ever see once. Driving both the
-clock and the table count off `currentShift` (which already resets
-monthly) delivers that directly, and removes an entire persisted-field
-migration (`totalShiftsCompleted`) that the lifetime design needed and
-this one doesn't.
-
-### Why gear stays parallel, not sequential
-
-Unchanged reasoning from the original proposal: Extra Table Service is
-still purchasable at any shift — `tableCapacity`'s
-`Math.min(unlockedTableCountForShift(shiftNumber), ...)` means gear
-bought well ahead of a tier change doesn't raise capacity past however
-many tables are physically open yet, but isn't wasted either — it takes
-effect the moment the next tier opens more tables. No gear item in this
-shop is level-gated; this one isn't the exception either.
-
-### Why Tier 1 stays at exactly one table, one order
-
-Unchanged from the original proposal's "why level 1 stays at exactly
-one:" taken literally, not softened to 2. Olive & Oliver may queue behind
-Mel's table at Tier 1 capacity — left as an ordinary consequence of the
-existing spawn-queue logic (`maybeSpawnCustomer`) rather than
-special-cased away, consistent with this game's "simple, uniform rules
-over special cases" philosophy. Karen (shift 12) now lands early in Tier
-2 (capacity 3, 18 tables open) rather than the original proposal's
-"already level 3" framing — still comfortably past Tier 1's harshest
-constraint.
-
-### UI/feedback
-
-* The start screen shows the upcoming shift's round tier as filled/empty
-  stars (`roundTierStars(roundTier(save.currentShift))`, e.g. "★★☆"),
-  alongside month-to-date/best-month Gard.
-* The moment a shift boundary crosses into a new tier (checked in
-  `endShift()` when `save.currentShift` advances), a **"Tier up!"** toast
-  (`showToast`, reused as-is) fires on the paycheck screen, naming the
-  new star rating and how many tables just opened.
-* Stars are plain `★`/`☆` Unicode characters, same as every other
-  star-branded UI in this game (Startime Diner's own star theme) — no new
-  image asset.
-
-## Data Model
-
-No new `localStorage` save field. Round tier is computed live from
-`save.currentShift`, which already existed and already resets on "Start
-New Month" — exactly the behavior this design wants. (The original
-proposal's `totalShiftsCompleted` field was implemented and then removed
-before shipping, once the round-tier request superseded it — it never
-reached a released save shape, so no migration/back-compat concern.)
-
-`SHIFTS_PER_MONTH` (`rules.js`) raised from 20 to 30 to divide evenly
-into three round tiers. The `cooking_scores` leaderboard table's CHECK
-constraints and the server-side validation bounds in
-`internal/service/cooking_validation.go` widened to match: `shifts_completed`
-up to 30 (was 20), `total_earnings` up to 150,000 (was 100,000 — the
-per-shift payout formula is unchanged, so the theoretical max rose from
-20 × 4,000 = 80,000 to 30 × 4,000 = 120,000; both bounds keep the same
-~25% headroom above their respective theoretical max). See migration
-`004_widen_cooking_scores_round_tiers.sql`.
-
-## Testing Plan
-
-All covered in `web/static/js/cooking/rules.test.js`:
-
-* [x] `roundTier`: correct tier at every 10-shift band boundary, never
-      exceeds `ROUND_TIER_COUNT`, monotonically non-decreasing across the
-      month, non-positive/non-finite input treated as shift 1.
-* [x] `roundTierStars`: always `ROUND_TIER_COUNT` characters, clamps
-      out-of-range/non-finite input.
-* [x] `shiftClockSecondsForShift`: matches `ROUND_TIER_CLOCK_SECONDS` at
-      the start of each tier, never increases as the shift number grows.
-* [x] `tableUnlockLevelForShift`/`unlockedTableCountForShift`: Tier 1
-      opens exactly 6 tables, Tier 3 opens all 30, monotonically
-      non-decreasing across the month.
-* [x] `baseCapacityForShift`: exactly 1 at shift 1, monotonically
-      non-decreasing, tops out at 5.
-* [x] `tableCapacity(shiftNumber, extraTableServiceLevel)`: Tier 3
-      reproduces the pre-round-tiers flat numbers exactly, for every
-      existing Extra Table Service level (0–8) — a regression guard that
-      an established player's end-game numbers are unchanged; a fresh
-      shift-1 save caps at exactly 1 regardless of gear level, gear never
-      raises capacity past that tier's unlocked table count.
-* [x] `inGameTimeLabel(clockSecondsRemaining, totalClockSeconds)`: honors
-      an explicit non-default total (e.g. Tier 1's 300s), not just the
-      legacy 90s default.
-
-`floor-plan.test.js`'s "buildStations table layout (v3.15 centered box
-grid)" suite additionally covers: unlocked tables' bounding box is
-centered on the room's exact x/y midpoints; every table stays within
-canvas bounds at every level; unlocked tables never overlap beyond a
-small, explicitly-tolerated amount (see "Table size doubled..." above)
-at the densest levels; the same table id lands at a different position
-at a different level (proving the layout really does recompute, not
-reuse a fixed grid); `buildStations` with no level argument defaults to
-the full 30-table layout.
-
-`floor-plan.test.js` additionally covers `tableBoxSizeForLevel` (exact
-values 64/73/82/91/100, monotonic, clamps out-of-range/non-finite input
-the same as every other level-clamping function in this file), a
-regression-pin proving level 5's table positions are byte-for-byte
-unchanged from before the size-scaling change, and that a level's tables
-all report `size === tableBoxSizeForLevel(level)`.
+### Manual verification at ship time
 
 Manually verified end-to-end via Playwright against a live dev server:
 fresh save starts at Tier 1 (★☆☆, 1/30, 8:30 AM), showing a 3x2 block of

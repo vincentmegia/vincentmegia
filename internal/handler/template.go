@@ -186,9 +186,10 @@ type Project struct {
 	ImagePath   string // optional, "" renders a placeholder tile
 	// FullPageLoad renders an internal LiveURL as a plain same-tab link
 	// ("Open") with no hx-* swap — for a route that sets its own
-	// Content-Security-Policy (Bus Stop Finder), which only takes effect
-	// on a real document load. See docs/features/bus-stop-finder.md's
-	// User Flow.
+	// Content-Security-Policy (Bus Stop Finder, Easy Diagram), which only
+	// takes effect on a real document load. isFullPageRoute (pages.go)
+	// derives the landing page's full-page links from these cards. See
+	// docs/features/projects.md's Business Rules.
 	FullPageLoad bool
 }
 
