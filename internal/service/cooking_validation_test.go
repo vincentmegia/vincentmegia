@@ -65,16 +65,24 @@ func TestValidateCookingScoreSubmission(t *testing.T) {
 			wantErr:         ErrCookingScoreEarningsOutOfRange,
 		},
 		{
+			// Regression: counter payments pushed a strong month past the old 150,000 cap.
+			name:            "a 30-clean-shift month plus bonuses is valid",
+			playerName:      "Vince",
+			totalEarnings:   158000,
+			shiftsCompleted: 30,
+			wantTrimmed:     "Vince",
+		},
+		{
 			name:            "earnings at the max boundary is valid",
 			playerName:      "Vince",
-			totalEarnings:   150000,
+			totalEarnings:   200000,
 			shiftsCompleted: 1,
 			wantTrimmed:     "Vince",
 		},
 		{
 			name:            "earnings over the max",
 			playerName:      "Vince",
-			totalEarnings:   150001,
+			totalEarnings:   200001,
 			shiftsCompleted: 1,
 			wantErr:         ErrCookingScoreEarningsOutOfRange,
 		},

@@ -12,9 +12,12 @@ import (
 // Security Considerations). Mirrors cooking_validation.go's exact pattern.
 const (
 	libraryScorePlayerNameMaxLen = 20
-	libraryScoreEarningsMax      = 100000
-	libraryScoreShiftsMin        = 1
-	libraryScoreShiftsMax        = 30
+	// 200000 (migration 015; was 100000): 30 clean shifts pay 120,000
+	// before bonuses, and every bonus at its theoretical maximum brings a
+	// month to ~168,800 — see docs/features/library-game.md's Data Model.
+	libraryScoreEarningsMax = 200000
+	libraryScoreShiftsMin   = 1
+	libraryScoreShiftsMax   = 30
 )
 
 var (

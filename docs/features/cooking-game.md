@@ -241,21 +241,42 @@ Registered in `cmd/server/main.go`'s `newMux`.
 ## Data Model
 
 `migrations/003_create_cooking_scores.sql`, widened by
-`004_widen_cooking_scores_round_tiers.sql`:
+`004_widen_cooking_scores_round_tiers.sql` and
+`015_raise_library_cooking_earnings_caps.sql`:
 
 | Column | Type | Constraint |
 |---|---|---|
 | `id` | `BIGINT` identity | PK |
 | `player_name` | `TEXT` | 1–20 chars |
-| `total_earnings` | `INT` | 0–150,000 |
+| `total_earnings` | `INT` | 0–200,000 |
 | `shifts_completed` | `INT` | 1–30 |
 | `created_at` | `TIMESTAMPTZ` | default `now()` |
 
-Index `idx_cooking_scores_earnings (total_earnings DESC)`. Both migrations
-have a working `Down` (004 restores the 100,000/20 bounds; 003 drops the
-index and table). `internal/service/cooking_validation.go` enforces the
-same bounds (`cookingScoreEarningsMax` = 150,000, shifts 1–30) before the
-insert. Gear, Gard and progress live only in `localStorage`.
+Index `idx_cooking_scores_earnings (total_earnings DESC)`. Every migration
+has a working `Down` (015 restores the 150,000 bound as `NOT VALID`, so
+rows above it don't block the rollback; 004 restores the 100,000/20
+bounds; 003 drops the index and table).
+`internal/service/cooking_validation.go` enforces the same bounds
+(`cookingScoreEarningsMax` = 200,000, shifts 1–30) before the insert.
+Gear, Gard and progress live only in `localStorage`.
+
+**Earnings ceiling (200,000).** The old 150,000 cap could be reached. A
+month with no shopping is:
+
+* the base paycheck: 30 × `SHIFT_PAYCHECK_FULL` 4,000 = 120,000;
+* counter payments: `COUNTER_PAYMENT_GARD` 50 per served customer.
+  Arrivals average one per `customerArrivalIntervalSeconds` (14 s easing
+  to 5 s) over the 300/180/120 s tier clocks, about 739 a month. Serving
+  all of them pays ~36,900. With the jitter at its fastest every time
+  (0.6×) it would be ~61,500;
+* Karen's tips: 100 + 250 = 350;
+* perfect pours: 10 each, roughly one per 150 s of Sanity drain over
+  6,000 s of clock, so ~400.
+
+That comes to ~157,700 for a fully served month, already past 150,000.
+The jitter-maximum bound is ~182,300. 200,000 leaves ~27% headroom over a
+strong month and still works as a coarse sanity bound. Table capacity
+usually keeps real totals lower.
 
 ---
 
@@ -275,7 +296,7 @@ month minus anything spent in the shop — with `shifts_completed` = 30.
   UTF-8 or control/format characters) and rendered through
   `html/template` auto-escaping.
 * **Untrusted scores**: the game is client-side, so a score is only
-  bounds-checked (earnings 0–150,000, shifts 1–30). Accepted for a
+  bounds-checked (earnings 0–200,000, shifts 1–30). Accepted for a
   stakes-free leaderboard.
 * **Abuse**: `SubmitScore` is rate-limited per client
   (`middleware.ClientKey`, which honors `TrustProxyHeaders` behind Render's
@@ -356,12 +377,9 @@ Not covered by an automated test:
 
 ## Open Questions
 
-* **Leaderboard cap (owner decision: keep 150,000 for now).**
-  `cookingScoreEarningsMax` and the DB CHECK were sized for 30 × 4,000 =
-  120,000 plus ~25% headroom. Counter payments (50g per served customer),
-  Karen's tips and perfect pours come on top, so a strong month that
-  spends nothing in the shop can exceed 150,000 — and the submit then
-  fails with a 400. Revisit if real playthroughs reach it.
+* **Leaderboard cap.** Raised to 200,000 by migration 015, because
+  counter payments could take a fully served month past the old 150,000
+  (see Data Model). Revisit if real playthroughs get near 200,000.
 * Two e2e tests race under load: the Coffee Pour test (line 389) and the
   Rice Station test (line 330) set state through a hook and then act in a
   separate step, which the live loop can overtake. Freezing the loop or

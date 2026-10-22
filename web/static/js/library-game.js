@@ -561,6 +561,14 @@ export function init(canvas, elements) {
   const random = Math.random;
 
   let ambient = [];
+  // Test-only (window.__libraryGameTestHooks.freezeStaff): staff stop
+  // walking, so an e2e test can click one where a read put them — under CPU
+  // load several frames can pass between the read and the click.
+  let testStaffFrozen = false;
+  // Test-only (pauseScheduledEvents): holds back the shift's scheduled
+  // returns/fines/borrows/Karen, so a random arrival can't reorder the
+  // Front Desk line under a click or walk out during a test's fast-forward.
+  let testEventsPaused = false;
 
   function resetAmbient() {
     const minjunOff = Boolean(daily?.twist.effect.noMinjun);
@@ -571,6 +579,7 @@ export function init(canvas, elements) {
   }
 
   function updateAmbient(dt) {
+    if (testStaffFrozen) return;
     for (const a of ambient) {
       // A staff member stands still while Eun-mi is on her way to ask them.
       if (moveTarget?.staffKey === a.key && a.pause <= 0) {
@@ -1312,7 +1321,7 @@ export function init(canvas, elements) {
   }
 
   function processScheduledEvents() {
-    if (!shiftState || shiftState.phase !== 'playing') return;
+    if (!shiftState || shiftState.phase !== 'playing' || testEventsPaused) return;
     const elapsed = shiftState.totalClockSeconds - shiftState.clockSeconds;
     while (scheduledEvents.length && scheduledEvents[0].at <= elapsed) {
       const event = scheduledEvents.shift();
@@ -4221,12 +4230,25 @@ export function init(canvas, elements) {
 
   // -- Game loop --------------------------------------------------------------
 
+  // Test-only (window.__libraryGameTestHooks.freeze/step): while frozen
+  // the loop keeps drawing but stops advancing the simulation, so an e2e
+  // test can set a value (a coffee fill) and act on it through the real
+  // input handlers, which still run, without live frames moving it first.
+  let testFrozen = false;
+
   function loop(timestamp) {
     if (!running || paused) { rafHandle = null; return; }
     if (lastTimestamp === null) lastTimestamp = timestamp;
     const deltaSeconds = Math.min(0.1, (timestamp - lastTimestamp) / 1000);
     lastTimestamp = timestamp;
 
+    if (testFrozen) render();
+    else stepSimulation(deltaSeconds);
+
+    rafHandle = window.requestAnimationFrame(loop);
+  }
+
+  function stepSimulation(deltaSeconds) {
     if (!overlay) {
       updatePlayer(deltaSeconds);
       updateFirstPersonMovement(deltaSeconds);
@@ -4275,8 +4297,6 @@ export function init(canvas, elements) {
     updateHoverHint();
     renderHud();
     render();
-
-    rafHandle = window.requestAnimationFrame(loop);
   }
 
   // -- Fullscreen ---------------------------------------------------------
@@ -4455,6 +4475,14 @@ export function init(canvas, elements) {
       getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.map((g) => ({ ...g })), figures: halluc.figures.length, whispers: halluc.whispers.length }),
       spawnGhostPatronNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
       setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
+      /** Stops (true) or resumes (false) the simulation; input handlers still run, so a press/release while frozen acts on exactly the values a test set. */
+      freeze(on) { testFrozen = Boolean(on); },
+      /** Advances the simulation by one frame of `seconds` (default 1/60), frozen or not. */
+      step(seconds = 1 / 60) { if (running && shiftState) stepSimulation(seconds); },
+      /** Stops (true) or resumes (false) the wandering staff, so a test can click one where it read them. */
+      freezeStaff(on) { testStaffFrozen = Boolean(on); },
+      /** Holds back (true) or releases (false) the shift's scheduled arrivals; the hooks' own spawn*Now still work. */
+      pauseScheduledEvents(on) { testEventsPaused = Boolean(on); },
       // `freeze` holds the marker still until the next click resolves it, so
       // a test's set-then-click can't race the sweep under load.
       setSkillCheckGauge(pos, { freeze = false } = {}) {

@@ -11,12 +11,12 @@ import (
 // Security Considerations).
 const (
 	cookingScorePlayerNameMaxLen = 20
-	// v3.14: 150000/30 — the month grew from 20 to 30 shifts (round tiers,
-	// docs/features/cooking-game-food-server-leveling.md), so the
-	// theoretical max payout (shiftPaycheck's 4,000/shift * 30) rose from
-	// 80,000 to 120,000; these bounds keep the same ~25% headroom above it
-	// migration 004 widened the cooking_scores CHECK constraints to.
-	cookingScoreEarningsMax = 150000
+	// 200000 (migration 015; was 150000 from migration 004): 30 clean
+	// shifts pay 120,000, and counter payments (50g per served customer,
+	// ~36,900 over a fully served month), Karen's tips and perfect pours
+	// put a strong no-shopping month near 158,000 — see
+	// docs/features/cooking-game.md's Data Model.
+	cookingScoreEarningsMax = 200000
 	cookingScoreShiftsMin   = 1
 	cookingScoreShiftsMax   = 30
 )

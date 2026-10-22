@@ -221,19 +221,42 @@ Registered in `cmd/server/main.go`'s `newMux`. Service and repository:
 
 ## Data Model
 
-`migrations/007_create_library_scores.sql` and
-`migrations/013_add_library_daily_date.sql`. Both have a working `Down`.
+`migrations/007_create_library_scores.sql`,
+`migrations/013_add_library_daily_date.sql` and
+`migrations/015_raise_library_cooking_earnings_caps.sql`. All have a
+working `Down`.
 
 | Table          | Column           | Type        | Constraints                              | Notes |
 | -------------- | ---------------- | ----------- | ---------------------------------------- | ----- |
 | library_scores | id               | BIGINT      | GENERATED ALWAYS AS IDENTITY PRIMARY KEY | |
 | library_scores | player_name      | TEXT        | NOT NULL, length 1–20                    | |
-| library_scores | total_earnings   | INT         | NOT NULL, range 0–100000                 | Gard total for the run (or the one daily shift). |
+| library_scores | total_earnings   | INT         | NOT NULL, range 0–200000                 | Gard total for the run (or the one daily shift). Raised from 100,000 by migration 015; see the ceiling below. |
 | library_scores | shifts_completed | INT         | NOT NULL, range 1–30                     | Same range as `cooking_scores` (widened to 1–30 by its migration 004). |
 | library_scores | created_at       | TIMESTAMPTZ | NOT NULL DEFAULT now()                   | |
 | library_scores | daily_date       | DATE        | nullable                                 | Daily Challenge UTC day; NULL for a month run. Partial index `idx_library_scores_daily (daily_date, total_earnings DESC) WHERE daily_date IS NOT NULL`. The all-time board ranks only NULL rows. |
 
 Also `idx_library_scores_earnings (total_earnings DESC)`.
+
+**Earnings ceiling (200,000, `libraryScoreEarningsMax`).** From `rules.js`
+over a 30-shift month (tiers of 10 shifts):
+
+| Source | Per month | Strong month | Theoretical max |
+| ------ | --------- | ------------ | --------------- |
+| Base paycheck (`SHIFT_PAYCHECK_FULL`) | 30 × 4,000 | 120,000 | 120,000 |
+| Shelving tip (`SHELVED_BOOK_TIP_GARD` 5) | 10 × (6 + 10 + 16) = 320 returns | 1,600 | 1,600 |
+| Coin Hunt (4 × 25 per Coin Hunt book) | 1 in 5 of 320 returns | 6,400 | 32,000 (every book) |
+| Fines (20–80 each) | 174 (fines start on shift 5) | 8,700 | 13,920 |
+| Re-shelving books read in the Nook | one per ~60 s cooldown and read | — | 1,200 |
+| Karen's fine | once | 60 | 60 |
+| Perfect pours (10 each) | one per ~150 s of Sanity drain | 960 | — |
+| **Total** | | **~137,700** | **~168,800** |
+
+The rating multiplier never goes above 100%. The cap leaves ~45%
+headroom over a strong month and ~18% over every bonus at its maximum.
+Coffee Pour has no cooldown, so a month spent only refilling coffee could
+in principle go higher. That isn't a real way to play (patrons walk out
+and the rating drops), and the cap remains a sanity bound, not
+anti-cheat.
 
 Everything else is client-side in `localStorage`:
 
@@ -424,7 +447,7 @@ Look values up there rather than relying on this doc.
       * Fines: banked; a miscount followed by a keyboard recount; fines
         starting on a shift rolled 5–8.
       * Coffee Pour: mouse, keyboard and spill.
-      * Karen: collect and let it slide.
+      * Karen: collect, let it slide, and Security walking her out.
       * Closing-wait lock, Director Seo's cutscene and the Boss's Office
         wait.
       * Gard counter, hallucinations, zero Mood, shelving incentives, star
@@ -432,25 +455,20 @@ Look values up there rather than relying on this doc.
       * Daily Challenge (four tests) and the shift-30 submission round trip.
       * First Person Mode.
       * An HTMX revisit, and no console or CSP errors.
-      * Staff help tests: Min-jun (shelving and empty-handed), the Shelver,
-        the Volunteer and Ji-ho.
-* [ ] Playwright coverage for Security escorting Karen, the Janitor, the
-      Archivist and the Storyteller. These are covered only by unit tests
-      in `engine-state.test.js`'s "staff helping the player".
+      * Staff help: Min-jun (shelving and empty-handed), the Shelver, the
+        Volunteer, Ji-ho, the Janitor, the Storyteller and the Archivist
+        (during a borrow).
+      * Determinism under CPU load: `startShift` holds back scheduled
+        arrivals (`pauseScheduledEvents`), `askStaff` freezes the wandering
+        staff before clicking one (`freezeStaff`), and Coffee Pour sets the
+        fill and releases with the simulation frozen (`freeze`/`step`;
+        input handlers still run).
 
 ---
 
 ## Open Questions
 
-* **Leaderboard cap and a full-month total.** 30 perfect shifts at
-  `SHIFT_PAYCHECK_FULL` (4000) come to 120,000 Gard before bonuses. That
-  is above the 100,000 cap (`libraryScoreEarningsMax` and the CHECK
-  constraint), so a very strong month would be rejected as out of range.
-  Should the cap rise, or should the client clamp?
 * Score anti-cheat (run tickets like Hospital Shift's) is not built.
-* Playwright flakiness: the staff-help tests click moving NPCs, and the
-  Coffee Pour tests hold for a wall-clock duration. Hooks to freeze NPCs
-  and to set the pour level would make them deterministic.
 * Tuning magnitudes in `rules.js` are still illustrative.
 * The Fines Sort failure branch in `engine-state.js` is never used by the
   game. Either give Fines Sort a fail path or drop the branch.
@@ -464,7 +482,7 @@ Look values up there rather than relying on this doc.
 * [x] All states in the UI table are implemented
       (`library-leaderboard.html` covers empty and error;
       `TestLibraryGameHandler_Leaderboard_Empty`).
-* [x] Migrations 007 and 013 are written, each with a working `Down`.
+* [x] Migrations 007, 013 and 015 are written, each with a working `Down`.
 * [x] Handler/service/repository boundaries are followed.
 * [x] Accessibility:
       * Enter walks to the hovered station (`onKeyDown` in

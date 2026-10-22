@@ -81,7 +81,7 @@ func TestCookingService_SubmitScore_ValidationRejected(t *testing.T) {
 	}{
 		{"blank name", "", 1000, 5, ErrCookingScorePlayerNameRequired},
 		{"name too long", "this-name-is-way-too-long-for-the-limit", 1000, 5, ErrCookingScorePlayerNameTooLong},
-		{"earnings out of range", "Vince", 200_000, 5, ErrCookingScoreEarningsOutOfRange},
+		{"earnings out of range", "Vince", 200_001, 5, ErrCookingScoreEarningsOutOfRange},
 		{"shifts out of range", "Vince", 1000, 31, ErrCookingScoreShiftsOutOfRange},
 	}
 

@@ -182,7 +182,7 @@ func TestLibraryGameHandler_SubmitScore_OutOfRangeEarnings(t *testing.T) {
 	repo := &fakeLibraryRepository{}
 	h := newTestLibraryHandler(t, repo)
 
-	form := url.Values{"player_name": {"Vince"}, "total_earnings": {strconv.Itoa(200_000)}, "shifts_completed": {"30"}}
+	form := url.Values{"player_name": {"Vince"}, "total_earnings": {strconv.Itoa(200_001)}, "shifts_completed": {"30"}}
 	req := httptest.NewRequest(http.MethodPost, "/library-game/score", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.RemoteAddr = "203.0.113.12:12345"

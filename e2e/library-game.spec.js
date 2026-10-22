@@ -20,6 +20,13 @@
 // Shift's own `__cookingGameTestHooks.skipToClosing` does, by calling the
 // real `tick()` transitions with a large delta rather than a fake phase
 // assignment.
+//
+// Under CPU load several frames can pass between two Playwright steps, so
+// anything set or read in one step and acted on in the next must not move
+// in between: `startShift` holds back the shift's random arrivals, staff
+// are frozen before being clicked (`askStaff`), and the Coffee Pour's
+// set-fill-then-release runs with the simulation frozen (`freeze` — input
+// handlers still run, only the per-frame update stops).
 const { test, expect } = require('@playwright/test');
 const { Client } = require('pg');
 const fs = require('fs');
@@ -69,9 +76,36 @@ async function deleteTestScore(playerName) {
 	}
 }
 
-async function startShift(page) {
+/**
+ * Starts a shift with its scheduled arrivals held back (`pauseScheduledEvents`):
+ * every test spawns exactly the returns/fines/borrows it needs through the
+ * hooks, and a random one landing mid-test — more likely the slower a
+ * loaded machine runs — would reorder the Front Desk line or Return Cart
+ * under a click, or walk out during a `skipToClosing` fast-forward and cost
+ * a star. Pass `{ scheduledEvents: true }` to keep them.
+ */
+async function startShift(page, { scheduledEvents = false } = {}) {
 	await page.locator('#library-start-shift-button').click();
 	await page.waitForFunction(() => typeof window.__libraryGameTestHooks?.getShiftState === 'function');
+	if (!scheduledEvents) await page.evaluate(() => window.__libraryGameTestHooks.pauseScheduledEvents(true));
+	await waitForStableCanvas(page);
+}
+
+/**
+ * "Start Shift" requests fullscreen, which resizes the canvas a moment
+ * later; a click aimed from a bounding box read mid-transition lands on the
+ * wrong world point (cooking-game.spec.js's identical helper). Waits until
+ * two reads 150 ms apart agree.
+ */
+async function waitForStableCanvas(page) {
+	let previous = null;
+	for (let i = 0; i < 20; i++) {
+		const box = await page.locator('#library-canvas').boundingBox();
+		if (previous && Math.abs(box.width - previous.width) < 0.5 && Math.abs(box.height - previous.height) < 0.5
+			&& Math.abs(box.x - previous.x) < 0.5 && Math.abs(box.y - previous.y) < 0.5) return;
+		previous = box;
+		await page.waitForTimeout(150);
+	}
 }
 
 /**
@@ -161,6 +195,26 @@ async function walkToStation(page, kind, extra) {
 async function clickQueueItem(page, point) {
 	await clickCanvasPoint(page, point);
 	await waitUntilArrived(page);
+}
+
+/**
+ * Asks a staff member for help the way a player does — a click on their
+ * figure, then the walk over. Staff wander, and under CPU load enough
+ * frames can pass between reading where they stand and the click landing
+ * to carry them out of their (narrow) click box, so this freezes the
+ * staff first (`freezeStaff`); they stay frozen for the rest of the test.
+ * Returns the position it clicked them at.
+ */
+async function askStaff(page, key) {
+	const who = await page.evaluate((k) => {
+		const h = window.__libraryGameTestHooks;
+		h.freezeStaff(true);
+		// Head-height offsets (in renderer units) that land inside staffAtPoint's box.
+		return k === 'minjun' ? { ...h.getMinjun(), head: 40 } : { ...h.getStaff(k), head: 34 };
+	}, key);
+	await clickCanvasPoint(page, { x: who.x, y: who.y - who.head * who.scale });
+	await waitUntilArrived(page);
+	return who;
 }
 
 async function getOverlay(page) {
@@ -306,10 +360,8 @@ test.describe('shelving books', () => {
 		expect(book).not.toBe(null);
 
 		await page.locator('#library-floor-button').click();
-		const mj = await page.evaluate(() => window.__libraryGameTestHooks.getMinjun());
+		const mj = await askStaff(page, 'minjun');
 		expect(mj.floor).toBe(2);
-		await clickCanvasPoint(page, { x: mj.x, y: mj.y - 40 * mj.scale });
-		await waitUntilArrived(page);
 
 		await expect(page.locator('#library-toast')).toContainText('제가 할게요');
 		await expect(page.locator('#library-toast')).toContainText(book.title);
@@ -325,9 +377,7 @@ test.describe('shelving books', () => {
 		await startShift(page);
 		await page.evaluate(() => { window.__libraryGameTestHooks.spawnBookNow(); window.__libraryGameTestHooks.spawnBookNow(); });
 		const [first, second] = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().returnCart.map((b) => b.id));
-		const shelver = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('libShelver'));
-		await clickCanvasPoint(page, { x: shelver.x, y: shelver.y - 34 * shelver.scale });
-		await waitUntilArrived(page);
+		await askStaff(page, 'libShelver');
 
 		await expect(page.locator('#library-toast')).toContainText('Shelver shelves');
 		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
@@ -342,9 +392,7 @@ test.describe('shelving books', () => {
 		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity)).toBeLessThan(100);
 		await page.locator('#library-floor-button').click();
 		const before = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity);
-		const volunteer = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('volunteer'));
-		await clickCanvasPoint(page, { x: volunteer.x, y: volunteer.y - 34 * volunteer.scale });
-		await waitUntilArrived(page);
+		await askStaff(page, 'volunteer');
 
 		await expect(page.locator('#library-toast')).toContainText('brings you a coffee');
 		const after = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
@@ -356,9 +404,7 @@ test.describe('shelving books', () => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await page.evaluate(() => window.__libraryGameTestHooks.spawnFineNow(40));
-		const jiho = await page.evaluate(() => window.__libraryGameTestHooks.getStaff('jiho'));
-		await clickCanvasPoint(page, { x: jiho.x, y: jiho.y - 34 * jiho.scale });
-		await waitUntilArrived(page);
+		await askStaff(page, 'jiho');
 
 		await expect(page.locator('#library-toast')).toContainText('Ji-ho collects the fine');
 		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
@@ -371,10 +417,39 @@ test.describe('shelving books', () => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await page.locator('#library-floor-button').click();
-		const mj = await page.evaluate(() => window.__libraryGameTestHooks.getMinjun());
-		await clickCanvasPoint(page, { x: mj.x, y: mj.y - 40 * mj.scale });
-		await waitUntilArrived(page);
+		await askStaff(page, 'minjun');
 		await expect(page.locator('#library-toast')).toContainText('Bring me a book');
+	});
+
+	test('the Janitor tidies up for +Mood when you click him', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
+		await askStaff(page, 'libJanitor');
+
+		await expect(page.locator('#library-toast')).toContainText('Janitor tidies up');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		// +15, less whatever the passive drain took during the walk.
+		expect(state.libraryMood).toBeGreaterThan(60);
+		expect(state.staffCooldowns.libJanitor).toBeGreaterThan(0);
+	});
+
+	test('the Storyteller upstairs gives everyone waiting more patience', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.spawnFineNow(30);
+			h.getShiftState().finesQueue[0].waitRemainingSeconds = 20;
+		});
+		await page.locator('#library-floor-button').click();
+		await askStaff(page, 'libStoryteller');
+
+		await expect(page.locator('#library-toast')).toContainText('Story time');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		// +15 s back: more than it was set to, despite the walk's countdown.
+		expect(state.finesQueue[0].waitRemainingSeconds).toBeGreaterThan(20);
+		expect(state.staffHelps).toBe(1);
 	});
 
 	test('a wrong-shelf arrival blocks the skill-check (no silent mistake)', async ({ page }) => {
@@ -469,6 +544,27 @@ test.describe('borrowing', () => {
 	});
 });
 
+test.describe('borrowing with staff help', () => {
+	test('the Archivist upstairs finds the requested book, skipping Find the Book', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBorrowNow());
+		const slot = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().find((s) => s.kind === 'borrow'));
+		await clickQueueItem(page, slot);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow?.stage)).toBe('searching');
+		const info = await page.evaluate(() => window.__libraryGameTestHooks.getActiveBorrowInfo());
+
+		await page.locator('#library-floor-button').click();
+		await askStaff(page, 'libArchivist');
+
+		await expect(page.locator('#library-toast')).toContainText(`Archivist finds “${info.title}”`);
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.activeBorrow.stage).toBe('checkout');
+		expect(state.staffCooldowns.libArchivist).toBeGreaterThan(0);
+		expect(await getOverlay(page)).toBe(null);
+	});
+});
+
 test.describe('fines', () => {
 	/** Clicks one Count the Till denomination button by its value, at its real on-canvas rect (the same click path a player uses). */
 	async function clickTillDenomination(page, value) {
@@ -548,13 +644,25 @@ test.describe('Coffee Machine (Coffee Pour minigame)', () => {
 		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
 	}
 
-	/** Starts pouring, puts the fill just inside the band via the test hook, then releases — the real press/release input path, only the fill level is pinned. */
+	/**
+	 * Starts pouring, puts the fill in the middle of the band via the test
+	 * hook, then releases — the real press/release input path, only the
+	 * fill level is pinned. The simulation is frozen from the fill to the
+	 * release (the release handler still grades it), so live frames can't
+	 * keep pouring past the band in between; the grade is then immediate.
+	 */
 	async function pourIntoBand(page, press, release) {
 		await press();
 		await expect.poll(async () => (await getOverlay(page))?.pouring).toBe(true);
-		const { band } = await getOverlay(page);
-		await page.evaluate((f) => window.__libraryGameTestHooks.setCoffeePourFill(f), band.low + 0.01);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			const { band } = h.getOverlay();
+			h.setCoffeePourFill((band.low + band.high) / 2);
+		});
 		await release();
+		expect((await getOverlay(page))?.grade).toBe('perfect');
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
 	}
 
 	test('arriving opens the pour overlay instead of refilling instantly; a perfect pour (mouse) refills Sanity and tips Gard, then closes', async ({ page }) => {
@@ -571,7 +679,6 @@ test.describe('Coffee Machine (Coffee Pour minigame)', () => {
 		await page.mouse.move(center.x, center.y);
 		await pourIntoBand(page, () => page.mouse.down(), () => page.mouse.up());
 
-		await expect.poll(async () => (await getOverlay(page))?.grade).toBe('perfect');
 		const after = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
 		// brewCoffee() refills to exactly 100; the passive drain keeps running
 		// afterward, so allow a small margin rather than racing it.
@@ -586,7 +693,6 @@ test.describe('Coffee Machine (Coffee Pour minigame)', () => {
 		await startShift(page);
 		await openCoffeePour(page);
 		await pourIntoBand(page, () => page.keyboard.down(' '), () => page.keyboard.up(' '));
-		await expect.poll(async () => (await getOverlay(page))?.grade).toBe('perfect');
 	});
 
 	test('overfilling spills automatically, all over you: −50 Sanity', async ({ page }) => {
@@ -630,6 +736,21 @@ test.describe("Karen's scripted event", () => {
 		expect(state.karen.outcome).toBe('collectFine');
 		expect(state.mistakeCount).toBe(0);
 		expect(state.bonusGard).toBeGreaterThan(0);
+	});
+
+	test('Security walks Karen out of the line before she starts: no mistake, no Mood hit', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.forceKarenShiftNow());
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().some((s) => s.kind === 'karen'))).toBe(true);
+		await askStaff(page, 'guard');
+
+		await expect(page.locator('#library-toast')).toContainText('Security walks Karen out');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.karen.outcome).toBe('escorted');
+		expect(state.mistakeCount).toBe(0);
+		expect(await getOverlay(page)).toBe(null);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().some((s) => s.kind === 'karen'))).toBe(false);
 	});
 
 	test('letting it slide counts a mistake and drains library mood', async ({ page }) => {
@@ -1072,9 +1193,14 @@ test.describe('First Person Mode', () => {
 
 		await page.keyboard.down('Enter');
 		await expect.poll(async () => (await getOverlay(page))?.pouring).toBe(true);
-		await page.evaluate((f) => window.__libraryGameTestHooks.setCoffeePourFill(f), overlay.band.low + 0.01);
+		// Frozen from the fill to the release, as in pourIntoBand above.
+		await page.evaluate((f) => {
+			window.__libraryGameTestHooks.freeze(true);
+			window.__libraryGameTestHooks.setCoffeePourFill(f);
+		}, (overlay.band.low + overlay.band.high) / 2);
 		await page.keyboard.up('Enter');
-		await expect.poll(async () => (await getOverlay(page))?.grade).toBe('perfect');
+		expect((await getOverlay(page))?.grade).toBe('perfect');
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
 	});
 
 	test('interacting with Stairs in First Person (via the on-screen Interact button) switches floors and resets to a sensible facing, same as Top-Down', async ({ page }) => {
@@ -1160,7 +1286,7 @@ test('no console errors on load and during play, including no CSP violations', a
 	page.on('pageerror', (err) => errors.push(String(err)));
 
 	await page.goto('/library-game');
-	await startShift(page);
+	await startShift(page, { scheduledEvents: true });
 	await page.evaluate(() => {
 		window.__libraryGameTestHooks.spawnBookNow(false);
 		window.__libraryGameTestHooks.spawnFineNow(30);

@@ -65,16 +65,24 @@ func TestValidateLibraryScoreSubmission(t *testing.T) {
 			wantErr:         ErrLibraryScoreEarningsOutOfRange,
 		},
 		{
+			// Regression: the old 100,000 cap refused 30 clean shifts.
+			name:            "a 30-clean-shift month plus bonuses is valid",
+			playerName:      "Vince",
+			totalEarnings:   137000,
+			shiftsCompleted: 30,
+			wantTrimmed:     "Vince",
+		},
+		{
 			name:            "earnings at the max boundary is valid",
 			playerName:      "Vince",
-			totalEarnings:   100000,
+			totalEarnings:   200000,
 			shiftsCompleted: 1,
 			wantTrimmed:     "Vince",
 		},
 		{
 			name:            "earnings over the max",
 			playerName:      "Vince",
-			totalEarnings:   100001,
+			totalEarnings:   200001,
 			shiftsCompleted: 1,
 			wantErr:         ErrLibraryScoreEarningsOutOfRange,
 		},
