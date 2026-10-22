@@ -125,6 +125,8 @@ import {
   RECOMMEND_TIP_GARD,
   RECOMMEND_MOOD_BOOST,
   RECOMMEND_MISS_MOOD,
+  RECOMMEND_REGULAR_PATRON,
+  RECOMMEND_REGULAR_WINDOW,
 } from './library/rules.js';
 import {
   createInitialState,
@@ -1315,6 +1317,9 @@ export function init(canvas, elements) {
     // the shift but not in the opening minute.
     const recommendCount = volumes ? volumes.recommends : recommendVolumeForShift(currentShiftNumber);
     for (let i = 0; i < recommendCount; i++) events.push({ type: 'recommend', at: total * 0.1 + rnd() * total * 0.75 });
+    // …and the regular, once every shift.
+    const [from, to] = RECOMMEND_REGULAR_WINDOW;
+    events.push({ type: 'recommend', patronKey: RECOMMEND_REGULAR_PATRON, at: total * (from + rnd() * (to - from)) });
     for (let i = 0; i < borrowCount; i++) {
       // The first borrow patron always shows up within the opening seconds.
       const [early, late] = FIRST_BORROW_ARRIVAL_SECONDS;
@@ -1368,7 +1373,7 @@ export function init(canvas, elements) {
       if (event.type === 'book') spawnBook();
       else if (event.type === 'fine') spawnFine();
       else if (event.type === 'borrow') spawnBorrow();
-      else if (event.type === 'recommend') spawnRecommend();
+      else if (event.type === 'recommend') spawnRecommend(event.patronKey);
       else if (event.type === 'karen') karenAvailable = true;
     }
   }
@@ -1490,7 +1495,9 @@ export function init(canvas, elements) {
    * the three covers and the hint line come from the same seeded stream.
    */
   function spawnRecommend(patronKey) {
-    const key = patronKey ?? PATRON_PERSONALITY_KEYS[Math.floor(spawnRandom() * PATRON_PERSONALITY_KEYS.length)];
+    // Random askers never include the regular, who has her own visit.
+    const pool = PATRON_PERSONALITY_KEYS.filter((k) => k !== RECOMMEND_REGULAR_PATRON);
+    const key = patronKey ?? pool[Math.floor(spawnRandom() * pool.length)];
     const design = findLibraryDesign(key);
     if (!design) return;
     const choices = recommendChoices(design.taste, spawnRandom);
@@ -3081,7 +3088,8 @@ export function init(canvas, elements) {
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
       } else if (slot.kind === 'recommend') {
         drawPatienceBar(slot, slot.waitFraction);
-        drawLabelChip(ctx, slot.x, slot.y + 20, '추천?', 'bold 10px sans-serif', ANIME.pink, '#ffffff');
+        const regular = slot.patronKey === RECOMMEND_REGULAR_PATRON;
+        drawLabelChip(ctx, slot.x, slot.y + 20, regular ? '단골 ★' : '추천?', 'bold 10px sans-serif', regular ? ANIME.lavenderDeep : ANIME.pink, '#ffffff');
         drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
       }
     });
@@ -4669,6 +4677,8 @@ export function init(canvas, elements) {
       /** Queues a recommendation request now, from `patronKey` (default: a seeded pick). */
       spawnRecommendNow(patronKey) { if (shiftState?.phase === 'playing') spawnRecommend(patronKey); },
       getRecommendCardRects: () => recommendCardRects(),
+      /** The shift's arrivals still to come (copies). */
+      getScheduledEvents: () => scheduledEvents.map((e) => ({ ...e })),
       makeKarenAvailableNow() { karenAvailable = true; },
       forceKarenShiftNow() {
         // Karen's real shift is a deterministic hash of the save's seed

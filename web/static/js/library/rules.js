@@ -971,6 +971,14 @@ export function recommendVolumeForShift(shiftNumber) {
   return ROUND_TIER_RECOMMEND_VOLUME[roundTier(shiftNumber) - 1];
 }
 
+/**
+ * The regular (단골): the book-club witch comes in once every shift, on top
+ * of the random requests, to ask for a recommendation — sometime between
+ * these fractions of the shift.
+ */
+export const RECOMMEND_REGULAR_PATRON = 'libBookClubWitch';
+export const RECOMMEND_REGULAR_WINDOW = [0.15, 0.6];
+
 /** The tip for a recommendation that matches the patron's taste. */
 export const RECOMMEND_TIP_GARD = 30;
 /** Library Mood gained from a happy patron. */

@@ -449,6 +449,10 @@ Look values up there rather than relying on this doc.
     line (`recommendHint`, from `RECOMMEND_HINTS`) never names the genre.
     `recommendChoices` offers the taste plus two other genres in a
     seeded order, so every daily run gets the same choices.
+  * The regular (단골, `RECOMMEND_REGULAR_PATRON`): the book-club witch
+    comes in once every shift, between 15% and 60% of the way through
+    (`RECOMMEND_REGULAR_WINDOW`), on top of the random requests, which
+    never pick her. Her chip reads 단골 ★ instead of 추천?.
   * A match: +`RECOMMEND_TIP_GARD` (30) to `bonusGard`,
     +`RECOMMEND_MOOD_BOOST` (10) Mood. A miss: −`RECOMMEND_MISS_MOOD` (5)
     Mood. Neither is a mistake. `recommendsMatched` / `recommendsMissed`

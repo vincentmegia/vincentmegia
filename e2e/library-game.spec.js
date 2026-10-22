@@ -599,6 +599,15 @@ test.describe('Ask the Librarian (recommendations)', () => {
 		await expect.poll(async () => getOverlay(page), { timeout: 5000 }).toBe(null);
 	});
 
+	test('the book-club witch is a regular: she comes in once every shift to ask', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page, { scheduledEvents: true });
+		const asks = await page.evaluate(() => window.__libraryGameTestHooks.getScheduledEvents().filter((e) => e.type === 'recommend'));
+		expect(asks.filter((e) => e.patronKey === 'libBookClubWitch')).toHaveLength(1);
+		// The random askers are the others.
+		expect(asks.filter((e) => !e.patronKey).length).toBeGreaterThan(0);
+	});
+
 	test('a wrong pick (keyboard) only dips Mood — no mistake, no Gard', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

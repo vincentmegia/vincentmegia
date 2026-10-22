@@ -83,6 +83,8 @@ import {
   recommendChoices,
   RECOMMEND_HINTS,
   recommendHint,
+  RECOMMEND_REGULAR_PATRON,
+  RECOMMEND_REGULAR_WINDOW,
 } from './rules.js';
 
 describe('roundTier', () => {
@@ -638,6 +640,13 @@ describe('Ask the Librarian', () => {
     const positions = new Set();
     for (let seed = 0; seed < 60; seed++) positions.add(recommendChoices('romance', seededRandom(seed)).indexOf('romance'));
     assert.deepEqual([...positions].sort(), [0, 1, 2]);
+  });
+
+  test('the regular is a real patron who comes during the shift', async () => {
+    const { findLibraryDesign } = await import('./library-people.js');
+    assert.ok(findLibraryDesign(RECOMMEND_REGULAR_PATRON));
+    const [from, to] = RECOMMEND_REGULAR_WINDOW;
+    assert.ok(from > 0 && from < to && to < 1);
   });
 
   test('hints never just name the genre', () => {
