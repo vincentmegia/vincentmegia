@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { WALK_STYLES, applyWalk, drawWalkProp } from './walk-styles.js';
+import { WALK_STYLES, applyWalk } from './walk-styles.js';
 
 /** A canvas 2D context stand-in that records each method call's name. */
 function fakeContext() {
@@ -52,16 +52,5 @@ describe('walk styles', () => {
     const moving = fakeContext();
     applyWalk(moving, 'volunteer', 0.3, 1, true);
     assert.ok(moving.calls.some(([name]) => name === 'translate'));
-  });
-
-  test('the Janitor and Archivist carry props; the others draw none', () => {
-    for (const key of ['libJanitor', 'libArchivist']) {
-      const ctx = fakeContext();
-      drawWalkProp(ctx, key, 1, -1, true);
-      assert.ok(ctx.calls.length > 5, `${key} drew no prop`);
-    }
-    const none = fakeContext();
-    drawWalkProp(none, 'guard', 1, 1, true);
-    assert.equal(none.calls.length, 0);
   });
 });

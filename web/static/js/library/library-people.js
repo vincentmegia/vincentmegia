@@ -1,5 +1,5 @@
-// Library Shift's own characters ("make 19 more newest character and 4 more
-// staff"): designs in hospital/anime-people.js's data format, drawn by its
+// Library Shift's own patrons ("make 19 more newest character and 4 more
+// staff" — the 4 staff later got their own renderers): designs in hospital/anime-people.js's data format, drawn by its
 // drawAnimePerson, but kept here so Hospital Shift's patient roster is
 // unchanged. They're modern Seoul library-goers rather than Hospital's
 // festival/kimono crowd. Keys are prefixed `lib` so they never collide with
@@ -155,39 +155,10 @@ export const LIBRARY_PATRON_DESIGNS = [
 
 export const LIBRARY_PATRON_DESIGN_KEYS = LIBRARY_PATRON_DESIGNS.map((d) => d.key);
 
-/** Four library staff who wander the floors (library-game.js's AMBIENT_STAFF). */
-export const LIBRARY_STAFF_DESIGNS = {
-  libJanitor: {
-    key: 'libJanitor', label: 'Janitor', age: 'elder', skin: SKIN.tan,
-    hair: { color: '#5a5258', back: 'short', fringe: 'textured' },
-    eyes: { color: '#2a1a12', style: 'smile' }, brows: 'thick', mouth: 'smile',
-    outfit: { kind: 'scrubs', top: '#5a8a9a', bottom: '#3a4a52', shoes: '#2a2a2a', vest: true },
-    extras: { bandana: '#3a4a52' },
-  },
-  libShelver: {
-    key: 'libShelver', label: 'Shelver', age: 'adult', skin: SKIN.light,
-    hair: { color: '#3a2618', back: 'ponytail', fringe: 'side' },
-    eyes: { color: '#3a2a1a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
-    outfit: { kind: 'cardigan', top: '#3fb58f', inner: '#ffffff', skirt: '#2e3a5a', legs: '#e8d2c2', shoes: '#2a2226' },
-    extras: { clip: '#ffd166', glasses: 'round' },
-  },
-  libStoryteller: {
-    key: 'libStoryteller', label: 'Storyteller', age: 'adult', skin: SKIN.warm,
-    hair: { color: '#8a4a2a', back: 'bob', fringe: 'blunt' },
-    eyes: { color: '#5a3a2a', style: 'big', lashes: true }, brows: 'thin', mouth: 'open',
-    outfit: { kind: 'apron', top: '#ffd166', apron: '#ff8fb8', skirt: '#4fa8e0', legs: '#ffffff', shoes: '#e8558f' },
-    extras: { beret: '#e8558f' },
-  },
-  libArchivist: {
-    key: 'libArchivist', label: 'Archivist', age: 'elder', skin: SKIN.light,
-    hair: { color: '#9a969e', back: 'short', fringe: 'side' },
-    eyes: { color: '#3a2e26', style: 'calm' }, brows: 'thick', mouth: 'flat',
-    outfit: { kind: 'labcoat', top: '#f4f0e6', shirt: '#8a6a4a', tie: '#2e3a5a', bottom: '#4a4038', shoes: '#2a1e18' },
-    extras: { glasses: 'square', mustache: '#9a969e' },
-  },
-};
-
-/** A Library Shift-only design by key, or null. */
+/**
+ * A Library Shift patron design by key, or null. (The staff it once also
+ * held now have their own detailed renderers: security.js, janitor.js, …)
+ */
 export function findLibraryDesign(key) {
-  return LIBRARY_STAFF_DESIGNS[key] ?? LIBRARY_PATRON_DESIGNS.find((d) => d.key === key) ?? null;
+  return LIBRARY_PATRON_DESIGNS.find((d) => d.key === key) ?? null;
 }

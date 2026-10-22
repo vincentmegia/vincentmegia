@@ -18,7 +18,8 @@ Tests:
   They cover the pure logic modules (`rules.js`, `engine-state.js`,
   `floor-plan.js`, `first-person.js`, `stories.js`, `book-titles.js`,
   `walk-styles.js`, `minjun-actions.js`) and smoke-test the renderers
-  (`minjun.js`, `jiho.js`, `director-seo.js`, `library-people.js`,
+  (`minjun.js`, `jiho.js`, `director-seo.js`, the six staff renderers and
+  `staff-kit.js` in `staff.test.js`, `library-people.js`,
   `anime-furniture.js`).
 * Playwright: `e2e/library-game.spec.js`, run with `make test-e2e` on
   Chromium and WebKit. It drives the game through
@@ -147,13 +148,34 @@ handling, in place of Kitchen Shift's cooking and serving.
   `library/anime-furniture.js`.
 * Characters:
   * Eun-mi is `hospital/kimono-himura.js` with `look: 'coral'`.
-  * Patrons and generic staff are `hospital/anime-people.js` designs, plus
-    the library's own 19 patrons and 4 staff in `library/library-people.js`.
+  * Patrons and Karen are `hospital/anime-people.js` designs, plus the
+    library's own 19 patrons in `library/library-people.js`.
+  * The six wandering staff each have their own detailed renderer, built
+    on shared pieces in `library/staff-kit.js` (legs with a walk cycle,
+    sleeves, hands, face, eyes) and picked by `STAFF_RENDERERS` in
+    `library-game.js`:
+    * Security (`security.js`): peaked cap, radio he lifts to speak into
+      every ~7 s, duty belt, polished boots.
+    * Volunteer (`volunteer.js`): low side ponytail with a ribbon, wispy
+      bangs, thin gold glasses, teal volunteer vest over a cable knit, a
+      tray of two steaming coffees.
+    * Janitor (`janitor.js`): kind eyes, grey moustache, bandana, towel,
+      utility vest, rubber gloves and boots, a mop whose head swishes on
+      the floor, a spray bottle.
+    * Shelver (`shelver.js`): high bun with a pencil, cat-eye glasses on
+      a beaded chain, a stack of labelled returns.
+    * Storyteller (`storyteller.js`): beret, apron with crayons, a tiger
+      hand puppet whose jaw moves as she talks, an open picture book.
+    * Archivist (`archivist.js`): half-moon readers, archive coat, white
+      gloves, a cane that taps as he walks, a leather ledger.
   * Kang Min-jun is drawn by `library/minjun.js`, with his idle actions in
     `minjun-actions.js`.
   * Han Ji-ho is drawn by `library/jiho.js`.
   * Director Seo is drawn by `library/director-seo.js`.
-  * Walk styles are in `library/walk-styles.js`.
+  * Walk styles are in `library/walk-styles.js`: a whole-body rhythm
+    (bob, tilt, lean, twirl). Each staff renderer swings its legs at the
+    same rate, and `drawAmbient` passes the walker's own phase-shifted
+    time to both so they stay in step.
 * Book titles are bilingual (`library/book-titles.js`). Reading Nook
   stories come from `library/stories.js`.
 * A changed Hospital module also changes this game.

@@ -52,7 +52,13 @@ import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoo
 import { drawMinjun } from './library/minjun.js';
 import { drawDirectorSeo } from './library/director-seo.js';
 import { drawJiho } from './library/jiho.js';
-import { applyWalk, drawWalkProp } from './library/walk-styles.js';
+import { applyWalk } from './library/walk-styles.js';
+import { drawSecurity } from './library/security.js';
+import { drawVolunteer } from './library/volunteer.js';
+import { drawJanitor } from './library/janitor.js';
+import { drawShelver } from './library/shelver.js';
+import { drawStoryteller } from './library/storyteller.js';
+import { drawArchivist } from './library/archivist.js';
 import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
@@ -377,8 +383,20 @@ const AMBIENT_SPEED = 60;
 /** Which anime design each non-patron character uses. */
 const SPECIAL_DESIGNS = {
   karen: () => STAFF_DESIGNS.karen,
-  guard: () => STAFF_DESIGNS.guard,
-  volunteer: () => findPatientDesign('bookworm'),
+};
+
+/**
+ * The wandering staff with their own detailed renderers ("make others more
+ * detailed like them" — like Min-jun, Ji-ho and Director Seo), drawn in the
+ * anime frame at the scale they're given.
+ */
+const STAFF_RENDERERS = {
+  guard: drawSecurity,
+  volunteer: drawVolunteer,
+  libJanitor: drawJanitor,
+  libShelver: drawShelver,
+  libStoryteller: drawStoryteller,
+  libArchivist: drawArchivist,
 };
 
 /**
@@ -403,19 +421,26 @@ function personalityForId(id) {
 
 /**
  * Draws a Library Shift character, feet at (x, y). `personalityKey` is
- * 'librarian' (Eun-mi, in her hanbok), 'karen', 'guard', 'volunteer', or a
+ * 'librarian' (Eun-mi, in her hanbok), 'karen', a staff key, or a
  * patron's anime design key. `angryTint` is Karen's outburst; `stress`
  * (0..1) is the player's low-Sanity face; `walking` sways Eun-mi's step.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x
  * @param {number} y
- * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number, walking?: boolean, action?: string|null, actionT?: number}} [opts]
+ * @param {{personalityKey?: string, scale?: number, angryTint?: boolean, stress?: number, walking?: boolean, action?: string|null, actionT?: number, t?: number}} [opts]
  *   `action`/`actionT` are Min-jun's: what he's doing while stopped, and for how long.
+ *   `t` (seconds) defaults to now; a walker passes its own, phase-shifted
+ *   time so its legs keep step with its walk-styles.js rhythm.
  */
 export function drawLibraryPerson(ctx, x, y, opts = {}) {
-  const t = performance.now() / 1000;
+  const t = opts.t ?? performance.now() / 1000;
   const scale = opts.scale ?? 1;
+  const staff = STAFF_RENDERERS[opts.personalityKey];
+  if (staff) {
+    staff(ctx, x, y, { scale, t, walking: Boolean(opts.walking) });
+    return;
+  }
   if (opts.personalityKey === 'jiho') {
     drawJiho(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, t, walking: Boolean(opts.walking) });
     return;
@@ -725,8 +750,7 @@ export function init(canvas, elements) {
       ctx.save();
       ctx.translate(a.x, a.y);
       applyWalk(ctx, a.key, t, a.dir, walking);
-      drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT });
-      drawWalkProp(ctx, a.key, t, a.dir, walking);
+      drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT, t });
       ctx.restore();
       drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
       const hint = ambientHint(a);
