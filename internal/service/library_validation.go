@@ -14,7 +14,7 @@ const (
 	libraryScorePlayerNameMaxLen = 20
 	// 200000 (migration 015; was 100000): 30 clean shifts pay 120,000
 	// before bonuses, and every bonus at its theoretical maximum brings a
-	// month to ~168,800 — see docs/features/library-game.md's Data Model.
+	// month to ~171,500 — see docs/features/library-game.md's Data Model.
 	libraryScoreEarningsMax = 200000
 	libraryScoreShiftsMin   = 1
 	libraryScoreShiftsMax   = 30

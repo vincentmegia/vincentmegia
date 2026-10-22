@@ -5,6 +5,7 @@ import { LIBRARY_PATRON_DESIGNS, LIBRARY_PATRON_DESIGN_KEYS, findLibraryDesign }
 import { PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from '../hospital/anime-people.js';
 import { drawPatron } from './patron.js';
 import { PROPS } from './patron-props.js';
+import { GENRES } from './rules.js';
 
 /** A canvas 2D context stand-in: every method is a no-op that counts calls. */
 function fakeContext() {
@@ -43,6 +44,7 @@ describe("Library Shift's own characters", () => {
       }
       assert.ok(d.outfit.kind && d.outfit.top && d.outfit.shoes, `${d.key} needs an outfit kind, top and shoes`);
       assert.ok(PROPS[d.prop], `${d.key} carries an unknown prop: ${d.prop}`);
+      assert.ok(GENRES.some((g) => g.id === d.taste), `${d.key} has an unknown taste: ${d.taste}`);
       for (const opts of [{ t: 1 }, { t: 2, walking: true }, { t: 3, angryTint: true }]) {
         const ctx = fakeContext();
         drawPatron(ctx, 100, 200, d, { scale: 1.55, ...opts });

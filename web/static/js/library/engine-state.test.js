@@ -34,6 +34,9 @@ import {
   takeBookToRead,
   staffHelpBlocker,
   staffCooldownSeconds,
+  addRecommendRequest,
+  startRecommendation,
+  resolveRecommendation,
   LIBRARY_MOOD_MAX,
   SANITY_MAX,
 } from './engine-state.js';
@@ -1002,5 +1005,69 @@ describe('Han Ji-ho collecting a fine', () => {
     assert.equal(staffHelpBlocker(playingState(), 'jiho'), 'nothing');
     const holding = { ...addFineToQueue(playingState(), { id: 'f1', amountGard: 40 }), carriedFine: { id: 'x', amountGard: 10 } };
     assert.equal(staffHelpBlocker(holding, 'jiho'), 'nothing');
+  });
+});
+
+describe('Ask the Librarian (recommendations)', () => {
+  const request = (over = {}) => ({
+    id: 'rec-1', patronKey: 'libBookClubWitch', tasteGenreId: 'mystery', hint: 'A twist!',
+    choices: ['kids', 'romance', 'mystery'], titles: ['a', 'b', 'c'], waitSeconds: 60, ...over,
+  });
+  const playing = () => startShift(createInitialState(1, 99));
+
+  test('a request queues with a wait timer, and starts when helped', () => {
+    let s = addRecommendRequest(playing(), request());
+    assert.equal(s.recommendQueue.length, 1);
+    assert.ok(s.recommendQueue[0].waitRemainingSeconds > 0);
+    assert.deepEqual(s.recommendQueue[0].titles, ['a', 'b', 'c']);
+    s = startRecommendation(s, 'rec-1');
+    assert.equal(s.recommendQueue.length, 0);
+    assert.equal(s.activeRecommend.id, 'rec-1');
+    // Only one at a time.
+    const two = addRecommendRequest(s, request({ id: 'rec-2' }));
+    assert.equal(startRecommendation(two, 'rec-2'), two);
+  });
+
+  test('matching their taste tips Gard and lifts Mood, with no mistake', () => {
+    let s = { ...addRecommendRequest(playing(), request()), libraryMood: 50 };
+    s = startRecommendation(s, 'rec-1');
+    s = resolveRecommendation(s, 'mystery');
+    assert.equal(s.activeRecommend, null);
+    assert.equal(s.bonusGard, 30);
+    assert.equal(s.libraryMood, 60);
+    assert.equal(s.recommendsMatched, 1);
+    assert.equal(s.mistakeCount, 0);
+  });
+
+  test('a miss dips Mood a little — not a mistake, no Gard', () => {
+    let s = { ...addRecommendRequest(playing(), request()), libraryMood: 50 };
+    s = resolveRecommendation(startRecommendation(s, 'rec-1'), 'kids');
+    assert.equal(s.bonusGard, 0);
+    assert.equal(s.libraryMood, 45);
+    assert.equal(s.recommendsMissed, 1);
+    assert.equal(s.mistakeCount, 0);
+    assert.equal(s.sanity, SANITY_MAX);
+  });
+
+  test("a genre that wasn't offered, or nothing active, is ignored", () => {
+    const s = startRecommendation(addRecommendRequest(playing(), request()), 'rec-1');
+    assert.equal(resolveRecommendation(s, 'scifi'), s);
+    const idle = playing();
+    assert.equal(resolveRecommendation(idle, 'mystery'), idle);
+  });
+
+  test('left waiting too long, they walk out and cost stars', () => {
+    let s = addRecommendRequest(playing(), request({ waitSeconds: 5 }));
+    s = tick(s, 10);
+    assert.equal(s.recommendQueue.length, 0);
+    assert.equal(s.walkouts, 1);
+    assert.ok(s.rating < 5);
+  });
+
+  test("story time gives them patience too", () => {
+    let s = addRecommendRequest(playing(), request({ waitSeconds: 60 }));
+    s = { ...s, recommendQueue: [{ ...s.recommendQueue[0], waitRemainingSeconds: 10 }] };
+    s = staffHelp(s, 'libStoryteller');
+    assert.ok(s.recommendQueue[0].waitRemainingSeconds > 10);
   });
 });

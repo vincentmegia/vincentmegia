@@ -119,6 +119,12 @@ import {
   seededRandom,
   dailyTwistForDate,
   dailyVolumes,
+  recommendVolumeForShift,
+  recommendChoices,
+  recommendHint,
+  RECOMMEND_TIP_GARD,
+  RECOMMEND_MOOD_BOOST,
+  RECOMMEND_MISS_MOOD,
 } from './library/rules.js';
 import {
   createInitialState,
@@ -137,6 +143,9 @@ import {
   acceptBorrowRequest,
   resolveFindTheBook,
   resolveCheckoutSkillCheck,
+  addRecommendRequest,
+  startRecommendation,
+  resolveRecommendation,
   startKarenEvent,
   resolveKarenEvent,
   tick,
@@ -804,6 +813,7 @@ export function init(canvas, elements) {
   let bookIdCounter = 0;
   let fineIdCounter = 0;
   let borrowIdCounter = 0;
+  let recommendIdCounter = 0;
   const bookCatalog = new Map(); // bookId -> { genreId, title } — for borrow requests, whose engine-state shape only carries an opaque bookId.
 
   let overlay = null; // one of the five minigame overlays, or null
@@ -1208,6 +1218,7 @@ export function init(canvas, elements) {
       });
     }
     shiftState.borrowQueue.slice(0, SLOT_VISIBLE_MAX).forEach((r) => slots.push({ kind: 'borrow', id: r.id, bookId: r.bookId, waitFraction: waitFractionOf(r) }));
+    (shiftState.recommendQueue ?? []).slice(0, 2).forEach((r) => slots.push({ kind: 'recommend', id: r.id, patronKey: r.patronKey, waitFraction: waitFractionOf(r) }));
     // v2.16 hallucinated patrons — not really there.
     halluc.ghosts.forEach((g) => slots.push({ kind: 'ghost', id: g.id }));
     return slots.map((slot, i) => {
@@ -1300,6 +1311,10 @@ export function init(canvas, elements) {
     const rnd = spawnRandom;
     for (let i = 0; i < bookCount; i++) events.push({ type: 'book', at: rnd() * total * 0.85 });
     for (let i = 0; i < fineCount; i++) events.push({ type: 'fine', at: rnd() * total * 0.85 });
+    // Ask the Librarian: patrons who want a recommendation, spread through
+    // the shift but not in the opening minute.
+    const recommendCount = volumes ? volumes.recommends : recommendVolumeForShift(currentShiftNumber);
+    for (let i = 0; i < recommendCount; i++) events.push({ type: 'recommend', at: total * 0.1 + rnd() * total * 0.75 });
     for (let i = 0; i < borrowCount; i++) {
       // The first borrow patron always shows up within the opening seconds.
       const [early, late] = FIRST_BORROW_ARRIVAL_SECONDS;
@@ -1353,6 +1368,7 @@ export function init(canvas, elements) {
       if (event.type === 'book') spawnBook();
       else if (event.type === 'fine') spawnFine();
       else if (event.type === 'borrow') spawnBorrow();
+      else if (event.type === 'recommend') spawnRecommend();
       else if (event.type === 'karen') karenAvailable = true;
     }
   }
@@ -1468,6 +1484,27 @@ export function init(canvas, elements) {
     return bookCatalog.get(shiftState?.activeBorrow?.bookId)?.title ?? 'the book';
   }
 
+  /**
+   * A patron who wants a recommendation (Ask the Librarian). Which patron
+   * comes is drawn first, since their design's `taste` is the right answer;
+   * the three covers and the hint line come from the same seeded stream.
+   */
+  function spawnRecommend(patronKey) {
+    const key = patronKey ?? PATRON_PERSONALITY_KEYS[Math.floor(spawnRandom() * PATRON_PERSONALITY_KEYS.length)];
+    const design = findLibraryDesign(key);
+    if (!design) return;
+    const choices = recommendChoices(design.taste, spawnRandom);
+    shiftState = addRecommendRequest(shiftState, {
+      id: `recommend-${recommendIdCounter++}`,
+      patronKey: key,
+      tasteGenreId: design.taste,
+      hint: recommendHint(design.taste, spawnRandom()),
+      choices,
+      titles: choices.map((genreId) => titleForGenre(genreId, spawnRandom)),
+      waitSeconds: queueWaitSecondsForShift(currentShiftNumber),
+    });
+  }
+
   function borrowShelfLabel() {
     const entry = bookCatalog.get(shiftState?.activeBorrow?.bookId);
     const shelf = entry && stations.find((st) => st.kind === 'bookshelf' && st.genreId === entry.genreId);
@@ -1477,6 +1514,113 @@ export function init(canvas, elements) {
 
   function openKarenOverlay() {
     overlay = { kind: 'karen' };
+  }
+
+  // -- Ask the Librarian (rules.js): recommend one of three covers ----------
+
+  /** How long the patron's reaction shows before the overlay closes. */
+  const RECOMMEND_RESULT_SECONDS = 1.8;
+
+  function openRecommendOverlay() {
+    overlay = { kind: 'recommend', result: null, closeIn: 0, t: 0 };
+  }
+
+  /** The three cover cards, left to right, as canvas rects. */
+  function recommendCardRects() {
+    const w = 118;
+    const h = 168;
+    const gap = 22;
+    const left = CANVAS_WIDTH - 90 - (w * 3 + gap * 2) - 10;
+    return [0, 1, 2].map((i) => ({ x: left + i * (w + gap), y: 300, w, h }));
+  }
+
+  /** Recommends the cover at `index` (0..2). */
+  function pickRecommendation(index) {
+    if (overlay?.kind !== 'recommend' || overlay.result || !shiftState?.activeRecommend) return;
+    const active = shiftState.activeRecommend;
+    const genreId = active.choices[index];
+    if (!genreId) return;
+    const match = genreId === active.tasteGenreId;
+    shiftState = resolveRecommendation(shiftState, genreId);
+    overlay.result = { match, index, patronKey: active.patronKey, hint: active.hint, choices: active.choices, titles: active.titles, tasteGenreId: active.tasteGenreId };
+    overlay.closeIn = RECOMMEND_RESULT_SECONDS;
+    const label = findLibraryDesign(active.patronKey)?.label ?? 'The patron';
+    if (match) showToast(`${label} hugs the book — perfect pick! +${RECOMMEND_TIP_GARD}g, +${RECOMMEND_MOOD_BOOST} Mood`);
+    else showToast(`${label}: "Hmm… not really my thing." (−${RECOMMEND_MISS_MOOD} Mood)`);
+  }
+
+  function handleRecommendClick(x, y) {
+    const index = recommendCardRects().findIndex((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    if (index >= 0) pickRecommendation(index);
+  }
+
+  function drawRecommendOverlay() {
+    // While the reaction shows, the request has already resolved: draw
+    // from the snapshot kept on the overlay.
+    const req = overlay.result ?? shiftState?.activeRecommend;
+    if (!req) return;
+    const design = findLibraryDesign(req.patronKey);
+    const t = performance.now() / 1000;
+    drawOverlayBackdrop();
+    drawWindow(70, 110, CANVAS_WIDTH - 140, 400);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `22px ${DISPLAY_FONT}`;
+    outlinedText(ctx, 'Ask the Librarian · 책 추천', CANVAS_WIDTH / 2, 150, '#ffffff', ANIME.ink, 4);
+
+    // The patron, big, on the left, reacting once you've picked.
+    const px = 210;
+    const py = 470;
+    const bob = overlay.result?.match ? -Math.abs(Math.sin(t * 8)) * 6 : 0;
+    drawLibraryPerson(ctx, px, py + bob, { personalityKey: req.patronKey, scale: 2.6, t });
+    drawLabelChip(ctx, px, py + 26, design?.label ?? 'Patron', 'bold 12px sans-serif');
+    if (overlay.result?.match) {
+      for (let i = 0; i < 3; i++) {
+        const a = t * 2 + i * 2.1;
+        animeStar(ctx, px + Math.cos(a) * 70, py - 220 + Math.sin(a) * 30, 10, 4.5, 1);
+      }
+    }
+
+    // What they're after, in their words.
+    const bubble = { x: 330, y: 176, w: CANVAS_WIDTH - 330 - 100, h: 92 };
+    speechBubble(ctx, bubble, { tailX: 330, tailY: 250 });
+    ctx.fillStyle = LABEL_TEXT_COLOR;
+    ctx.font = 'italic bold 16px sans-serif';
+    const line = overlay.result
+      ? (overlay.result.match ? '“Oh, this is exactly what I wanted! Thank you!”' : '“Hmm… I\'ll give it a try, I guess.”')
+      : `“${req.hint}”`;
+    wrapText(line, bubble.x + bubble.w / 2, bubble.y + 36, bubble.w - 40, 20);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#8a6a7a';
+    ctx.fillText(overlay.result ? '' : 'Pick the book that fits them — click, or press 1, 2 or 3', bubble.x + bubble.w / 2, bubble.y + bubble.h - 12);
+
+    // The three covers.
+    recommendCardRects().forEach((r, i) => {
+      const genre = findGenre(req.choices[i]);
+      const colour = genre?.color ?? '#8a6a4a';
+      const chosen = overlay.result?.index === i;
+      const right = overlay.result && req.choices[i] === req.tasteGenreId;
+      const lift = chosen ? -10 : 0;
+      ctx.globalAlpha = overlay.result && !chosen && !right ? 0.45 : 1;
+      drawRoundRect(ctx, r.x + 3, r.y + 5 + lift, r.w, r.h, 6, 'rgba(59,42,74,0.22)');
+      drawRoundRect(ctx, r.x, r.y + lift, r.w, r.h, 6, colour);
+      // A spine band, a call-number label, and the title.
+      drawRoundRect(ctx, r.x, r.y + lift, 10, r.h, 6, tint(colour, -0.25));
+      drawCoverTitle(ctx, req.titles?.[i] ?? genre?.name ?? '', r.x + 14, r.y + 12 + lift, r.w - 22, r.h - 56, colour, { maxFont: 14, minFont: 8 });
+      drawRoundRect(ctx, r.x + 18, r.y + r.h - 38 + lift, r.w - 30, 24, 4, '#fffaf0');
+      ctx.fillStyle = colour;
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(genre?.name ?? '', r.x + r.w / 2 + 3, r.y + r.h - 21 + lift);
+      ctx.strokeStyle = right ? ANIME.gold : ANIME.ink;
+      ctx.lineWidth = right ? 4 : 1.4;
+      ctx.beginPath();
+      ctx.roundRect(r.x, r.y + lift, r.w, r.h, 6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (!overlay.result) {
+        animeBadge(ctx, r.x + r.w - 6, r.y - 6, 12, ANIME.pink, ANIME.pinkDeep, String(i + 1));
+      }
+    });
   }
 
   // -- Hallucinations (v2.16) -----------------------------------------------
@@ -1753,6 +1897,13 @@ export function init(canvas, elements) {
 
   function updateOverlay(deltaSeconds) {
     if (!overlay) return;
+    if (overlay.kind === 'recommend') {
+      if (overlay.result) {
+        overlay.closeIn -= deltaSeconds;
+        if (overlay.closeIn <= 0) overlay = null;
+      }
+      return;
+    }
     if (overlay.kind === 'boss-cutscene') {
       overlay.t += deltaSeconds;
       if (overlay.t >= BOSS_CUTSCENE_SECONDS) finishBossCutscene();
@@ -1826,6 +1977,10 @@ export function init(canvas, elements) {
           const before = shiftState;
           shiftState = startKarenEvent(shiftState);
           if (shiftState !== before) openKarenOverlay();
+        } else if (action.kind === 'recommend') {
+          const before = shiftState;
+          shiftState = startRecommendation(shiftState, action.id);
+          if (shiftState !== before) openRecommendOverlay();
         }
       }
       return;
@@ -2011,6 +2166,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'fines-sort') handleFinesSortClick(x, y);
     else if (overlay.kind === 'find-the-book') handleFindTheBookClick(x, y);
     else if (overlay.kind === 'karen') handleKarenClick(x, y);
+    else if (overlay.kind === 'recommend') handleRecommendClick(x, y);
     else if (overlay.kind === 'till-count') handleTillCountClick(x, y);
     else if (overlay.kind === 'reading') handleReadingClick(x, y);
     else if (overlay.kind === 'boss-cutscene') finishBossCutscene();
@@ -2097,6 +2253,14 @@ export function init(canvas, elements) {
       e.preventDefault();
       finishBossCutscene();
       return;
+    }
+    if (overlay?.kind === 'recommend') {
+      const index = Number(e.key) - 1;
+      if (Number.isInteger(index) && index >= 0 && index < 3) {
+        e.preventDefault();
+        pickRecommendation(index);
+        return;
+      }
     }
     if (overlay?.kind === 'till-count') {
       const index = Number(e.key) - 1;
@@ -2307,7 +2471,9 @@ export function init(canvas, elements) {
     const payPercent = Math.round(paycheckMultiplierForRating(shiftState.rating) * 100);
     const hallucinationCut = Math.round((1 - hallucinationPayMultiplier(shiftState.zeroSanitySeconds)) * 100);
     const moodCut = Math.round((1 - moodPayMultiplier(shiftState.zeroMoodSeconds)) * 100);
+    const asked = (shiftState.recommendsMatched ?? 0) + (shiftState.recommendsMissed ?? 0);
     return `${mistakesText} · ${shiftState.rating}★ rating (${payPercent}% pay)`
+      + (asked > 0 ? ` · ${shiftState.recommendsMatched}/${asked} recommendations loved (+${shiftState.recommendsMatched * RECOMMEND_TIP_GARD}g)` : '')
       + (hallucinationCut > 0 ? ` · −${hallucinationCut}% for hallucinating` : '')
       + (moodCut > 0 ? ` · −${moodCut}% for a frustrated library` : '')
       + ((shiftState.unshelvedAtClose ?? 0) > 0 ? ` · ${shiftState.unshelvedAtClose} book${shiftState.unshelvedAtClose === 1 ? '' : 's'} left unshelved (−${shiftState.unshelvedAtClose * UNSHELVED_BOOK_PENALTY_GARD}g)` : '')
@@ -2845,6 +3011,7 @@ export function init(canvas, elements) {
   const SLOT_PERSONALITY_CACHE = new Map();
   function personalityForSlot(slot, index) {
     if (slot.kind === 'karen') return 'karen';
+    if (slot.patronKey) return slot.patronKey;
     if (!SLOT_PERSONALITY_CACHE.has(slot.id)) SLOT_PERSONALITY_CACHE.set(slot.id, personalityForId(slot.id));
     return SLOT_PERSONALITY_CACHE.get(slot.id);
   }
@@ -2912,6 +3079,10 @@ export function init(canvas, elements) {
         }
       } else if (slot.kind === 'karen') {
         drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
+      } else if (slot.kind === 'recommend') {
+        drawPatienceBar(slot, slot.waitFraction);
+        drawLabelChip(ctx, slot.x, slot.y + 20, '추천?', 'bold 10px sans-serif', ANIME.pink, '#ffffff');
+        drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
       }
     });
     const total = shiftState?.borrowQueue.length || 0;
@@ -2921,6 +3092,19 @@ export function init(canvas, elements) {
       // Beside the line, clear of the bookcase below it.
       drawLabelChip(ctx, desk.x + SLOT_PITCH * 2 + 6, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${total - shown} waiting`, 'bold 10px sans-serif');
     }
+  }
+
+  /** A little speech bubble with a book and a "?" beside a patron who wants a recommendation. */
+  function drawRecommendBubble(x, y) {
+    const bob = Math.sin(performance.now() / 300) * 1.5;
+    speechBubble(ctx, { x: x - 12, y: y - 12 + bob, w: 26, h: 20 }, { tailX: x - 8, tailY: y + 12 + bob });
+    drawRoundRect(ctx, x - 7, y - 7 + bob, 8, 10, 1.5, ANIME.pink);
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', x + 6, y - 2 + bob);
+    ctx.textBaseline = 'alphabetic';
   }
 
   function currentPlayerBadge() {
@@ -3070,6 +3254,7 @@ export function init(canvas, elements) {
     reading: [ANIME.lavender, ANIME.lavenderDeep],
     'till-count': [ANIME.mint, ANIME.mintDeep],
     'coffee-pour': [ANIME.gold, ANIME.goldDeep],
+    recommend: [ANIME.pink, ANIME.pinkDeep],
   };
 
   /** A Hospital Shift anime dialog window behind an overlay's content. */
@@ -3633,6 +3818,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'fines-sort') drawFinesSortOverlay();
     else if (overlay.kind === 'find-the-book') drawFindTheBookOverlay();
     else if (overlay.kind === 'karen') drawKarenOverlay();
+    else if (overlay.kind === 'recommend') drawRecommendOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     else if (overlay.kind === 'till-count') drawTillCountOverlay();
     else if (overlay.kind === 'reading') drawReadingOverlay();
@@ -4480,6 +4666,9 @@ export function init(canvas, elements) {
       spawnBookNow(isCoinHunt) { if (shiftState?.phase === 'playing') spawnBook(Boolean(isCoinHunt)); },
       spawnFineNow(amount) { if (shiftState?.phase === 'playing') spawnFine(amount); },
       spawnBorrowNow() { if (shiftState?.phase === 'playing') spawnBorrow(); },
+      /** Queues a recommendation request now, from `patronKey` (default: a seeded pick). */
+      spawnRecommendNow(patronKey) { if (shiftState?.phase === 'playing') spawnRecommend(patronKey); },
+      getRecommendCardRects: () => recommendCardRects(),
       makeKarenAvailableNow() { karenAvailable = true; },
       forceKarenShiftNow() {
         // Karen's real shift is a deterministic hash of the save's seed

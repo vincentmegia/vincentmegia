@@ -39,8 +39,8 @@ is in **History** at the end of this doc.
 `/library-game` is a canvas mini-game in the same family as Kitchen Shift
 and Hospital Shift. The player is Eun-mi, a librarian, and plays a
 30-shift month in a two-floor library. Each shift she shelves returned
-books, collects fines, fulfils borrow requests and keeps her Sanity and
-the library's Mood up. She earns **Gard** (the site's in-game currency),
+books, collects fines, fulfils borrow requests, recommends books to
+patrons who ask, and keeps her Sanity and the library's Mood up. She earns **Gard** (the site's in-game currency),
 which is paid out at the Director's office at closing. A disruptive patron
 ("Karen") shows up once a month. A seeded Daily Challenge offers one
 shared shift per UTC day. Postgres stores only the public leaderboard.
@@ -77,6 +77,8 @@ handling, in place of Kitchen Shift's cooking and serving.
   * **Count the Till**: tap the denominations to make the exact fine
     amount at the Front Desk.
   * **Find the Book**: pick the requested book from decoys on its shelf.
+  * **Ask the Librarian** (책 추천): a patron hints at what they like to
+    read; pick the one of three covers that fits them.
   * **Checkout Skill-Check**: the same timing bar, at the Front Desk.
   * **Coffee Pour**: hold to pour and release in the target band.
   * **Reading Nook**: a page-turning short story.
@@ -121,6 +123,11 @@ handling, in place of Kitchen Shift's cooking and serving.
      between 5 and 8. Collect a payment there (Fines Sort). Eun-mi then
      carries it (carriedFine) to the Front Desk and counts it into the till
      (Count the Till). An exact count banks it.
+   - Some Front Desk patrons want a recommendation (a "?" speech bubble
+     and a 추천? chip). Walking up opens Ask the Librarian: they hint at
+     their taste in their own words, and Eun-mi picks one of three covers
+     (click, or 1–3). A match tips Gard and lifts Mood; a miss dips Mood a
+     little. Either way they leave; left waiting, they walk out.
    - Coffee Machine: Coffee Pour restores Sanity. Reading Nook (2nd
      Floor): a story restores Mood.
    - Staff can be clicked for help (see Business Rules).
@@ -293,10 +300,11 @@ over a 30-shift month (tiers of 10 shifts):
 | Re-shelving books read in the Nook | one per ~60 s cooldown and read | — | 1,200 |
 | Karen's fine | once | 60 | 60 |
 | Perfect pours (10 each) | one per ~150 s of Sanity drain | 960 | — |
-| **Total** | | **~137,700** | **~168,800** |
+| Recommendations (`RECOMMEND_TIP_GARD` 30) | 10 × (2 + 3 + 4) = 90 requests | 2,000 | 2,700 |
+| **Total** | | **~139,700** | **~171,500** |
 
-The rating multiplier never goes above 100%. The cap leaves ~45%
-headroom over a strong month and ~18% over every bonus at its maximum.
+The rating multiplier never goes above 100%. The cap leaves ~43%
+headroom over a strong month and ~17% over every bonus at its maximum.
 Coffee Pour has no cooldown, so a month spent only refilling coffee could
 in principle go higher. That isn't a real way to play (patrons walk out
 and the rating drops), and the cap remains a sanity bound, not
@@ -323,8 +331,8 @@ Look values up there rather than relying on this doc.
 * **Tiers and clock**: shifts 1–10, 11–20 and 21–30. Each tier sets:
   * Real-time clock: `ROUND_TIER_CLOCK_SECONDS`, 600/480/360 s. This is
     much slower than Kitchen Shift, as the user asked.
-  * Volumes: `ROUND_TIER_RETURN_VOLUME`, `ROUND_TIER_FINE_VOLUME` and
-    `ROUND_TIER_BORROW_VOLUME`.
+  * Volumes: `ROUND_TIER_RETURN_VOLUME`, `ROUND_TIER_FINE_VOLUME`,
+    `ROUND_TIER_BORROW_VOLUME` and `ROUND_TIER_RECOMMEND_VOLUME`.
   * In-game time runs from 8:00 AM to 11:00 PM (`inGameTimeLabel`).
 * **Month seed**: `karenSeed` is stored once per month and re-rolled by
   Start New Month. Two values come from it:
@@ -429,8 +437,25 @@ Look values up there rather than relying on this doc.
   unshelved×10) × rating/5 × hallucinationPayMultiplier ×
   moodPayMultiplier`.
   * `shiftPaycheck` is 4000 − 500 per mistake, with a floor of 500.
-  * `bonusGard` covers Coin Hunt finds, fines, Karen's fine, coffee tips
-    and shelving tips.
+  * `bonusGard` covers Coin Hunt finds, fines, Karen's fine, coffee tips,
+    shelving tips and recommendation tips.
+* **Ask the Librarian** (`rules.js`, end of file; `engine-state.js`'s
+  `addRecommendRequest` / `startRecommendation` / `resolveRecommendation`):
+  * 2/3/4 requests per shift by tier (`ROUND_TIER_RECOMMEND_VOLUME`),
+    arriving after the first tenth of the shift. The Daily Challenge uses
+    shift 12's count (`dailyVolumes(...).recommends`).
+  * The patron is drawn first: their design's `taste`
+    (`library-people.js`, one of `GENRES`) is the right answer. The hint
+    line (`recommendHint`, from `RECOMMEND_HINTS`) never names the genre.
+    `recommendChoices` offers the taste plus two other genres in a
+    seeded order, so every daily run gets the same choices.
+  * A match: +`RECOMMEND_TIP_GARD` (30) to `bonusGard`,
+    +`RECOMMEND_MOOD_BOOST` (10) Mood. A miss: −`RECOMMEND_MISS_MOOD` (5)
+    Mood. Neither is a mistake. `recommendsMatched` / `recommendsMissed`
+    count them, and the paycheck shows "N/M recommendations loved".
+  * They queue with the same mood-scaled wait timer as borrowers
+    (`queueWaitSecondsForShift`); a walkout costs stars like any other.
+    The Storyteller's story time and zero-Mood storm-outs include them.
 * **Closing wait**: at 11:00 PM the game enters `closing-wait` for
   `CLOSING_WAIT_SECONDS` (20 s). The Boss's Office is locked until then.
   Arriving early explains the wait, and the player is let in
@@ -499,6 +524,10 @@ Look values up there rather than relying on this doc.
       * Daily Challenge (four tests) and the shift-30 submission round trip.
       * First Person Mode.
       * An HTMX revisit, and no console or CSP errors.
+      * Ask the Librarian: a matching pick by clicking its cover (tip,
+        Mood, the overlay closing itself) and a wrong pick by keyboard
+        (Mood dip, no mistake), via `spawnRecommendNow` and
+        `getRecommendCardRects`.
       * Staff help: Min-jun (shelving and empty-handed), the Shelver, the
         Volunteer, Ji-ho, the Janitor, the Storyteller and the Archivist
         (during a borrow).

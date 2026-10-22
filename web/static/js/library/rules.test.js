@@ -77,6 +77,12 @@ import {
   dailyTwistForDate,
   findDailyTwist,
   dailyVolumes,
+  ROUND_TIER_RECOMMEND_VOLUME,
+  recommendVolumeForShift,
+  RECOMMEND_CHOICE_COUNT,
+  recommendChoices,
+  RECOMMEND_HINTS,
+  recommendHint,
 } from './rules.js';
 
 describe('roundTier', () => {
@@ -603,5 +609,41 @@ describe('Daily Challenge', () => {
     assert.equal(dailyVolumes(findDailyTwist('overdue-amnesty')).books, Math.round(base.books * 1.5));
     assert.equal(dailyVolumes(findDailyTwist('fine-friday')).fines, base.fines * 2);
     assert.equal(dailyVolumes(findDailyTwist('exam-week')).borrows, Math.round(base.borrows * 1.5));
+  });
+});
+
+describe('Ask the Librarian', () => {
+  test('more patrons ask for recommendations as the month goes on', () => {
+    assert.deepEqual([1, 11, 21].map(recommendVolumeForShift), ROUND_TIER_RECOMMEND_VOLUME);
+    assert.ok(dailyVolumes(null).recommends > 0);
+  });
+
+  test('the three choices always include the taste, all different, all real genres', () => {
+    for (const genre of GENRES) {
+      for (let seed = 0; seed < 50; seed++) {
+        const choices = recommendChoices(genre.id, seededRandom(seed));
+        assert.equal(choices.length, RECOMMEND_CHOICE_COUNT);
+        assert.equal(new Set(choices).size, RECOMMEND_CHOICE_COUNT);
+        assert.ok(choices.includes(genre.id));
+        for (const c of choices) assert.ok(findGenre(c), c);
+      }
+    }
+  });
+
+  test('the same seed gives the same choices (the Daily Challenge depends on it)', () => {
+    assert.deepEqual(recommendChoices('mystery', seededRandom(7)), recommendChoices('mystery', seededRandom(7)));
+  });
+
+  test('the right answer lands in every position over many rolls', () => {
+    const positions = new Set();
+    for (let seed = 0; seed < 60; seed++) positions.add(recommendChoices('romance', seededRandom(seed)).indexOf('romance'));
+    assert.deepEqual([...positions].sort(), [0, 1, 2]);
+  });
+
+  test('hints never just name the genre', () => {
+    for (const genre of GENRES) {
+      for (const line of RECOMMEND_HINTS[genre.id]) assert.ok(!line.toLowerCase().includes(genre.name.toLowerCase()), line);
+      assert.ok(RECOMMEND_HINTS[genre.id].includes(recommendHint(genre.id, 0.999)));
+    }
   });
 });

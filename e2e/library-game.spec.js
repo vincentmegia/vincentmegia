@@ -565,6 +565,57 @@ test.describe('borrowing with staff help', () => {
 	});
 });
 
+test.describe('Ask the Librarian (recommendations)', () => {
+	/** Queues `patronKey`'s request and walks up to them, opening the overlay. */
+	async function askFor(page, patronKey) {
+		await page.evaluate((k) => window.__libraryGameTestHooks.spawnRecommendNow(k), patronKey);
+		const slot = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().find((s) => s.kind === 'recommend'));
+		expect(slot).toBeTruthy();
+		await clickQueueItem(page, { x: slot.x, y: slot.y - 40 });
+		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('recommend');
+		return page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeRecommend);
+	}
+
+	test('a patron hints at their taste; clicking the matching cover tips Gard and lifts Mood', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
+		const req = await askFor(page, 'libBookClubWitch');
+		expect(req.tasteGenreId).toBe('mystery');
+		expect(req.choices).toContain('mystery');
+		expect(req.hint.length).toBeGreaterThan(5);
+
+		const rects = await page.evaluate(() => window.__libraryGameTestHooks.getRecommendCardRects());
+		const r = rects[req.choices.indexOf('mystery')];
+		await clickCanvasPoint(page, { x: r.x + r.w / 2, y: r.y + r.h / 2 });
+
+		await expect(page.locator('#library-toast')).toContainText('perfect pick');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.recommendsMatched).toBe(1);
+		expect(state.bonusGard).toBe(30);
+		expect(state.libraryMood).toBeGreaterThan(55);
+		expect(state.mistakeCount).toBe(0);
+		// The reaction shows, then the overlay closes by itself.
+		await expect.poll(async () => getOverlay(page), { timeout: 5000 }).toBe(null);
+	});
+
+	test('a wrong pick (keyboard) only dips Mood — no mistake, no Gard', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
+		const req = await askFor(page, 'libFlorist');
+		const wrong = req.choices.findIndex((g) => g !== req.tasteGenreId);
+		await page.keyboard.press(String(wrong + 1));
+
+		await expect(page.locator('#library-toast')).toContainText('not really my thing');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.recommendsMissed).toBe(1);
+		expect(state.bonusGard).toBe(0);
+		expect(state.libraryMood).toBeLessThan(50);
+		expect(state.mistakeCount).toBe(0);
+	});
+});
+
 test.describe('fines', () => {
 	/** Clicks one Count the Till denomination button by its value, at its real on-canvas rect (the same click path a player uses). */
 	async function clickTillDenomination(page, value) {

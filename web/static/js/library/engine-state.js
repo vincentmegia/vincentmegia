@@ -121,6 +121,9 @@ import {
   UNSHELVED_BOOK_PENALTY_GARD,
   MESSY_CART_THRESHOLD,
   MESSY_CART_MOOD_DRAIN_PER_SECOND,
+  RECOMMEND_TIP_GARD,
+  RECOMMEND_MOOD_BOOST,
+  RECOMMEND_MISS_MOOD,
 } from './rules.js';
 
 export { LIBRARY_MOOD_MAX, SANITY_MAX, RATING_MAX };
@@ -168,6 +171,11 @@ export function createInitialState(shiftNumber, karenShiftNumber, overrides = {}
 
     borrowQueue: [],
     activeBorrow: null,
+
+    recommendQueue: [],
+    activeRecommend: null,
+    recommendsMatched: 0,
+    recommendsMissed: 0,
 
     karen: {
       shiftNumber: karenShiftNumber,
@@ -270,6 +278,7 @@ function stormOutLongestWaiting(state) {
   const candidates = [
     ...state.borrowQueue.map((e, i) => ({ queue: 'borrowQueue', i, left: remaining(e) })),
     ...state.finesQueue.map((e, i) => ({ queue: 'finesQueue', i, left: remaining(e) })),
+    ...(state.recommendQueue ?? []).map((e, i) => ({ queue: 'recommendQueue', i, left: remaining(e) })),
   ];
   if (candidates.length === 0) return null;
   const target = candidates.reduce((a, b) => (b.left < a.left ? b : a));
@@ -552,6 +561,87 @@ export function resolveCheckoutSkillCheck(state, success) {
 }
 
 // ---------------------------------------------------------------------------
+// Ask the Librarian (rules.js): a patron wants a recommendation. They queue
+// at the Front Desk like a borrow request (with a wait timer); walking up
+// starts it (`activeRecommend`, with the offered genre `choices`), and the
+// pick resolves it right away — a match tips Gard and lifts Mood, a miss
+// dips Mood a little. Neither is a mistake, and the patron leaves either
+// way.
+// ---------------------------------------------------------------------------
+
+/**
+ * Queues a recommendation request. A no-op unless the shift is 'playing'.
+ *
+ * @param {ShiftState} state
+ * @param {{id: string, patronKey: string, tasteGenreId: string, hint: string, choices: string[], titles?: string[], waitSeconds?: number}} request
+ *   `titles`: one cosmetic cover title per choice, carried through untouched.
+ * @returns {ShiftState}
+ */
+export function addRecommendRequest(state, request) {
+  if (state.phase !== 'playing') return state;
+  return {
+    ...state,
+    recommendQueue: [...(state.recommendQueue ?? []), {
+      id: request.id,
+      patronKey: request.patronKey,
+      tasteGenreId: request.tasteGenreId,
+      hint: request.hint,
+      choices: request.choices,
+      titles: request.titles ?? null,
+      ...initialWait(state, request.waitSeconds),
+    }],
+  };
+}
+
+/**
+ * Starts helping a queued recommendation request (`activeRecommend`). A
+ * no-op if the shift isn't 'playing', one is already active, or no request
+ * with that id is queued.
+ *
+ * @param {ShiftState} state
+ * @param {string} requestId
+ * @returns {ShiftState}
+ */
+export function startRecommendation(state, requestId) {
+  if (state.phase !== 'playing' || state.activeRecommend) return state;
+  const request = (state.recommendQueue ?? []).find((r) => r.id === requestId);
+  if (!request) return state;
+  return {
+    ...state,
+    recommendQueue: state.recommendQueue.filter((r) => r !== request),
+    activeRecommend: request,
+  };
+}
+
+/**
+ * Resolves the active recommendation with the genre Eun-mi picked. A no-op
+ * unless one is active and `genreId` is one of its choices.
+ *
+ * @param {ShiftState} state
+ * @param {string} genreId
+ * @returns {ShiftState}
+ */
+export function resolveRecommendation(state, genreId) {
+  const active = state.activeRecommend;
+  if (state.phase !== 'playing' || !active || !active.choices.includes(genreId)) return state;
+  if (genreId === active.tasteGenreId) {
+    return {
+      ...state,
+      activeRecommend: null,
+      bonusGard: state.bonusGard + RECOMMEND_TIP_GARD,
+      libraryMood: clampLibraryMood(state.libraryMood + RECOMMEND_MOOD_BOOST),
+      recommendsMatched: (state.recommendsMatched ?? 0) + 1,
+    };
+  }
+  return {
+    ...state,
+    activeRecommend: null,
+    libraryMood: clampLibraryMood(state.libraryMood - RECOMMEND_MISS_MOOD),
+    recommendsMissed: (state.recommendsMissed ?? 0) + 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Karen's scripted event (doc's Scope/Open Questions, resolved here — see
 // this file's report-back writeup for the full design rationale):
 //
@@ -728,8 +818,9 @@ export function tick(state, deltaSeconds, { pauseBorrowPatience = false } = {}) 
   // Queued patrons (not yet being helped) walk out when their wait runs out.
   const borrows = tickQueue(next.borrowQueue, delta);
   const fines = tickQueue(next.finesQueue, delta);
-  next = { ...next, borrowQueue: borrows.kept, finesQueue: fines.kept };
-  for (let i = 0; i < borrows.walkedOut + fines.walkedOut; i++) next = { ...next, ...applyWalkout(next) };
+  const recommends = tickQueue(next.recommendQueue ?? [], delta);
+  next = { ...next, borrowQueue: borrows.kept, finesQueue: fines.kept, recommendQueue: recommends.kept };
+  for (let i = 0; i < borrows.walkedOut + fines.walkedOut + recommends.walkedOut; i++) next = { ...next, ...applyWalkout(next) };
 
   if (next.karen.active) {
     const remaining = next.karen.timerSecondsRemaining - delta;
@@ -950,7 +1041,7 @@ export function staffHelpBlocker(state, key, ctx = {}) {
   if (state.phase !== 'playing') return 'phase';
   if (!STAFF_HELP[key]) return 'unknown';
   if (staffCooldownSeconds(state, key) > 0) return 'cooldown';
-  const someoneWaiting = [...state.borrowQueue, ...state.finesQueue].some((e) => e.waitRemainingSeconds != null)
+  const someoneWaiting = [...state.borrowQueue, ...state.finesQueue, ...(state.recommendQueue ?? [])].some((e) => e.waitRemainingSeconds != null)
     || state.activeBorrow?.stage === 'searching';
   const can = {
     guard: Boolean(ctx.karenWaiting) && !state.karen.triggered,
@@ -1012,6 +1103,7 @@ export function staffHelp(state, key, ctx = {}) {
       ...state,
       borrowQueue: state.borrowQueue.map(calm),
       finesQueue: state.finesQueue.map(calm),
+      recommendQueue: (state.recommendQueue ?? []).map(calm),
       activeBorrow: borrow?.stage === 'searching'
         ? { ...borrow, patienceRemainingSeconds: Math.min(borrow.patienceMaxSeconds, borrow.patienceRemainingSeconds + help.patience) }
         : borrow,

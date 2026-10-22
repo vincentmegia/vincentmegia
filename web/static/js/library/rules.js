@@ -917,6 +917,7 @@ export function dailyVolumes(twist) {
     books: Math.round(returnVolumeForShift(DAILY_SHIFT_NUMBER) * (e.books ?? 1)),
     fines: Math.round(fineVolumeForShift(DAILY_SHIFT_NUMBER, 1) * (e.fines ?? 1)),
     borrows: Math.round(borrowVolumeForShift(DAILY_SHIFT_NUMBER) * (e.borrows ?? 1)),
+    recommends: recommendVolumeForShift(DAILY_SHIFT_NUMBER),
   };
 }
 
@@ -950,3 +951,101 @@ export const STAFF_HELP = {
 
 /** Extra Sanity for finishing a book you took off a shelf yourself. */
 export const READING_CHOSEN_SANITY_RESTORE = 10;
+
+// ---------------------------------------------------------------------------
+// Ask the Librarian (책 추천): now and then a patron in the Front Desk line
+// wants a recommendation, not a specific book. Each patron design has a
+// `taste` (one of GENRES, library-people.js); they hint at it, and Eun-mi
+// picks one of three covers. A match tips Gard and lifts Mood; a miss only
+// dips Mood a little (it's a matter of taste, not a mistake).
+// ---------------------------------------------------------------------------
+
+/** Recommendation requests per shift, by round tier. */
+export const ROUND_TIER_RECOMMEND_VOLUME = [2, 3, 4];
+
+/**
+ * @param {number} shiftNumber
+ * @returns {number}
+ */
+export function recommendVolumeForShift(shiftNumber) {
+  return ROUND_TIER_RECOMMEND_VOLUME[roundTier(shiftNumber) - 1];
+}
+
+/** The tip for a recommendation that matches the patron's taste. */
+export const RECOMMEND_TIP_GARD = 30;
+/** Library Mood gained from a happy patron. */
+export const RECOMMEND_MOOD_BOOST = 10;
+/** Library Mood lost when the pick isn't their thing. */
+export const RECOMMEND_MISS_MOOD = 5;
+/** How many covers Eun-mi chooses between. */
+export const RECOMMEND_CHOICE_COUNT = 3;
+
+/**
+ * The genres offered for a recommendation: the patron's taste plus two
+ * others, in an order set by `rand` (a 0..1 generator, so the Daily
+ * Challenge's seeded stream gives everyone the same choices).
+ *
+ * @param {string} tasteGenreId
+ * @param {() => number} rand
+ * @returns {string[]} RECOMMEND_CHOICE_COUNT distinct genre ids, one of them `tasteGenreId`
+ */
+export function recommendChoices(tasteGenreId, rand) {
+  const others = GENRES.map((g) => g.id).filter((id) => id !== tasteGenreId);
+  // Pick the decoys, then shuffle all three (Fisher–Yates).
+  for (let i = others.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+  const picks = [tasteGenreId, ...others.slice(0, RECOMMEND_CHOICE_COUNT - 1)];
+  for (let i = picks.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [picks[i], picks[j]] = [picks[j], picks[i]];
+  }
+  return picks;
+}
+
+/** What a patron says, by their taste: a hint, never the genre's name. */
+export const RECOMMEND_HINTS = {
+  mystery: [
+    'Something with a secret at its heart…',
+    'I want to guess wrong until the last page.',
+    'A locked room, a missing key, that sort of thing.',
+    "Give me a twist I won't see coming.",
+  ],
+  romance: [
+    'Something that makes my heart flutter.',
+    'Two people who should never meet… but do.',
+    'A slow, sweet love story, please.',
+    'I want to cry happy tears on the subway.',
+  ],
+  scifi: [
+    'Take me to another planet.',
+    'Robots, time travel, the far future!',
+    'What if the stars could talk back?',
+    'Something set a thousand years from now.',
+  ],
+  kids: [
+    'Something with pictures, please!',
+    'A bedtime story about animals.',
+    'Can it have a dragon? A nice one?',
+    'Something short and fun to read aloud.',
+  ],
+  reference: [
+    'I need to actually learn how something works.',
+    'Facts, please. Lots of facts.',
+    'Something I can look things up in.',
+    'A good guide — no made-up stories.',
+  ],
+};
+
+/**
+ * A hint line for `tasteGenreId`, picked by `roll` (0..1).
+ *
+ * @param {string} tasteGenreId
+ * @param {number} roll
+ * @returns {string}
+ */
+export function recommendHint(tasteGenreId, roll) {
+  const lines = RECOMMEND_HINTS[tasteGenreId] ?? RECOMMEND_HINTS.reference;
+  return lines[Math.min(lines.length - 1, Math.floor(roll * lines.length))];
+}
