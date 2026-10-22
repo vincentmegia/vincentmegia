@@ -19,7 +19,8 @@ Tests:
   `floor-plan.js`, `first-person.js`, `stories.js`, `book-titles.js`,
   `walk-styles.js`, `minjun-actions.js`) and smoke-test the renderers
   (`minjun.js`, `jiho.js`, `director-seo.js`, the six staff renderers and
-  `staff-kit.js` in `staff.test.js`, `library-people.js`,
+  `staff-kit.js` in `staff.test.js`, `patron.js`, its props and trinkets and
+  `karen.js` in `patron.test.js`, `library-people.js`,
   `anime-furniture.js`).
 * Playwright: `e2e/library-game.spec.js`, run with `make test-e2e` on
   Chromium and WebKit. It drives the game through
@@ -148,8 +149,29 @@ handling, in place of Kitchen Shift's cooking and serving.
   `library/anime-furniture.js`.
 * Characters:
   * Eun-mi is `hospital/kimono-himura.js` with `look: 'coral'`.
-  * Patrons and Karen are `hospital/anime-people.js` designs, plus the
-    library's own 19 patrons in `library/library-people.js`.
+  * Patrons are the library's own 66 modern-Seoul designs in
+    `library/library-people.js` (`PATRON_PERSONALITY_KEYS`; Hospital's
+    festival/kimono patients are no longer in the mix). With Eun-mi,
+    Director Seo, Min-jun, Ji-ho, the six staff and Karen that makes 77
+    characters, Hospital Shift's count (65 patients, 11 staff, Himura).
+    `library/patron.js` draws them in the staff's detailed style from that
+    data: age proportions (kids get a bigger head), walking legs, fifteen
+    outfit kinds (hoodie, cardigan, blazer, apron, jacket, dress, tee,
+    track, suit, blouse, gakuran, puffer, trench, overalls, hanbok) with
+    their own seams and trims, and a head from `patron-head.js` (ten hair
+    styles including a side braid, curls and bald; eye styles; blinking
+    offset per patron; glasses, masks, beards; thirteen kinds of headwear).
+    Each carries a prop from `patron-props.js` / `patron-props-more.js`
+    (46 in all: a light stick, a scooter, a guitar case on the back, a dog
+    on a leash, a cat peeking out of a tote, …), held raised, hugged, or
+    hanging, and
+    wears their own `trinkets` from `patron-trinkets.js` (pins, name tags,
+    a lanyard, necklaces, a scarf, patches, a wallet chain, watches,
+    bracelets, rings, socks, a knee plaster, earbuds, hairpins). Outfits
+    also get fold shadows, elbow creases and stitched hems.
+  * Karen has her own renderer, `library/karen.js`: a red power blazer,
+    phone up filming; angry (in line and in her scripted event) she scowls,
+    shouts and jabs a finger.
   * The six wandering staff each have their own detailed renderer, built
     on shared pieces in `library/staff-kit.js` (legs with a walk cycle,
     sleeves, hands, face, eyes) and picked by `STAFF_RENDERERS` in

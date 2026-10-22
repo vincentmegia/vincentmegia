@@ -2,7 +2,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { LIBRARY_PATRON_DESIGNS, LIBRARY_PATRON_DESIGN_KEYS, findLibraryDesign } from './library-people.js';
-import { drawAnimePerson, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from '../hospital/anime-people.js';
+import { PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from '../hospital/anime-people.js';
+import { drawPatron } from './patron.js';
+import { PROPS } from './patron-props.js';
 
 /** A canvas 2D context stand-in: every method is a no-op that counts calls. */
 function fakeContext() {
@@ -23,8 +25,8 @@ function fakeContext() {
 }
 
 describe("Library Shift's own characters", () => {
-  test('there are 19 new patrons, all with unique keys', () => {
-    assert.equal(LIBRARY_PATRON_DESIGNS.length, 19);
+  test('there are 66 patrons (77 characters in all, like Hospital Shift), all with unique keys', () => {
+    assert.equal(LIBRARY_PATRON_DESIGNS.length, 66);
     const keys = [...LIBRARY_PATRON_DESIGN_KEYS];
     assert.equal(new Set(keys).size, keys.length);
     for (const key of keys) {
@@ -40,9 +42,12 @@ describe("Library Shift's own characters", () => {
         assert.ok(d[field], `${d.key} is missing ${field}`);
       }
       assert.ok(d.outfit.kind && d.outfit.top && d.outfit.shoes, `${d.key} needs an outfit kind, top and shoes`);
-      const ctx = fakeContext();
-      drawAnimePerson(ctx, 100, 200, d, { scale: 1.55, t: 1 });
-      assert.ok(ctx.calls.count > 100, `${d.key} drew too little`);
+      assert.ok(PROPS[d.prop], `${d.key} carries an unknown prop: ${d.prop}`);
+      for (const opts of [{ t: 1 }, { t: 2, walking: true }, { t: 3, angryTint: true }]) {
+        const ctx = fakeContext();
+        drawPatron(ctx, 100, 200, d, { scale: 1.55, ...opts });
+        assert.ok(ctx.calls.count > 400, `${d.key} drew too little for ${JSON.stringify(opts)}: ${ctx.calls.count}`);
+      }
     }
   });
 

@@ -59,10 +59,11 @@ import { drawJanitor } from './library/janitor.js';
 import { drawShelver } from './library/shelver.js';
 import { drawStoryteller } from './library/storyteller.js';
 import { drawArchivist } from './library/archivist.js';
+import { drawKaren } from './library/karen.js';
+import { drawPatron } from './library/patron.js';
 import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
-import { drawAnimePerson, findPatientDesign, PATIENT_DESIGN_KEYS, STAFF_DESIGNS } from './hospital/anime-people.js';
 import {
   SHIFTS_PER_MONTH,
   shiftClockSecondsForShift,
@@ -380,11 +381,6 @@ const AMBIENT_STAFF = [
 ];
 const AMBIENT_SPEED = 60;
 
-/** Which anime design each non-patron character uses. */
-const SPECIAL_DESIGNS = {
-  karen: () => STAFF_DESIGNS.karen,
-};
-
 /**
  * The wandering staff with their own detailed renderers ("make others more
  * detailed like them" — like Min-jun, Ji-ho and Director Seo), drawn in the
@@ -401,10 +397,11 @@ const STAFF_RENDERERS = {
 
 /**
  * Every design a regular patron can have (not Karen, not the player):
- * Hospital Shift's patient designs plus Library Shift's own 19
- * (library/library-people.js).
+ * Library Shift's own 19 modern-Seoul patrons (library/library-people.js),
+ * drawn in detail by library/patron.js. (Hospital Shift's festival and
+ * kimono patients used to be in the mix too.)
  */
-export const PATRON_PERSONALITY_KEYS = [...PATIENT_DESIGN_KEYS, ...LIBRARY_PATRON_DESIGN_KEYS];
+export const PATRON_PERSONALITY_KEYS = [...LIBRARY_PATRON_DESIGN_KEYS];
 
 /** The player character's name (v2.12) — shown on a name tag under the sprite. */
 export const PLAYER_NAME = 'Eun-mi · 은미';
@@ -422,7 +419,7 @@ function personalityForId(id) {
 /**
  * Draws a Library Shift character, feet at (x, y). `personalityKey` is
  * 'librarian' (Eun-mi, in her hanbok), 'karen', a staff key, or a
- * patron's anime design key. `angryTint` is Karen's outburst; `stress`
+ * library-people.js patron key. `angryTint` is Karen's outburst; `stress`
  * (0..1) is the player's low-Sanity face; `walking` sways Eun-mi's step.
  *
  * @param {CanvasRenderingContext2D} ctx
@@ -457,8 +454,12 @@ export function drawLibraryPerson(ctx, x, y, opts = {}) {
     drawKimonoHimura(ctx, x, y, { scale: scale * PLAYER_ART_SCALE, stress: opts.stress ?? 0, t, walking: Boolean(opts.walking), cap: false, look: 'coral' });
     return;
   }
-  const design = SPECIAL_DESIGNS[opts.personalityKey]?.() ?? findLibraryDesign(opts.personalityKey) ?? findPatientDesign(opts.personalityKey);
-  drawAnimePerson(ctx, x, y, design, { scale, t, angryTint: Boolean(opts.angryTint) });
+  if (opts.personalityKey === 'karen') {
+    drawKaren(ctx, x, y, { scale, t, walking: Boolean(opts.walking), angry: Boolean(opts.angryTint) });
+    return;
+  }
+  const design = findLibraryDesign(opts.personalityKey);
+  if (design) drawPatron(ctx, x, y, design, { scale, t, walking: Boolean(opts.walking), angryTint: Boolean(opts.angryTint) });
 }
 
 // ---------------------------------------------------------------------------

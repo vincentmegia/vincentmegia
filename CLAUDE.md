@@ -68,9 +68,11 @@ HTMX + Tailwind + PostgreSQL.
   instead and must never use `requireOwnerAuth` (it redirects, not 401).
 - **Shared art**: Kitchen Shift and Bus Rush draw people with
   `web/static/js/shared/people.js`; Library Shift reuses Hospital Shift's
-  anime renderers (`web/static/js/hospital/anime-*.js`, `kimono-himura.js`).
-  A change there shows up in every game that imports it. Library also has
-  its own renderers in `web/static/js/library/` (Min-jun, Ji-ho, …).
+  `kimono-himura.js` (Eun-mi), `anime-furniture.js` and `anime-ui.js`
+  (and `shadeColor` from `shared/people.js`). A change there shows up in
+  every game that imports it. Library's people otherwise have
+  their own renderers in `web/static/js/library/` (Min-jun, Ji-ho, the
+  staff on `staff-kit.js`, patrons in `patron.js`, Karen).
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):
