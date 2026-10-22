@@ -127,6 +127,10 @@ import {
   RECOMMEND_MISS_MOOD,
   RECOMMEND_REGULAR_PATRON,
   RECOMMEND_REGULAR_WINDOW,
+  CHECKOUT_HITS,
+  checkoutZoneCenter,
+  checkoutSuccessZone,
+  checkoutSweepMultiplier,
 } from './library/rules.js';
 import {
   createInitialState,
@@ -1382,6 +1386,17 @@ export function init(canvas, elements) {
 
   function openSkillCheckOverlay(context) {
     overlay = { kind: 'skill-check', context, gaugePosition: 0, direction: 1 };
+    // Checkout: two steps (scan, then stamp), each on a zone somewhere new.
+    if (context === 'checkout') {
+      overlay.hits = 0;
+      overlay.zoneCenter = checkoutZoneCenter(random());
+    }
+  }
+
+  /** The open skill-check's success zone: centred for shelving, wherever this step put it for checkout. */
+  function currentSkillZone() {
+    const scale = shakyHandsZoneScale(currentIntensity());
+    return overlay?.context === 'checkout' ? checkoutSuccessZone(overlay.zoneCenter, scale) : skillCheckSuccessZone(scale);
   }
 
   function openCoinHuntOverlay() {
@@ -1940,7 +1955,8 @@ export function init(canvas, elements) {
     }
     if (overlay.kind === 'skill-check') {
       if (overlay.frozen) return; // test hook: held in place until the next click
-      const speed = skillCheckSweepSpeed(currentShiftNumber) * shakyHandsSweepMultiplier(currentIntensity());
+      const speed = skillCheckSweepSpeed(currentShiftNumber) * shakyHandsSweepMultiplier(currentIntensity())
+        * (overlay.context === 'checkout' ? checkoutSweepMultiplier(overlay.hits) : 1);
       overlay.gaugePosition += overlay.direction * speed * deltaSeconds;
       if (overlay.gaugePosition >= 1) { overlay.gaugePosition = 1; overlay.direction = -1; }
       else if (overlay.gaugePosition <= 0) { overlay.gaugePosition = 0; overlay.direction = 1; }
@@ -2084,17 +2100,30 @@ export function init(canvas, elements) {
 
   function resolveSkillCheck() {
     overlay.frozen = false;
-    const success = isSkillCheckSuccess(overlay.gaugePosition, skillCheckSuccessZone(shakyHandsZoneScale(currentIntensity())));
+    const success = isSkillCheckSuccess(overlay.gaugePosition, currentSkillZone());
     if (overlay.context === 'shelf') {
       shiftState = resolveShelfSkillCheck(shiftState, success);
       showToast(success ? `Shelved! +${SHELVED_BOOK_TIP_GARD}g` : 'Missed the mark — try again.');
       if (success) overlay = null;
       else { overlay.gaugePosition = 0; overlay.direction = 1; } // immediate retry, still carrying the book
     } else {
+      // The scan is only the first step: hit it and the stamp comes next,
+      // on a new zone, faster. Only the last hit completes the checkout.
+      if (success && overlay.hits + 1 < CHECKOUT_HITS) {
+        overlay.hits += 1;
+        overlay.zoneCenter = checkoutZoneCenter(random());
+        showToast('Beep! Barcode scanned — now stamp the due date.');
+        return;
+      }
       shiftState = resolveCheckoutSkillCheck(shiftState, success);
-      showToast(success ? 'Checked out — thank you!' : 'Fumbled the checkout — try again.');
+      showToast(success ? 'Stamped and checked out — thank you!' : 'Fumbled the checkout — start again from the scan.');
       if (success) overlay = null;
-      else { overlay.gaugePosition = 0; overlay.direction = 1; }
+      else {
+        overlay.gaugePosition = 0;
+        overlay.direction = 1;
+        overlay.hits = 0;
+        overlay.zoneCenter = checkoutZoneCenter(random());
+      }
     }
   }
 
@@ -3273,7 +3302,7 @@ export function init(canvas, elements) {
 
   function drawSkillCheckOverlay() {
     drawOverlayBackdrop();
-    const zone = skillCheckSuccessZone(shakyHandsZoneScale(currentIntensity()));
+    const zone = currentSkillZone();
     const barX = 130;
     const barW = CANVAS_WIDTH - 260;
     const barY = CANVAS_HEIGHT / 2 - 10;
@@ -3282,7 +3311,10 @@ export function init(canvas, elements) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = `22px ${DISPLAY_FONT}`;
-    outlinedText(ctx, overlay.context === 'shelf' ? 'Shelf Skill-Check' : 'Checkout Skill-Check', CANVAS_WIDTH / 2, barY - 40, '#ffffff', ANIME.ink, 4);
+    const title = overlay.context === 'shelf'
+      ? 'Shelf Skill-Check'
+      : (overlay.hits > 0 ? `Checkout — stamp the due date (${overlay.hits + 1}/${CHECKOUT_HITS})` : `Checkout — scan the barcode (1/${CHECKOUT_HITS})`);
+    outlinedText(ctx, title, CANVAS_WIDTH / 2, barY - 40, '#ffffff', ANIME.ink, 4);
     ctx.font = 'bold 13px sans-serif';
     outlinedText(ctx, 'Click, tap, or press Space/Enter to stop the marker in the gold zone', CANVAS_WIDTH / 2, barY - 16, '#ffffff', ANIME.ink, 3);
 
@@ -4709,6 +4741,8 @@ export function init(canvas, elements) {
       pauseScheduledEvents(on) { testEventsPaused = Boolean(on); },
       // `freeze` holds the marker still until the next click resolves it, so
       // a test's set-then-click can't race the sweep under load.
+      /** The open skill-check's success zone ({start, end, width}), wherever it is this step. */
+      getSkillCheckZone: () => (overlay?.kind === 'skill-check' ? currentSkillZone() : null),
       setSkillCheckGauge(pos, { freeze = false } = {}) {
         if (overlay?.kind !== 'skill-check') return;
         overlay.gaugePosition = pos;

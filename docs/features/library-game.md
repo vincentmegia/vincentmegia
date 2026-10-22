@@ -79,7 +79,8 @@ handling, in place of Kitchen Shift's cooking and serving.
   * **Find the Book**: pick the requested book from decoys on its shelf.
   * **Ask the Librarian** (책 추천): a patron hints at what they like to
     read; pick the one of three covers that fits them.
-  * **Checkout Skill-Check**: the same timing bar, at the Front Desk.
+  * **Checkout Skill-Check**: a harder timing bar at the Front Desk —
+    scan the barcode, then stamp the due date.
   * **Coffee Pour**: hold to pour and release in the target band.
   * **Reading Nook**: a page-turning short story.
   * **Karen's event**: a two-button confirm.
@@ -370,8 +371,16 @@ Look values up there rather than relying on this doc.
   * Clicking a wrong book in Find the Book only shows a toast.
   * If patience runs out while searching, the request is dropped and
     counts as a mistake and a walk-out.
-  * A failed Checkout Skill-Check is a mistake, and the player can retry
-    straight away.
+  * The Checkout Skill-Check is harder than shelving (`rules.js` §7):
+    `CHECKOUT_HITS` (2) hits in a row — scan, then stamp — on a zone
+    `CHECKOUT_ZONE_SCALE` (0.6) as wide as the shelf's, centred somewhere
+    new on every step (`checkoutZoneCenter`, kept 0.12 from the ends), with
+    the marker `CHECKOUT_SWEEP_MULTIPLIER` (1.3×) faster, and
+    `CHECKOUT_STAMP_SPEEDUP` (1.15×) faster again for the stamp. Shaky
+    hands shrink it further.
+  * A miss on either step is a mistake and starts over from the scan; the
+    player can retry straight away. The scan alone changes no state —
+    only the stamp completes the loan.
 * **Queues and star rating**:
   * Every queued patron has a wait timer (`queueWaitSecondsForShift`, 90 s
     falling to 45 s, scaled by Mood at arrival).
@@ -516,7 +525,9 @@ Look values up there rather than relying on this doc.
 * [x] Playwright (`e2e/library-game.spec.js`):
       * Start screen; floor switching, including during closing-wait.
       * Shelving, including the wrong shelf, the cart click and Coin Hunt.
-      * Borrowing.
+      * Borrowing, and the harder checkout: scan then stamp on a narrower,
+        moving zone, and a missed stamp being a mistake that restarts from
+        the scan (`getSkillCheckZone`).
       * Fines: banked; a miscount followed by a keyboard recount; fines
         starting on a shift rolled 5–8.
       * Coffee Pour: mouse, keyboard and spill.

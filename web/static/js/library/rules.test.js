@@ -85,6 +85,11 @@ import {
   recommendHint,
   RECOMMEND_REGULAR_PATRON,
   RECOMMEND_REGULAR_WINDOW,
+  CHECKOUT_HITS,
+  CHECKOUT_ZONE_SCALE,
+  checkoutZoneCenter,
+  checkoutSuccessZone,
+  checkoutSweepMultiplier,
 } from './rules.js';
 
 describe('roundTier', () => {
@@ -654,5 +659,29 @@ describe('Ask the Librarian', () => {
       for (const line of RECOMMEND_HINTS[genre.id]) assert.ok(!line.toLowerCase().includes(genre.name.toLowerCase()), line);
       assert.ok(RECOMMEND_HINTS[genre.id].includes(recommendHint(genre.id, 0.999)));
     }
+  });
+});
+
+describe('the harder checkout', () => {
+  test('it takes more than one hit, on a narrower zone than shelving', () => {
+    assert.ok(CHECKOUT_HITS >= 2);
+    assert.ok(checkoutSuccessZone(0.5).width < skillCheckSuccessZone().width);
+    assert.ok(Math.abs(checkoutSuccessZone(0.5).width - skillCheckSuccessZone().width * CHECKOUT_ZONE_SCALE) < 1e-9);
+  });
+
+  test('the zone lands anywhere on the bar but always fits', () => {
+    for (let r = 0; r <= 1; r += 0.05) {
+      const zone = checkoutSuccessZone(checkoutZoneCenter(r));
+      assert.ok(zone.start >= 0 && zone.end <= 1, JSON.stringify(zone));
+    }
+    assert.ok(checkoutZoneCenter(0) < 0.2 && checkoutZoneCenter(1) > 0.8);
+    // Shaky hands still shrink it, and it still fits at the edge.
+    const shaky = checkoutSuccessZone(0.02, 0.5);
+    assert.ok(shaky.start >= 0 && shaky.width < checkoutSuccessZone(0.5).width);
+  });
+
+  test('the marker is faster than shelving, and faster again for the stamp', () => {
+    assert.ok(checkoutSweepMultiplier(0) > 1);
+    assert.ok(checkoutSweepMultiplier(1) > checkoutSweepMultiplier(0));
   });
 });

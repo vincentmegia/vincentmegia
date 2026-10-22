@@ -232,13 +232,31 @@ async function waitForOverlay(page, kind) {
 	return getOverlay(page);
 }
 
-/** Resolves the shared Shelf/Checkout Skill-Check overlay as a success — sets (and freezes) the gauge in the success zone via the test hook, then clicks the canvas to sample it, the exact same click path a real player uses. */
-async function resolveSkillCheckSuccess(page) {
+/** Puts (and freezes) the gauge in the middle of the current zone, then clicks to sample it — the real click path. */
+async function hitSkillCheck(page) {
 	// Frozen until the click: setting the gauge and clicking are two round
 	// trips, and under parallel load the sweep could carry the marker out of
-	// the ±0.1 zone in between (a flake seen after the anime restyle).
-	await page.evaluate(() => window.__libraryGameTestHooks.setSkillCheckGauge(0.5, { freeze: true }));
+	// the zone in between (a flake seen after the anime restyle).
+	await page.evaluate(() => {
+		const h = window.__libraryGameTestHooks;
+		const zone = h.getSkillCheckZone();
+		h.setSkillCheckGauge((zone.start + zone.end) / 2, { freeze: true });
+	});
 	await clickCanvasPoint(page, { x: 480, y: 300 });
+}
+
+/**
+ * Resolves the Shelf/Checkout Skill-Check overlay as a success. Shelving
+ * takes one hit; checkout takes two (scan, then stamp), each on a zone
+ * somewhere new, so this aims at wherever the hook says the zone is.
+ */
+async function resolveSkillCheckSuccess(page) {
+	const { context } = await getOverlay(page);
+	const hits = context === 'checkout' ? 2 : 1;
+	for (let i = 0; i < hits; i++) {
+		await hitSkillCheck(page);
+		if (i < hits - 1) await expect.poll(async () => (await getOverlay(page))?.hits).toBe(i + 1);
+	}
 }
 
 test.describe('/library-game direct page load', () => {
@@ -541,6 +559,62 @@ test.describe('borrowing', () => {
 
 		await expect.poll(async () => getOverlay(page)).toBe(null);
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow)).toBe(null);
+	});
+});
+
+test.describe('harder checkout', () => {
+	/** Takes a borrow request to the checkout stage (the Archivist-free way: the hook-free real flow is covered above). */
+	async function openCheckout(page) {
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBorrowNow());
+		const slot = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().find((s) => s.kind === 'borrow'));
+		await clickQueueItem(page, slot);
+		await page.evaluate(() => {
+			const st = window.__libraryGameTestHooks.getShiftState();
+			st.activeBorrow.stage = 'checkout';
+		});
+		await walkToStation(page, 'front-desk');
+		await waitForOverlay(page, 'skill-check');
+	}
+
+	test('checkout takes a scan and then a stamp, each on a narrow zone that moves', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await openCheckout(page);
+		const scanZone = await page.evaluate(() => window.__libraryGameTestHooks.getSkillCheckZone());
+		expect(scanZone.width).toBeLessThan(0.2);
+
+		await hitSkillCheck(page);
+		await expect(page.locator('#library-toast')).toContainText('now stamp the due date');
+		const mid = await getOverlay(page);
+		expect(mid?.kind).toBe('skill-check');
+		expect(mid.hits).toBe(1);
+		// Not checked out yet: the scan alone isn't enough.
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow?.stage)).toBe('checkout');
+
+		await hitSkillCheck(page);
+		await expect.poll(async () => getOverlay(page)).toBe(null);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow)).toBe(null);
+	});
+
+	test('missing the stamp is a mistake and starts over from the scan', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await openCheckout(page);
+		await hitSkillCheck(page);
+		await expect.poll(async () => (await getOverlay(page))?.hits).toBe(1);
+
+		// Freeze the marker well outside the zone and click.
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const zone = h.getSkillCheckZone();
+			h.setSkillCheckGauge(zone.start > 0.5 ? 0.02 : 0.98, { freeze: true });
+		});
+		await clickCanvasPoint(page, { x: 480, y: 300 });
+
+		await expect(page.locator('#library-toast')).toContainText('start again from the scan');
+		const after = await getOverlay(page);
+		expect(after.hits).toBe(0);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().mistakeCount)).toBe(1);
 	});
 });
 
