@@ -3692,6 +3692,7 @@ export function init(canvas, elements) {
   }
 
   function maybeSpawnCustomer() {
+    if (testCustomerSpawnsPaused) return;
     if (timeSinceCustomerSpawn < nextCustomerArrivalSeconds) return;
     timeSinceCustomerSpawn = 0;
     // v3.34: re-rolled every time the wait elapses (whether or not a
@@ -5010,12 +5011,26 @@ export function init(canvas, elements) {
 
   // -- Game loop ------------------------------------------------------
 
+  // Test-only (window.__cookingGameTestHooks.freeze/step): while frozen
+  // the loop keeps drawing but stops advancing the simulation, so an e2e
+  // test can set a value and act on it without live frames moving it in
+  // between — under CPU load several frames can land between two steps.
+  let testFrozen = false;
+  let testCustomerSpawnsPaused = false;
+
   function loop(timestamp) {
     if (!running || paused) { rafHandle = null; return; }
     if (lastTimestamp === null) lastTimestamp = timestamp;
     const deltaSeconds = Math.min(0.1, (timestamp - lastTimestamp) / 1000);
     lastTimestamp = timestamp;
 
+    if (testFrozen) render();
+    else stepSimulation(deltaSeconds);
+
+    rafHandle = window.requestAnimationFrame(loop);
+  }
+
+  function stepSimulation(deltaSeconds) {
     if (!activePanel && !recipeBookOpen && !coffeePour && !orderPad) updatePlayer(deltaSeconds);
 
     if (shiftState.phase === 'playing') {
@@ -5083,8 +5098,6 @@ export function init(canvas, elements) {
     renderHud();
     renderOrderQueue();
     render();
-
-    rafHandle = window.requestAnimationFrame(loop);
   }
 
   // -- Room toggle button -------------------------------------------------
@@ -5215,16 +5228,18 @@ export function init(canvas, elements) {
     window.removeEventListener('pointercancel', onWindowPointerUp);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('visibilitychange', onVisibilityChange);
-    document.body.removeEventListener('htmx:beforeSwap', teardown);
+    document.body.removeEventListener('htmx:beforeSwap', onBeforeSwap);
     if (teardownActiveInstance === teardown) teardownActiveInstance = null;
   }
 
   // Doc's Cleanup requirement: tear down on HTMX nav-away, not just full
   // page unload. Same target-check reasoning as fishing-game.js's
-  // equivalent listener.
-  document.body.addEventListener('htmx:beforeSwap', (e) => {
+  // equivalent listener. A named handler, so teardown() can remove it —
+  // an anonymous closure here used to pile up one listener per visit.
+  function onBeforeSwap(e) {
     if (e.target && e.target.id === 'main-content') teardown();
-  });
+  }
+  document.body.addEventListener('htmx:beforeSwap', onBeforeSwap);
 
   teardownActiveInstance = teardown;
 
@@ -5309,6 +5324,12 @@ export function init(canvas, elements) {
           && !pendingCustomers[id] && !arrivingCustomers.some((c) => c.tableId === id) && !ghostAtTable(id)) ?? null;
       },
       setCookGauge(position) { if (cookMiniGame) cookMiniGame.gaugePosition = position; },
+      /** Stops (true) or resumes (false) the simulation; input handlers still run, so a click/key while frozen acts on exactly the values a test set. */
+      freeze(on) { testFrozen = Boolean(on); },
+      /** Advances the simulation by one frame of `seconds` (default 1/60), frozen or not. */
+      step(seconds = 1 / 60) { if (running && shiftState) stepSimulation(seconds); },
+      /** Stops (true) or resumes (false) random customer walk-ins, so a test's table can't be taken by one. */
+      pauseCustomerSpawns(on) { testCustomerSpawnsPaused = Boolean(on); },
     };
   }
 

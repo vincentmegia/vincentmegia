@@ -10,6 +10,14 @@
 // `window.__cookingGameTestHooks` supplying exact station positions and
 // skipping only the randomly-timed waits (a customer's walk-in, the slow
 // Sanity/Reputation drains) — never the interaction itself.
+//
+// Under CPU load several frames can pass between two Playwright steps, so
+// a value set through a hook (a gauge position, a coffee fill) and then
+// acted on in a separate step can drift in between. Those tests freeze
+// the simulation (`freeze(true)` — input handlers still run, only the
+// per-frame update stops) around the set-and-act pair, step it by hand
+// where they need exactly one frame, and pause random walk-ins where a
+// new customer could take the table under test.
 const { test, expect } = require('@playwright/test');
 
 const STORAGE_KEY = 'cooking-game:v2';
@@ -231,6 +239,9 @@ test.describe('serving food', () => {
 
 	test('a customer who runs out of patience says so, and bringing food afterwards explains why nothing happens', async ({ page }) => {
 		await startShift(page);
+		// A random walk-in could otherwise sit at the table they just left
+		// (more likely the longer the walk takes under load).
+		await hooks(page, () => window.__cookingGameTestHooks.pauseCustomerSpawns(true));
 		const tableId = await seatAndOrder(page, 'Garden Salad');
 		await hooks(page, () => {
 			const h = window.__cookingGameTestHooks;
@@ -329,6 +340,7 @@ test.describe('order notepad', () => {
 test.describe('Rice Station', () => {
 	test('the Recipe Book lists both rice dishes, and Chicken Rice cooks at the Rice Station with the Rice Cooker', async ({ page }) => {
 		await startShift(page, 11);
+		await hooks(page, () => window.__cookingGameTestHooks.pauseCustomerSpawns(true));
 		await page.locator('#cooking-recipe-book-button').click();
 		await expect(page.locator('#cooking-recipe-book-list')).toContainText('Chicken Rice');
 		await expect(page.locator('#cooking-recipe-book-list')).toContainText('Omurice');
@@ -353,10 +365,20 @@ test.describe('Rice Station', () => {
 		await walkToStation(page, 'fridge');
 		await pickFromPanel(page, 'Chicken');
 
+		// Full Sanity for the last walk, so neither shaky hands (a dropped
+		// ingredient, a narrower zone) nor the slow drain can interfere.
+		await hooks(page, () => window.__cookingGameTestHooks.setShiftStats({ sanity: 100 }));
 		await walkToStation(page, 'rice-station');
 		await expect(page.locator('#cooking-gauge')).toBeVisible();
-		await hooks(page, () => window.__cookingGameTestHooks.setCookGauge(0.5));
+		// Frozen, the sweeping gauge stays exactly where it's set until the click grades it.
+		await hooks(page, () => {
+			const h = window.__cookingGameTestHooks;
+			const zone = h.getCookZone();
+			h.freeze(true);
+			h.setCookGauge((zone.start + zone.end) / 2);
+		});
 		await page.locator('#cooking-gauge-button').click();
+		await hooks(page, () => window.__cookingGameTestHooks.freeze(false));
 		await expect.poll(() => hooks(page, () => window.__cookingGameTestHooks.getHeld().heldDish)).toBe('Chicken Rice');
 	});
 });
@@ -394,12 +416,18 @@ test.describe('Coffee Machine (Coffee Pour minigame)', () => {
 		expect(pour).not.toBeNull();
 		expect(pour.grade).toBeNull();
 
+		// Frozen from press to release, the cup holds exactly the fill set
+		// here when the real pointerup grades it (live frames would keep
+		// pouring between these steps).
 		const center = await canvasToPage(page, { x: 480, y: 300 });
 		await page.mouse.move(center.x, center.y);
+		await hooks(page, () => window.__cookingGameTestHooks.freeze(true));
 		await page.mouse.down();
 		const target = (pour.band.min + pour.band.max) / 2;
 		await hooks(page, (fill) => window.__cookingGameTestHooks.setCoffeePourFill(fill), target);
 		await page.mouse.up();
+		expect(await hooks(page, () => window.__cookingGameTestHooks.getCoffeePour().grade)).toBe('perfect');
+		await hooks(page, () => window.__cookingGameTestHooks.freeze(false));
 
 		await expect.poll(() => hooks(page, () => window.__cookingGameTestHooks.getShiftState().bonusGard)).toBe(10);
 		expect(await hooks(page, () => window.__cookingGameTestHooks.getShiftState().sanity)).toBeGreaterThan(95);
@@ -482,11 +510,20 @@ test.describe('zero Reputation', () => {
 test.describe('Gard counter', () => {
 	test('earning Gard pops a "+N g" and the counter tracks it', async ({ page }) => {
 		await startShift(page);
-		await hooks(page, () => window.__cookingGameTestHooks.setShiftStats({ bonusGard: 40 }));
-		await expect.poll(() => hooks(page, () => window.__cookingGameTestHooks.getGardPops().length)).toBe(1);
-		const pops = await hooks(page, () => window.__cookingGameTestHooks.getGardPops());
+		// A pop lives 1.4 s of game time; polled across slow frames it could
+		// expire unseen. Frozen and stepped one frame, it's read exactly once
+		// it exists.
+		const pops = await hooks(page, () => {
+			const h = window.__cookingGameTestHooks;
+			h.freeze(true);
+			h.setShiftStats({ bonusGard: 40 });
+			h.step();
+			return h.getGardPops();
+		});
+		expect(pops).toHaveLength(1);
 		expect(pops[0].amount).toBe(40);
 		expect(await hooks(page, () => window.__cookingGameTestHooks.getNetShiftGard())).toBe(40);
+		await hooks(page, () => window.__cookingGameTestHooks.freeze(false));
 	});
 });
 

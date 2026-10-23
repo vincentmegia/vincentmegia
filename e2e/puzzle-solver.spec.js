@@ -128,12 +128,16 @@ test.describe('solving', () => {
 			[12, 15],
 		]);
 
-		await page.locator('#puzzle-solve-button').click();
-
-		// Grid editing tools lock while the DFS animation runs.
-		await expect(page.locator('#puzzle-tool-wall')).toBeDisabled();
-		await expect(page.locator('#puzzle-tool-start')).toBeDisabled();
-		await expect(page.locator('#puzzle-tool-end')).toBeDisabled();
+		// Grid editing tools lock while the DFS animation runs. Read in the
+		// same task as the click: runSolve() locks synchronously and the 0 ms
+		// reveal interval can't fire (and finish the solve) before this
+		// returns, so the check can't race the animation.
+		const locked = await page.evaluate(() => {
+			document.getElementById('puzzle-solve-button').click();
+			return ['wall', 'start', 'end', 'erase'].map((t) => document.getElementById(`puzzle-tool-${t}`).disabled)
+				.concat(document.getElementById('puzzle-reset-button').disabled, document.getElementById('puzzle-clear-path-button').disabled);
+		});
+		expect(locked).toEqual([true, true, true, true, true, true]);
 
 		await expect(page.locator('#puzzle-status')).toHaveText(/path found/i, { timeout: 10_000 });
 
@@ -164,6 +168,43 @@ test.describe('solving', () => {
 
 		await page.locator('#puzzle-solve-button').click();
 		await expect(page.locator('#puzzle-status')).toHaveText(/no path found/i, { timeout: 10_000 });
+	});
+});
+
+// Solves Start (5,5) → End (5,25) on an otherwise empty grid and waits for
+// the result, leaving a visited/path overlay drawn.
+async function solveOpenGrid(page) {
+	await page.goto('/puzzle-solver');
+	await speedUpSolveAnimation(page);
+	await setStart(page, 5, 5);
+	await setEnd(page, 5, 25);
+	await page.locator('#puzzle-solve-button').click();
+	await expect(page.locator('#puzzle-status')).toHaveText(/path found/i, { timeout: 10_000 });
+	const overlay = await page.evaluate(() => window.__puzzleSolverTestHooks.overlay());
+	expect(overlay.visited).toBeGreaterThan(0);
+	expect(overlay.path).toBeGreaterThan(0);
+}
+
+const overlay = (page) => page.evaluate(() => window.__puzzleSolverTestHooks.overlay());
+
+test.describe('clearing the overlay', () => {
+	test('Clear Path removes the visited/path overlay but keeps Start, End and walls', async ({ page }) => {
+		await solveOpenGrid(page);
+		await page.locator('#puzzle-clear-path-button').click();
+		expect(await overlay(page)).toEqual({ visited: 0, path: null });
+		// Start/End survive: the same grid can be solved again straight away.
+		await expect(page.locator('#puzzle-solve-button')).toBeEnabled();
+		await page.locator('#puzzle-solve-button').click();
+		await expect(page.locator('#puzzle-status')).toHaveText(/path found/i, { timeout: 10_000 });
+		expect((await overlay(page)).path).toBeGreaterThan(0);
+	});
+
+	test('editing walls after a solve clears the stale overlay', async ({ page }) => {
+		await solveOpenGrid(page);
+		await page.locator('#puzzle-tool-wall').click();
+		await clickCell(page, 15, 15);
+		expect(await overlay(page)).toEqual({ visited: 0, path: null });
+		await expect(page.locator('#puzzle-status')).toHaveText(/ready to solve/i);
 	});
 });
 

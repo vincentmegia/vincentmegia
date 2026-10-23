@@ -479,13 +479,16 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
       50% guard, page cap (`TestBusSync*`); scheduler (`TestRunScheduler*`,
       `TestNextDailyRun`); postal search incl. hit cached past 24 h →
       refetch after 25 h, misses cached, failures not cached
-      (`TestBusSearchPostal`), unavailable, OneMap budget
+      (`TestBusSearchPostal`), a miss expiring at exactly 1 h and a full
+      10,000-entry cache cleared on the next store
+      (`TestBusSearchPostalCacheBounds`), unavailable, OneMap budget
       (`TestBusSearchPostalGeocodeBudget`); route (`TestBusRoute`); bus
       positions.
 * [x] Handler (fakes, `bus_stops_test.go`): status codes and fragments for
       each error (`TestBusStopsNearby_Errors`, `TestBusStopsArrivals_Errors`,
       `TestBusStopsSearchPostal`, `TestBusStopsRoute`); 429 after the
-      per-IP limit for nearby/search/arrivals (`TestBusStops_RateLimits`);
+      per-IP limit for nearby/search/arrivals/route, with the 429 marked
+      `no-store` (`TestBusStops_RateLimits`);
       site CSP kept and Permissions-Policy set with no Maps key, no Maps
       script or map panel (`TestBusStopsIndex_NoMapsKey_…`); nonce CSP
       matches every script tag and changes per request
@@ -505,10 +508,6 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
       stub: loads only after location, one marker per card, plain-text
       titles, selection synced; no CSP violations (`watchCSP`). The
       projects card's full page load is in `e2e/projects.spec.js`.
-
-Gaps (no test found): the route fragment's 60/min limit (429) isn't in
-`TestBusStops_RateLimits`; the postal cache's 1 h miss expiry and
-10,000-entry cap aren't exercised.
 
 ---
 

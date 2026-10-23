@@ -318,6 +318,46 @@ test.describe('platform', () => {
 		expect(text).not.toMatch(/draw\.io|diagrams\.net/i);
 	});
 
+	test('no draw.io / diagrams.net branding in the editor UI, in any panel state', async ({ page }) => {
+		await openEditor(page);
+		// Visible text plus the accessible names/tooltips/placeholders under
+		// #easy-diagram-app. ".drawio" is the legacy file extension, which the
+		// format requires and the UI may name; the product name may not appear.
+		const branding = () => page.evaluate(() => {
+			const app = document.getElementById('easy-diagram-app');
+			const attrs = [...app.querySelectorAll('[title],[aria-label],[placeholder],[alt]')]
+				.map((e) => [e.title, e.getAttribute('aria-label'), e.placeholder, e.getAttribute('alt')].join(' '));
+			const text = [app.innerText, ...attrs].join(' ').replace(/\.drawio\b/gi, '');
+			return text.match(/draw\.?io|diagrams\.net|jgraph/gi) || [];
+		});
+		const states = {};
+		states.empty = await branding();
+		const a = await E(page, () => {
+			const e = window.__easyDiagram.engine;
+			const id = e.addShape('rect', { x: 60, y: 120, label: 'Alpha' });
+			e.select([id]);
+			return id;
+		});
+		states.shapeInspector = await branding();
+		await E(page, (from) => {
+			const e = window.__easyDiagram.engine;
+			const b = e.addShape('rect', { x: 420, y: 120, label: 'Beta' });
+			e.select([e.connect(from, b)]);
+		}, a);
+		states.connectorInspector = await branding();
+		for (const chip of await page.locator('.ed-cats button').all()) {
+			await chip.click();
+			states[`dock:${(await chip.textContent()).trim()}`] = await branding();
+		}
+		await page.getByRole('button', { name: 'Export' }).click();
+		states.exportPopover = await branding();
+		await page.keyboard.press('Escape');
+		await page.keyboard.press('Control+k');
+		states.commandPalette = await branding();
+		await page.keyboard.press('Escape');
+		for (const [state, hits] of Object.entries(states)) expect(hits, state).toEqual([]);
+	});
+
 	test('an HTMX request to /easy-diagram is redirected to a full load', async ({ page }) => {
 		const res = await page.request.get('/easy-diagram', { headers: { 'HX-Request': 'true' } });
 		expect(res.headers()['hx-redirect']).toBe('/easy-diagram');
@@ -1099,6 +1139,7 @@ test.describe('ui', () => {
 	});
 
 	test('every shape inspector control updates the model', async ({ page }) => {
+		test.slow(); // walks every inspector control; slow under parallel load
 		await openEditor(page);
 		const id = await E(page, () => window.__easyDiagram.engine.addShape('rect', { x: 100, y: 100 }));
 		const insp = inspector(page);
@@ -1168,6 +1209,7 @@ test.describe('ui', () => {
 	});
 
 	test('every connector inspector control updates the model; Connections selects the edge', async ({ page }) => {
+		test.slow(); // walks every inspector control; slow under parallel load
 		await openEditor(page);
 		const { a, b, ed } = await E(page, () => {
 			const e = window.__easyDiagram.engine;
@@ -2369,10 +2411,12 @@ test.describe('evidence', () => {
 		fs.writeFileSync(path.join(EVIDENCE, file), JSON.stringify(summary, null, 2));
 		expect(foreign).toEqual([]);
 		expect(requests.length).toBeGreaterThan(5);
-		// Nothing but GETs of the page and its static files.
+		// Nothing but successful GETs of the page and its static files.
 		for (const r of requests) {
 			if (/^(data|blob):/.test(r.url)) continue;
 			expect(r.method).toBe('GET');
+			expect(r.failed, r.url).toBeUndefined();
+			expect(r.status, r.url).toBeLessThan(400);
 			expect(new URL(r.url).pathname).toMatch(/^\/(easy-diagram|static\/easydiagram\/)/);
 		}
 	});

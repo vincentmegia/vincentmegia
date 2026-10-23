@@ -59,12 +59,13 @@ func shellPageData(r *http.Request, version, title string, transparentOverHero b
 }
 
 // versionLabel formats the footer's version string: "dev" as-is (a local
-// build with no -ldflags override), otherwise "v"-prefixed.
+// build with no -ldflags override), otherwise "v"-prefixed — once, so a
+// `git describe` tag that already starts with "v" isn't shown as "vv1.2".
 func versionLabel(version string) string {
 	if version == "" || version == "dev" {
 		return "dev"
 	}
-	return "v" + version
+	return "v" + strings.TrimPrefix(version, "v")
 }
 
 // Home renders GET /. TransparentOverHero is true here per

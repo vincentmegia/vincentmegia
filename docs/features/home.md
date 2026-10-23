@@ -287,10 +287,13 @@ database-driven in future must go through normal auto-escaping instead.
 
 ## Business Rules / Validation
 
-* The footer version is `main.Version` (default `"dev"`), overridable at
-  build time with `-ldflags "-X main.Version=…"`; `versionLabel` prints `dev`
-  or `v<version>`. Nothing in `Makefile` sets it today, so the footer shows
-  `dev` (see Open Questions).
+* The footer version is `main.Version` (default `"dev"`), set at build time
+  with `-ldflags "-X main.Version=…"`. `make build` passes
+  `git describe --tags --always --dirty` (or `VERSION=…`, falling back to
+  `dev` without git metadata); `go run`/`make run` show `dev`.
+  `versionLabel` prints `dev` or `v<version>`, with any leading `v` of a
+  tag not doubled (`TestVersionLabel`). Production shows a version only if
+  Render's build command is `make build` or passes the same flag.
 * The link matching the current path is marked active from
   `location.pathname` (and `PageData.NavActive` on first render), so it stays
   right across refresh and back/forward.
@@ -362,8 +365,15 @@ database-driven in future must go through normal auto-escaping instead.
       `/settings/resume` in the following subtests).
 * [x] Cross-site `POST /logout` is refused, same-origin passes —
       `cmd/server/hardening_test.go` `TestHandlerChain_RejectsCrossSiteWrites`.
-* [ ] Anonymous response body contains no Settings markup
-      (`settings-menu`) — untested.
+* [x] Anonymous response body contains no Settings markup
+      (`settings-menu`), and an authenticated one does —
+      `internal/handler/landing_content_test.go`
+      `TestHeaderSettingsMenuGatedOnAuth` (renders `header` from
+      `shellPageData`, then with `IsAuthenticated` set).
+* [x] Every `/settings/*` route, including each write route, answers an
+      anonymous request with 302 to `/login` before doing any work —
+      `cmd/server/settings_auth_routes_test.go`
+      `TestSettingsRoutesRequireAuth` (route list read from `main.go`).
 * [ ] Settings dropdown: items/icons, keyboard operation, item click closes
       it — untested (unreachable while auth is a stub).
 * [ ] Mobile panel focus trap and `Escape`/backdrop close returning focus —
@@ -371,8 +381,7 @@ database-driven in future must go through normal auto-escaping instead.
 * [ ] Identity link is a no-op on `/` — untested.
 * [ ] Content error state shows the generic message — untested.
 * [ ] Footer shows the version and working LinkedIn/GitHub links — untested.
-* [ ] `/security` placeholder redirect (`/settings/security`) — only
-      `/settings/profile` is checked.
+* [x] `/settings/security` redirects — `TestSettingsRoutesRequireAuth`.
 
 ---
 
@@ -403,9 +412,9 @@ database-driven in future must go through normal auto-escaping instead.
   `header-scroll.js` is empty and `.header--transparent` has no visual
   treatment, so the header is solid everywhere. Build it (landing-page.md) or
   drop the flag.
-* **Footer version**: no build sets `-ldflags -X main.Version`, so production
-  shows `dev`. Add it to `make build` / the Render build command, or remove
-  the label.
+* **Footer version**: `make build` stamps it; whether production shows it
+  depends on Render's build command using `make build` (or the same
+  `-ldflags`), which is configured outside this repo.
 * **Avatar photo**: only initials exist; a photo needs an external-script
   load-failure fallback.
 * **Logout and `/login`**: wait on the auth feature (sessions, real logout,

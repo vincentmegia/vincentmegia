@@ -480,6 +480,10 @@ export function init(canvas, elements) {
       setAnimationIntervalMs(ms) {
         animationIntervalMs = ms;
       },
+      /** Read-only size of the drawn visited/path overlay (0/null when cleared). */
+      overlay() {
+        return { visited: visitedCells.length, path: pathCells ? pathCells.length : null };
+      },
     };
   }
 

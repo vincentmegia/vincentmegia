@@ -827,6 +827,62 @@ func TestBusSearchPostal(t *testing.T) {
 	}
 }
 
+// TestBusSearchPostalCacheBounds covers the postal cache's other two
+// rules: a miss is cached for exactly an hour (then OneMap is asked again),
+// and a full cache (postalCacheMax entries) is cleared on the next store
+// rather than growing.
+func TestBusSearchPostalCacheBounds(t *testing.T) {
+	clk := &clock{t: at(12, 0)}
+	repo := newFakeBusRepo()
+	geo := &fakeGeocoder{places: map[string]onemap.Place{
+		"520106": {Postal: "520106", Label: "106 Simei Street 1", Latitude: 1.341885, Longitude: 103.950833},
+	}}
+	s := NewBusService(repo, nil, BusServiceOptions{Now: clk.Now, Geocoder: geo, GeocodeRate: 100, GeocodeBurst: 100})
+
+	// Miss expiry: still cached just under an hour, re-fetched at an hour.
+	s.SearchPostal(context.Background(), "123456")
+	clk.t = clk.t.Add(postalMissTTL - time.Second)
+	s.SearchPostal(context.Background(), "123456")
+	if geo.calls != 1 {
+		t.Fatalf("geocode calls before the miss TTL = %d, want 1", geo.calls)
+	}
+	clk.t = clk.t.Add(time.Second)
+	if _, err := s.SearchPostal(context.Background(), "123456"); !errors.Is(err, ErrBusPostalNotFound) {
+		t.Errorf("expired miss err = %v, want ErrBusPostalNotFound", err)
+	}
+	if geo.calls != 2 {
+		t.Errorf("geocode calls at the miss TTL = %d, want 2 (expired)", geo.calls)
+	}
+	// A hit outlives the miss TTL.
+	s.SearchPostal(context.Background(), "520106")
+	clk.t = clk.t.Add(2 * postalMissTTL)
+	s.SearchPostal(context.Background(), "520106")
+	if geo.calls != 3 {
+		t.Errorf("geocode calls after re-reading a 2 h old hit = %d, want 3 (cached)", geo.calls)
+	}
+
+	// Cap: fill the cache to postalCacheMax (520106 among them), then one
+	// more store clears it, so only the newest entry survives.
+	s.postalMu.Lock()
+	for i := 0; len(s.postal) < postalCacheMax; i++ {
+		s.postal[fmt.Sprintf("7%05d", i)] = postalEntry{fetchedAt: clk.t}
+	}
+	s.postalMu.Unlock()
+	s.SearchPostal(context.Background(), "654321")
+	s.postalMu.Lock()
+	size := len(s.postal)
+	_, kept := s.postal["654321"]
+	s.postalMu.Unlock()
+	if size != 1 || !kept {
+		t.Errorf("after storing into a full cache: size = %d, newest kept = %v; want 1, true", size, kept)
+	}
+	before := geo.calls
+	s.SearchPostal(context.Background(), "520106")
+	if geo.calls != before+1 {
+		t.Errorf("520106 should have been cleared with the full cache: calls %d → %d", before, geo.calls)
+	}
+}
+
 func TestBusSearchPostalUnavailable(t *testing.T) {
 	repo := newFakeBusRepo()
 	if _, err := NewBusService(repo, nil, BusServiceOptions{}).SearchPostal(context.Background(), "520106"); !errors.Is(err, ErrBusPostalUnavailable) {

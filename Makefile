@@ -12,8 +12,12 @@ deps: ## Install Go module dependencies and npm devDependencies (Tailwind CLI, P
 	npm install
 	npx playwright install chromium
 
-build: ## Build the server binary into bin/server.
-	go build -trimpath -o bin/server ./cmd/server
+# VERSION is what the footer shows (cmd/server/main.go's Version). Falls
+# back to "dev" when git metadata isn't available (e.g. a tarball build).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+build: ## Build the server binary into bin/server, stamping VERSION into the footer.
+	go build -trimpath -ldflags "-X main.Version=$(VERSION)" -o bin/server ./cmd/server
 
 run: ## Run the server (go run, no build artifact). Requires DATABASE_URL (or .env) — see docs/features/resume.md.
 	go run ./cmd/server

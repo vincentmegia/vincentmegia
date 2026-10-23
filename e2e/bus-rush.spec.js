@@ -34,6 +34,20 @@ async function deleteTestScore(playerName) {
 	}
 }
 
+// Waits for the first frame where snapshot()[key] === value and, with
+// pause, freezes the simulation on that frame. Short game-time states (a
+// 0.5 s skid, a 1 s ramp jump) and counting-down timers are then checked
+// against game time rather than raced against a loaded machine's clock.
+async function waitForSnap(page, key, value, { pause = false, timeout = 15000 } = {}) {
+	await page.waitForFunction(([k, v, freeze]) => {
+		const hooks = window.__busRushTestHooks;
+		const s = hooks.snapshot();
+		if (!s || s[k] !== v) return false;
+		if (freeze) hooks.pause(true);
+		return true;
+	}, [key, value, pause], { polling: 'raf', timeout });
+}
+
 test('renders canvas, HUD and start screen with the other overlays hidden', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await expect(page.locator('#bus-rush-canvas')).toBeVisible();
@@ -194,16 +208,22 @@ test('at full throttle with no damage, level 2 police fall behind instead of cat
 test('running over a banana skids the bus one lane over, locks steering, and costs no life', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.noPolice();
+	});
 	const snap = () => page.evaluate(() => window.__busRushTestHooks.snapshot());
 	const lives = await page.locator('#bus-rush-hud-lives').textContent();
 	const before = (await snap()).lane;
 	await page.evaluate(() => window.__busRushTestHooks.banana());
-	await expect.poll(async () => (await snap()).skidding, { timeout: 3000 }).toBe(true);
+	// Frozen on the skid's first frame: the 0.5 s skid can't run out mid-check.
+	await waitForSnap(page, 'skidding', true, { pause: true });
 	const skidded = (await snap()).lane;
 	expect(Math.abs(skidded - before)).toBe(1);
 	// Steering is locked mid-skid: a lane change keypress is ignored.
 	await page.keyboard.press(skidded > before ? 'ArrowLeft' : 'ArrowRight');
 	expect((await snap()).lane).toBe(skidded);
+	await page.evaluate(() => window.__busRushTestHooks.pause(false));
 	await expect.poll(async () => (await snap()).skidding).toBe(false);
 	expect((await snap()).status).toBe('playing');
 	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
@@ -292,10 +312,13 @@ test('a fuel tanker stuns the bus (steering locked, no life lost), then staying 
 	await page.evaluate(() => window.localStorage.removeItem('bus-rush:v1'));
 	await page.reload();
 	await page.locator('#bus-rush-start-button').click();
-	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.noPolice();
+	});
 	const lives = await page.locator('#bus-rush-hud-lives').textContent();
 	await page.evaluate(() => window.__busRushTestHooks.spawn('fuel'));
-	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 15000 }).toBe('stun');
 	await expect(page.locator('#bus-rush-hud-speed')).toHaveText('0 km/h');
 	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
 	const lane = (await snapshot(page)).lane;
@@ -305,7 +328,7 @@ test('a fuel tanker stuns the bus (steering locked, no life lost), then staying 
 	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
 	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
 	// Stay put: the tanker blows with the bus inside the blast.
-	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 4000 }).toBe(true);
+	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 15000 }).toBe(true);
 	await expect(page.locator('#bus-rush-run-over-screen')).toBeHidden();
 	await page.keyboard.press('Enter'); // skip to WASTED
 	await page.keyboard.press('Enter'); // on to Run Over
@@ -318,15 +341,21 @@ test('a fuel tanker stuns the bus (steering locked, no life lost), then staying 
 test('steering two lanes clear of a tanker during the fuse escapes the blast', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
-	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.noPolice();
+	});
 	await page.evaluate(() => window.__busRushTestHooks.spawn('fuel'));
-	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 15000 }).toBe('stun');
 	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
-	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
+	// Freeze on the fuse's first frame so both lane changes land with the
+	// whole fuse still to run, however slowly the machine delivers keys.
+	await waitForSnap(page, 'crash', 'fuse', { pause: true });
 	const key = (await snapshot(page)).lane <= 1 ? 'ArrowRight' : 'ArrowLeft';
 	await page.keyboard.press(key);
 	await page.keyboard.press(key);
-	await expect.poll(async () => (await snapshot(page)).tankerEscapes, { timeout: 4000 }).toBe(1);
+	await page.evaluate(() => window.__busRushTestHooks.pause(false));
+	await expect.poll(async () => (await snapshot(page)).tankerEscapes, { timeout: 15000 }).toBe(1);
 	const s = await snapshot(page);
 	expect(s.status).toBe('playing');
 	expect(s.crash).toBeNull();
@@ -371,12 +400,17 @@ test('Ram Plating is sold in the depot', async ({ page }) => {
 test('a shield power-up absorbs a lethal truck', async ({ page }) => {
 	await page.goto('/bus-rush');
 	await page.locator('#bus-rush-start-button').click();
-	await page.evaluate(() => window.__busRushTestHooks.noPolice());
+	await page.evaluate(() => {
+		window.__busRushTestHooks.noTraffic();
+		window.__busRushTestHooks.noPolice();
+	});
 	await page.evaluate(() => window.__busRushTestHooks.powerup('shield'));
-	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 3000 }).toBe(true);
+	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 5000 }).toBe(true);
 	const lives = (await snapshot(page)).lives;
 	await page.evaluate(() => window.__busRushTestHooks.spawn('truck'));
-	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 5000 }).toBe(false);
+	// ~5 s of game time for the truck to arrive (inside the 10 s shield);
+	// a loaded machine runs game time slower than the wall clock (dt is capped).
+	await expect.poll(async () => (await snapshot(page)).shield, { timeout: 15000 }).toBe(false);
 	const s = await snapshot(page);
 	expect(s.status).toBe('playing');
 	expect(s.lives).toBe(lives);
@@ -462,13 +496,18 @@ test('a semi carrying gasoline stuns for 20 s with a 4 s fuse, then staying clos
 	await startQuietRun(page);
 	const lives = await page.locator('#bus-rush-hud-lives').textContent();
 	await page.evaluate(() => window.__busRushTestHooks.spawn('semi', { hazmat: true }));
-	await expect.poll(async () => (await snapshot(page)).crash, { timeout: 5000 }).toBe('stun');
+	// Frozen on each timer's first frame, so the check reads its full length.
+	await waitForSnap(page, 'crash', 'stun', { pause: true });
 	expect((await snapshot(page)).stun).toBeGreaterThan(19);
 	await expect(page.locator('#bus-rush-hud-lives')).toHaveText(lives);
-	await page.evaluate(() => window.__busRushTestHooks.stunLeft(0.05));
-	await expect.poll(async () => (await snapshot(page)).crash).toBe('fuse');
+	await page.evaluate(() => {
+		window.__busRushTestHooks.stunLeft(0.05);
+		window.__busRushTestHooks.pause(false);
+	});
+	await waitForSnap(page, 'crash', 'fuse', { pause: true });
 	expect((await snapshot(page)).fuse).toBeGreaterThan(3);
-	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 6000 }).toBe(true);
+	await page.evaluate(() => window.__busRushTestHooks.pause(false));
+	await expect.poll(async () => (await snapshot(page)).cutscene, { timeout: 15000 }).toBe(true);
 	await page.keyboard.press('Enter');
 	await page.keyboard.press('Enter');
 	await expect(page.locator('#bus-rush-run-over-title')).toContainText('WASTED');
@@ -485,8 +524,9 @@ test('a ramp truck launches the bus onto the MRT track, where ← → switch tra
 	await startQuietRun(page);
 	await page.keyboard.press('ArrowLeft'); // into lane 0, where the ramp parks
 	await page.evaluate(() => window.__busRushTestHooks.ramp(0));
-	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe('jump');
-	await expect.poll(async () => (await snapshot(page)).track, { timeout: 5000 }).toBe('ride');
+	// The jump lasts 1 s of game time: watched every frame so a slow poll can't miss it.
+	await waitForSnap(page, 'track', 'jump');
+	await expect.poll(async () => (await snapshot(page)).track, { timeout: 10000 }).toBe('ride');
 	let snap = await snapshot(page);
 	expect(snap.trackRides).toBe(1);
 	expect(snap.trackLeft).toBeGreaterThan(45);

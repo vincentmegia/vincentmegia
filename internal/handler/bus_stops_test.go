@@ -391,6 +391,14 @@ func TestBusStops_RateLimits(t *testing.T) {
 			h.Arrivals(rec, req)
 			return rec
 		}},
+		{"route", busRouteLimit, func(h *BusStopsHandler) *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodGet, "/bus-stops/01012/route/12", nil)
+			req.SetPathValue("code", "01012")
+			req.SetPathValue("service", "12")
+			rec := httptest.NewRecorder()
+			h.Route(rec, req)
+			return rec
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -407,6 +415,11 @@ func TestBusStops_RateLimits(t *testing.T) {
 			}
 			if !strings.Contains(rec.Body.String(), htmlEscape(busMsgRateLimited)) {
 				t.Errorf("429 body: %s", rec.Body.String())
+			}
+			// A shared cache must never hold the 429 (route answers are
+			// otherwise cacheable).
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("429 Cache-Control = %q, want no-store", cc)
 			}
 			if svc.calls != tc.limit {
 				t.Errorf("service called %d times, want %d", svc.calls, tc.limit)

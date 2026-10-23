@@ -19,7 +19,7 @@ Tests:
   `make test-e2e`. It uses the test-only hook
   `window.__puzzleSolverTestHooks.setAnimationIntervalMs(ms)` to collapse
   the per-cell reveal animation; the production interval is unchanged.
-* There is no Go test for `GET /puzzle-solver` (see Testing Plan).
+* Go: `internal/handler/puzzle_solver_test.go` (`go test ./...`).
 
 The bootstrap-on-`htmx:afterSwap` fix for revisiting the page via HTMX is
 described under History.
@@ -300,9 +300,10 @@ persist (see Scope's Out of scope).
       via HTMX; no console errors (`e2e/puzzle-solver.spec.js`).
 * [x] The `/projects` card renders and links to `/puzzle-solver`
       (`e2e/projects.spec.js`).
-* [ ] A Go handler test asserting `GET /puzzle-solver` renders 200 with
-      `puzzle-solver-content` — none exists
-      (`internal/handler/*_test.go` has no PuzzleSolver test).
+* [x] Go handler: `GET /puzzle-solver` returns 200 with the toolbar,
+      canvas, status line and module script, as a full page and as a bare
+      `#main-content` HTMX fragment without the document shell
+      (`TestPagesHandler_PuzzleSolver`).
 
 ---
 
@@ -314,7 +315,7 @@ persist (see Scope's Out of scope).
   Freezing the animation or setting and asserting inside one hook would
   make it deterministic.
 * Whether to add the missing tests above (Clear Path, edit-after-solve
-  clearing, the Go route test).
+  clearing).
 
 ---
 

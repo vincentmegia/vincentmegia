@@ -118,12 +118,12 @@ describe('availableDishes', () => {
     assert.ok(shift6.length > shift5.length);
   });
 
-  test('shift 20 unlocks every band', () => {
+  test('every band is unlocked by shift 20 (the last band opens at 16)', () => {
     const names = availableDishes(20).map((d) => d.name);
     assert.equal(names.length, RECIPE_BANDS.reduce((n, band) => n + band.dishes.length, 0));
   });
 
-  test('out-of-range/non-finite input clamps into [1, 20]', () => {
+  test('out-of-range/non-finite input clamps into [1, SHIFTS_PER_MONTH] (30)', () => {
     assert.deepEqual(availableDishes(0), availableDishes(1));
     assert.deepEqual(availableDishes(-5), availableDishes(1));
     assert.deepEqual(availableDishes(999), availableDishes(20));
