@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/vincentmegia/vincentmegia/internal/config"
 	"github.com/vincentmegia/vincentmegia/internal/db"
+	"github.com/vincentmegia/vincentmegia/internal/repository"
+	"github.com/vincentmegia/vincentmegia/internal/service"
 )
 
 // chdirRepoRoot changes the working directory to the repo root for the
@@ -551,7 +554,7 @@ func TestEndToEnd(t *testing.T) {
 			}
 		})
 
-		form := url.Values{"player_name": {playerName}, "total_earnings": {"152000"}, "shifts_completed": {"30"}, "run_ticket": {startHospitalRun(t, client, srv.URL)}}
+		form := url.Values{"player_name": {playerName}, "total_earnings": {"152000"}, "shifts_completed": {"30"}, "run_ticket": {startHospitalRun(t, client, srv.URL, "month")}}
 		resp, err = client.PostForm(srv.URL+"/hospital-shift/score", form)
 		if err != nil {
 			t.Fatal(err)
@@ -621,7 +624,7 @@ func TestEndToEnd(t *testing.T) {
 				}
 			})
 			today := time.Now().UTC().Format("2006-01-02")
-			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}, "run_ticket": {startHospitalRun(t, client, srv.URL)}}
+			dailyForm := url.Values{"player_name": {dailyName}, "total_earnings": {"4321"}, "shifts_completed": {"1"}, "daily_date": {today}, "run_ticket": {startHospitalRun(t, client, srv.URL, "daily")}}
 			resp, err := client.PostForm(srv.URL+"/hospital-shift/score", dailyForm)
 			if err != nil {
 				t.Fatal(err)
@@ -852,6 +855,173 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatalf("status = %d, want 422 (reorder handler reached), body: %s", resp.StatusCode, body)
 		}
 	})
+
+	// The /settings/content editor's routes are unreachable while auth is
+	// stubbed, so these drive the same LandingContentService directly and
+	// through the JSON API. Each restores the carousel/work rows it touches.
+	landingSvc := service.NewLandingContentService(repository.NewLandingContentRepository(conn, conn))
+
+	t.Run("a 6th carousel slide is refused (ErrCarouselFull / API 409)", func(t *testing.T) {
+		original := listSlideIDs(t, client, srv.URL)
+		restoreSlides(t, client, srv.URL, original)
+
+		for n := len(original); n < 5; n++ {
+			createSlide(t, client, srv.URL, "E2E cap slide")
+		}
+		resp, body := apiDo(t, client, http.MethodPost, srv.URL+landingAPIPrefix+"/carousel", apiAuth(),
+			[]byte(`{"image_path":"/static/images/carousel/1.svg","alt":"sixth","caption":"","link_url":"","external":false}`))
+		if resp.StatusCode != http.StatusConflict || !strings.Contains(body, `"error":"carousel_full"`) {
+			t.Errorf("6th slide via API: status = %d, body = %s; want 409 carousel_full", resp.StatusCode, body)
+		}
+		if _, err := landingSvc.CreateSlide(ctx, "/static/images/carousel/1.svg", "sixth", "", "", false); !errors.Is(err, service.ErrCarouselFull) {
+			t.Errorf("service CreateSlide at the cap: err = %v, want ErrCarouselFull", err)
+		}
+		view, err := landingSvc.CreateSlideForm(ctx, "/static/images/carousel/1.svg", "sixth", "", "", false)
+		if err != nil || !view.Full || view.Error == "" || len(view.Slides) != 5 {
+			t.Errorf("CreateSlideForm at the cap = %+v, %v; want Full, an inline error, 5 slides", view, err)
+		}
+		if got := listSlideIDs(t, client, srv.URL); len(got) != 5 {
+			t.Errorf("after refused inserts there are %d slides, want 5", len(got))
+		}
+	})
+
+	t.Run("carousel move up/down and API reorder change the display order", func(t *testing.T) {
+		original := listSlideIDs(t, client, srv.URL)
+		restoreSlides(t, client, srv.URL, original)
+		for n := len(original); n < 2; n++ {
+			createSlide(t, client, srv.URL, "E2E reorder slide")
+		}
+		ids := listSlideIDs(t, client, srv.URL)
+
+		view, err := landingSvc.MoveSlideForm(ctx, ids[1], "up")
+		if err != nil {
+			t.Fatalf("MoveSlideForm up: %v", err)
+		}
+		if view.Slides[0].ID != ids[1] || view.Slides[1].ID != ids[0] {
+			t.Errorf("after move up, order starts %d,%d; want %d,%d", view.Slides[0].ID, view.Slides[1].ID, ids[1], ids[0])
+		}
+		view, err = landingSvc.MoveSlideForm(ctx, ids[1], "down")
+		if err != nil {
+			t.Fatalf("MoveSlideForm down: %v", err)
+		}
+		if view.Slides[0].ID != ids[0] || view.Slides[1].ID != ids[1] {
+			t.Errorf("after move down, order starts %d,%d; want %d,%d", view.Slides[0].ID, view.Slides[1].ID, ids[0], ids[1])
+		}
+
+		reversed := make([]int64, len(ids))
+		for i, id := range ids {
+			reversed[len(ids)-1-i] = id
+		}
+		payload, _ := json.Marshal(map[string][]int64{"ids": reversed})
+		if resp, body := apiDo(t, client, http.MethodPut, srv.URL+landingAPIPrefix+"/carousel/order", apiAuth(), payload); resp.StatusCode != http.StatusOK {
+			t.Fatalf("API reorder: status = %d, body = %s", resp.StatusCode, body)
+		}
+		if got := listSlideIDs(t, client, srv.URL); fmt.Sprint(got) != fmt.Sprint(reversed) {
+			t.Errorf("after API reorder the order is %v, want %v", got, reversed)
+		}
+	})
+
+	t.Run("stored <script> in hero/slide/work fields renders escaped on /", func(t *testing.T) {
+		const payload = "<script>alert(1)</script>"
+		const escaped = "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+		hero, err := landingSvc.GetHero(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { landingSvc.ReplaceHero(ctx, hero.Eyebrow, hero.Title, hero.Message) })
+		if _, err := landingSvc.ReplaceHero(ctx, payload, hero.Title, hero.Message); err != nil {
+			t.Fatalf("ReplaceHero: %v", err)
+		}
+
+		original := listSlideIDs(t, client, srv.URL)
+		restoreSlides(t, client, srv.URL, original)
+		if len(original) > 0 {
+			slide, err := landingSvc.GetSlide(ctx, original[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				landingSvc.UpdateSlide(ctx, slide.ID, slide.ImagePath, slide.Alt, slide.Caption, slide.LinkURL, slide.External)
+			})
+			if _, err := landingSvc.UpdateSlide(ctx, slide.ID, slide.ImagePath, slide.Alt, payload, slide.LinkURL, slide.External); err != nil {
+				t.Fatalf("UpdateSlide: %v", err)
+			}
+		} else {
+			createSlide(t, client, srv.URL, payload)
+		}
+
+		item, err := landingSvc.CreateWorkItem(ctx, "E2E", payload, payload, "/projects", false)
+		if err != nil {
+			t.Fatalf("CreateWorkItem: %v", err)
+		}
+		t.Cleanup(func() { landingSvc.DeleteWorkItem(ctx, item.ID) })
+
+		_, page := get(t, client, srv.URL+"/")
+		if strings.Contains(page, payload) {
+			t.Error("/ contains the stored <script> payload unescaped")
+		}
+		// hero eyebrow + slide caption + work title + work description
+		if n := strings.Count(page, escaped); n < 4 {
+			t.Errorf("/ contains the escaped payload %d times, want >= 4", n)
+		}
+	})
+}
+
+// listSlideIDs returns the carousel's slide IDs in display order (API).
+func listSlideIDs(t *testing.T, client *http.Client, baseURL string) []int64 {
+	t.Helper()
+	resp, body := apiDo(t, client, http.MethodGet, baseURL+landingAPIPrefix+"/carousel", apiAuth(), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET carousel: status = %d, body = %s", resp.StatusCode, body)
+	}
+	var out struct {
+		Slides []struct {
+			ID int64 `json:"id"`
+		} `json:"slides"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("decode carousel: %v (%s)", err, body)
+	}
+	ids := make([]int64, 0, len(out.Slides))
+	for _, s := range out.Slides {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
+// createSlide adds a carousel slide through the API (the caller's
+// restoreSlides cleanup removes it).
+func createSlide(t *testing.T, client *http.Client, baseURL, caption string) {
+	t.Helper()
+	payload, _ := json.Marshal(map[string]any{
+		"image_path": "/static/images/carousel/1.svg", "alt": "E2E slide", "caption": caption, "link_url": "", "external": false,
+	})
+	resp, body := apiDo(t, client, http.MethodPost, baseURL+landingAPIPrefix+"/carousel", apiAuth(), payload)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create slide: status = %d, body = %s", resp.StatusCode, body)
+	}
+}
+
+// restoreSlides registers a cleanup that deletes every slide not in
+// original and puts original back in its order.
+func restoreSlides(t *testing.T, client *http.Client, baseURL string, original []int64) {
+	t.Helper()
+	t.Cleanup(func() {
+		keep := map[int64]bool{}
+		for _, id := range original {
+			keep[id] = true
+		}
+		for _, id := range listSlideIDs(t, client, baseURL) {
+			if !keep[id] {
+				apiDo(t, client, http.MethodDelete, fmt.Sprintf("%s%s/carousel/%d", baseURL, landingAPIPrefix, id), apiAuth(), nil)
+			}
+		}
+		payload, _ := json.Marshal(map[string][]int64{"ids": original})
+		if resp, body := apiDo(t, client, http.MethodPut, baseURL+landingAPIPrefix+"/carousel/order", apiAuth(), payload); resp.StatusCode != http.StatusOK {
+			t.Errorf("restore carousel order: status = %d, body = %s", resp.StatusCode, body)
+		}
+	})
 }
 
 // testLandingAPIToken is the bearer token the end-to-end server is built
@@ -908,10 +1078,11 @@ func get(t *testing.T, client *http.Client, url string) (*http.Response, string)
 // startHospitalRun starts a Hospital Shift run (POST /hospital-shift/run)
 // and returns its signed ticket, which a score submission must carry
 // (leaderboard anti-cheat). This test server's time check is off, as for
-// the Playwright suite, so the score can follow straight away.
-func startHospitalRun(t *testing.T, client *http.Client, baseURL string) string {
+// the Playwright suite, so the score can follow straight away. kind is
+// "month" or "daily" — a ticket only submits a score of its own kind.
+func startHospitalRun(t *testing.T, client *http.Client, baseURL, kind string) string {
 	t.Helper()
-	resp, err := client.Post(baseURL+"/hospital-shift/run", "text/plain", nil)
+	resp, err := client.Post(baseURL+"/hospital-shift/run?kind="+kind, "text/plain", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,16 @@
      is optional) — see
      internal/service/resume_admin_encoding.go's DecodeFeaturedProjects. */}}
 {{define "resume-admin-featured-form"}}
+{{if .LoadFailed}}
+{{/* Load/save failure: show the error with no form, so a second Save
+     can never overwrite the stored card with blank fields (see
+     service.BannerFormView.LoadFailed). Keeps the same id so the page
+     layout and any later swap target stay intact. */}}
+<div id="resume-admin-featured" class="space-y-3 rounded-card border border-line bg-surface p-5">
+	<h2 class="text-base font-semibold text-ink">Featured Projects</h2>
+	<p role="alert" class="rounded-card border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">{{.Error}}</p>
+</div>
+{{else}}
 <form
 	id="resume-admin-featured"
 	hx-post="/settings/resume/sidebar/featured-projects"
@@ -28,4 +38,5 @@
 		<span id="resume-admin-featured-loading" class="htmx-indicator text-sm text-muted">Saving…</span>
 	</div>
 </form>
+{{end}}
 {{end}}

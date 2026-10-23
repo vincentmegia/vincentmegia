@@ -150,13 +150,24 @@ func (h *HospitalShiftHandler) SubmitScore(w http.ResponseWriter, r *http.Reques
 // (shift 1, or a Daily Challenge) starts and keeps the signed ticket it
 // returns for the Final Paycheck's score submission — see
 // service.HospitalRunTickets. Plain text, not HTML: it's read by fetch, not
-// swapped in by HTMX.
+// swapped in by HTMX. The kind form/query value says which run the ticket
+// is for — "daily" for a Daily Challenge, "month" (or none) for a month —
+// and the ticket only submits a score of that kind.
 func (h *HospitalShiftHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 	if !h.runLimiter.Allow(middleware.ClientKey(r)) {
 		http.Error(w, "Too many runs started — please slow down.", http.StatusTooManyRequests)
 		return
 	}
-	ticket, err := h.Service.IssueRunTicket()
+	var daily bool
+	switch r.FormValue("kind") {
+	case "", "month":
+	case "daily":
+		daily = true
+	default:
+		http.Error(w, "Unknown run kind.", http.StatusBadRequest)
+		return
+	}
+	ticket, err := h.Service.IssueRunTicket(daily)
 	if err != nil {
 		slog.Error("issue hospital run ticket", "error", err)
 		http.Error(w, "Couldn't start a run.", http.StatusInternalServerError)
@@ -186,6 +197,7 @@ func isHospitalValidationError(err error) bool {
 		service.ErrHospitalRunTicketMissing,
 		service.ErrHospitalRunTicketInvalid,
 		service.ErrHospitalRunTicketExpired,
+		service.ErrHospitalRunTicketWrongKind,
 		service.ErrHospitalRunTicketUsed,
 		service.ErrHospitalRunTooFast,
 	} {

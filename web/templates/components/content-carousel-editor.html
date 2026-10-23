@@ -20,12 +20,18 @@
 <div id="carousel-editor" class="space-y-4 rounded-card border border-line bg-surface p-5">
 	<div class="flex items-baseline justify-between">
 		<h2 class="text-base font-semibold text-ink">Carousel</h2>
-		<span class="text-xs text-muted">{{len .Slides}} of 5 slides</span>
+		{{if not .Unavailable}}<span class="text-xs text-muted">{{len .Slides}} of 5 slides</span>{{end}}
 	</div>
 	{{if .Error}}
 	<p class="rounded-card border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">{{.Error}}</p>
 	{{end}}
 
+	{{/* .Unavailable: a write failed and re-reading the slides failed too
+	     (LandingContentHandler.writeCarouselError) — show only the error,
+	     not an empty list + add form that would look like zero slides. */}}
+	{{if .Unavailable}}
+	<p class="text-sm text-muted">Reload the page to see the current slides.</p>
+	{{else}}
 	{{range .Slides}}
 	<form
 		id="carousel-slide-{{.ID}}"
@@ -99,6 +105,7 @@
 		</label>
 		<button type="submit" class="rounded-card bg-primary px-3 py-1.5 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Add slide</button>
 	</form>
+	{{end}}
 	{{end}}
 </div>
 {{end}}

@@ -295,7 +295,7 @@ pattern. The page fetches run tickets with plain `fetch`
 | GET    | `/hospital-shift`             | `HospitalShiftHandler.Index`       | no | `ContentTemplate: "hospital-shift-content"`. No DB fetch. |
 | GET    | `/hospital-shift/leaderboard` | `HospitalShiftHandler.Leaderboard` | no | Bare fragment; `?board=daily` for today's (UTC) Daily Challenge. |
 | POST   | `/hospital-shift/score`       | `HospitalShiftHandler.SubmitScore` | no | Form `player_name`, `total_earnings`, `shifts_completed`, optional `daily_date` (YYYY-MM-DD, today ± 1 day UTC; a daily run must be 1 shift, any other run 30), `run_ticket` (anti-cheat, below). Own per-IP `scoreSubmitLimiter` (5/min). A 4xx's reason shows under the form. |
-| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed run ticket as `text/plain` (`Cache-Control: no-store`). Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min). Tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test. |
+| POST   | `/hospital-shift/run`         | `HospitalShiftHandler.StartRun`    | no | Starts a run: returns a signed run ticket as `text/plain` (`Cache-Control: no-store`). `kind=daily` (form or query) mints a Daily ticket; `kind=month` or no `kind` mints a month ticket; any other value → 400. Called by the page when a month starts at shift 1 (or the page's first shift) and for each Daily. Own per-IP limiter (120/min). Tickets are a cheap HMAC, and the Playwright suite starts a run for nearly every test. |
 
 ---
 
@@ -397,11 +397,17 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
   faking one take about as long as playing:
   * *Run tickets.* When a run starts, the page asks
     `POST /hospital-shift/run` for a ticket,
-    `v1.<issued unix>.<nonce>.<HMAC-SHA256>`, and the Final Paycheck
+    `v2.<kind>.<issued unix>.<nonce>.<HMAC-SHA256>`, where `<kind>` is
+    `month` or `daily` and is covered by the HMAC. The Final Paycheck
     submits it as `run_ticket`. These tickets get a 400: missing,
-    tampered or foreign-signed tickets; tickets older than 12 h
-    (`hospitalRunTicketMaxAge`); and tickets whose issue time is in the
-    future.
+    tampered or foreign-signed tickets; `v1` tickets; tickets older than
+    12 h (`hospitalRunTicketMaxAge`); tickets whose issue time is in the
+    future; and a ticket of the wrong kind, either a month ticket
+    submitting a Daily or a Daily ticket submitting a month
+    (`ErrHospitalRunTicketWrongKind`). `v1` tickets carried no kind, so
+    they are rejected rather than accepted as either kind. A ticket
+    lives at most 12 h, so the only cost is that a run in progress across
+    the v2 deploy can't submit.
   * *Minimum time.* A score is rejected ("faster than those shifts can be
     played") unless 90% of its shifts' clock time has really passed since
     the ticket was issued: 3.6 h for a month and 7.2 min for a Daily. The
@@ -419,9 +425,7 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
     prove one. A ticket isn't tied to any play. Anyone can
     `POST /hospital-shift/run` from a script, wait out the minimum time
     and submit any total up to the per-shift cap (300,000 for a month,
-    10,000 for a Daily) without opening the page. A ticket also isn't
-    bound to a run kind, so a month's ticket can submit a Daily after
-    7.2 min. A real-time player can edit the final number within the cap.
+    10,000 for a Daily) without opening the page. A real-time player can edit the final number within the cap.
     The Playwright hooks (`window.__hospitalShiftTestHooks`,
     `window.__hospitalShiftTestSeed`) ship in production. What the checks
     stop is instant fake submissions and replaying one ticket into many
@@ -447,13 +451,14 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       (`TestHospitalShiftHandler_SubmitScore_ShortMonthRejected`), the
       daily board, a daily submit answering with it, and a stale daily
       date → 400 (`TestHospitalShiftHandler_DailyBoard`). Also the ticket
-      route: no-store, "no ticket" and "faster than" 400s, and the 429
+      route: no-store, month and `?kind=daily` tickets, an unknown kind
+      → 400, "no ticket" and "faster than" 400s, and the 429
       (`TestHospitalShiftHandler_RunTickets`).
-* [ ] Go handler DB-error path: the fake repo has `insertErr`/`topErr`,
-      but no handler test sets them, so the leaderboard error fragment and
-      a failed score insert at the handler are untested. Only the service
-      covers a repository error
-      (`TestHospitalService_SubmitScore_RepositoryError`).
+* [x] Go handler DB-error path (`TestHospitalShiftHandler_DBErrors`): a
+      `topErr` on either board, a failed insert, and a stored score whose
+      refreshed board fails all answer 200 with the inline "Couldn't load
+      the leaderboard" fragment and never the raw error. A retry with the
+      same ticket after the failed insert succeeds.
 * [x] Go service/validation (`hospital_service_test.go`,
       `hospital_validation_test.go`): valid submit, validation rejections,
       repository error, leaderboard, the daily board, and daily rows kept
@@ -463,13 +468,11 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
       replay rejected, including from a fresh service as after a restart
       (`TestHospitalService_SubmitScore_AntiCheat`); still usable after a
       failed insert (`…_FailedInsertKeepsTicket`); missing, garbage,
-      tampered, foreign-signed, too-fast and expired tickets rejected
-      (`TestHospitalRunTickets_Rejects`); the time check's off switch; the
-      per-shift earnings cap (`…_ImplausibleEarnings`).
-* [ ] Anti-cheat gaps: a future-dated ticket (`elapsed < 0`) and a month
-      ticket submitted as a Daily have no test. (The single-use Release
-      path no longer exists. It was replaced by the `run_nonce` UNIQUE
-      insert, so there is nothing to test there.)
+      tampered (time or kind), foreign-signed, `v1`, too-fast, expired and
+      future-dated tickets rejected, and a month ticket as a Daily or a
+      Daily ticket as a month rejected (`TestHospitalRunTickets_Rejects`,
+      `TestHospitalService_SubmitScore_TicketKind`); the time check's off
+      switch; the per-shift earnings cap (`…_ImplausibleEarnings`).
 * [x] Real Postgres (`cmd/server/e2e_test.go`, "hospital shift routes
       round-trip…"): page, leaderboard, a score round trip with a ticket,
       a bad form without a raw DB error, a replayed ticket refused by the
@@ -513,8 +516,8 @@ All numbers are named constants in `web/static/js/hospital/rules.js`.
 * **Anti-cheat strength (owner decision):** tickets aren't tied to play.
   The month cap (10,000 × 30 = 300,000, the DB cap) is about twice an
   honest strong month. Options include a realistic per-shift cap, a cap
-  on tickets per IP, per-shift check-ins, or binding the run kind
-  (month/daily) into the ticket.
+  on tickets per IP, or per-shift check-ins. (The run kind is now bound
+  into the ticket.)
 * Should the page's Playwright hooks ship in production (shared with the
   other games)?
 

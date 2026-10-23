@@ -88,7 +88,7 @@ func (h *LandingContentHandler) CreateSlide(w http.ResponseWriter, r *http.Reque
 	view, err := h.Service.CreateSlideForm(r.Context(), r.FormValue("image_path"), r.FormValue("alt"), r.FormValue("caption"), r.FormValue("link_url"), r.FormValue("external") == "on")
 	if err != nil {
 		slog.Error("create carousel slide", "error", err)
-		h.writeCarouselError(w)
+		h.writeCarouselError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-carousel-editor", view)
@@ -112,7 +112,7 @@ func (h *LandingContentHandler) UpdateSlide(w http.ResponseWriter, r *http.Reque
 	view, err := h.Service.UpdateSlideForm(r.Context(), id, r.FormValue("image_path"), r.FormValue("alt"), r.FormValue("caption"), r.FormValue("link_url"), r.FormValue("external") == "on")
 	if err != nil {
 		slog.Error("update carousel slide", "error", err, "id", id)
-		h.writeCarouselError(w)
+		h.writeCarouselError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-carousel-editor", view)
@@ -132,7 +132,7 @@ func (h *LandingContentHandler) DeleteSlide(w http.ResponseWriter, r *http.Reque
 	view, err := h.Service.DeleteSlideForm(r.Context(), id)
 	if err != nil {
 		slog.Error("delete carousel slide", "error", err, "id", id)
-		h.writeCarouselError(w)
+		h.writeCarouselError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-carousel-editor", view)
@@ -156,7 +156,7 @@ func (h *LandingContentHandler) MoveSlide(w http.ResponseWriter, r *http.Request
 	view, err := h.Service.MoveSlideForm(r.Context(), id, r.FormValue("direction"))
 	if err != nil {
 		slog.Error("move carousel slide", "error", err, "id", id)
-		h.writeCarouselError(w)
+		h.writeCarouselError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-carousel-editor", view)
@@ -176,7 +176,7 @@ func (h *LandingContentHandler) CreateWorkItem(w http.ResponseWriter, r *http.Re
 	view, err := h.Service.CreateWorkItemForm(r.Context(), r.FormValue("kicker"), r.FormValue("title"), r.FormValue("description"), r.FormValue("live_url"), r.FormValue("external") == "on")
 	if err != nil {
 		slog.Error("create selected work item", "error", err)
-		h.writeWorkError(w)
+		h.writeWorkError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-work-editor", view)
@@ -200,7 +200,7 @@ func (h *LandingContentHandler) UpdateWorkItem(w http.ResponseWriter, r *http.Re
 	view, err := h.Service.UpdateWorkItemForm(r.Context(), id, r.FormValue("kicker"), r.FormValue("title"), r.FormValue("description"), r.FormValue("live_url"), r.FormValue("external") == "on")
 	if err != nil {
 		slog.Error("update selected work item", "error", err, "id", id)
-		h.writeWorkError(w)
+		h.writeWorkError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-work-editor", view)
@@ -220,7 +220,7 @@ func (h *LandingContentHandler) DeleteWorkItem(w http.ResponseWriter, r *http.Re
 	view, err := h.Service.DeleteWorkItemForm(r.Context(), id)
 	if err != nil {
 		slog.Error("delete selected work item", "error", err, "id", id)
-		h.writeWorkError(w)
+		h.writeWorkError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-work-editor", view)
@@ -244,7 +244,7 @@ func (h *LandingContentHandler) MoveWorkItem(w http.ResponseWriter, r *http.Requ
 	view, err := h.Service.MoveWorkItemForm(r.Context(), id, r.FormValue("direction"))
 	if err != nil {
 		slog.Error("move selected work item", "error", err, "id", id)
-		h.writeWorkError(w)
+		h.writeWorkError(w, r)
 		return
 	}
 	h.Renderer.RenderFragment(w, "content-work-editor", view)
@@ -261,19 +261,32 @@ func parsePathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// writeCarouselError renders the content-carousel-editor fragment with a
-// generic error and no items, for the rare case a DB failure happens
-// after the primary write (or on the write itself) — never exposes the
-// raw error to the client, per docs/skills/go-backend/SKILL.md "Errors".
-func (h *LandingContentHandler) writeCarouselError(w http.ResponseWriter) {
-	h.Renderer.RenderFragment(w, "content-carousel-editor", service.CarouselEditorView{
-		Error: "Couldn't save that just now. Please try again shortly.",
-	})
+// saveFailedMessage is the generic message shown after a failed editor
+// write — never the raw error, per docs/skills/go-backend/SKILL.md
+// "Errors".
+const saveFailedMessage = "Couldn't save that just now. Please try again shortly."
+
+// writeCarouselError renders the content-carousel-editor fragment after a
+// DB failure (on the write itself, or on the re-read after it). It
+// re-fetches the current slides so the list stays on screen with the
+// error above it; if that re-fetch fails too, it renders the error alone
+// (Unavailable), never an empty list plus add form that would read as
+// "the carousel has no slides".
+func (h *LandingContentHandler) writeCarouselError(w http.ResponseWriter, r *http.Request) {
+	view, err := h.Service.CarouselViewWithError(r.Context(), saveFailedMessage)
+	if err != nil {
+		slog.Error("reload carousel slides after a failed write", "error", err)
+		view = service.CarouselEditorView{Error: saveFailedMessage, Unavailable: true}
+	}
+	h.Renderer.RenderFragment(w, "content-carousel-editor", view)
 }
 
 // writeWorkError is writeCarouselError's Selected-work counterpart.
-func (h *LandingContentHandler) writeWorkError(w http.ResponseWriter) {
-	h.Renderer.RenderFragment(w, "content-work-editor", service.WorkEditorView{
-		Error: "Couldn't save that just now. Please try again shortly.",
-	})
+func (h *LandingContentHandler) writeWorkError(w http.ResponseWriter, r *http.Request) {
+	view, err := h.Service.WorkViewWithError(r.Context(), saveFailedMessage)
+	if err != nil {
+		slog.Error("reload selected work items after a failed write", "error", err)
+		view = service.WorkEditorView{Error: saveFailedMessage, Unavailable: true}
+	}
+	h.Renderer.RenderFragment(w, "content-work-editor", view)
 }

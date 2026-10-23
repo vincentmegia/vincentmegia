@@ -19,7 +19,26 @@ import (
 // icon keys resolved, bold markup converted. See
 // docs/features/resume.md's Data Model.
 type ResumeService struct {
-	Repo *repository.ResumeRepository
+	Repo resumeRepository
+}
+
+// resumeRepository is the subset of *repository.ResumeRepository this
+// service depends on, declared here (not in internal/repository) so tests
+// can substitute an in-memory or failing fake without a real database —
+// see docs/skills/go-backend/SKILL.md "Service"/"Testability".
+// *repository.ResumeRepository satisfies this implicitly.
+type resumeRepository interface {
+	GetProfile(ctx context.Context) (model.Profile, error)
+	ListRoles(ctx context.Context) ([]model.Role, error)
+	UpdateBanner(ctx context.Context, roleTitle, tenureLabel, locationLabel string, contactLinks []model.ContactLink, fontStyle string) error
+	UpdateExpertise(ctx context.Context, skillGroups []model.SkillGroup, fontStyle string) error
+	UpdateEducation(ctx context.Context, education []model.Education, fontStyle string) error
+	UpdateFeaturedProjects(ctx context.Context, featuredProjects []model.FeaturedProject, fontStyle string) error
+	UpdateSummary(ctx context.Context, summaryParagraphs []string, stats []model.Stat, fontStyle string) error
+	CreateRole(ctx context.Context, r model.Role) (model.Role, error)
+	UpdateRole(ctx context.Context, r model.Role) (model.Role, error)
+	DeleteRole(ctx context.Context, id int64) error
+	MoveRole(ctx context.Context, id int64, direction string) error
 }
 
 // NewResumeService wraps a ResumeRepository.

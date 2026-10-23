@@ -91,12 +91,22 @@ func TestBuildResumeDocx_ValidZipWithExpectedContent(t *testing.T) {
 			t.Errorf("document.xml missing %q\n--- xml ---\n%s", want, xmlStr)
 		}
 	}
-	// Same reading order as the PDF: stats inside Summary, Featured
-	// Projects after Education.
-	order := []string{"Summary", "Prepaid Subscribers Supported", "Experience", "Education", "Featured Projects"}
-	for i := 1; i < len(order); i++ {
-		if strings.Index(xmlStr, order[i-1]) > strings.Index(xmlStr, order[i]) {
-			t.Errorf("document.xml has %q after %q", order[i-1], order[i])
+	// Section order, as docs/features/resume-export.md documents it: the
+	// PDF's order except Core Expertise stays ahead of Experience (the
+	// page's sidebar position). Headings are matched as whole w:t runs so
+	// e.g. "Experience" can't match inside body text.
+	order := []string{
+		"<w:t>Summary</w:t>", "Prepaid Subscribers Supported",
+		"<w:t>Core Expertise</w:t>", "Go, TypeScript",
+		"<w:t>Experience</w:t>", "Led a team",
+		"<w:t>Education</w:t>", "<w:t>Featured Projects</w:t>",
+	}
+	for i, want := range order {
+		if strings.Count(xmlStr, want) != 1 {
+			t.Fatalf("document.xml has %d of %q, want exactly 1", strings.Count(xmlStr, want), want)
+		}
+		if i > 0 && strings.Index(xmlStr, order[i-1]) > strings.Index(xmlStr, want) {
+			t.Errorf("document.xml has %q after %q", order[i-1], want)
 		}
 	}
 	if !strings.Contains(xmlStr, "AWS &amp; &lt;Kubernetes&gt;") {

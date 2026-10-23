@@ -167,6 +167,11 @@ are `model.HeroContent`, `model.CarouselSlide`, `model.SelectedWorkItem`
       as HTMX nav — `TestSelectedWorkFullPageLinks`, `TestIsFullPageRoute`.
 * [ ] The content-fetch error path renders the generic message — untested.
 * [ ] Selected work section is omitted when empty — untested.
+* [x] The carousel section is omitted with zero slides —
+      `TestCarouselOmittedWithNoSlides`.
+* [x] Stored `<script>` in hero/slide/work fields renders escaped —
+      `TestEndToEnd` "stored <script> in hero/slide/work fields renders
+      escaped on /".
 * [ ] Playwright coverage of `/`'s content (CTAs navigate, background
       layer doesn't cause horizontal scroll) — none.
 

@@ -32,11 +32,22 @@ import (
 //
 // Each ticket is single-use — its nonce is stored with the score row under
 // a UNIQUE constraint — so one honest run can't be replayed into many
-// leaderboard rows.
+// leaderboard rows. Each ticket is also signed for one kind of run (the
+// month, or the Daily Challenge), so a month ticket held for the Daily's
+// short clock can't submit a Daily score, and the reverse.
 
 const (
 	// hospitalRunTicketVersion prefixes every ticket so the format can change.
-	hospitalRunTicketVersion = "v1"
+	// v2 added the run kind to the signed payload. v1 tickets are rejected:
+	// they carry no kind, so accepting one would reopen the month-ticket-
+	// as-Daily hole for its remaining lifetime, and a ticket lives at most
+	// hospitalRunTicketMaxAge — a run in progress across the deploy just
+	// can't submit.
+	hospitalRunTicketVersion = "v2"
+	// hospitalRunKindMonth/hospitalRunKindDaily are the run kinds a ticket
+	// is signed for.
+	hospitalRunKindMonth = "month"
+	hospitalRunKindDaily = "daily"
 	// hospitalRunTicketMaxAge bounds how long a run can take: a 30-shift run
 	// is ~4 hours of clock, so 12 hours leaves room for long breaks with
 	// the tab open.
@@ -59,6 +70,7 @@ var (
 	ErrHospitalRunTicketMissing    = errors.New("this run has no ticket — start a new run to submit a score")
 	ErrHospitalRunTicketInvalid    = errors.New("this run's ticket isn't valid — start a new run to submit a score")
 	ErrHospitalRunTicketExpired    = errors.New("this run's ticket has expired — start a new run to submit a score")
+	ErrHospitalRunTicketWrongKind  = errors.New("this run's ticket is for a different kind of run — start a new run to submit a score")
 	ErrHospitalRunTicketUsed       = errors.New("this run's score was already submitted")
 	ErrHospitalRunTooFast          = errors.New("that score came in faster than those shifts can be played")
 	ErrHospitalEarningsImplausible = errors.New("those earnings are more than those shifts can pay")
@@ -137,18 +149,27 @@ func (t *HospitalRunTickets) sign(payload string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// Issue returns a new ticket: "v1.<issued unix>.<nonce>.<hmac>".
-func (t *HospitalRunTickets) Issue() (string, error) {
+func hospitalRunKind(daily bool) string {
+	if daily {
+		return hospitalRunKindDaily
+	}
+	return hospitalRunKindMonth
+}
+
+// Issue returns a new ticket for a month run, or a Daily Challenge when
+// daily: "v2.<kind>.<issued unix>.<nonce>.<hmac>".
+func (t *HospitalRunTickets) Issue(daily bool) (string, error) {
 	nonce := make([]byte, 12)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("generate hospital run nonce: %w", err)
 	}
-	payload := fmt.Sprintf("%s.%d.%s", hospitalRunTicketVersion, t.now().Unix(), hex.EncodeToString(nonce))
+	payload := fmt.Sprintf("%s.%s.%d.%s", hospitalRunTicketVersion, hospitalRunKind(daily), t.now().Unix(), hex.EncodeToString(nonce))
 	return payload + "." + t.sign(payload), nil
 }
 
-// Verify checks a ticket for a run claiming `shifts` shifts and returns
-// its nonce. It doesn't mark the ticket used: single use is the
+// Verify checks a ticket for a run claiming `shifts` shifts — a Daily
+// Challenge when daily, which the ticket must have been issued for — and
+// returns its nonce. It doesn't mark the ticket used: single use is the
 // hospital_scores.run_nonce UNIQUE constraint (migration 014), so the
 // score row and the "spent" mark are one insert — durable across restarts
 // and instances, and a failed insert leaves the ticket unspent.
@@ -157,14 +178,17 @@ func (t *HospitalRunTickets) Verify(ticket string, shifts int, daily bool) (stri
 		return "", ErrHospitalRunTicketMissing
 	}
 	parts := strings.Split(ticket, ".")
-	if len(parts) != 4 || parts[0] != hospitalRunTicketVersion {
+	if len(parts) != 5 || parts[0] != hospitalRunTicketVersion {
 		return "", ErrHospitalRunTicketInvalid
 	}
-	payload := strings.Join(parts[:3], ".")
-	if !hmac.Equal([]byte(parts[3]), []byte(t.sign(payload))) {
+	payload := strings.Join(parts[:4], ".")
+	if !hmac.Equal([]byte(parts[4]), []byte(t.sign(payload))) {
 		return "", ErrHospitalRunTicketInvalid
 	}
-	issuedUnix, err := strconv.ParseInt(parts[1], 10, 64)
+	if parts[1] != hospitalRunKind(daily) {
+		return "", ErrHospitalRunTicketWrongKind
+	}
+	issuedUnix, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
 		return "", ErrHospitalRunTicketInvalid
 	}
@@ -175,5 +199,5 @@ func (t *HospitalRunTickets) Verify(ticket string, shifts int, daily bool) (stri
 	if !t.SkipTimeCheck && elapsed < HospitalMinRunDuration(shifts, daily) {
 		return "", ErrHospitalRunTooFast
 	}
-	return parts[2], nil
+	return parts[3], nil
 }

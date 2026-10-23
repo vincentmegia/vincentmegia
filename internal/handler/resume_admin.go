@@ -66,7 +66,7 @@ func (h *ResumeAdminHandler) SaveBanner(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		slog.Error("save resume banner", "error", err)
 		h.Renderer.RenderFragment(w, "resume-admin-banner-form", service.BannerFormView{
-			Error: "Couldn't save that just now. Please try again shortly.",
+			Error: resumeAdminSaveFailed, LoadFailed: true,
 		})
 		return
 	}
@@ -87,7 +87,7 @@ func (h *ResumeAdminHandler) SaveExpertise(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		slog.Error("save resume expertise", "error", err)
 		h.Renderer.RenderFragment(w, "resume-admin-expertise-form", service.ExpertiseFormView{
-			Error: "Couldn't save that just now. Please try again shortly.",
+			Error: resumeAdminSaveFailed, LoadFailed: true,
 		})
 		return
 	}
@@ -108,7 +108,7 @@ func (h *ResumeAdminHandler) SaveEducation(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		slog.Error("save resume education", "error", err)
 		h.Renderer.RenderFragment(w, "resume-admin-education-form", service.EducationFormView{
-			Error: "Couldn't save that just now. Please try again shortly.",
+			Error: resumeAdminSaveFailed, LoadFailed: true,
 		})
 		return
 	}
@@ -129,7 +129,7 @@ func (h *ResumeAdminHandler) SaveFeaturedProjects(w http.ResponseWriter, r *http
 	if err != nil {
 		slog.Error("save resume featured projects", "error", err)
 		h.Renderer.RenderFragment(w, "resume-admin-featured-form", service.FeaturedFormView{
-			Error: "Couldn't save that just now. Please try again shortly.",
+			Error: resumeAdminSaveFailed, LoadFailed: true,
 		})
 		return
 	}
@@ -155,7 +155,7 @@ func (h *ResumeAdminHandler) SaveSummary(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		slog.Error("save resume summary", "error", err)
 		h.Renderer.RenderFragment(w, "resume-admin-summary-form", service.SummaryFormView{
-			Error: "Couldn't save that just now. Please try again shortly.",
+			Error: resumeAdminSaveFailed, LoadFailed: true,
 		})
 		return
 	}
@@ -259,12 +259,20 @@ func (h *ResumeAdminHandler) MoveRole(w http.ResponseWriter, r *http.Request) {
 	h.Renderer.RenderFragment(w, "resume-admin-role-editor", view)
 }
 
+// resumeAdminSaveFailed is the curated message every card shows when a
+// save (or the re-read after it) hits a DB error. The card is rendered
+// with LoadFailed set — the message and no form — because its stored
+// content is unknown at that point, and an empty, submittable form would
+// let a second Save wipe the card (the expertise/education/featured/
+// summary validators accept empty lists). Hence "reload", not "retry".
+const resumeAdminSaveFailed = "Couldn't save that just now. Reload the page to see the current content and try again."
+
 // writeRoleError renders the resume-admin-role-editor fragment with a
-// generic error and no roles, for the rare case a DB failure happens after
-// the primary write — never exposes the raw error to the client, per
-// docs/skills/go-backend/SKILL.md "Errors".
+// generic error and no forms (LoadFailed), for a DB failure on a role
+// write or the re-read after it — never exposes the raw error to the
+// client, per docs/skills/go-backend/SKILL.md "Errors".
 func (h *ResumeAdminHandler) writeRoleError(w http.ResponseWriter) {
 	h.Renderer.RenderFragment(w, "resume-admin-role-editor", service.RoleListView{
-		Error: "Couldn't save that just now. Please try again shortly.",
+		Error: resumeAdminSaveFailed, LoadFailed: true,
 	})
 }

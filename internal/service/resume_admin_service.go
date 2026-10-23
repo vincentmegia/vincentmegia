@@ -29,6 +29,12 @@ type BannerFormView struct {
 	FontOptions   []FontStyleOption
 	// Error is a curated, user-facing validation message. "" means no error.
 	Error string
+	// LoadFailed means this card's stored content couldn't be read back
+	// (a DB error on save or re-read). The template then renders Error
+	// with no submittable form: an empty form here would let a second
+	// Save overwrite the stored card with blanks. Every card view below,
+	// and RoleListView, carries the same field with the same meaning.
+	LoadFailed bool
 }
 
 // ExpertiseFormView backs components/resume-admin-expertise-form.html.
@@ -36,6 +42,7 @@ type ExpertiseFormView struct {
 	SkillGroups []model.SkillGroup
 	FontOptions []FontStyleOption
 	Error       string
+	LoadFailed  bool
 }
 
 // EducationFormView backs components/resume-admin-education-form.html.
@@ -43,6 +50,7 @@ type EducationFormView struct {
 	Education   []model.Education
 	FontOptions []FontStyleOption
 	Error       string
+	LoadFailed  bool
 }
 
 // FeaturedFormView backs components/resume-admin-featured-form.html.
@@ -50,6 +58,7 @@ type FeaturedFormView struct {
 	FeaturedProjects []model.FeaturedProject
 	FontOptions      []FontStyleOption
 	Error            string
+	LoadFailed       bool
 }
 
 // SummaryFormView backs components/resume-admin-summary-form.html.
@@ -58,6 +67,7 @@ type SummaryFormView struct {
 	Stats             []model.Stat
 	FontOptions       []FontStyleOption
 	Error             string
+	LoadFailed        bool
 }
 
 // RoleAdminView is one role as rendered in the /settings/resume editor —
@@ -80,7 +90,11 @@ type RoleAdminView struct {
 // RoleListView backs components/resume-admin-role-editor.html.
 type RoleListView struct {
 	Roles []RoleAdminView
-	Error string
+	// Draft pre-fills the Add-role form: blank (organic font) normally,
+	// the submitted values after a failed create so nothing typed is lost.
+	Draft      RoleAdminView
+	Error      string
+	LoadFailed bool
 }
 
 // ResumeAdminView backs web/templates/pages/settings-resume.html
@@ -283,7 +297,7 @@ func (s *ResumeService) roleListView(ctx context.Context) (RoleListView, error) 
 	for i, r := range roles {
 		views[i] = toRoleAdminView(r)
 	}
-	return RoleListView{Roles: views}, nil
+	return RoleListView{Roles: views, Draft: RoleAdminView{FontOptions: fontStyleOptions(defaultFontStyle)}}, nil
 }
 
 func (s *ResumeService) roleListViewWithError(ctx context.Context, message string) (RoleListView, error) {
@@ -295,13 +309,30 @@ func (s *ResumeService) roleListViewWithError(ctx context.Context, message strin
 	return view, nil
 }
 
+// submittedRole echoes a rejected role submission back into the editor
+// exactly as typed (raw date strings included), so a validation error
+// never discards the owner's input.
+func submittedRole(id int64, title, company, location, startDate, endDate, blurb string, bullets []string, subprojects []model.Subproject, fontStyle string) RoleAdminView {
+	return RoleAdminView{
+		ID: id, Title: title, Company: company, Location: location,
+		StartDate: startDate, EndDate: endDate, Blurb: blurb,
+		Bullets: bullets, Subprojects: subprojects,
+		FontOptions: fontStyleOptions(fontStyle),
+	}
+}
+
 // CreateRole validates and appends a new role
 // (POST /settings/resume/roles).
 func (s *ResumeService) CreateRole(ctx context.Context, title, company, location, startDate, endDate, blurb string, bullets []string, subprojects []model.Subproject, fontStyle string) (RoleListView, error) {
 	in, err := ValidateRoleInput(title, company, location, startDate, endDate, blurb, bullets, subprojects, fontStyle)
 	if err != nil {
 		if IsResumeValidationError(err) {
-			return s.roleListViewWithError(ctx, err.Error())
+			view, listErr := s.roleListViewWithError(ctx, err.Error())
+			if listErr != nil {
+				return RoleListView{}, listErr
+			}
+			view.Draft = submittedRole(0, title, company, location, startDate, endDate, blurb, bullets, subprojects, fontStyle)
+			return view, nil
 		}
 		return RoleListView{}, err
 	}
@@ -323,7 +354,18 @@ func (s *ResumeService) UpdateRole(ctx context.Context, id int64, title, company
 	in, err := ValidateRoleInput(title, company, location, startDate, endDate, blurb, bullets, subprojects, fontStyle)
 	if err != nil {
 		if IsResumeValidationError(err) {
-			return s.roleListViewWithError(ctx, err.Error())
+			view, listErr := s.roleListViewWithError(ctx, err.Error())
+			if listErr != nil {
+				return RoleListView{}, listErr
+			}
+			// Swap the edited role's stored values for what was typed;
+			// every other role still shows its stored content.
+			for i := range view.Roles {
+				if view.Roles[i].ID == id {
+					view.Roles[i] = submittedRole(id, title, company, location, startDate, endDate, blurb, bullets, subprojects, fontStyle)
+				}
+			}
+			return view, nil
 		}
 		return RoleListView{}, err
 	}

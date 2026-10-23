@@ -37,6 +37,10 @@
      additional nesting. #carousel-frame spans all 3 columns (col-span-3)
      since it's the only row-1 item. */}}
 {{define "carousel"}}
+{{/* Zero slides: the whole section is omitted (no empty bordered card) —
+     docs/features/landing-carousel.md's Business Rules. carousel.js
+     already no-ops without #carousel. */}}
+{{if .CarouselSlides}}
 {{/* The bg-[url(...)] pair below is purely decorative backdrop art behind
      the carousel card (docs/features/landing-carousel.md's Visual
      Direction) — light/dark variants swap via the dark: variant, same
@@ -155,4 +159,5 @@
 	</button>
 	{{end}}
 </section>
+{{end}}
 {{end}}

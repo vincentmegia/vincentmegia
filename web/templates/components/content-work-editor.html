@@ -10,6 +10,10 @@
 	<p class="rounded-card border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">{{.Error}}</p>
 	{{end}}
 
+	{{/* .Unavailable: see content-carousel-editor.html. */}}
+	{{if .Unavailable}}
+	<p class="text-sm text-muted">Reload the page to see the current cards.</p>
+	{{else}}
 	{{range .Items}}
 	<form
 		id="work-item-{{.ID}}"
@@ -80,5 +84,6 @@
 		</label>
 		<button type="submit" class="rounded-card bg-primary px-3 py-1.5 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">Add card</button>
 	</form>
+	{{end}}
 </div>
 {{end}}

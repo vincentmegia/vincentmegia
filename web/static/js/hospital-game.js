@@ -406,8 +406,10 @@ export function init(canvas, elements) {
   // text, or null if the request failed.
   let monthTicket = null;
   let dailyTicket = null;
-  function requestRunTicket() {
-    return fetch('/hospital-shift/run', { method: 'POST', credentials: 'same-origin' })
+  // `kind` ("month" or "daily") is signed into the ticket: the server only
+  // accepts a Daily score with a Daily ticket, and the reverse.
+  function requestRunTicket(kind) {
+    return fetch('/hospital-shift/run', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({ kind }) })
       .then((r) => (r.ok ? r.text() : null))
       .catch(() => null);
   }
@@ -2079,8 +2081,8 @@ export function init(canvas, elements) {
   // -- Shift lifecycle ------------------------------------------------------------------
 
   function beginShift() {
-    if (daily) dailyTicket = requestRunTicket();
-    else if (!monthTicket || save.currentShift === 1) monthTicket = requestRunTicket();
+    if (daily) dailyTicket = requestRunTicket('daily');
+    else if (!monthTicket || save.currentShift === 1) monthTicket = requestRunTicket('month');
     waitingAtOffice = false;
     coffeeSplashSeconds = 0;
     resetHallucinations();

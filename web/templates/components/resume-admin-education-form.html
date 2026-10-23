@@ -4,6 +4,16 @@
      "Degree | School | StartYear | EndYear" — see
      internal/service/resume_admin_encoding.go's DecodeEducation. */}}
 {{define "resume-admin-education-form"}}
+{{if .LoadFailed}}
+{{/* Load/save failure: show the error with no form, so a second Save
+     can never overwrite the stored card with blank fields (see
+     service.BannerFormView.LoadFailed). Keeps the same id so the page
+     layout and any later swap target stay intact. */}}
+<div id="resume-admin-education" class="space-y-3 rounded-card border border-line bg-surface p-5">
+	<h2 class="text-base font-semibold text-ink">Education</h2>
+	<p role="alert" class="rounded-card border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">{{.Error}}</p>
+</div>
+{{else}}
 <form
 	id="resume-admin-education"
 	hx-post="/settings/resume/sidebar/education"
@@ -27,4 +37,5 @@
 		<span id="resume-admin-education-loading" class="htmx-indicator text-sm text-muted">Saving…</span>
 	</div>
 </form>
+{{end}}
 {{end}}

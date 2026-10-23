@@ -115,7 +115,7 @@ web/templates/components/
 ```
 
 Each fragment's dot is a `service.*View` (e.g. `HeroFormView`,
-`CarouselEditorView{Slides, Full, Error}`), never the full `PageData`.
+`CarouselEditorView{Slides, Full, Error, Unavailable}`), never the full `PageData`.
 
 | State    | Behavior |
 | -------- | -------- |
@@ -123,7 +123,7 @@ Each fragment's dot is a `service.*View` (e.g. `HeroFormView`,
 | Loading  | Hero form has a local indicator (`#hero-editor-loading`); the carousel and Selected work editors have none. |
 | Empty    | Zero slides/cards shows just the add form. |
 | Full     | At 5 slides the add-slide form is replaced by "The carousel is limited to 5 slides. Delete one to add another." |
-| Error    | The section re-renders with one message box at its top (the validation error's text); nothing is saved. Errors are per section, not per field. A server error on a carousel/work write re-renders that section with "Couldn't save that just now…" and **no rows** until the page is reloaded (`writeCarouselError`/`writeWorkError`). |
+| Error    | The section re-renders with one message box at its top (the validation error's text); nothing is saved. Errors are per section, not per field. A server error on a carousel/work write re-renders that section with "Couldn't save that just now…" above the current rows, re-read from the database (`writeCarouselError`/`writeWorkError`); if that re-read fails too, the section shows only the error and "Reload the page…" (`Unavailable`), never an empty list and add form. |
 | Success  | The section re-renders with the saved values; no explicit confirmation message. |
 
 ---
@@ -305,16 +305,28 @@ DROP TABLE landing_hero;
       renders the shared shell".
 * [x] Unauthenticated `GET /settings/content` redirects —
       `TestEndToEnd` "content authoring routes require auth".
-* [ ] Unauthenticated POST/PUT/DELETE `/settings/content/*` redirect too —
-      untested (only the GET is checked).
+* [x] Unauthenticated POST/PUT/DELETE/move `/settings/content/*` redirect
+      too, before the handler does any work —
+      `cmd/server/settings_auth_routes_test.go`
+      `TestSettingsRoutesRequireAuth` (every `/settings/*` route registered
+      in `main.go`).
 * [ ] Saving the hero form updates `/` — untested through the HTML
       editor (the API path is tested: `TestEndToEnd` "landing API hero
       round-trips to the rendered page").
-* [ ] Adding slides up to 5 succeeds; a 6th is rejected and nothing is
-      persisted — untested.
-* [ ] Delete and move up/down change what `/` renders — untested.
-* [ ] A field containing `<script>` renders escaped — untested
-      (html/template guarantees it, but no test asserts it).
+* [x] Adding slides up to 5 succeeds; a 6th is rejected (`ErrCarouselFull`,
+      API 409, `CreateSlideForm` inline error) and nothing is persisted —
+      `TestEndToEnd` "a 6th carousel slide is refused (ErrCarouselFull / API
+      409)".
+* [x] Move up/down (`MoveSlideForm`) and the API reorder change the stored
+      order — `TestEndToEnd` "carousel move up/down and API reorder change
+      the display order". Delete through the editor is still untested.
+* [x] `<script>` stored in the hero eyebrow, a slide caption and a work
+      card's title/description renders escaped on `/` — `TestEndToEnd`
+      "stored <script> in hero/slide/work fields renders escaped on /".
+* [x] A failed write keeps the current rows on screen; a failed re-read
+      shows the error without the add form — `internal/handler/
+      landing_content_test.go` `TestEditorWriteErrorKeepsRows`,
+      `TestEditorWriteErrorRefetchFails` (fake `database/sql` driver).
 
 ---
 
@@ -335,10 +347,11 @@ All three resolved for this implementation:
   carousel/Selected-work editors take a plain `image_path`/`live_url`
   text input, no dropdown of existing static assets. Revisit if typo'd
   paths turn out to be a real problem in practice.
-* **Test coverage of the editor's write routes**: none of the mutating
-  `/settings/content/*` handlers is exercised by a test (they can't be
-  reached through the stubbed auth). Worth a handler-level test with an
-  authenticated stub once real auth lands.
+* **Test coverage of the editor's write routes**: their auth redirect is
+  tested (`TestSettingsRoutesRequireAuth`) and the service methods and
+  error re-render they call are tested directly, but no test drives an
+  authenticated write through a handler (the stubbed auth can't be passed).
+  Worth adding once real auth lands.
 
 ---
 

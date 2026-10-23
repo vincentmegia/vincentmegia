@@ -331,6 +331,11 @@ type CarouselEditorView struct {
 	Full bool
 	// Error is a curated, user-facing validation message. "" means no error.
 	Error string
+	// Unavailable is true when the current slides couldn't be loaded (a
+	// write failed and the re-fetch failed too). The editor then shows only
+	// Error — no list and no add form — rather than an empty form that
+	// looks like the carousel has no slides.
+	Unavailable bool
 }
 
 // WorkEditorView backs components/content-work-editor.html.
@@ -338,6 +343,8 @@ type WorkEditorView struct {
 	Items []model.SelectedWorkItem
 	// Error is a curated, user-facing validation message. "" means no error.
 	Error string
+	// Unavailable mirrors CarouselEditorView.Unavailable.
+	Unavailable bool
 }
 
 // EditorView backs web/templates/pages/settings-content.html
@@ -396,7 +403,10 @@ func (s *LandingContentService) carouselView(ctx context.Context) (CarouselEdito
 	return CarouselEditorView{Slides: slides, Full: len(slides) >= maxCarouselSlides}, nil
 }
 
-func (s *LandingContentService) carouselViewWithError(ctx context.Context, message string) (CarouselEditorView, error) {
+// CarouselViewWithError re-reads the current slides and attaches message —
+// used both for inline validation failures and by the HTML handler after a
+// failed write, so the editor keeps showing the real list.
+func (s *LandingContentService) CarouselViewWithError(ctx context.Context, message string) (CarouselEditorView, error) {
 	view, err := s.carouselView(ctx)
 	if err != nil {
 		return CarouselEditorView{}, err
@@ -410,7 +420,7 @@ func (s *LandingContentService) carouselViewWithError(ctx context.Context, messa
 func (s *LandingContentService) CreateSlideForm(ctx context.Context, imagePath, alt, caption, linkURL string, external bool) (CarouselEditorView, error) {
 	if _, err := s.CreateSlide(ctx, imagePath, alt, caption, linkURL, external); err != nil {
 		if IsValidationError(err) || errors.Is(err, ErrCarouselFull) {
-			return s.carouselViewWithError(ctx, err.Error())
+			return s.CarouselViewWithError(ctx, err.Error())
 		}
 		return CarouselEditorView{}, err
 	}
@@ -421,7 +431,7 @@ func (s *LandingContentService) CreateSlideForm(ctx context.Context, imagePath, 
 func (s *LandingContentService) UpdateSlideForm(ctx context.Context, id int64, imagePath, alt, caption, linkURL string, external bool) (CarouselEditorView, error) {
 	if _, err := s.UpdateSlide(ctx, id, imagePath, alt, caption, linkURL, external); err != nil {
 		if IsValidationError(err) || errors.Is(err, ErrSlideNotFound) {
-			return s.carouselViewWithError(ctx, err.Error())
+			return s.CarouselViewWithError(ctx, err.Error())
 		}
 		return CarouselEditorView{}, err
 	}
@@ -463,7 +473,8 @@ func (s *LandingContentService) workView(ctx context.Context) (WorkEditorView, e
 	return WorkEditorView{Items: items}, nil
 }
 
-func (s *LandingContentService) workViewWithError(ctx context.Context, message string) (WorkEditorView, error) {
+// WorkViewWithError is CarouselViewWithError's Selected-work counterpart.
+func (s *LandingContentService) WorkViewWithError(ctx context.Context, message string) (WorkEditorView, error) {
 	view, err := s.workView(ctx)
 	if err != nil {
 		return WorkEditorView{}, err
@@ -476,7 +487,7 @@ func (s *LandingContentService) workViewWithError(ctx context.Context, message s
 func (s *LandingContentService) CreateWorkItemForm(ctx context.Context, kicker, title, description, liveURL string, external bool) (WorkEditorView, error) {
 	if _, err := s.CreateWorkItem(ctx, kicker, title, description, liveURL, external); err != nil {
 		if IsValidationError(err) {
-			return s.workViewWithError(ctx, err.Error())
+			return s.WorkViewWithError(ctx, err.Error())
 		}
 		return WorkEditorView{}, err
 	}
@@ -487,7 +498,7 @@ func (s *LandingContentService) CreateWorkItemForm(ctx context.Context, kicker, 
 func (s *LandingContentService) UpdateWorkItemForm(ctx context.Context, id int64, kicker, title, description, liveURL string, external bool) (WorkEditorView, error) {
 	if _, err := s.UpdateWorkItem(ctx, id, kicker, title, description, liveURL, external); err != nil {
 		if IsValidationError(err) || errors.Is(err, ErrWorkItemNotFound) {
-			return s.workViewWithError(ctx, err.Error())
+			return s.WorkViewWithError(ctx, err.Error())
 		}
 		return WorkEditorView{}, err
 	}

@@ -210,6 +210,27 @@ func TestResumeAdminRoundTrip(t *testing.T) {
 		if _, err := svc.MoveRole(ctx, createdID, "up"); err != nil {
 			t.Fatalf("MoveRole: %v", err)
 		}
+
+		// Delete is asserted here, not just relied on by the Cleanup above
+		// (which stays as a safety net — a second delete is a no-op).
+		listView, err = svc.DeleteRole(ctx, createdID)
+		if err != nil {
+			t.Fatalf("DeleteRole: %v", err)
+		}
+		for _, r := range listView.Roles {
+			if r.ID == createdID {
+				t.Fatalf("role %d still in the editor list after DeleteRole", createdID)
+			}
+		}
+		rendered, err = svc.Get(ctx)
+		if err != nil {
+			t.Fatalf("Get after delete: %v", err)
+		}
+		for _, r := range rendered.Roles {
+			if r.ID == createdID {
+				t.Fatalf("role %d still rendered on /resume after DeleteRole", createdID)
+			}
+		}
 	})
 
 	t.Run("role create rejects a malformed date", func(t *testing.T) {

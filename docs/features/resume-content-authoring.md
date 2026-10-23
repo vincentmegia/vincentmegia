@@ -11,10 +11,15 @@ doesn't exist yet. It has never been exercised in a real browser.
 Tests:
 
 * Unit (no DB): `go test ./internal/service`, which covers
-  `resume_admin_validation_test.go` and `resume_admin_encoding_test.go`.
+  `resume_admin_validation_test.go`, `resume_admin_encoding_test.go` and
+  `resume_admin_service_test.go` (in-memory/failing fake repo), and
+  `go test ./internal/handler`'s `resume_render_test.go` (editor and
+  load-failed card rendering).
 * DB-gated: `go test ./cmd/server`, which covers `resume_admin_e2e_test.go`
   (`TestResumeAdminRoundTrip`) and `e2e_test.go` ("resume authoring
-  routes require auth"). These are skipped without `DATABASE_URL`/`.env`.
+  routes require auth"), and `go test ./internal/repository`'s
+  `resume_repository_test.go` (move/delete on a throwaway schema). These
+  are skipped without `DATABASE_URL`/`.env`.
 * There is no Playwright coverage.
 
 ## Summary
@@ -147,7 +152,7 @@ these characters.
 | Default | Every form is pre-filled from the DB, with the stored font preset selected. |
 | Loading | The five profile cards each show a local "Saving…" `hx-indicator`. The role forms and the Move/Delete buttons have **no** `hx-indicator`. |
 | Empty   | A list card with no items shows an empty textarea. With zero roles, Experience Timeline shows only the Add role form. |
-| Error   | A validation failure re-renders the card with one message at the top of the card (not next to the field) and saves nothing. Profile cards keep the submitted values. The role editor re-renders the role list from the DB, so the values typed into the failed add or edit form are lost. A DB failure re-renders the card with a generic "Couldn't save that just now…" message and **blank fields** (the role editor shows no roles). |
+| Error   | A validation failure re-renders the card with one message at the top of the card (not next to the field) and saves nothing. Profile cards keep the submitted values. The role editor re-renders the stored roles, with the failed edit's role showing what was typed, or the Add role form pre-filled with the failed submission (`RoleListView.Draft`). A DB failure (on the write or the re-read after it) re-renders the card as just its heading and "Couldn't save that just now. Reload the page to see the current content and try again." with **no form or fields** (`LoadFailed`); the role editor shows no roles and no Add form. An empty form there would let a second Save wipe the card, since empty lists pass validation. |
 | Success | The card is re-rendered with the saved values from the DB. There is **no** confirmation message. |
 
 ---
@@ -309,10 +314,14 @@ decides that the message is shown inline.
 * [x] Role create and update (with a sub-project, end date and font) are
       reflected in `ResumeService.Get`: `TestResumeAdminRoundTrip` "role
       create, update, move, and delete round-trip".
-* [ ] Role delete removes the role. `DeleteRole` runs only in that
-      subtest's cleanup, and the role's absence isn't asserted.
-* [ ] Move up/down changes the order. `MoveRole` is called and checked
-      only for "no error". `moveSortOrder` has no test anywhere.
+* [x] Role delete removes the role: the round-trip subtest asserts it is
+      gone from the editor list and from `ResumeService.Get`;
+      `TestResumeRepository_DeleteRole` (missing id → `sql.ErrNoRows`),
+      `TestResumeAdminDeleteRole`.
+* [x] Move up/down changes the order: `TestResumeRepository_MoveRole`
+      drives `moveSortOrder` on a throwaway-schema table — neighbour swaps
+      across `sort_order` gaps, and no-ops at either end, for an unknown
+      or empty direction, a missing id and a single row.
 * [ ] Delete without confirming leaves the role. `hx-confirm` has no
       browser test.
 * [x] Invalid `font_style` is rejected and nothing is saved:
@@ -323,10 +332,11 @@ decides that the message is shown inline.
       (`classic-serif`), expertise (`modern-sans`) and role
       (`modern-sans`) font classes are asserted in
       `TestResumeAdminRoundTrip`.
-* [ ] `resolveFontClass` falls back to `organic` for an unknown key. No
-      test.
-* [ ] The education, featured, summary and per-role `FontClass` values
-      reach the rendered `/resume` markup. Not asserted at the HTML level.
+* [x] `resolveFontClass` falls back to `organic` for an unknown key:
+      `TestResolveFontClass`.
+* [x] The education, featured and summary font classes reach their cards
+      in the rendered `/resume` markup (`TestResumeCardFontClasses`). The
+      per-role `FontClass` is asserted in the service view only.
 * [x] Validation rules: `TestValidateBannerInput`,
       `TestValidateBannerInput_ContactHrefAllowlist`,
       `TestValidateExpertiseInput`, `TestValidateEducationInput`,
@@ -335,9 +345,21 @@ decides that the message is shown inline.
       malformed date".
 * [x] Line-encoding decoders: `TestDecode*` in
       `resume_admin_encoding_test.go`.
-* [ ] Handler and template behavior (fragment rendering, error rendering,
-      swaps). No test drives `ResumeAdminHandler`. Only template parsing
-      is covered (`TestLoadTemplatesParses`).
+* [x] A DB error never yields a blank, submittable card: every save
+      returns an error on a failed write or re-read
+      (`TestResumeAdminSave_DBErrorReturnsError`, fake repo), and each
+      `LoadFailed` card, plus `writeRoleError`, renders the message with
+      no form, field or button
+      (`TestResumeAdmin_LoadFailedCardsHaveNoForm`).
+* [x] A failed role add/edit keeps what was typed:
+      `TestResumeAdminCreateRole_ValidationKeepsInput`,
+      `TestResumeAdminUpdateRole_ValidationKeepsInput`.
+* [x] The full editor renders stored content, selected fonts, one edit
+      form per role and a Draft-filled Add form:
+      `TestResumeAdmin_SettingsPageRender`.
+* [ ] HTMX swaps in a browser. `ResumeAdminHandler`'s save methods can't
+      be driven past the auth stub, so the handler-to-fragment wiring is
+      covered only by the render tests above.
 * [ ] Migration `Down`/`Up` cycle. `Up` was applied to the dev DB, and
       `Down` was reviewed but not run.
 
@@ -350,13 +372,8 @@ decides that the message is shown inline.
   Add one, or accept this?
 * **No success confirmation.** A save just re-renders the card. Add an
   inline "Saved" message?
-* **Validation errors are per card, not per field**, and a failed role
-  add or edit drops what the owner typed (the list is re-rendered from the
-  DB).
-* **A DB failure blanks the card's form.** After a failed save, the card
-  comes back with empty fields. Clicking Save again would replace that
-  card's content with nothing, because empty lists pass validation. This
-  looks like a real bug; see the report.
+* **Validation errors are per card, not per field.** Move to per-field
+  messages?
 * **Reserved characters in the line encoding** (`|`, `;`, `,`, `:`, `=`,
   newlines; see UI) are lost without any warning. Escape them, warn about
   them, or move to per-row inputs?
@@ -374,8 +391,8 @@ decides that the message is shown inline.
 * [x] All six editors save independently through the service against a
       real DB (`TestResumeAdminRoundTrip`).
 * [x] Roles support add, edit, delete and reorder, with bullets and
-      sub-projects in the role form (the code exists; delete and move are
-      not asserted, see Testing Plan).
+      sub-projects in the role form (delete and move asserted, see Testing
+      Plan).
 * [ ] Every rendered field on `/resume` is editable. Everything except the
       hardcoded name is.
 
@@ -386,8 +403,8 @@ decides that the message is shown inline.
 * [x] Presets resolve through `resolveFontClass`. No raw font string
       reaches a template.
 * [x] An invalid key is rejected on write (`ErrInvalidFontStyle`, plus
-      the DB `CHECK`) and falls back to `organic` on read (fallback
-      untested).
+      the DB `CHECK`) and falls back to `organic` on read
+      (`TestResolveFontClass`).
 
 **3. Content lives only in this site's Postgres:**
 

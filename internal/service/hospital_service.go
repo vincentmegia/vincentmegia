@@ -41,9 +41,10 @@ func NewHospitalService(repo *repository.HospitalRepository, tickets *HospitalRu
 	return &HospitalService{Repo: repo, Tickets: tickets}
 }
 
-// IssueRunTicket starts a run: the ticket its score must be submitted with.
-func (s *HospitalService) IssueRunTicket() (string, error) {
-	return s.Tickets.Issue()
+// IssueRunTicket starts a run — a Daily Challenge when daily, otherwise a
+// month: the ticket its score must be submitted with.
+func (s *HospitalService) IssueRunTicket(daily bool) (string, error) {
+	return s.Tickets.Issue(daily)
 }
 
 func (s *HospitalService) now() time.Time {

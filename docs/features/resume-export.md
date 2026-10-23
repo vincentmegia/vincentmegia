@@ -257,8 +257,9 @@ layer below.
       `javascript:` href never reaches the file.
 * [x] An empty resume still produces a valid one-page PDF.
 * [x] `buildResumeDocx` produces a valid zip with the expected content —
-      stats, "Company — Location", "Current", Featured Projects, in page
-      order — and XML-escaped special characters; `javascript:`/`file:`
+      stats, "Company — Location", "Current", Featured Projects, in the
+      documented section order (Summary → Core Expertise → Experience →
+      Education → Featured Projects) — and XML-escaped special characters; `javascript:`/`file:`
       contact hrefs stay plain text with no hyperlink relationship
       (`resume_docx_test.go`).
 * [x] A generation failure returns a clean 500 with no attachment headers
@@ -288,9 +289,9 @@ layer below.
   Experience. The owner decided the Word export mirrors the page, and on
   the page Core Expertise sits in the sidebar to the left of Experience,
   so the DOCX order is defensible. It is still not consistent with the
-  PDF. `TestBuildResumeDocx_ValidZipWithExpectedContent` asserts only
-  Summary → Experience → Education → Featured Projects, so either order
-  passes. Confirm or align.
+  PDF. `TestBuildResumeDocx_ValidZipWithExpectedContent` pins the
+  documented DOCX order, Core Expertise included, so aligning it with the
+  PDF means changing that test too. Confirm or align.
 * The Error state is a plain-text 500 page, not an inline message. Is
   that acceptable for a download link?
 * Exact Word-library choice (`github.com/fumiama/go-docx`) is a

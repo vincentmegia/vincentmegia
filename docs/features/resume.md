@@ -131,8 +131,8 @@ web/static/js/resume-print.js   # Print button → window.print()
 | ------- | ------------------------- |
 | Default | Every card renders from `resume_profile`/`resume_roles`. |
 | Loading | An HTMX nav swap uses the shell's `#nav-loading` indicator. There is no page-specific indicator. |
-| Empty   | Core Expertise and Education are omitted entirely when they have no entries. Featured Projects always renders its card (heading + "See all projects"), with no entries list when it is empty. The banner always renders; the contact list is omitted when empty. The summary card always renders; its paragraphs and stats blocks are each omitted when empty, so if both are empty the card is an empty shell. The timeline section always renders; with zero roles it shows nothing. Inside a role, location, blurb, bullets and sub-projects are each omitted when empty. |
-| Error   | A DB error, or a JSONB value that fails to decode, renders the shared placeholder content with title "Resume" and the message "Couldn't load this page. Please try again shortly." (`ResumeHandler.Index`). The response is still HTTP 200. The raw error is logged only. |
+| Empty   | Core Expertise and Education are omitted entirely when they have no entries. Featured Projects always renders its card (heading + "See all projects"), with no entries list when it is empty. The banner always renders; the contact list is omitted when empty. The summary card is omitted entirely when it has neither paragraphs nor stats (matching the PDF and Word exports); otherwise its paragraphs and stats blocks are each omitted when empty. The timeline section always renders; with zero roles it shows nothing. Inside a role, location, blurb, bullets and sub-projects are each omitted when empty. |
+| Error   | A DB error, or a JSONB value that fails to decode, renders the shared placeholder content with title "Resume" and the message "Couldn't load this page. Please try again shortly." (`ResumeHandler.Index`). A full page load returns HTTP 500 with that page as the body, like other DB failures (`bus_stops.go`). An HTMX nav returns 200, because htmx 2 drops 5xx bodies by default and the message would never appear. The raw error is logged only. |
 | Print   | Header, nav-loading bar, footer and the export row are hidden. The light palette is forced. Role and sub-project cards avoid page breaks (`app.css` `@media print`). |
 
 ---
@@ -333,14 +333,21 @@ validated (`resume-content-authoring.md`). Hand-written SQL is not.
       `page.goto('/resume')`, so the script's behavior after an HTMX nav
       swap into `/resume` is untested.
 * [ ] Print stylesheet page-break behavior. Manual only.
-* [ ] DB failure or JSONB decode failure → Error state. The code path
-      exists in `ResumeHandler.Index`, but no test drives it.
+* [x] DB failure → Error state (500 on a full page, 200 on an HTMX nav,
+      friendly message, no leaked error): `TestResumeHandler_ErrorState`.
+      A JSONB decode failure takes the same `err != nil` branch but is not
+      driven separately.
+* [x] Empty summary (no paragraphs, no stats) omits the card:
+      `TestResumeSummary_OmittedWhenEmpty`.
+* [x] Education, Featured Projects and Summary cards carry their resolved
+      font class: `TestResumeCardFontClasses`.
 * [ ] Dark mode colors per component. Only the toggle is tested (e2e "dark
       mode toggle changes the resume page theme").
 * [ ] Migration `Down`/`Up` cycle. Exercised manually only.
 * [ ] `/healthz` unhealthy path (503, no leaked detail). Only the healthy
       path is tested.
-* [ ] `resolveFontClass` fallback for an unknown key. No direct test.
+* [x] `resolveFontClass` falls back to organic for an unknown or empty
+      key: `TestResolveFontClass`.
 
 ---
 
@@ -359,7 +366,6 @@ validated (`resume-content-authoring.md`). Hand-written SQL is not.
 * Migrations auto-run on boot. That is fine for one Render instance.
   Revisit if Render is scaled to more than one instance, because
   concurrent boots would race `goose_db_version`.
-* The Error state returns HTTP 200 instead of 5xx. Is that intended?
 
 ---
 
@@ -367,8 +373,7 @@ validated (`resume-content-authoring.md`). Hand-written SQL is not.
 
 * [x] User flow works end to end (e2e suites above).
 * [ ] All states in the UI table are implemented and verified. All are
-      implemented, but Error and Print are not automated, and the empty
-      summary card renders a bare shell.
+      implemented; Print is not automated.
 * [x] `Renderer`/`PageData`/`LoadTemplates` support a per-route
       `ContentTemplate` (`template_test.go`).
 * [x] Migration written with a working `Down`, seeding the real content

@@ -225,7 +225,7 @@ States this feature's UI must handle:
 | Slide with a link                | The slide's anchor wraps only its image and caption — never the arrow/dot/pause controls, which are DOM siblings positioned over the carousel, not nested inside any slide's link. |
 | Fewer than 5 slides configured   | With exactly 1 slide, arrows, dots, and the pause/play toggle are omitted entirely (nothing to navigate to or pause); with 2–4 slides, all controls render normally, just with fewer dots. |
 | Image failed to load              | `carousel.js` hides the failed `<img>` (`error` listener), so the track's neutral `bg-surface-2` shows instead of a broken-image icon. |
-| No slides                         | Not guarded: `carousel.html` still renders the bordered section with an empty track (see Open Questions). |
+| No slides                         | The whole `#carousel` section is omitted (`{{if .CarouselSlides}}` in `carousel.html`); `carousel.js` no-ops without it. |
 | Keyboard focus                    | Visible focus ring on arrows, the active dot, the pause/play toggle, and any slide link. |
 
 ---
@@ -491,6 +491,10 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
       (verify via network waterfall, not just markup inspection).
 * [ ] A single configured slide renders with no arrows, dots, or pause/play
       control.
+* [x] Zero slides render no carousel section — `internal/handler/
+      landing_content_test.go` `TestCarouselOmittedWithNoSlides`.
+* [x] A 6th slide is refused (service `ErrCarouselFull`, API 409) —
+      `TestEndToEnd` "a 6th carousel slide is refused…".
 * [ ] Simulated image load failure on one slide shows a neutral placeholder
       instead of a broken-image icon, without breaking navigation to other slides.
 * [ ] Layout (aspect ratio, spacing, arrow/dot positioning) holds correctly across
@@ -519,8 +523,6 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
 * Autoplay interval is 6000 ms (`data-autoplay-interval` in `carousel.html`,
   `DEFAULT_INTERVAL_MS` fallback in `carousel.js`); transition is
   `duration-150`. Retune visually if needed.
-* An empty carousel (all slides deleted) still renders an empty bordered
-  section — add an `{{if .CarouselSlides}}` guard like `selected-work.html`'s?
 * No Playwright coverage of the carousel; the unticked Testing Plan items
   need one.
 
@@ -530,8 +532,7 @@ that feature's `/settings/content` editor rather than hand-authored in Go.
 
 * [ ] User flow works end-to-end, including reduced-motion and all pause/resume
       paths above.
-* [ ] All states in the UI table are implemented (all except the no-slides
-      state, which isn't guarded).
+* [x] All states in the UI table are implemented.
 * [ ] Fully keyboard operable, with correct ARIA roles/labels/live-region
       behavior per the WAI-ARIA carousel pattern.
 * [ ] Touch swipe works on mobile; arrows/dots work on desktop.

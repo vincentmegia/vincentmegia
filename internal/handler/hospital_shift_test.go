@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -323,7 +324,7 @@ func TestHospitalShiftHandler_RunTickets(t *testing.T) {
 		return rec
 	}
 	rec := start()
-	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "v1.") {
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "v2.month.") {
 		t.Fatalf("StartRun: status = %d, body = %q", rec.Code, rec.Body.String())
 	}
 	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
@@ -347,10 +348,83 @@ func TestHospitalShiftHandler_RunTickets(t *testing.T) {
 		t.Errorf("instant run: status = %d, body = %q", rec.Code, rec.Body.String())
 	}
 
-	start()
+	// ?kind=daily mints a Daily ticket; an unknown kind is refused.
+	rec = httptest.NewRecorder()
+	h.StartRun(rec, httptest.NewRequest(http.MethodPost, "/hospital-shift/run?kind=daily", nil))
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Body.String(), "v2.daily.") {
+		t.Errorf("daily StartRun: status = %d, body = %q", rec.Code, rec.Body.String())
+	}
 	if rec := start(); rec.Code != http.StatusTooManyRequests {
 		t.Errorf("third run in a minute: status = %d, want 429", rec.Code)
 	}
+
+	h.runLimiter = newScoreSubmitLimiter(2, time.Minute)
+	rec = httptest.NewRecorder()
+	h.StartRun(rec, httptest.NewRequest(http.MethodPost, "/hospital-shift/run?kind=weekly", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown kind: status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHospitalShiftHandler_DBErrors verifies a database failure on either
+// side of a submission renders the inline "Couldn't load the leaderboard"
+// fragment with a 200 (so HTMX swaps it in) and never the raw error, and
+// that a failed insert leaves the run ticket unspent for a retry.
+func TestHospitalShiftHandler_DBErrors(t *testing.T) {
+	const dbErr = "pq: connection refused to 10.0.0.5"
+
+	t.Run("leaderboard fetch", func(t *testing.T) {
+		h := newTestHospitalHandler(t, &fakeHospitalRepository{topErr: errors.New(dbErr)})
+		for _, target := range []string{"/hospital-shift/leaderboard", "/hospital-shift/leaderboard?board=daily"} {
+			rec := httptest.NewRecorder()
+			h.Leaderboard(rec, httptest.NewRequest(http.MethodGet, target, nil))
+			if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Couldn't load the leaderboard") || strings.Contains(rec.Body.String(), dbErr) {
+				t.Errorf("%s: status = %d, body = %q", target, rec.Code, rec.Body.String())
+			}
+		}
+	})
+
+	t.Run("insert, then retry with the same ticket", func(t *testing.T) {
+		repo := &fakeHospitalRepository{insertErr: errors.New(dbErr)}
+		h := newTestHospitalHandler(t, repo)
+		h.limiter = newScoreSubmitLimiter(10, time.Minute)
+		tickets, err := service.NewHospitalRunTickets("test-secret", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.Service.Tickets = tickets
+		ticket, err := h.Service.IssueRunTicket(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		submit := func() *httptest.ResponseRecorder {
+			form := url.Values{"player_name": {"Vince"}, "total_earnings": {"80000"}, "shifts_completed": {"30"}, "run_ticket": {ticket}}
+			req := httptest.NewRequest(http.MethodPost, "/hospital-shift/score", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			h.SubmitScore(rec, req)
+			return rec
+		}
+		rec := submit()
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Couldn't load the leaderboard") || strings.Contains(rec.Body.String(), dbErr) {
+			t.Errorf("failed insert: status = %d, body = %q", rec.Code, rec.Body.String())
+		}
+		repo.insertErr = nil
+		if rec := submit(); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Vince") {
+			t.Errorf("retry: status = %d, body = %q; the failed insert shouldn't have spent the ticket", rec.Code, rec.Body.String())
+		}
+
+		// An insert that worked but whose refreshed board can't load is the
+		// same inline error, and the score is still stored.
+		repo.topErr = errors.New(dbErr)
+		ticket, _ = h.Service.IssueRunTicket(false)
+		if rec := submit(); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Couldn't load the leaderboard") {
+			t.Errorf("board after insert: status = %d, body = %q", rec.Code, rec.Body.String())
+		}
+		if len(repo.scores) != 2 {
+			t.Errorf("stored rows = %d, want 2", len(repo.scores))
+		}
+	})
 }
 
 // TestHospitalShiftHandler_SubmitScore_ShortMonthRejected verifies an
