@@ -245,18 +245,82 @@ async function hitSkillCheck(page) {
 	await clickCanvasPoint(page, { x: 480, y: 300 });
 }
 
-/**
- * Resolves the Shelf/Checkout Skill-Check overlay as a success. Shelving
- * takes one hit; checkout takes two (scan, then stamp), each on a zone
- * somewhere new, so this aims at wherever the hook says the zone is.
- */
+/** Resolves the Shelf Skill-Check overlay as a success. */
 async function resolveSkillCheckSuccess(page) {
-	const { context } = await getOverlay(page);
-	const hits = context === 'checkout' ? 2 : 1;
-	for (let i = 0; i < hits; i++) {
-		await hitSkillCheck(page);
-		if (i < hits - 1) await expect.poll(async () => (await getOverlay(page))?.hits).toBe(i + 1);
+	await hitSkillCheck(page);
+}
+
+/** The open checkout's scene (library/checkout.js), via the test hook. */
+async function checkoutScene(page) {
+	return page.evaluate(() => window.__libraryGameTestHooks.getCheckoutScene());
+}
+
+/**
+ * A world→page mapper from one bounding-box read (canvasToPage's maths),
+ * for helpers that move the mouse many times in a row — a box read per
+ * point is too slow under load.
+ */
+async function pageMapper(page) {
+	const box = await page.locator('#library-canvas').boundingBox();
+	const aspect = 960 / 600;
+	let w = box.width;
+	let h = box.height;
+	let ox = 0;
+	let oy = 0;
+	if (box.width / box.height > aspect) { w = box.height * aspect; ox = (box.width - w) / 2; } else { h = box.width / aspect; oy = (box.height - h) / 2; }
+	return (p) => ({ x: box.x + ox + (p.x / 960) * w, y: box.y + oy + (p.y / 600) * h });
+}
+
+/** Step 1 of checkout the way a player does it: keep the mouse on the drifting barcode until it beeps. */
+async function scanBarcode(page) {
+	const toPage = await pageMapper(page);
+	for (let i = 0; i < 100; i++) {
+		const scene = await checkoutScene(page);
+		if (scene.step !== 'scan') return;
+		const p = toPage(scene.barcodeAt);
+		await page.mouse.move(p.x, p.y);
+		await page.waitForTimeout(60);
 	}
+	throw new Error('the barcode never scanned');
+}
+
+/** Traces one stroke: press on its start dot, follow it with the button held, lift. */
+async function traceStroke(page, toPage, stroke) {
+	const start = toPage(stroke[0]);
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	for (const point of stroke.slice(1)) {
+		const p = toPage(point);
+		await page.mouse.move(p.x, p.y);
+	}
+	await page.mouse.up();
+}
+
+/** Step 2: write the due date — every stroke of every digit, in order. */
+async function writeDueDate(page) {
+	const toPage = await pageMapper(page);
+	const { strokes } = await checkoutScene(page);
+	for (const stroke of strokes) await traceStroke(page, toPage, stroke);
+}
+
+/** Step 3: hold the needle in the middle of the target arc (frozen), then click to stamp. */
+async function stampInArc(page) {
+	await page.evaluate(() => {
+		const h = window.__libraryGameTestHooks;
+		const sc = h.getCheckoutScene();
+		h.setStampNeedle(sc.target + sc.arcWidth / 2, { freeze: true });
+	});
+	await clickCanvasPoint(page, { x: 480, y: 360 });
+}
+
+/** The whole manual checkout: scan, write, stamp. */
+async function completeCheckout(page) {
+	await waitForOverlay(page, 'checkout');
+	await scanBarcode(page);
+	await expect.poll(async () => (await checkoutScene(page))?.step).toBe('write');
+	await writeDueDate(page);
+	await expect.poll(async () => (await checkoutScene(page))?.step).toBe('stamp');
+	await stampInArc(page);
 }
 
 test.describe('/library-game direct page load', () => {
@@ -518,7 +582,8 @@ test.describe('shelving books', () => {
 });
 
 test.describe('borrowing', () => {
-	test('fulfilling a borrow request: Find the Book, then the Checkout Skill-Check', async ({ page }) => {
+	test('fulfilling a borrow request: Find the Book, then the manual checkout', async ({ page }) => {
+		test.setTimeout(60000);
 		await page.goto('/library-game');
 		await startShift(page);
 
@@ -554,67 +619,115 @@ test.describe('borrowing', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow?.stage)).toBe('checkout');
 
 		await walkToStation(page, 'front-desk');
-		await waitForOverlay(page, 'skill-check');
-		await resolveSkillCheckSuccess(page);
+		await completeCheckout(page);
 
 		await expect.poll(async () => getOverlay(page)).toBe(null);
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow)).toBe(null);
 	});
 });
 
-test.describe('harder checkout', () => {
-	/** Takes a borrow request to the checkout stage (the Archivist-free way: the hook-free real flow is covered above). */
+test.describe('manual checkout', () => {
+	// Three real-input steps (following the barcode, tracing ~56 points):
+	// slower than a click, so more room than the 30 s default under load.
+	test.setTimeout(60000);
+
+	/** Takes a borrow request straight to the checkout stage and opens it at the Front Desk. */
 	async function openCheckout(page) {
 		await page.evaluate(() => window.__libraryGameTestHooks.spawnBorrowNow());
 		const slot = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().find((s) => s.kind === 'borrow'));
 		await clickQueueItem(page, slot);
 		await page.evaluate(() => {
-			const st = window.__libraryGameTestHooks.getShiftState();
-			st.activeBorrow.stage = 'checkout';
+			window.__libraryGameTestHooks.getShiftState().activeBorrow.stage = 'checkout';
 		});
 		await walkToStation(page, 'front-desk');
-		await waitForOverlay(page, 'skill-check');
+		await waitForOverlay(page, 'checkout');
 	}
 
-	test('checkout takes a scan and then a stamp, each on a narrow zone that moves', async ({ page }) => {
+	test('scan the barcode by hand, write the due date, then stamp it in the arc', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await openCheckout(page);
-		const scanZone = await page.evaluate(() => window.__libraryGameTestHooks.getSkillCheckZone());
-		expect(scanZone.width).toBeLessThan(0.2);
+		expect((await checkoutScene(page)).step).toBe('scan');
 
-		await hitSkillCheck(page);
-		await expect(page.locator('#library-toast')).toContainText('now stamp the due date');
-		const mid = await getOverlay(page);
-		expect(mid?.kind).toBe('skill-check');
-		expect(mid.hits).toBe(1);
-		// Not checked out yet: the scan alone isn't enough.
+		await scanBarcode(page);
+		await expect(page.locator('#library-toast')).toContainText('Barcode scanned');
+		await expect.poll(async () => (await checkoutScene(page))?.step).toBe('write');
+		// Not checked out yet.
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow?.stage)).toBe('checkout');
 
-		await hitSkillCheck(page);
+		await writeDueDate(page);
+		await expect.poll(async () => (await checkoutScene(page))?.step).toBe('stamp');
+
+		await stampInArc(page);
+		await expect(page.locator('#library-toast')).toContainText('Stamped and checked out');
 		await expect.poll(async () => getOverlay(page)).toBe(null);
-		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().activeBorrow)).toBe(null);
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.activeBorrow).toBe(null);
+		expect(state.mistakeCount).toBe(0);
 	});
 
-	test('missing the stamp is a mistake and starts over from the scan', async ({ page }) => {
+	test('the slip asks for the real due date; straying off a stroke smudges it and it starts over', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await openCheckout(page);
-		await hitSkillCheck(page);
-		await expect.poll(async () => (await getOverlay(page))?.hits).toBe(1);
+		await scanBarcode(page);
+		await expect.poll(async () => (await checkoutScene(page))?.step).toBe('write');
 
-		// Freeze the marker well outside the zone and click.
+		const toPage = await pageMapper(page);
+		const { strokes, dueText } = await checkoutScene(page);
+		// Two weeks from today, as M/D.
+		const due = new Date();
+		due.setDate(due.getDate() + 14);
+		expect(dueText).toBe(`${due.getMonth() + 1}/${due.getDate()}`);
+
+		await traceStroke(page, toPage, strokes[0]);
+		await expect.poll(async () => (await checkoutScene(page)).stroke).toBe(1);
+		const second = strokes[1];
+		const start = toPage(second[0]);
+		await page.mouse.move(start.x, start.y);
+		await page.mouse.down();
+		for (const point of second.slice(1, 4)) {
+			const p = toPage(point);
+			await page.mouse.move(p.x, p.y);
+		}
+		const off = toPage({ x: second[3].x + 60, y: second[3].y + 60 });
+		await page.mouse.move(off.x, off.y, { steps: 3 });
+		await page.mouse.up();
+
+		await expect(page.locator('#library-toast')).toContainText('Smudged');
+		const scene = await checkoutScene(page);
+		expect(scene.step).toBe('write');
+		expect(scene.stroke).toBe(1);
+		expect(scene.inked).toBe(0);
+		expect(scene.smudges).toBe(1);
+	});
+
+	test('missing the stamp is a mistake; the target jumps and you try again', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await openCheckout(page);
+		await scanBarcode(page);
+		await expect.poll(async () => (await checkoutScene(page))?.step).toBe('write');
+		await writeDueDate(page);
+		await expect.poll(async () => (await checkoutScene(page))?.step).toBe('stamp');
+
+		const before = await checkoutScene(page);
 		await page.evaluate(() => {
 			const h = window.__libraryGameTestHooks;
-			const zone = h.getSkillCheckZone();
-			h.setSkillCheckGauge(zone.start > 0.5 ? 0.02 : 0.98, { freeze: true });
+			const sc = h.getCheckoutScene();
+			h.setStampNeedle(sc.target + Math.PI, { freeze: true });
 		});
-		await clickCanvasPoint(page, { x: 480, y: 300 });
+		await page.keyboard.press(' ');
 
-		await expect(page.locator('#library-toast')).toContainText('start again from the scan');
-		const after = await getOverlay(page);
-		expect(after.hits).toBe(0);
+		await expect(page.locator('#library-toast')).toContainText('Missed the stamp');
+		const after = await checkoutScene(page);
+		expect(after.step).toBe('stamp');
+		expect(after.misses).toBe(1);
+		expect(after.target).not.toBe(before.target);
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().mistakeCount)).toBe(1);
+
+		await stampInArc(page);
+		await expect.poll(async () => getOverlay(page)).toBe(null);
 	});
 });
 

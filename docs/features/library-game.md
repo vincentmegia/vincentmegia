@@ -16,6 +16,7 @@ Tests:
   subtest needs `DATABASE_URL`.
 * JS unit tests: `web/static/js/library/*.test.js`, run with `node --test`.
   They cover the pure logic modules (`rules.js`, `engine-state.js`,
+  `checkout.js`,
   `floor-plan.js`, `first-person.js`, `stories.js`, `book-titles.js`,
   `walk-styles.js`, `minjun-actions.js`) and smoke-test the renderers
   (`minjun.js`, `jiho.js`, `director-seo.js`, the six staff renderers and
@@ -79,8 +80,10 @@ handling, in place of Kitchen Shift's cooking and serving.
   * **Find the Book**: pick the requested book from decoys on its shelf.
   * **Ask the Librarian** (책 추천): a patron hints at what they like to
     read; pick the one of three covers that fits them.
-  * **Checkout Skill-Check**: a harder timing bar at the Front Desk —
-    scan the barcode, then stamp the due date.
+  * **Checkout** (`library/checkout.js`): a three-step manual checkout at
+    the Front Desk — aim a handheld scanner at the barcode on the drifting
+    book and hold it steady, write the due date on the slip stroke by
+    stroke, then stop a spinning needle in a small arc to stamp it.
   * **Coffee Pour**: hold to pour and release in the target band.
   * **Reading Nook**: a page-turning short story.
   * **Karen's event**: a two-button confirm.
@@ -371,16 +374,33 @@ Look values up there rather than relying on this doc.
   * Clicking a wrong book in Find the Book only shows a toast.
   * If patience runs out while searching, the request is dropped and
     counts as a mistake and a walk-out.
-  * The Checkout Skill-Check is harder than shelving (`rules.js` §7):
-    `CHECKOUT_HITS` (2) hits in a row — scan, then stamp — on a zone
-    `CHECKOUT_ZONE_SCALE` (0.6) as wide as the shelf's, centred somewhere
-    new on every step (`checkoutZoneCenter`, kept 0.12 from the ends), with
-    the marker `CHECKOUT_SWEEP_MULTIPLIER` (1.3×) faster, and
-    `CHECKOUT_STAMP_SPEEDUP` (1.15×) faster again for the stamp. Shaky
-    hands shrink it further.
-  * A miss on either step is a mistake and starts over from the scan; the
-    player can retry straight away. The scan alone changes no state —
-    only the stamp completes the loan.
+  * Checkout is three manual steps (`library/checkout.js`, constants at
+    the top of each step's section; the game feeds it the pointer — mouse,
+    pen or touch — or the arrow keys):
+    1. **Scan**: the book's back cover drifts on the counter
+       (`bookDrift`, ±`SCAN_DRIFT` px). The laser's centre must stay within
+       `SCAN_RADIUS` (11 px) of the barcode, moving slower than
+       `SCAN_STEADY_SPEED` (80 px/s), for `SCAN_HOLD_SECONDS` (0.9 s). Off
+       target or moving, the hold drains at `SCAN_DRAIN_RATE` (2×).
+    2. **Write**: write the due date — today + 14 days as "M/D"
+       (`dueDateText`), e.g. 11/5 — on the slip. Each digit and the "/" is
+       a handful of pen strokes (`GLYPHS`, a handwriting stroke font),
+       laid out by `dueDateStrokes` and sampled every `WRITE_SPACING` px.
+       Strokes go in order, each started from its pulsing dot (an arrow
+       shows the direction); lifting the pen between strokes is fine. Each
+       point within `WRITE_REACH` is inked; straying more than
+       `WRITE_OFF_LINE` from the stroke with the pen down smudges it and
+       that stroke starts over (no mistake, just time). Keyboard: arrow
+       keys move the pen while Space is held.
+    3. **Stamp**: a needle spins round a dial at `STAMP_SPEED` (3.2 rad/s,
+       times √ of the shift's sweep-speed ramp); stop it inside a
+       `STAMP_ARC` (≈32°) target with a click, tap or Space/Enter. The
+       stamp presses on pointer-down, and only once already on the stamp
+       step, so the click that ends a pen stroke never counts.
+    * A missed stamp is a mistake (`resolveCheckoutSkillCheck(false)`); the
+      target jumps somewhere away from the needle and the player retries.
+      A hit completes the loan. Shaky hands shrink the scan radius, the
+      line tolerance and the arc, and speed the needle up.
 * **Queues and star rating**:
   * Every queued patron has a wait timer (`queueWaitSecondsForShift`, 90 s
     falling to 45 s, scaled by Mood at arrival).
@@ -525,9 +545,11 @@ Look values up there rather than relying on this doc.
 * [x] Playwright (`e2e/library-game.spec.js`):
       * Start screen; floor switching, including during closing-wait.
       * Shelving, including the wrong shelf, the cart click and Coin Hunt.
-      * Borrowing, and the harder checkout: scan then stamp on a narrower,
-        moving zone, and a missed stamp being a mistake that restarts from
-        the scan (`getSkillCheckZone`).
+      * Borrowing, and the manual checkout end to end with real mouse
+        input: following the drifting barcode, tracing the line with the
+        button held stroke by stroke, and stamping (`getCheckoutScene`,
+        `setStampNeedle`); the slip asking for today + 14 days; a smudge
+        restarting just that stroke; a missed stamp being a mistake.
       * Fines: banked; a miscount followed by a keyboard recount; fines
         starting on a shift rolled 5–8.
       * Coffee Pour: mouse, keyboard and spill.

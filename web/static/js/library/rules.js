@@ -418,56 +418,6 @@ export function isSkillCheckSuccess(gaugePosition, zone = skillCheckSuccessZone(
   return Number.isFinite(gaugePosition) && gaugePosition >= zone.start && gaugePosition <= zone.end;
 }
 
-/**
- * The Checkout Skill-Check is harder than shelving ("make checkout more
- * harder"): two hits in a row — scan the barcode, then stamp the due date —
- * on a narrower zone that lands somewhere new on every step, with a faster
- * marker that speeds up again for the stamp. A miss on either step is a
- * mistake and starts over from the scan.
- */
-export const CHECKOUT_HITS = 2;
-export const CHECKOUT_ZONE_SCALE = 0.6;
-export const CHECKOUT_SWEEP_MULTIPLIER = 1.3;
-export const CHECKOUT_STAMP_SPEEDUP = 1.15;
-/** How far from the bar's ends a checkout zone's centre can land. */
-const CHECKOUT_ZONE_MARGIN = 0.12;
-
-/**
- * Where a checkout step's zone is centred, from a 0..1 roll: anywhere
- * between the margins, so the whole zone always fits on the bar.
- *
- * @param {number} roll
- * @returns {number}
- */
-export function checkoutZoneCenter(roll) {
-  const r = Number.isFinite(roll) ? Math.min(1, Math.max(0, roll)) : 0.5;
-  return CHECKOUT_ZONE_MARGIN + r * (1 - 2 * CHECKOUT_ZONE_MARGIN);
-}
-
-/**
- * A checkout step's success zone: CHECKOUT_ZONE_SCALE of the normal width
- * (times any other `scale`, e.g. shaky hands), centred at `center`.
- *
- * @param {number} center
- * @param {number} [scale]
- * @returns {{start: number, end: number, width: number}}
- */
-export function checkoutSuccessZone(center, scale = 1) {
-  const { width } = skillCheckSuccessZone(CHECKOUT_ZONE_SCALE * (Number.isFinite(scale) && scale > 0 ? scale : 1));
-  const c = Math.min(1 - width / 2, Math.max(width / 2, center));
-  return { start: c - width / 2, end: c + width / 2, width };
-}
-
-/**
- * The checkout marker's speed multiplier for `hitsSoFar` (0 = scanning).
- *
- * @param {number} hitsSoFar
- * @returns {number}
- */
-export function checkoutSweepMultiplier(hitsSoFar) {
-  return CHECKOUT_SWEEP_MULTIPLIER * (hitsSoFar > 0 ? CHECKOUT_STAMP_SPEEDUP : 1);
-}
-
 const SKILL_CHECK_SWEEP_SPEED_BASE = 0.6;
 const SKILL_CHECK_SWEEP_SPEED_MAX = 1.6;
 const SKILL_CHECK_SWEEP_SHIFT_SATURATION = 12;

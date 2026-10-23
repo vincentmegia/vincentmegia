@@ -127,11 +127,23 @@ import {
   RECOMMEND_MISS_MOOD,
   RECOMMEND_REGULAR_PATRON,
   RECOMMEND_REGULAR_WINDOW,
-  CHECKOUT_HITS,
-  checkoutZoneCenter,
-  checkoutSuccessZone,
-  checkoutSweepMultiplier,
 } from './library/rules.js';
+import {
+  createCheckout,
+  updateScan,
+  updateWrite,
+  updateStamp,
+  pressStamp,
+  barcodePosition,
+  stampArcWidth,
+  writeProgress,
+  dueDateText,
+  SCAN_BOOK,
+  SCAN_RADIUS,
+  SCAN_HOLD_SECONDS,
+  WRITE_SLIP,
+  STAMP_DIAL,
+} from './library/checkout.js';
 import {
   createInitialState,
   startShift as startShiftState,
@@ -186,6 +198,7 @@ import {
 } from './library/floor-plan.js';
 import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
+import { blurbForTitle, REVIEW_QUOTES } from './library/book-blurbs.js';
 import {
   defaultFacingTowardCenter,
   projectScene,
@@ -1386,17 +1399,88 @@ export function init(canvas, elements) {
 
   function openSkillCheckOverlay(context) {
     overlay = { kind: 'skill-check', context, gaugePosition: 0, direction: 1 };
-    // Checkout: two steps (scan, then stamp), each on a zone somewhere new.
-    if (context === 'checkout') {
-      overlay.hits = 0;
-      overlay.zoneCenter = checkoutZoneCenter(random());
+  }
+
+  /** The open skill-check's success zone (shaky hands shrink it). */
+  function currentSkillZone() {
+    return skillCheckSuccessZone(shakyHandsZoneScale(currentIntensity()));
+  }
+
+  // -- Checkout (library/checkout.js): scan, write, stamp --------------------
+
+  /** Where the pointer (mouse, finger, or the arrow-key cursor) is, in world pixels, and whether it's pressed. */
+  let checkoutPointer = null;
+  let checkoutPenDown = false;
+  /** Arrow keys move the pointer this many px per press/repeat. */
+  const CHECKOUT_KEY_STEP = 5;
+
+  function openCheckoutOverlay() {
+    const intensity = currentIntensity();
+    // Later shifts and shaky hands spin the stamp needle faster.
+    const speedScale = Math.sqrt(skillCheckSweepSpeed(currentShiftNumber) / skillCheckSweepSpeed(1)) * shakyHandsSweepMultiplier(intensity);
+    overlay = {
+      kind: 'checkout',
+      // Due back in two weeks from today (the real date).
+      scene: createCheckout(random, { zoneScale: shakyHandsZoneScale(intensity), speedScale, dueText: dueDateText(new Date()) }),
+      t: 0,
+      flash: null,
+    };
+    checkoutPenDown = false;
+    if (!checkoutPointer) checkoutPointer = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 + 140 };
+  }
+
+  /** Feeds the pen into the write step (on every pointer sample, not just per frame, so quick strokes ink smoothly). */
+  function feedCheckoutPen() {
+    if (overlay?.kind !== 'checkout' || overlay.scene.step !== 'write') return;
+    const before = overlay.scene;
+    overlay.scene = updateWrite(before, checkoutPointer, checkoutPenDown);
+    if (overlay.scene.smudged && !before.smudged) {
+      overlay.flash = { kind: 'smudge', x: checkoutPointer.x, y: checkoutPointer.y, seconds: 0.8 };
+      showToast('Smudged! Start that stroke again from its ●.');
+    }
+    if (overlay.scene.step === 'stamp' && before.step === 'write') {
+      checkoutPenDown = false;
+      showToast('Written — now stamp it: stop the needle in the gold arc.');
     }
   }
 
-  /** The open skill-check's success zone: centred for shelving, wherever this step put it for checkout. */
-  function currentSkillZone() {
-    const scale = shakyHandsZoneScale(currentIntensity());
-    return overlay?.context === 'checkout' ? checkoutSuccessZone(overlay.zoneCenter, scale) : skillCheckSuccessZone(scale);
+  function updateCheckoutOverlay(deltaSeconds) {
+    overlay.t += deltaSeconds;
+    if (overlay.flash) {
+      overlay.flash.seconds -= deltaSeconds;
+      if (overlay.flash.seconds <= 0) overlay.flash = null;
+    }
+    const scene = overlay.scene;
+    if (scene.step === 'scan') {
+      overlay.scene = updateScan(scene, checkoutPointer, deltaSeconds, overlay.t);
+      if (overlay.scene.step === 'write') {
+        overlay.flash = { kind: 'beep', seconds: 0.6 };
+        showToast('Beep! Barcode scanned — now write the due date.');
+      }
+    } else if (scene.step === 'write') {
+      feedCheckoutPen();
+    } else if (scene.step === 'stamp' && !overlay.stampFrozen) {
+      overlay.scene = updateStamp(scene, deltaSeconds);
+    }
+  }
+
+  function pressCheckoutStamp() {
+    if (overlay?.kind !== 'checkout' || overlay.scene.step !== 'stamp') return;
+    overlay.stampFrozen = false;
+    const { scene, hit } = pressStamp(overlay.scene, random);
+    overlay.scene = scene;
+    shiftState = resolveCheckoutSkillCheck(shiftState, hit);
+    if (hit) {
+      showToast('Thunk! Stamped and checked out — thank you!');
+      overlay = null;
+    } else {
+      overlay.flash = { kind: 'miss', seconds: 0.6 };
+      showToast('Missed the stamp — that\'s a mistake. Try again.');
+    }
+  }
+
+  function setCheckoutPointerFromEvent(e) {
+    checkoutPointer = canvasCoordsFromEvent(e);
   }
 
   function openCoinHuntOverlay() {
@@ -1908,17 +1992,48 @@ export function init(canvas, elements) {
   }
 
   function onCanvasPointerDown(e) {
-    if (!running || overlay?.kind !== 'coffee-pour') return;
+    if (!running) return;
+    if (overlay?.kind === 'checkout') {
+      e.preventDefault();
+      setCheckoutPointerFromEvent(e);
+      // The stamp presses on pointer-down, and only when already on the
+      // stamp step: the click that ends a pen stroke (which can finish the
+      // line and move to stamping) must never count as a stamp.
+      if (overlay.scene.step === 'stamp') {
+        pressCheckoutStamp();
+        return;
+      }
+      checkoutPenDown = true;
+      feedCheckoutPen();
+      return;
+    }
+    if (overlay?.kind !== 'coffee-pour') return;
     e.preventDefault();
     startCoffeePour();
   }
 
+  /** Mouse, pen and touch movement: the checkout's scanner and pen follow it. */
+  function onCanvasPointerMove(e) {
+    if (!running || overlay?.kind !== 'checkout') return;
+    if (e.pointerType === 'touch') e.preventDefault();
+    setCheckoutPointerFromEvent(e);
+    feedCheckoutPen();
+  }
+
   function onWindowPointerUp() {
     stopCoffeePour();
+    if (checkoutPenDown) {
+      checkoutPenDown = false;
+      feedCheckoutPen();
+    }
   }
 
   function updateOverlay(deltaSeconds) {
     if (!overlay) return;
+    if (overlay.kind === 'checkout') {
+      updateCheckoutOverlay(deltaSeconds);
+      return;
+    }
     if (overlay.kind === 'recommend') {
       if (overlay.result) {
         overlay.closeIn -= deltaSeconds;
@@ -1955,8 +2070,7 @@ export function init(canvas, elements) {
     }
     if (overlay.kind === 'skill-check') {
       if (overlay.frozen) return; // test hook: held in place until the next click
-      const speed = skillCheckSweepSpeed(currentShiftNumber) * shakyHandsSweepMultiplier(currentIntensity())
-        * (overlay.context === 'checkout' ? checkoutSweepMultiplier(overlay.hits) : 1);
+      const speed = skillCheckSweepSpeed(currentShiftNumber) * shakyHandsSweepMultiplier(currentIntensity());
       overlay.gaugePosition += overlay.direction * speed * deltaSeconds;
       if (overlay.gaugePosition >= 1) { overlay.gaugePosition = 1; overlay.direction = -1; }
       else if (overlay.gaugePosition <= 0) { overlay.gaugePosition = 0; overlay.direction = 1; }
@@ -1974,7 +2088,7 @@ export function init(canvas, elements) {
 
     if (station.kind === 'front-desk') {
       if (shiftState.activeBorrow?.stage === 'checkout') {
-        openSkillCheckOverlay('checkout');
+        openCheckoutOverlay();
         return;
       }
       // A collected fine payment goes into the till first (Count the Till);
@@ -2101,30 +2215,10 @@ export function init(canvas, elements) {
   function resolveSkillCheck() {
     overlay.frozen = false;
     const success = isSkillCheckSuccess(overlay.gaugePosition, currentSkillZone());
-    if (overlay.context === 'shelf') {
-      shiftState = resolveShelfSkillCheck(shiftState, success);
-      showToast(success ? `Shelved! +${SHELVED_BOOK_TIP_GARD}g` : 'Missed the mark — try again.');
-      if (success) overlay = null;
-      else { overlay.gaugePosition = 0; overlay.direction = 1; } // immediate retry, still carrying the book
-    } else {
-      // The scan is only the first step: hit it and the stamp comes next,
-      // on a new zone, faster. Only the last hit completes the checkout.
-      if (success && overlay.hits + 1 < CHECKOUT_HITS) {
-        overlay.hits += 1;
-        overlay.zoneCenter = checkoutZoneCenter(random());
-        showToast('Beep! Barcode scanned — now stamp the due date.');
-        return;
-      }
-      shiftState = resolveCheckoutSkillCheck(shiftState, success);
-      showToast(success ? 'Stamped and checked out — thank you!' : 'Fumbled the checkout — start again from the scan.');
-      if (success) overlay = null;
-      else {
-        overlay.gaugePosition = 0;
-        overlay.direction = 1;
-        overlay.hits = 0;
-        overlay.zoneCenter = checkoutZoneCenter(random());
-      }
-    }
+    shiftState = resolveShelfSkillCheck(shiftState, success);
+    showToast(success ? `Shelved! +${SHELVED_BOOK_TIP_GARD}g` : 'Missed the mark — try again.');
+    if (success) overlay = null;
+    else { overlay.gaugePosition = 0; overlay.direction = 1; } // immediate retry, still carrying the book
   }
 
   function handleCoinHuntClick(x, y) {
@@ -2203,6 +2297,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'find-the-book') handleFindTheBookClick(x, y);
     else if (overlay.kind === 'karen') handleKarenClick(x, y);
     else if (overlay.kind === 'recommend') handleRecommendClick(x, y);
+    // (checkout: handled on pointer-down — see onCanvasPointerDown)
     else if (overlay.kind === 'till-count') handleTillCountClick(x, y);
     else if (overlay.kind === 'reading') handleReadingClick(x, y);
     else if (overlay.kind === 'boss-cutscene') finishBossCutscene();
@@ -2290,6 +2385,22 @@ export function init(canvas, elements) {
       finishBossCutscene();
       return;
     }
+    if (overlay?.kind === 'checkout') {
+      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (step) {
+        e.preventDefault();
+        const p = checkoutPointer ?? { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
+        checkoutPointer = { x: p.x + step[0] * CHECKOUT_KEY_STEP, y: p.y + step[1] * CHECKOUT_KEY_STEP };
+        feedCheckoutPen();
+        return;
+      }
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (overlay.scene.step === 'stamp') { if (!e.repeat) pressCheckoutStamp(); }
+        else if (overlay.scene.step === 'write') { checkoutPenDown = true; feedCheckoutPen(); }
+        return;
+      }
+    }
     if (overlay?.kind === 'recommend') {
       const index = Number(e.key) - 1;
       if (Number.isInteger(index) && index >= 0 && index < 3) {
@@ -2366,7 +2477,10 @@ export function init(canvas, elements) {
   }
 
   function onKeyUp(e) {
-    if (e.key === ' ' || e.key === 'Enter') stopCoffeePour();
+    if (e.key === ' ' || e.key === 'Enter') {
+      stopCoffeePour();
+      if (checkoutPenDown && overlay?.kind === 'checkout') { checkoutPenDown = false; feedCheckoutPen(); }
+    }
     if (e.key in FP_TURN_KEYS) heldFP[FP_TURN_KEYS[e.key]] = false;
     else if (e.key in FP_MOVE_KEYS) heldFP[FP_MOVE_KEYS[e.key]] = false;
   }
@@ -3292,12 +3406,323 @@ export function init(canvas, elements) {
     'till-count': [ANIME.mint, ANIME.mintDeep],
     'coffee-pour': [ANIME.gold, ANIME.goldDeep],
     recommend: [ANIME.pink, ANIME.pinkDeep],
+    checkout: [ANIME.sky, ANIME.skyDeep],
   };
 
   /** A Hospital Shift anime dialog window behind an overlay's content. */
   function drawWindow(x, y, w, h) {
     const [accent, accentDeep] = WINDOW_ACCENTS[overlay?.kind] ?? [ANIME.pink, ANIME.pinkDeep];
     animeWindow(ctx, { x, y, w, h }, { t: performance.now() / 1000, accent, accentDeep });
+  }
+
+  // -- Checkout overlay drawing ---------------------------------------------
+
+  function drawCheckoutOverlay() {
+    const scene = overlay.scene;
+    const t = overlay.t;
+    drawOverlayBackdrop();
+    drawWindow(110, 96, CANVAS_WIDTH - 220, 440);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `22px ${DISPLAY_FONT}`;
+    outlinedText(ctx, 'Checkout · 대출', CANVAS_WIDTH / 2, 136, '#ffffff', ANIME.ink, 4);
+    drawCheckoutSteps(scene.step);
+    if (scene.step === 'scan') drawCheckoutScan(scene, t);
+    else if (scene.step === 'write') drawCheckoutWrite(scene, t);
+    else drawCheckoutStamp(scene);
+    if (overlay.flash?.kind === 'miss') {
+      ctx.fillStyle = `rgba(224,74,74,${overlay.flash.seconds * 0.4})`;
+      ctx.fillRect(110, 96, CANVAS_WIDTH - 220, 440);
+    }
+  }
+
+  /** ① Scan ② Write ③ Stamp, the current one lit, done ones ticked. */
+  function drawCheckoutSteps(step) {
+    const steps = [['scan', '① Scan'], ['write', '② Write'], ['stamp', '③ Stamp']];
+    const at = steps.findIndex(([k]) => k === step);
+    steps.forEach(([, label], i) => {
+      const x = CANVAS_WIDTH / 2 + (i - 1) * 118;
+      const fill = i === at ? ANIME.sky : i < at ? ANIME.mint : '#efe6f2';
+      drawRoundRect(ctx, x - 52, 150, 104, 24, 12, fill);
+      ctx.strokeStyle = ANIME.ink;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(x - 52, 150, 104, 24, 12);
+      ctx.stroke();
+      ctx.fillStyle = i <= at ? '#ffffff' : '#9a8aa8';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(i < at ? `${label} ✓` : label, x, 167);
+    });
+  }
+
+  function checkoutHint(text) {
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    outlinedText(ctx, text, CANVAS_WIDTH / 2, 196, '#ffffff', ANIME.ink, 3);
+  }
+
+  function drawCheckoutScan(scene, t) {
+    checkoutHint('Aim the scanner’s red line at the barcode and hold it steady — mouse, finger, or arrow keys');
+    // The counter, then the book's back cover drifting on it.
+    drawRoundRect(ctx, 150, 214, CANVAS_WIDTH - 300, 300, 14, '#d8b48a');
+    ctx.strokeStyle = 'rgba(120,80,40,0.25)';
+    ctx.lineWidth = 1;
+    for (let y = 230; y < 510; y += 22) {
+      ctx.beginPath();
+      ctx.moveTo(160, y);
+      ctx.lineTo(CANVAS_WIDTH - 160, y + 4);
+      ctx.stroke();
+    }
+    const entry = bookCatalog.get(shiftState?.activeBorrow?.bookId);
+    const colour = findGenre(entry?.genreId)?.color ?? '#8a6a4a';
+    const code = barcodePosition(scene, t);
+    const bx = code.x - scene.barcode.x;
+    const by = code.y - scene.barcode.y;
+    drawRoundRect(ctx, bx + 5, by + 7, SCAN_BOOK.w, SCAN_BOOK.h, 6, 'rgba(59,42,74,0.25)');
+    drawRoundRect(ctx, bx, by, SCAN_BOOK.w, SCAN_BOOK.h, 6, colour);
+    drawRoundRect(ctx, bx, by, 14, SCAN_BOOK.h, 6, tint(colour, -0.25));
+    drawBackCover(entry, colour, bx + 14, by, SCAN_BOOK.w - 14);
+    drawRoundRect(ctx, code.x - 42, code.y - 22, 84, 44, 3, '#ffffff');
+    ctx.fillStyle = '#1e1a22';
+    let px = code.x - 36;
+    let k = 0;
+    while (px < code.x + 36) {
+      const w = [1, 2, 1, 3, 1, 2][k % 6];
+      ctx.fillRect(px, code.y - 17, w, 26);
+      px += w + [1, 2, 1, 1, 2][k % 5];
+      k++;
+    }
+    ctx.font = '7px monospace';
+    ctx.fillText('8 801234 56789', code.x, code.y + 18);
+
+    // The scanner, at the pointer: a red laser line across its aim point.
+    const p = checkoutPointer;
+    if (p) {
+      const on = scene.onTarget;
+      ctx.strokeStyle = on ? 'rgba(255,40,60,0.95)' : 'rgba(255,60,60,0.6)';
+      ctx.lineWidth = on ? 3 : 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 34, p.y);
+      ctx.lineTo(p.x + 34, p.y);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,60,60,0.15)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, SCAN_RADIUS * scene.zoneScale, 0, Math.PI * 2);
+      ctx.fill();
+      // The gun body, below and to the right of the aim point.
+      ctx.save();
+      ctx.translate(p.x + 30, p.y + 34);
+      ctx.rotate(-0.5);
+      drawRoundRect(ctx, -26, -12, 52, 24, 8, '#3a3a48');
+      drawRoundRect(ctx, -32, -9, 10, 18, 3, on ? '#ff5a6a' : '#7a2a34');
+      drawRoundRect(ctx, 4, 8, 16, 30, 6, '#2a2a34');
+      drawRoundRect(ctx, -6, 10, 7, 10, 3, '#e8c25a');
+      ctx.restore();
+    }
+    // The beep meter.
+    const f = Math.min(1, scene.scanHold / SCAN_HOLD_SECONDS);
+    drawRoundRect(ctx, CANVAS_WIDTH / 2 - 120, 494, 240, 14, 7, '#efe6f2');
+    if (f > 0) drawRoundRect(ctx, CANVAS_WIDTH / 2 - 120, 494, 240 * f, 14, 7, scene.onTarget ? ANIME.mint : ANIME.gold);
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText(scene.onTarget ? 'Hold steady…' : 'Find the barcode', CANVAS_WIDTH / 2, 505);
+  }
+
+  /**
+   * The back cover's text (library/book-blurbs.js): the title, the blurb,
+   * a review quote, and the library's sticker — above the barcode band.
+   */
+  function drawBackCover(entry, colour, x, y, w) {
+    const cx = x + w / 2;
+    const { ko, en } = splitTitle(entry?.title ?? '');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(ko, cx, y + 26);
+    ctx.font = 'italic 10px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(en, cx, y + 40);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 24, y + 50);
+    ctx.lineTo(x + w - 24, y + 50);
+    ctx.stroke();
+    // The blurb, wrapped to the cover.
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    wrapLines(blurbForTitle(entry?.title ?? ''), w - 30).slice(0, 6).forEach((l, i) => ctx.fillText(l, cx, y + 68 + i * 14));
+    // A review quote, in Korean with its meaning.
+    const quote = REVIEW_QUOTES[entry?.genreId];
+    if (quote) {
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(`★★★★★ ${quote.ko}`, cx, y + 162);
+      ctx.font = 'italic 9px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText(`(${quote.en}) — 도서관 소식`, cx, y + 175);
+    }
+    // The library's sticker in the corner.
+    drawRoundRect(ctx, x + w - 44, y + 6, 38, 16, 4, '#fffaf0');
+    ctx.fillStyle = colour;
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('도서관', x + w - 25, y + 17);
+  }
+
+  function drawCheckoutWrite(scene, t) {
+    checkoutHint(`Write the due date — ${scene.dueText} — tracing each stroke from its ● (or arrows + hold Space)`);
+    const s2 = WRITE_SLIP;
+    drawRoundRect(ctx, s2.x + 5, s2.y + 7, s2.w, s2.h, 8, 'rgba(59,42,74,0.22)');
+    drawRoundRect(ctx, s2.x, s2.y, s2.w, s2.h, 8, '#fffaf0');
+    ctx.strokeStyle = 'rgba(79,168,224,0.3)';
+    ctx.lineWidth = 1;
+    for (let y = s2.y + 60; y < s2.y + s2.h - 10; y += 26) {
+      ctx.beginPath();
+      ctx.moveTo(s2.x + 20, y);
+      ctx.lineTo(s2.x + s2.w - 20, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(232,85,143,0.5)';
+    ctx.beginPath();
+    ctx.moveTo(s2.x + 40, s2.y + 10);
+    ctx.lineTo(s2.x + 40, s2.y + s2.h - 10);
+    ctx.stroke();
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('반납 예정일 · Due date', s2.x + 54, s2.y + 34);
+    ctx.textAlign = 'center';
+    const line = (pts, upto = pts.length) => {
+      ctx.beginPath();
+      for (let i = 0; i < upto; i++) (i ? ctx.lineTo(pts[i].x, pts[i].y) : ctx.moveTo(pts[i].x, pts[i].y));
+      ctx.stroke();
+    };
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Every stroke dotted, then the ink: whole strokes already written,
+    // and how far along the current one.
+    ctx.setLineDash([2, 7]);
+    ctx.strokeStyle = 'rgba(90,80,110,0.5)';
+    ctx.lineWidth = 4;
+    scene.strokes.forEach((pts) => line(pts));
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.lineWidth = 4.4;
+    scene.strokes.slice(0, scene.stroke).forEach((pts) => line(pts));
+    const current = scene.strokes[scene.stroke];
+    if (current && scene.inked > 1) line(current, scene.inked);
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+    // The current stroke's start dot pulses until it's begun, with an arrow
+    // showing which way the stroke goes.
+    if (current && scene.inked === 0) {
+      const pulse = 6.5 + Math.sin(t * 6) * 2;
+      ctx.fillStyle = ANIME.pink;
+      ctx.beginPath();
+      ctx.arc(current[0].x, current[0].y, pulse, 0, Math.PI * 2);
+      ctx.fill();
+      const ahead = current[Math.min(current.length - 1, 2)];
+      const ang = Math.atan2(ahead.y - current[0].y, ahead.x - current[0].x);
+      ctx.save();
+      ctx.translate(current[0].x + Math.cos(ang) * 14, current[0].y + Math.sin(ang) * 14);
+      ctx.rotate(ang);
+      ctx.fillStyle = ANIME.pinkDeep;
+      ctx.beginPath();
+      ctx.moveTo(5, 0);
+      ctx.lineTo(-3, -4);
+      ctx.lineTo(-3, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (overlay.flash?.kind === 'smudge') {
+      ctx.fillStyle = `rgba(30,58,138,${overlay.flash.seconds * 0.6})`;
+      for (const [dx, dy, r] of [[0, 0, 9], [8, 4, 5], [-6, 6, 4], [3, -8, 4]]) {
+        ctx.beginPath();
+        ctx.arc(overlay.flash.x + dx, overlay.flash.y + dy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // The pen, its nib at the pointer.
+    const p = checkoutPointer;
+    if (p) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(-0.7);
+      drawRoundRect(ctx, -2, -46, 8, 40, 3, checkoutPenDown ? '#2e3a5a' : '#4a5a8a');
+      drawRoundRect(ctx, -2, -50, 8, 6, 2, '#e8c25a');
+      ctx.fillStyle = '#c9a24a';
+      ctx.beginPath();
+      ctx.moveTo(-2, -6);
+      ctx.lineTo(6, -6);
+      ctx.lineTo(2, 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = ANIME.ink;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(`Stroke ${Math.min(scene.stroke + 1, scene.strokes.length)} of ${scene.strokes.length} · ${Math.round(writeProgress(scene) * 100)}% written${scene.smudges ? ` · ${scene.smudges} smudge${scene.smudges === 1 ? '' : 's'}` : ''}`, CANVAS_WIDTH / 2, s2.y + s2.h + 24);
+  }
+
+  function drawCheckoutStamp(scene) {
+    checkoutHint('Stop the needle in the gold arc — click, tap, or press Space/Enter');
+    const d = STAMP_DIAL;
+    const arc = stampArcWidth(scene);
+    // The dial face, its ticks, the gold target arc, then the needle.
+    ctx.fillStyle = '#fffaf0';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2 - Math.PI / 2;
+      const r0 = d.r - (i % 6 === 0 ? 14 : 8);
+      ctx.beginPath();
+      ctx.moveTo(d.x + Math.cos(a) * r0, d.y + Math.sin(a) * r0);
+      ctx.lineTo(d.x + Math.cos(a) * (d.r - 3), d.y + Math.sin(a) * (d.r - 3));
+      ctx.stroke();
+    }
+    const toCanvas = (a) => a - Math.PI / 2;
+    ctx.strokeStyle = ANIME.gold;
+    ctx.lineWidth = 16;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r - 16, toCanvas(scene.target), toCanvas(scene.target + arc));
+    ctx.stroke();
+    ctx.strokeStyle = ANIME.goldDeep;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const na = toCanvas(scene.needle);
+    ctx.strokeStyle = '#d23a4a';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x + Math.cos(na) * (d.r - 8), d.y + Math.sin(na) * (d.r - 8));
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    // The stamp's handle in the middle, with "반납" on its face.
+    ctx.fillStyle = '#c83a4a';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, 26, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = ANIME.ink;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('반납', d.x, d.y + 1);
+    ctx.textBaseline = 'alphabetic';
+    if (scene.misses) {
+      ctx.fillStyle = ANIME.ink;
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`${scene.misses} missed`, d.x, d.y + d.r + 22);
+    }
   }
 
   function drawSkillCheckOverlay() {
@@ -3311,10 +3736,7 @@ export function init(canvas, elements) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = `22px ${DISPLAY_FONT}`;
-    const title = overlay.context === 'shelf'
-      ? 'Shelf Skill-Check'
-      : (overlay.hits > 0 ? `Checkout — stamp the due date (${overlay.hits + 1}/${CHECKOUT_HITS})` : `Checkout — scan the barcode (1/${CHECKOUT_HITS})`);
-    outlinedText(ctx, title, CANVAS_WIDTH / 2, barY - 40, '#ffffff', ANIME.ink, 4);
+    outlinedText(ctx, 'Shelf Skill-Check', CANVAS_WIDTH / 2, barY - 40, '#ffffff', ANIME.ink, 4);
     ctx.font = 'bold 13px sans-serif';
     outlinedText(ctx, 'Click, tap, or press Space/Enter to stop the marker in the gold zone', CANVAS_WIDTH / 2, barY - 16, '#ffffff', ANIME.ink, 3);
 
@@ -3859,6 +4281,7 @@ export function init(canvas, elements) {
     else if (overlay.kind === 'find-the-book') drawFindTheBookOverlay();
     else if (overlay.kind === 'karen') drawKarenOverlay();
     else if (overlay.kind === 'recommend') drawRecommendOverlay();
+    else if (overlay.kind === 'checkout') drawCheckoutOverlay();
     else if (overlay.kind === 'coffee-pour') drawCoffeePourOverlay();
     else if (overlay.kind === 'till-count') drawTillCountOverlay();
     else if (overlay.kind === 'reading') drawReadingOverlay();
@@ -4582,6 +5005,7 @@ export function init(canvas, elements) {
   window.addEventListener('pointerup', onWindowPointerUp);
   window.addEventListener('pointercancel', onWindowPointerUp);
   canvas.addEventListener('mousemove', onCanvasMouseMove);
+  canvas.addEventListener('pointermove', onCanvasPointerMove);
   canvas.addEventListener('mouseleave', onCanvasMouseLeave);
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
@@ -4743,6 +5167,18 @@ export function init(canvas, elements) {
       // a test's set-then-click can't race the sweep under load.
       /** The open skill-check's success zone ({start, end, width}), wherever it is this step. */
       getSkillCheckZone: () => (overlay?.kind === 'skill-check' ? currentSkillZone() : null),
+      /** The open checkout: its step, the barcode's current position, the writing line and the stamp's needle/target. */
+      getCheckoutScene() {
+        if (overlay?.kind !== 'checkout') return null;
+        const sc = overlay.scene;
+        return { ...JSON.parse(JSON.stringify(sc)), barcodeAt: barcodePosition(sc, overlay.t), arcWidth: stampArcWidth(sc) };
+      },
+      /** Sets the stamp needle's angle; `freeze` holds it there until the next press. */
+      setStampNeedle(angle, { freeze = false } = {}) {
+        if (overlay?.kind !== 'checkout' || overlay.scene.step !== 'stamp') return;
+        overlay.scene = { ...overlay.scene, needle: angle };
+        overlay.stampFrozen = freeze;
+      },
       setSkillCheckGauge(pos, { freeze = false } = {}) {
         if (overlay?.kind !== 'skill-check') return;
         overlay.gaugePosition = pos;
