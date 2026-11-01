@@ -243,6 +243,12 @@ export function stepForward(x, y, facing, direction, distance) {
   return { x: x + dx * distance * direction, y: y + dy * distance * direction };
 }
 
+/** Moves a point `distance` world pixels perpendicular to the facing (right when `direction` is 1, left when -1). */
+export function stepStrafe(x, y, facing, direction, distance) {
+  const { dx, dy } = forwardVector(facing);
+  return { x: x - dy * distance * direction, y: y + dx * distance * direction };
+}
+
 // -- Jump -------------------------------------------------------------------
 
 /** Returns a fresh jump state (not jumping). */

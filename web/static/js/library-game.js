@@ -205,10 +205,12 @@ import {
   findInteractTarget,
   turnFacing,
   stepForward,
+  stepStrafe,
   MOVE_SPEED_PIXELS_PER_SECOND,
   createJumpState,
   updateJump,
   startJump,
+  DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
 
 // ---------------------------------------------------------------------------
@@ -806,13 +808,34 @@ export function init(canvas, elements) {
   // "sensible facing angle" — see `switchFloor`) doesn't need special-casing.
   let cameraMode = 'top-down'; // 'top-down' | 'first-person'
   let playerFacing = 0;
-  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false, sprint: false };
+  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false, strafeLeft: false, strafeRight: false, sprint: false };
   let fpJump = createJumpState();
   let fpHeadBobT = 0;
+  let fpTiltAngle = 0;
   const FP_HEAD_BOB_FREQ = 8;
   const FP_HEAD_BOB_AMP = 3.5;
   const FP_HEAD_BOB_SWAY = 2;
   const FP_SPRINT_MULTIPLIER = 1.6;
+  const FP_STRAFE_SPEED = 160;
+  const FP_TILT_MAX = 0.035;
+  const FP_TILT_EASE = 8;
+  const FP_SPRINT_FOV_EXTRA = 8;
+  const FP_DUST_COUNT = 24;
+  let fpDust = [];
+  function initFpDust() {
+    fpDust = [];
+    for (let i = 0; i < FP_DUST_COUNT; i++) {
+      fpDust.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: Math.random() * CANVAS_HEIGHT,
+        size: 1 + Math.random() * 2,
+        speed: 4 + Math.random() * 8,
+        alpha: 0.15 + Math.random() * 0.2,
+        drift: (Math.random() - 0.5) * 6,
+      });
+    }
+  }
+  initFpDust();
   // Recomputed once per frame by `updateFirstPersonScene` — the projected
   // station/patron/book billboards for the current frame, and whichever one
   // (if any) is centered near the crosshair within interact range. Read by
@@ -1117,9 +1140,12 @@ export function init(canvas, elements) {
       heldFP.turnRight = false;
       heldFP.forward = false;
       heldFP.back = false;
+      heldFP.strafeLeft = false;
+      heldFP.strafeRight = false;
       heldFP.sprint = false;
       fpJump = createJumpState();
       fpHeadBobT = 0;
+      fpTiltAngle = 0;
       fpScene = { projected: [], interactTarget: null };
     }
     updateCameraButton();
@@ -1164,12 +1190,13 @@ export function init(canvas, elements) {
       fpScene = { projected: [], interactTarget: null };
       return;
     }
+    const fov = DEFAULT_FOV_DEGREES + (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight) ? FP_SPRINT_FOV_EXTRA : 0);
     const projected = projectScene(
       { x: player.x, y: player.y, facing: playerFacing },
       buildFirstPersonEntities(),
-      { canvasWidth: CANVAS_WIDTH },
+      { canvasWidth: CANVAS_WIDTH, fovDegrees: fov },
     );
-    fpScene = { projected, interactTarget: findInteractTarget(projected) };
+    fpScene = { projected, interactTarget: findInteractTarget(projected), fov };
   }
 
   function updateFirstPersonMovement(deltaSeconds) {
@@ -1179,13 +1206,13 @@ export function init(canvas, elements) {
     if (heldFP.turnRight) turnDirection += 1;
     if (turnDirection !== 0) playerFacing = turnFacing(playerFacing, turnDirection, deltaSeconds);
 
+    const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
+    const sprintMultiplier = heldFP.sprint ? FP_SPRINT_MULTIPLIER : 1;
+
     let moveDirection = 0;
     if (heldFP.forward) moveDirection += 1;
     if (heldFP.back) moveDirection -= 1;
-    const isMoving = moveDirection !== 0;
-    if (isMoving) {
-      const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
-      const sprintMultiplier = heldFP.sprint ? FP_SPRINT_MULTIPLIER : 1;
+    if (moveDirection !== 0) {
       const distance = MOVE_SPEED_PIXELS_PER_SECOND * sanityMultiplier * sprintMultiplier * deltaSeconds;
       const next = stepForward(player.x, player.y, playerFacing, moveDirection, distance);
       const clamped = clampToCanvas(next.x, next.y);
@@ -1193,11 +1220,37 @@ export function init(canvas, elements) {
       player.y = clamped.y;
     }
 
+    let strafeDir = 0;
+    if (heldFP.strafeLeft) strafeDir -= 1;
+    if (heldFP.strafeRight) strafeDir += 1;
+    if (strafeDir !== 0) {
+      const distance = FP_STRAFE_SPEED * sanityMultiplier * sprintMultiplier * deltaSeconds;
+      const next = stepStrafe(player.x, player.y, playerFacing, strafeDir, distance);
+      const clamped = clampToCanvas(next.x, next.y);
+      player.x = clamped.x;
+      player.y = clamped.y;
+    }
+
+    const isMoving = moveDirection !== 0 || strafeDir !== 0;
     if (isMoving) {
       const bobSpeed = heldFP.sprint ? FP_HEAD_BOB_FREQ * 1.3 : FP_HEAD_BOB_FREQ;
       fpHeadBobT += deltaSeconds * bobSpeed;
     } else {
-      fpHeadBobT = 0;
+      fpHeadBobT *= Math.max(0, 1 - deltaSeconds * 6);
+      if (fpHeadBobT < 0.01) fpHeadBobT = 0;
+    }
+
+    // Camera tilt when strafing
+    const targetTilt = strafeDir * -FP_TILT_MAX;
+    fpTiltAngle += (targetTilt - fpTiltAngle) * Math.min(1, deltaSeconds * FP_TILT_EASE);
+
+    // Dust particles
+    for (const d of fpDust) {
+      d.y -= d.speed * deltaSeconds;
+      d.x += d.drift * deltaSeconds;
+      if (d.y < -5) { d.y = CANVAS_HEIGHT + 5; d.x = Math.random() * CANVAS_WIDTH; }
+      if (d.x < -5) d.x = CANVAS_WIDTH + 5;
+      else if (d.x > CANVAS_WIDTH + 5) d.x = -5;
     }
 
     fpJump = updateJump(fpJump, deltaSeconds);
@@ -2401,6 +2454,7 @@ export function init(canvas, elements) {
 
   const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', a: 'turnLeft', d: 'turnRight', A: 'turnLeft', D: 'turnRight' };
   const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back', w: 'forward', s: 'back', W: 'forward', S: 'back' };
+  const FP_STRAFE_KEYS = { q: 'strafeLeft', Q: 'strafeLeft', e: 'strafeRight', E: 'strafeRight' };
 
   function onKeyDown(e) {
     if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {
@@ -2482,9 +2536,9 @@ export function init(canvas, elements) {
     // on-screen buttons.
     if (cameraMode === 'first-person' && running && !overlay) {
       if (e.key === 'Shift') { heldFP.sprint = true; return; }
-      if (e.key in FP_TURN_KEYS || e.key in FP_MOVE_KEYS) {
+      if (e.key in FP_TURN_KEYS || e.key in FP_MOVE_KEYS || e.key in FP_STRAFE_KEYS) {
         e.preventDefault();
-        heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key]] = true;
+        heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key] ?? FP_STRAFE_KEYS[e.key]] = true;
         return;
       }
       if (e.key === ' ' || e.key === 'Enter') {
@@ -2512,6 +2566,7 @@ export function init(canvas, elements) {
     if (e.key === 'Shift') heldFP.sprint = false;
     if (e.key in FP_TURN_KEYS) heldFP[FP_TURN_KEYS[e.key]] = false;
     else if (e.key in FP_MOVE_KEYS) heldFP[FP_MOVE_KEYS[e.key]] = false;
+    else if (e.key in FP_STRAFE_KEYS) heldFP[FP_STRAFE_KEYS[e.key]] = false;
   }
 
   // -- Shift lifecycle ----------------------------------------------------
@@ -2546,9 +2601,12 @@ export function init(canvas, elements) {
     heldFP.turnRight = false;
     heldFP.forward = false;
     heldFP.back = false;
+    heldFP.strafeLeft = false;
+    heldFP.strafeRight = false;
     heldFP.sprint = false;
     fpJump = createJumpState();
     fpHeadBobT = 0;
+    fpTiltAngle = 0;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -4858,6 +4916,19 @@ export function init(canvas, elements) {
    * point using its own known height, same as Top-Down anchors each shape
    * to the station/player's own y.
    */
+  function drawFirstPersonEntityShadow(entity) {
+    const shadowW = 30 * entity.scale;
+    const shadowH = 8 * entity.scale;
+    const fogAlpha = Math.min(0.6, Math.max(0, (entity.distance - 200) / 550) ** 1.5);
+    ctx.save();
+    ctx.globalAlpha = (0.25 - fogAlpha * 0.25);
+    ctx.fillStyle = '#3a2a2a';
+    ctx.beginPath();
+    ctx.ellipse(entity.screenX, entity.groundY + 2 * entity.scale, shadowW, shadowH, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawFirstPersonEntity(entity) {
     const fogAlpha = Math.min(0.6, Math.max(0, (entity.distance - 200) / 550) ** 1.5);
     ctx.save();
@@ -4886,6 +4957,18 @@ export function init(canvas, elements) {
         centerY: entity.groundY - halfOnScreen,
         skipLabel: true,
       });
+    }
+    ctx.restore();
+  }
+
+  function drawFpDust() {
+    ctx.save();
+    for (const d of fpDust) {
+      ctx.globalAlpha = d.alpha;
+      ctx.fillStyle = '#f5ecd8';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -4919,7 +5002,7 @@ export function init(canvas, elements) {
       ctx.fillText(label, cx, cy + armLength + 16);
     }
     // Sprint indicator
-    if (heldFP.sprint && (heldFP.forward || heldFP.back)) {
+    if (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight)) {
       ctx.fillStyle = 'rgba(224,168,58,0.6)';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'center';
@@ -4928,26 +5011,74 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  function drawFpMinimap() {
+    const mapSize = 100;
+    const mapX = CANVAS_WIDTH - mapSize - 12;
+    const mapY = 12;
+    const scale = mapSize / CANVAS_WIDTH;
+    ctx.save();
+    // Background
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#2a2018';
+    drawRoundRect(ctx, mapX - 4, mapY - 4, mapSize + 8, mapSize * (CANVAS_HEIGHT / CANVAS_WIDTH) + 8, 6, '#2a2018');
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = currentFloor === FLOOR_1 ? '#c4ddb8' : '#e8ddc8';
+    const mapH = mapSize * (CANVAS_HEIGHT / CANVAS_WIDTH);
+    ctx.fillRect(mapX, mapY, mapSize, mapH);
+    // Stations as dots
+    ctx.globalAlpha = 0.7;
+    for (const s of stationsOnFloor(stations, currentFloor)) {
+      ctx.fillStyle = '#8a6a4a';
+      ctx.fillRect(mapX + s.x * scale - 2, mapY + s.y * scale - 2, 4, 4);
+    }
+    // Player position and facing
+    const px = mapX + player.x * scale;
+    const py = mapY + player.y * scale;
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#e05a5a';
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Facing cone
+    ctx.strokeStyle = 'rgba(224,90,90,0.6)';
+    ctx.lineWidth = 1;
+    const coneLen = 14;
+    const coneAngle = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + Math.sin(playerFacing - coneAngle) * coneLen, py - Math.cos(playerFacing - coneAngle) * coneLen);
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + Math.sin(playerFacing + coneAngle) * coneLen, py - Math.cos(playerFacing + coneAngle) * coneLen);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawFirstPersonView() {
     const jumpOff = fpJump.offset;
     const bobY = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
     const bobX = fpHeadBobT > 0 ? Math.cos(fpHeadBobT * 0.5) * FP_HEAD_BOB_SWAY : 0;
     const totalOffY = jumpOff + bobY;
-    const hasOffset = totalOffY !== 0 || bobX !== 0;
+    const hasOffset = totalOffY !== 0 || fpTiltAngle !== 0 || bobX !== 0;
     if (hasOffset) {
       ctx.save();
-      ctx.translate(bobX, -totalOffY);
+      ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      if (fpTiltAngle !== 0) ctx.rotate(fpTiltAngle);
+      ctx.translate(-CANVAS_WIDTH / 2 + bobX, -CANVAS_HEIGHT / 2 - totalOffY);
     }
     drawFirstPersonBackground();
+    // Shadows first (behind entities), then entities
+    for (const entity of fpScene.projected) drawFirstPersonEntityShadow(entity);
     for (const entity of fpScene.projected) drawFirstPersonEntity(entity);
+    drawFpDust();
     if (hasOffset) ctx.restore();
-    // Vignette (drawn outside the camera offset so it stays fixed)
+    // Vignette (drawn outside the camera offset so it stays fixed on screen)
     const vg = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.35, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.75);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
     vg.addColorStop(1, 'rgba(0,0,0,0.25)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawFirstPersonCrosshair();
+    drawFpMinimap();
   }
 
   /**
@@ -5136,6 +5267,8 @@ export function init(canvas, elements) {
   bindHoldButton(elements.fpControls?.turnRightButton, 'turnRight');
   bindHoldButton(elements.fpControls?.forwardButton, 'forward');
   bindHoldButton(elements.fpControls?.backButton, 'back');
+  bindHoldButton(elements.fpControls?.strafeLeftButton, 'strafeLeft');
+  bindHoldButton(elements.fpControls?.strafeRightButton, 'strafeRight');
   elements.fpControls?.jumpButton?.addEventListener('click', () => { fpJump = startJump(fpJump); });
   elements.fpControls?.interactButton?.addEventListener('click', attemptInteract);
 
@@ -5330,6 +5463,8 @@ function bootstrap() {
     cameraButton: document.getElementById('library-camera-button'),
     fpControls: {
       root: document.getElementById('library-fp-controls'),
+      strafeLeftButton: document.getElementById('library-fp-strafe-left-button'),
+      strafeRightButton: document.getElementById('library-fp-strafe-right-button'),
       turnLeftButton: document.getElementById('library-fp-turn-left-button'),
       turnRightButton: document.getElementById('library-fp-turn-right-button'),
       forwardButton: document.getElementById('library-fp-forward-button'),

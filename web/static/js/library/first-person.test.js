@@ -16,6 +16,7 @@ import {
   findInteractTarget,
   turnFacing,
   stepForward,
+  stepStrafe,
   DEFAULT_FOV_DEGREES,
   createJumpState,
   updateJump,
@@ -317,6 +318,26 @@ describe('stepForward', () => {
     const { x, y } = stepForward(100, 100, Math.PI / 2, 1, 50);
     assert.ok(Math.abs(x - 150) < 1e-9);
     assert.ok(Math.abs(y - 100) < 1e-9);
+  });
+});
+
+describe('stepStrafe', () => {
+  test('strafing right while facing north increases x (east)', () => {
+    const { x, y } = stepStrafe(100, 100, 0, 1, 50);
+    assert.ok(Math.abs(x - 150) < 1e-9);
+    assert.ok(Math.abs(y - 100) < 1e-9);
+  });
+
+  test('strafing left while facing north decreases x (west)', () => {
+    const { x, y } = stepStrafe(100, 100, 0, -1, 50);
+    assert.ok(Math.abs(x - 50) < 1e-9);
+    assert.ok(Math.abs(y - 100) < 1e-9);
+  });
+
+  test('strafing right while facing east increases y (south)', () => {
+    const { x, y } = stepStrafe(100, 100, Math.PI / 2, 1, 50);
+    assert.ok(Math.abs(x - 100) < 1e-9);
+    assert.ok(Math.abs(y - 150) < 1e-9);
   });
 });
 

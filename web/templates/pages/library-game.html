@@ -64,6 +64,9 @@
        #library-fp-turn-right-button  Press-and-hold to turn the camera
                                      left/right (same effect as holding the
                                      Left/Right arrow keys or A/D).
+       #library-fp-strafe-left-button
+       #library-fp-strafe-right-button Press-and-hold to strafe sideways
+                                     (same effect as Q/E keys).
        #library-fp-forward-button
        #library-fp-back-button        Press-and-hold to move forward/back
                                      along the current facing (same effect
@@ -226,9 +229,15 @@
 						     wrapper is pointer-events-none so it never blocks canvas
 						     clicks; each button group re-enables pointer-events. */}}
 						<div id="library-fp-controls" class="hidden pointer-events-none absolute inset-x-0 bottom-2 flex items-end justify-between gap-2 px-3">
-							<div class="pointer-events-auto flex touch-none select-none gap-2">
-								<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
-								<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
+							<div class="pointer-events-auto flex touch-none select-none flex-col gap-1">
+								<div class="flex gap-2">
+									<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
+									<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
+								</div>
+								<div class="flex gap-2">
+									<button type="button" id="library-fp-strafe-left-button" aria-label="Strafe left" class="ha-btn ha-btn--soft px-3 py-1 text-xs">Q&#8592;</button>
+									<button type="button" id="library-fp-strafe-right-button" aria-label="Strafe right" class="ha-btn ha-btn--soft px-3 py-1 text-xs">&#8594;E</button>
+								</div>
 							</div>
 							<div class="pointer-events-auto flex touch-none select-none flex-col items-center gap-1">
 								<button type="button" id="library-fp-jump-button" aria-label="Jump" class="ha-btn ha-btn--soft px-3 py-1 text-xs">Jump</button>
