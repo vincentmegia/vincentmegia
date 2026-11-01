@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   identityMat4, multiplyMat4, transformPoint, cameraFromPose, projectPoint,
+  buildDrawList, drawScene, shadeColor,
 } from './core.js';
 
 const VP = { width: 800, height: 600 };
@@ -59,4 +60,55 @@ test('positive pitch looks up: a high point nears center', () => {
   const a = projectPoint(flat, [0, 3, -5], VP).y;
   const b = projectPoint(up, [0, 3, -5], VP).y;
   assert.ok(b > a);
+});
+
+// ---- Task 2: draw list ----
+const CAM = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 0 });
+const SCENE = { viewport: VP, light: { dir: [0, 0, 1], ambient: 0.2 } };
+// quad in the XY plane facing +Z (toward the camera at z=0 looking down -Z)
+const quad = (color = '#808080') => ({
+  vertices: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]],
+  faces: [{ indices: [0, 1, 2, 3], color }],
+});
+const at = (mesh, z, yaw = 0) => ({ mesh, placement: { pos: [0, 0, z], yaw, scale: 1 } });
+const lightness = (c) => { const [r, g, b] = c.match(/\d+/g).map(Number); return (r + g + b) / 3; };
+
+test('empty scene returns []', () => {
+  assert.deepEqual(buildDrawList(CAM, [], SCENE), []);
+});
+
+test('polys are sorted farthest-first across meshes', () => {
+  const list = buildDrawList(CAM, [at(quad(), -3), at(quad(), -10), at(quad(), -6)], SCENE);
+  assert.equal(list.length, 3);
+  assert.deepEqual(list.map((p) => Math.round(p.depth)), [10, 6, 3]);
+  assert.equal(list[0].screen.length, 4);
+});
+
+test('faces touching or behind the near plane are dropped', () => {
+  const behind = at(quad(), 5);
+  assert.deepEqual(buildDrawList(CAM, [behind], SCENE), []);
+  // one vertex exactly on the near plane (z = -near) drops the face
+  const onPlane = { vertices: [[-1, -1, -0.1], [1, -1, -3], [1, 1, -3]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
+  assert.deepEqual(buildDrawList(CAM, [at(onPlane, 0)], SCENE), []);
+  const clear = { vertices: [[-1, -1, -0.2], [1, -1, -3], [1, 1, -3]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
+  assert.equal(buildDrawList(CAM, [at(clear, 0)], SCENE).length, 1);
+});
+
+test('face toward the light is brighter than one facing away', () => {
+  const toward = buildDrawList(CAM, [at(quad(), -5)], SCENE)[0];
+  const away = buildDrawList(CAM, [at(quad(), -5, Math.PI)], SCENE)[0];
+  assert.ok(lightness(toward.color) > lightness(away.color));
+});
+
+test('shadeColor scales and fogs as a pure transform', () => {
+  assert.equal(shadeColor('#ffffff', 0.5), 'rgb(128,128,128)');
+  assert.equal(shadeColor('#ffffff', 0, { color: '#000000', start: 0, end: 10 }, 10), 'rgb(0,0,0)');
+  assert.equal(shadeColor('#ffffff', 1, { color: '#000000', start: 0, end: 10 }, 0), 'rgb(255,255,255)');
+});
+
+test('drawScene fills each poly via the ctx', () => {
+  const calls = [];
+  const ctx = new Proxy({}, { get: (_, k) => (...a) => calls.push(k), set: (_, k) => { calls.push('set:' + k); return true; } });
+  drawScene(ctx, CAM, [at(quad(), -5)], SCENE);
+  assert.ok(calls.includes('moveTo') && calls.includes('closePath') && calls.includes('fill'));
 });
