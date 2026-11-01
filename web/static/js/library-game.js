@@ -806,8 +806,13 @@ export function init(canvas, elements) {
   // "sensible facing angle" — see `switchFloor`) doesn't need special-casing.
   let cameraMode = 'top-down'; // 'top-down' | 'first-person'
   let playerFacing = 0;
-  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false };
+  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false, sprint: false };
   let fpJump = createJumpState();
+  let fpHeadBobT = 0;
+  const FP_HEAD_BOB_FREQ = 8;
+  const FP_HEAD_BOB_AMP = 3.5;
+  const FP_HEAD_BOB_SWAY = 2;
+  const FP_SPRINT_MULTIPLIER = 1.6;
   // Recomputed once per frame by `updateFirstPersonScene` — the projected
   // station/patron/book billboards for the current frame, and whichever one
   // (if any) is centered near the crosshair within interact range. Read by
@@ -1112,7 +1117,9 @@ export function init(canvas, elements) {
       heldFP.turnRight = false;
       heldFP.forward = false;
       heldFP.back = false;
+      heldFP.sprint = false;
       fpJump = createJumpState();
+      fpHeadBobT = 0;
       fpScene = { projected: [], interactTarget: null };
     }
     updateCameraButton();
@@ -1175,13 +1182,22 @@ export function init(canvas, elements) {
     let moveDirection = 0;
     if (heldFP.forward) moveDirection += 1;
     if (heldFP.back) moveDirection -= 1;
-    if (moveDirection !== 0) {
+    const isMoving = moveDirection !== 0;
+    if (isMoving) {
       const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
-      const distance = MOVE_SPEED_PIXELS_PER_SECOND * sanityMultiplier * deltaSeconds;
+      const sprintMultiplier = heldFP.sprint ? FP_SPRINT_MULTIPLIER : 1;
+      const distance = MOVE_SPEED_PIXELS_PER_SECOND * sanityMultiplier * sprintMultiplier * deltaSeconds;
       const next = stepForward(player.x, player.y, playerFacing, moveDirection, distance);
       const clamped = clampToCanvas(next.x, next.y);
       player.x = clamped.x;
       player.y = clamped.y;
+    }
+
+    if (isMoving) {
+      const bobSpeed = heldFP.sprint ? FP_HEAD_BOB_FREQ * 1.3 : FP_HEAD_BOB_FREQ;
+      fpHeadBobT += deltaSeconds * bobSpeed;
+    } else {
+      fpHeadBobT = 0;
     }
 
     fpJump = updateJump(fpJump, deltaSeconds);
@@ -2465,6 +2481,7 @@ export function init(canvas, elements) {
     // frame for as long as it's held, same press-and-hold feel as the
     // on-screen buttons.
     if (cameraMode === 'first-person' && running && !overlay) {
+      if (e.key === 'Shift') { heldFP.sprint = true; return; }
       if (e.key in FP_TURN_KEYS || e.key in FP_MOVE_KEYS) {
         e.preventDefault();
         heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key]] = true;
@@ -2492,6 +2509,7 @@ export function init(canvas, elements) {
       stopCoffeePour();
       if (checkoutPenDown && overlay?.kind === 'checkout') { checkoutPenDown = false; feedCheckoutPen(); }
     }
+    if (e.key === 'Shift') heldFP.sprint = false;
     if (e.key in FP_TURN_KEYS) heldFP[FP_TURN_KEYS[e.key]] = false;
     else if (e.key in FP_MOVE_KEYS) heldFP[FP_MOVE_KEYS[e.key]] = false;
   }
@@ -2528,7 +2546,9 @@ export function init(canvas, elements) {
     heldFP.turnRight = false;
     heldFP.forward = false;
     heldFP.back = false;
+    heldFP.sprint = false;
     fpJump = createJumpState();
+    fpHeadBobT = 0;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -4754,33 +4774,73 @@ export function init(canvas, elements) {
   // -- First Person rendering --------------------------------------------
 
   const FP_HORIZON_Y = CANVAS_HEIGHT / 2;
-  const FP_CEILING_COLOR = '#e8ddc8';
+  const FP_CEILING_COLOR_TOP = '#d4c8b0';
+  const FP_CEILING_COLOR_BOT = '#e8ddc8';
   const FP_FLOOR_COLOR_NEAR = '#cbab7c';
   const FP_FLOOR_COLOR_FAR = '#b08f5e';
+  const FP_FLOOR_TILE_ROWS = 12;
+  const FP_FLOOR_TILE_COLS = 9;
 
-  /**
-   * Doc's Visual Direction for First Person: "a simple background: a
-   * floor-color band below a horizon line and a sky/ceiling-color band
-   * above it" — no wall texture or raycast, just the two flat bands plus a
-   * subtle floor gradient for a cheap sense of depth.
-   */
   function drawFirstPersonBackground() {
-    ctx.fillStyle = FP_CEILING_COLOR;
+    // Ceiling with a subtle gradient (darker at top, lighter near horizon)
+    const ceilGrad = ctx.createLinearGradient(0, 0, 0, FP_HORIZON_Y);
+    ceilGrad.addColorStop(0, FP_CEILING_COLOR_TOP);
+    ceilGrad.addColorStop(1, FP_CEILING_COLOR_BOT);
+    ctx.fillStyle = ceilGrad;
     ctx.fillRect(0, 0, CANVAS_WIDTH, FP_HORIZON_Y);
 
-    const floorGradient = ctx.createLinearGradient(0, FP_HORIZON_Y, 0, CANVAS_HEIGHT);
-    floorGradient.addColorStop(0, FP_FLOOR_COLOR_NEAR);
-    floorGradient.addColorStop(1, FP_FLOOR_COLOR_FAR);
-    ctx.fillStyle = floorGradient;
+    // Ceiling light fixtures
+    ctx.fillStyle = 'rgba(255,248,230,0.35)';
+    for (let i = 0; i < 3; i++) {
+      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
+      const ly = FP_HORIZON_Y * 0.35;
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, 40, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Floor with perspective tiles
+    const floorGrad = ctx.createLinearGradient(0, FP_HORIZON_Y, 0, CANVAS_HEIGHT);
+    floorGrad.addColorStop(0, FP_FLOOR_COLOR_FAR);
+    floorGrad.addColorStop(1, FP_FLOOR_COLOR_NEAR);
+    ctx.fillStyle = floorGrad;
     ctx.fillRect(0, FP_HORIZON_Y, CANVAS_WIDTH, CANVAS_HEIGHT - FP_HORIZON_Y);
 
-    ctx.strokeStyle = 'rgba(58,42,42,0.25)';
+    // Perspective floor grid lines
+    const floorH = CANVAS_HEIGHT - FP_HORIZON_Y;
+    ctx.save();
+    // Horizontal lines (converge toward horizon — exponential spacing)
+    ctx.strokeStyle = 'rgba(58,42,42,0.10)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= FP_FLOOR_TILE_ROWS; i++) {
+      const t = i / FP_FLOOR_TILE_ROWS;
+      const y = FP_HORIZON_Y + floorH * (t * t);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(CANVAS_WIDTH, y);
+      ctx.stroke();
+    }
+    // Vertical lines (converge at vanishing point)
+    const vx = CANVAS_WIDTH / 2;
+    ctx.strokeStyle = 'rgba(58,42,42,0.07)';
+    for (let i = -FP_FLOOR_TILE_COLS; i <= FP_FLOOR_TILE_COLS; i++) {
+      const baseX = vx + i * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2);
+      ctx.beginPath();
+      ctx.moveTo(vx, FP_HORIZON_Y);
+      ctx.lineTo(baseX, CANVAS_HEIGHT);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Horizon line
+    ctx.strokeStyle = 'rgba(58,42,42,0.20)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, FP_HORIZON_Y);
     ctx.lineTo(CANVAS_WIDTH, FP_HORIZON_Y);
     ctx.stroke();
 
+    // Floor label
     ctx.fillStyle = '#8a6a4a';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
@@ -4799,6 +4859,10 @@ export function init(canvas, elements) {
    * to the station/player's own y.
    */
   function drawFirstPersonEntity(entity) {
+    const fogAlpha = Math.min(0.6, Math.max(0, (entity.distance - 200) / 550) ** 1.5);
+    ctx.save();
+    if (fogAlpha > 0.01) ctx.globalAlpha = 1 - fogAlpha;
+
     if (entity.entityKind === 'frontDeskSlot' || entity.entityKind === 'finesSlot') {
       const slot = entity.ref;
       const personality = personalityForSlot(slot, entity.slotIndex ?? 0);
@@ -4807,37 +4871,36 @@ export function init(canvas, elements) {
         scale: entity.scale * 0.62,
         angryTint: slot.kind === 'karen',
       });
-      return;
-    }
-    if (entity.entityKind === 'returnCartBook') {
+    } else if (entity.entityKind === 'returnCartBook') {
       const book = entity.ref;
       const genre = findGenre(book.genreId);
       const w = 18 * entity.scale;
       const h = 24 * entity.scale;
       drawRoundRect(ctx, entity.screenX - w / 2, entity.groundY - h, w, h, 2 * entity.scale, genre ? genre.color : '#8a6a4a');
-      return;
+    } else {
+      const station = entity.ref;
+      const halfOnScreen = stationExtents(station).hh * entity.scale;
+      drawStation(station, {
+        scale: entity.scale,
+        centerX: entity.screenX,
+        centerY: entity.groundY - halfOnScreen,
+        skipLabel: true,
+      });
     }
-    // 'station' — anchor the box's bottom edge (not its center) to groundY,
-    // so it visually "stands" on the floor band rather than floating
-    // centered on the horizon.
-    const station = entity.ref;
-    const halfOnScreen = stationExtents(station).hh * entity.scale;
-    drawStation(station, {
-      scale: entity.scale,
-      centerX: entity.screenX,
-      centerY: entity.groundY - halfOnScreen,
-      skipLabel: true,
-    });
+    ctx.restore();
   }
 
   function drawFirstPersonCrosshair() {
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
-    const armLength = 9;
-    const gap = 3;
+    const target = fpScene.interactTarget;
+    const hasTarget = !!target;
+    const pulse = hasTarget ? 0.85 + 0.15 * Math.sin(performance.now() / 150) : 1;
+    const armLength = hasTarget ? 11 * pulse : 9;
+    const gap = hasTarget ? 4 : 3;
     ctx.save();
-    ctx.strokeStyle = fpScene.interactTarget ? '#e0a83a' : 'rgba(58,42,42,0.55)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = hasTarget ? '#e0a83a' : 'rgba(58,42,42,0.55)';
+    ctx.lineWidth = hasTarget ? 2.5 : 2;
     ctx.beginPath();
     ctx.moveTo(cx - armLength, cy);
     ctx.lineTo(cx - gap, cy);
@@ -4848,18 +4911,42 @@ export function init(canvas, elements) {
     ctx.moveTo(cx, cy + gap);
     ctx.lineTo(cx, cy + armLength);
     ctx.stroke();
+    if (hasTarget && target.entityKind === 'station') {
+      const label = target.ref.label || target.ref.kind;
+      ctx.fillStyle = 'rgba(224,168,58,0.9)';
+      ctx.font = 'bold 12px "Caprasimo", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, cx, cy + armLength + 16);
+    }
+    // Sprint indicator
+    if (heldFP.sprint && (heldFP.forward || heldFP.back)) {
+      ctx.fillStyle = 'rgba(224,168,58,0.6)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SPRINT', cx, CANVAS_HEIGHT - 48);
+    }
     ctx.restore();
   }
 
   function drawFirstPersonView() {
     const jumpOff = fpJump.offset;
-    if (jumpOff !== 0) {
+    const bobY = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
+    const bobX = fpHeadBobT > 0 ? Math.cos(fpHeadBobT * 0.5) * FP_HEAD_BOB_SWAY : 0;
+    const totalOffY = jumpOff + bobY;
+    const hasOffset = totalOffY !== 0 || bobX !== 0;
+    if (hasOffset) {
       ctx.save();
-      ctx.translate(0, -jumpOff);
+      ctx.translate(bobX, -totalOffY);
     }
     drawFirstPersonBackground();
     for (const entity of fpScene.projected) drawFirstPersonEntity(entity);
-    if (jumpOff !== 0) ctx.restore();
+    if (hasOffset) ctx.restore();
+    // Vignette (drawn outside the camera offset so it stays fixed)
+    const vg = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.35, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawFirstPersonCrosshair();
   }
 
