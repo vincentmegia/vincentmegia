@@ -17,6 +17,14 @@ import {
   turnFacing,
   stepForward,
   DEFAULT_FOV_DEGREES,
+  createJumpState,
+  updateJump,
+  startJump,
+  JUMP_RISE_SECONDS,
+  JUMP_FALL_SECONDS,
+  JUMP_PEAK_PX,
+  JUMP_LAND_BOB_PX,
+  JUMP_LAND_BOB_SECONDS,
 } from './first-person.js';
 
 describe('normalizeAngle', () => {
@@ -309,5 +317,78 @@ describe('stepForward', () => {
     const { x, y } = stepForward(100, 100, Math.PI / 2, 1, 50);
     assert.ok(Math.abs(x - 150) < 1e-9);
     assert.ok(Math.abs(y - 100) < 1e-9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jump
+// ---------------------------------------------------------------------------
+
+describe('createJumpState', () => {
+  test('starts on the ground with zero offset', () => {
+    const s = createJumpState();
+    assert.equal(s.phase, 'ground');
+    assert.equal(s.offset, 0);
+  });
+});
+
+describe('startJump', () => {
+  test('transitions from ground to rise', () => {
+    const s = startJump(createJumpState());
+    assert.equal(s.phase, 'rise');
+    assert.equal(s.t, 0);
+  });
+
+  test('does nothing if already airborne', () => {
+    const airborne = { phase: 'rise', t: 0.1, offset: 20 };
+    const s = startJump(airborne);
+    assert.equal(s, airborne);
+  });
+});
+
+describe('updateJump', () => {
+  test('ground state is a no-op', () => {
+    const s = createJumpState();
+    const next = updateJump(s, 0.1);
+    assert.equal(next, s);
+  });
+
+  test('rise phase increases offset toward peak', () => {
+    let s = startJump(createJumpState());
+    s = updateJump(s, JUMP_RISE_SECONDS * 0.5);
+    assert.equal(s.phase, 'rise');
+    assert.ok(s.offset > 0);
+    assert.ok(s.offset < JUMP_PEAK_PX);
+  });
+
+  test('rise transitions to fall at peak', () => {
+    let s = startJump(createJumpState());
+    s = updateJump(s, JUMP_RISE_SECONDS);
+    assert.equal(s.phase, 'fall');
+    assert.ok(Math.abs(s.offset - JUMP_PEAK_PX) < 1);
+  });
+
+  test('fall transitions to land', () => {
+    let s = { phase: 'fall', t: 0, offset: JUMP_PEAK_PX };
+    s = updateJump(s, JUMP_FALL_SECONDS);
+    assert.equal(s.phase, 'land');
+    assert.ok(s.offset < 0);
+  });
+
+  test('land transitions back to ground', () => {
+    let s = { phase: 'land', t: 0, offset: -JUMP_LAND_BOB_PX };
+    s = updateJump(s, JUMP_LAND_BOB_SECONDS);
+    assert.equal(s.phase, 'ground');
+    assert.equal(s.offset, 0);
+  });
+
+  test('full jump arc ends on the ground', () => {
+    let s = startJump(createJumpState());
+    const total = JUMP_RISE_SECONDS + JUMP_FALL_SECONDS + JUMP_LAND_BOB_SECONDS;
+    for (let elapsed = 0; elapsed < total + 0.1; elapsed += 0.016) {
+      s = updateJump(s, 0.016);
+    }
+    assert.equal(s.phase, 'ground');
+    assert.equal(s.offset, 0);
   });
 });

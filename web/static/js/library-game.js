@@ -206,6 +206,9 @@ import {
   turnFacing,
   stepForward,
   MOVE_SPEED_PIXELS_PER_SECOND,
+  createJumpState,
+  updateJump,
+  startJump,
 } from './library/first-person.js';
 
 // ---------------------------------------------------------------------------
@@ -804,6 +807,7 @@ export function init(canvas, elements) {
   let cameraMode = 'top-down'; // 'top-down' | 'first-person'
   let playerFacing = 0;
   const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false };
+  let fpJump = createJumpState();
   // Recomputed once per frame by `updateFirstPersonScene` — the projected
   // station/patron/book billboards for the current frame, and whichever one
   // (if any) is centered near the crosshair within interact range. Read by
@@ -1108,6 +1112,7 @@ export function init(canvas, elements) {
       heldFP.turnRight = false;
       heldFP.forward = false;
       heldFP.back = false;
+      fpJump = createJumpState();
       fpScene = { projected: [], interactTarget: null };
     }
     updateCameraButton();
@@ -1178,6 +1183,8 @@ export function init(canvas, elements) {
       player.x = clamped.x;
       player.y = clamped.y;
     }
+
+    fpJump = updateJump(fpJump, deltaSeconds);
   }
 
   /**
@@ -2376,8 +2383,8 @@ export function init(canvas, elements) {
     hoverStation = null;
   }
 
-  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight' };
-  const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back' };
+  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', a: 'turnLeft', d: 'turnRight', A: 'turnLeft', D: 'turnRight' };
+  const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back', w: 'forward', s: 'back', W: 'forward', S: 'back' };
 
   function onKeyDown(e) {
     if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {
@@ -2386,7 +2393,7 @@ export function init(canvas, elements) {
       return;
     }
     if (overlay?.kind === 'checkout') {
-      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      const step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], A: [-1, 0], d: [1, 0], D: [1, 0], w: [0, -1], W: [0, -1], s: [0, 1], S: [0, 1] }[e.key];
       if (step) {
         e.preventDefault();
         const p = checkoutPointer ?? { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
@@ -2422,11 +2429,11 @@ export function init(canvas, elements) {
         return;
       }
     }
-    // Reading: ←/→ page back/forward.
-    if (overlay?.kind === 'reading' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    // Reading: ←/→ or A/D page back/forward.
+    if (overlay?.kind === 'reading' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'd' || e.key === 'D' || e.key === 'a' || e.key === 'A')) {
       e.preventDefault();
       if (!e.repeat) {
-        if (e.key === 'ArrowRight') turnReadingPage();
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') turnReadingPage();
         else previousReadingPage();
       }
       return;
@@ -2465,7 +2472,11 @@ export function init(canvas, elements) {
       }
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        attemptInteract();
+        if (fpScene.interactTarget) {
+          attemptInteract();
+        } else if (!e.repeat) {
+          fpJump = startJump(fpJump);
+        }
         return;
       }
     }
@@ -2517,6 +2528,7 @@ export function init(canvas, elements) {
     heldFP.turnRight = false;
     heldFP.forward = false;
     heldFP.back = false;
+    fpJump = createJumpState();
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -4840,12 +4852,14 @@ export function init(canvas, elements) {
   }
 
   function drawFirstPersonView() {
+    const jumpOff = fpJump.offset;
+    if (jumpOff !== 0) {
+      ctx.save();
+      ctx.translate(0, -jumpOff);
+    }
     drawFirstPersonBackground();
-    // `fpScene.projected` is already sorted back-to-front by
-    // `first-person.js`'s `projectScene` — drawing in that order alone
-    // gives correct nearer-over-farther layering (simple painter's
-    // algorithm), no per-entity z-check needed here.
     for (const entity of fpScene.projected) drawFirstPersonEntity(entity);
+    if (jumpOff !== 0) ctx.restore();
     drawFirstPersonCrosshair();
   }
 
@@ -5035,6 +5049,7 @@ export function init(canvas, elements) {
   bindHoldButton(elements.fpControls?.turnRightButton, 'turnRight');
   bindHoldButton(elements.fpControls?.forwardButton, 'forward');
   bindHoldButton(elements.fpControls?.backButton, 'back');
+  elements.fpControls?.jumpButton?.addEventListener('click', () => { fpJump = startJump(fpJump); });
   elements.fpControls?.interactButton?.addEventListener('click', attemptInteract);
 
   elements.startScreen.shiftButton.addEventListener('click', startShift);
@@ -5113,6 +5128,8 @@ export function init(canvas, elements) {
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       attemptInteractNow: () => attemptInteract(),
+      getJumpState: () => ({ ...fpJump }),
+      triggerJump: () => { fpJump = startJump(fpJump); },
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
       getShiftState: () => shiftState,
       skipCutscene: () => finishBossCutscene(),
@@ -5230,6 +5247,7 @@ function bootstrap() {
       turnRightButton: document.getElementById('library-fp-turn-right-button'),
       forwardButton: document.getElementById('library-fp-forward-button'),
       backButton: document.getElementById('library-fp-back-button'),
+      jumpButton: document.getElementById('library-fp-jump-button'),
       interactButton: document.getElementById('library-fp-interact-button'),
     },
     startScreen: {

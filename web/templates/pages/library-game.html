@@ -63,11 +63,15 @@
        #library-fp-turn-left-button
        #library-fp-turn-right-button  Press-and-hold to turn the camera
                                      left/right (same effect as holding the
-                                     Left/Right arrow keys).
+                                     Left/Right arrow keys or A/D).
        #library-fp-forward-button
        #library-fp-back-button        Press-and-hold to move forward/back
                                      along the current facing (same effect
-                                     as holding the Up/Down arrow keys).
+                                     as holding the Up/Down arrow keys or
+                                     W/S).
+       #library-fp-jump-button        Triggers a cosmetic camera jump
+                                     (Space/Enter also jump when no
+                                     interact target is centered).
        #library-fp-interact-button    Same action as the interact key
                                      (Enter/Space) or a canvas click while
                                      in First Person — interacts with
@@ -226,7 +230,10 @@
 								<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
 								<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
 							</div>
-							<button type="button" id="library-fp-interact-button" class="ha-btn pointer-events-auto touch-none select-none px-4 py-2 text-sm">Interact</button>
+							<div class="pointer-events-auto flex touch-none select-none flex-col items-center gap-1">
+								<button type="button" id="library-fp-jump-button" aria-label="Jump" class="ha-btn ha-btn--soft px-3 py-1 text-xs">Jump</button>
+								<button type="button" id="library-fp-interact-button" class="ha-btn px-4 py-2 text-sm">Interact</button>
+							</div>
 							<div class="pointer-events-auto flex touch-none select-none gap-2">
 								<button type="button" id="library-fp-back-button" aria-label="Move back" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9660;</button>
 								<button type="button" id="library-fp-forward-button" aria-label="Move forward" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9650;</button>

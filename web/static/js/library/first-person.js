@@ -104,6 +104,14 @@ export const MOVE_SPEED_PIXELS_PER_SECOND = 200;
 /** Where the horizon line sits and how far a billboard's "ground contact point" can drop below it as distance shrinks — see `groundScreenY`. */
 export const DEFAULT_PERSPECTIVE_K = 220;
 
+// -- Jump -------------------------------------------------------------------
+
+export const JUMP_RISE_SECONDS = 0.32;
+export const JUMP_FALL_SECONDS = 0.32;
+export const JUMP_PEAK_PX = 60;
+export const JUMP_LAND_BOB_PX = 8;
+export const JUMP_LAND_BOB_SECONDS = 0.12;
+
 // ---------------------------------------------------------------------------
 // Projection
 // ---------------------------------------------------------------------------
@@ -233,4 +241,54 @@ export function turnFacing(facing, direction, deltaSeconds, turnSpeed = TURN_SPE
 export function stepForward(x, y, facing, direction, distance) {
   const { dx, dy } = forwardVector(facing);
   return { x: x + dx * distance * direction, y: y + dy * distance * direction };
+}
+
+// -- Jump -------------------------------------------------------------------
+
+/** Returns a fresh jump state (not jumping). */
+export function createJumpState() {
+  return { phase: 'ground', t: 0, offset: 0 };
+}
+
+/**
+ * Advances jump state by `dt` seconds. Returns the updated state (new object).
+ * `offset` is the camera's upward pixel shift this frame (0 on the ground,
+ * positive in the air, briefly negative during the landing bob).
+ */
+export function updateJump(state, dt) {
+  if (state.phase === 'ground') return state;
+
+  const t = state.t + dt;
+
+  if (state.phase === 'rise') {
+    if (t >= JUMP_RISE_SECONDS) {
+      return { phase: 'fall', t: t - JUMP_RISE_SECONDS, offset: JUMP_PEAK_PX };
+    }
+    const p = t / JUMP_RISE_SECONDS;
+    return { phase: 'rise', t, offset: JUMP_PEAK_PX * Math.sin(p * Math.PI / 2) };
+  }
+
+  if (state.phase === 'fall') {
+    if (t >= JUMP_FALL_SECONDS) {
+      return { phase: 'land', t: 0, offset: -JUMP_LAND_BOB_PX };
+    }
+    const p = t / JUMP_FALL_SECONDS;
+    return { phase: 'fall', t, offset: JUMP_PEAK_PX * Math.cos(p * Math.PI / 2) };
+  }
+
+  if (state.phase === 'land') {
+    if (t >= JUMP_LAND_BOB_SECONDS) {
+      return { phase: 'ground', t: 0, offset: 0 };
+    }
+    const p = t / JUMP_LAND_BOB_SECONDS;
+    return { phase: 'land', t, offset: -JUMP_LAND_BOB_PX * (1 - p) };
+  }
+
+  return state;
+}
+
+/** Starts a jump if on the ground. Returns the new state (or the same if already airborne). */
+export function startJump(state) {
+  if (state.phase !== 'ground') return state;
+  return { phase: 'rise', t: 0, offset: 0 };
 }
