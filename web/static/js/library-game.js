@@ -4840,27 +4840,101 @@ export function init(canvas, elements) {
   // -- First Person rendering --------------------------------------------
 
   const FP_HORIZON_Y = CANVAS_HEIGHT / 2;
-  const FP_CEILING_COLOR_TOP = '#d4c8b0';
-  const FP_CEILING_COLOR_BOT = '#e8ddc8';
-  const FP_FLOOR_COLOR_NEAR = '#cbab7c';
-  const FP_FLOOR_COLOR_FAR = '#b08f5e';
-  const FP_FLOOR_TILE_ROWS = 12;
-  const FP_FLOOR_TILE_COLS = 9;
+  const FP_FLOOR_TILE_ROWS = 14;
+  const FP_FLOOR_TILE_COLS = 11;
 
   function drawFirstPersonBackground() {
-    // Ceiling with a subtle gradient
-    const ceilGrad = ctx.createLinearGradient(0, 0, 0, FP_HORIZON_Y);
-    ceilGrad.addColorStop(0, FP_CEILING_COLOR_TOP);
-    ceilGrad.addColorStop(1, FP_CEILING_COLOR_BOT);
-    ctx.fillStyle = ceilGrad;
+    const floorH = CANVAS_HEIGHT - FP_HORIZON_Y;
+    const vx = CANVAS_WIDTH / 2;
+
+    // ── Back wall (at horizon) ──────────────────────────────────
+    const wallGrad = ctx.createLinearGradient(0, 0, 0, FP_HORIZON_Y);
+    wallGrad.addColorStop(0, '#c4b8a0');
+    wallGrad.addColorStop(0.7, '#d8ccb4');
+    wallGrad.addColorStop(1, '#e2d6be');
+    ctx.fillStyle = wallGrad;
     ctx.fillRect(0, 0, CANVAS_WIDTH, FP_HORIZON_Y);
 
-    // Ceiling beams (horizontal dark lines across ceiling for depth)
+    // Wainscoting (lower wall panel, darker wood tone)
+    const wainscotTop = FP_HORIZON_Y * 0.55;
+    const wainGrad = ctx.createLinearGradient(0, wainscotTop, 0, FP_HORIZON_Y);
+    wainGrad.addColorStop(0, '#a08060');
+    wainGrad.addColorStop(1, '#8a6a4a');
+    ctx.fillStyle = wainGrad;
+    ctx.fillRect(0, wainscotTop, CANVAS_WIDTH, FP_HORIZON_Y - wainscotTop);
+    // Chair rail (divider between upper wall and wainscoting)
+    ctx.strokeStyle = '#7a5a3a';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, wainscotTop);
+    ctx.lineTo(CANVAS_WIDTH, wainscotTop);
+    ctx.stroke();
+    // Wainscot panels
+    ctx.strokeStyle = 'rgba(90,65,35,0.2)';
+    ctx.lineWidth = 1;
+    const panelW = CANVAS_WIDTH / 8;
+    for (let i = 1; i < 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * panelW, wainscotTop + 4);
+      ctx.lineTo(i * panelW, FP_HORIZON_Y - 2);
+      ctx.stroke();
+    }
+    // Baseboard
+    ctx.fillStyle = '#6a4a2a';
+    ctx.fillRect(0, FP_HORIZON_Y - 4, CANVAS_WIDTH, 4);
+
+    // Back-wall windows (arched tops, warm light inside)
+    for (let i = 0; i < 3; i++) {
+      const wx = CANVAS_WIDTH * (0.2 + i * 0.3);
+      const wy = FP_HORIZON_Y * 0.2;
+      const ww = 50;
+      const wh = wainscotTop - wy - 8;
+      // Window recess shadow
+      ctx.fillStyle = 'rgba(60,40,20,0.15)';
+      ctx.fillRect(wx - ww / 2 - 3, wy - 3, ww + 6, wh + 6);
+      // Window pane (warm daylight)
+      const paneGrad = ctx.createLinearGradient(wx, wy, wx, wy + wh);
+      paneGrad.addColorStop(0, '#e8e0c8');
+      paneGrad.addColorStop(0.5, '#f5ecd8');
+      paneGrad.addColorStop(1, '#fff8e8');
+      ctx.fillStyle = paneGrad;
+      ctx.beginPath();
+      ctx.moveTo(wx - ww / 2, wy + wh);
+      ctx.lineTo(wx - ww / 2, wy + ww / 4);
+      ctx.arc(wx, wy + ww / 4, ww / 2, Math.PI, 0);
+      ctx.lineTo(wx + ww / 2, wy + wh);
+      ctx.closePath();
+      ctx.fill();
+      // Window frame
+      ctx.strokeStyle = '#7a5a3a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Mullion (vertical divider)
+      ctx.beginPath();
+      ctx.moveTo(wx, wy);
+      ctx.lineTo(wx, wy + wh);
+      ctx.stroke();
+      // Cross bar
+      ctx.beginPath();
+      ctx.moveTo(wx - ww / 2, wy + wh * 0.5);
+      ctx.lineTo(wx + ww / 2, wy + wh * 0.5);
+      ctx.stroke();
+      // Light spill from window onto upper wall
+      const spillGrad = ctx.createRadialGradient(wx, wy + wh, 0, wx, wy + wh, ww * 1.2);
+      spillGrad.addColorStop(0, 'rgba(255,248,230,0.1)');
+      spillGrad.addColorStop(1, 'rgba(255,248,230,0)');
+      ctx.fillStyle = spillGrad;
+      ctx.fillRect(wx - ww * 1.2, wy, ww * 2.4, wh + 20);
+    }
+
+    // ── Ceiling beams (receding perspective, thicker near camera) ──
     ctx.save();
-    ctx.strokeStyle = 'rgba(80,60,40,0.12)';
-    ctx.lineWidth = 2;
-    for (let i = 1; i <= 4; i++) {
-      const by = FP_HORIZON_Y * (0.15 + i * 0.17);
+    for (let i = 1; i <= 5; i++) {
+      const t = i / 6;
+      const by = FP_HORIZON_Y * t;
+      const thickness = 1 + (1 - t) * 3;
+      ctx.strokeStyle = `rgba(100,75,45,${0.08 + (1 - t) * 0.06})`;
+      ctx.lineWidth = thickness;
       ctx.beginPath();
       ctx.moveTo(0, by);
       ctx.lineTo(CANVAS_WIDTH, by);
@@ -4868,49 +4942,84 @@ export function init(canvas, elements) {
     }
     ctx.restore();
 
-    // Ceiling light fixtures with glow
+    // ── Ceiling light fixtures (hanging pendants with warm glow) ──
     for (let i = 0; i < 3; i++) {
       const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
-      const ly = FP_HORIZON_Y * 0.35;
-      // Glow halo
-      const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, 60);
-      glow.addColorStop(0, 'rgba(255,248,230,0.18)');
-      glow.addColorStop(1, 'rgba(255,248,230,0)');
+      const ly = FP_HORIZON_Y * 0.28;
+      // Wide warm glow on ceiling
+      const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, 80);
+      glow.addColorStop(0, 'rgba(255,240,200,0.2)');
+      glow.addColorStop(0.5, 'rgba(255,240,200,0.08)');
+      glow.addColorStop(1, 'rgba(255,240,200,0)');
       ctx.fillStyle = glow;
-      ctx.fillRect(lx - 60, ly - 60, 120, 120);
-      // Fixture
-      ctx.fillStyle = 'rgba(255,248,230,0.4)';
+      ctx.fillRect(lx - 80, ly - 80, 160, 160);
+      // Pendant wire
+      ctx.strokeStyle = 'rgba(80,60,40,0.3)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.ellipse(lx, ly, 40, 8, 0, 0, Math.PI * 2);
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx, ly - 8);
+      ctx.stroke();
+      // Shade (trapezoid)
+      ctx.fillStyle = '#b09060';
+      ctx.beginPath();
+      ctx.moveTo(lx - 14, ly - 8);
+      ctx.lineTo(lx + 14, ly - 8);
+      ctx.lineTo(lx + 20, ly);
+      ctx.lineTo(lx - 20, ly);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#8a6a4a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Bulb glow (bright spot under shade)
+      const bulb = ctx.createRadialGradient(lx, ly + 2, 0, lx, ly + 2, 12);
+      bulb.addColorStop(0, 'rgba(255,250,220,0.6)');
+      bulb.addColorStop(1, 'rgba(255,250,220,0)');
+      ctx.fillStyle = bulb;
+      ctx.beginPath();
+      ctx.arc(lx, ly + 2, 12, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Floor with perspective tiles
+    // ── Floor ────────────────────────────────────────────────────
+    // Base gradient
     const floorGrad = ctx.createLinearGradient(0, FP_HORIZON_Y, 0, CANVAS_HEIGHT);
-    floorGrad.addColorStop(0, FP_FLOOR_COLOR_FAR);
-    floorGrad.addColorStop(1, FP_FLOOR_COLOR_NEAR);
+    floorGrad.addColorStop(0, '#9a7a50');
+    floorGrad.addColorStop(0.3, '#b08f5e');
+    floorGrad.addColorStop(1, '#cbab7c');
     ctx.fillStyle = floorGrad;
-    ctx.fillRect(0, FP_HORIZON_Y, CANVAS_WIDTH, CANVAS_HEIGHT - FP_HORIZON_Y);
+    ctx.fillRect(0, FP_HORIZON_Y, CANVAS_WIDTH, floorH);
 
-    // Light pools on the floor (under each ceiling fixture)
-    for (let i = 0; i < 3; i++) {
-      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
-      const poolY = FP_HORIZON_Y + (CANVAS_HEIGHT - FP_HORIZON_Y) * 0.55;
-      const poolGrad = ctx.createRadialGradient(lx, poolY, 0, lx, poolY, 90);
-      poolGrad.addColorStop(0, 'rgba(255,240,200,0.12)');
-      poolGrad.addColorStop(1, 'rgba(255,240,200,0)');
-      ctx.fillStyle = poolGrad;
-      ctx.beginPath();
-      ctx.ellipse(lx, poolY, 90, 35, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Perspective floor grid lines
-    const floorH = CANVAS_HEIGHT - FP_HORIZON_Y;
+    // Checkerboard tiles (perspective-correct)
     ctx.save();
-    ctx.strokeStyle = 'rgba(58,42,42,0.10)';
+    const tileColorA = 'rgba(90,65,35,0.08)';
+    const tileColorB = 'rgba(180,150,100,0.06)';
+    for (let row = 0; row < FP_FLOOR_TILE_ROWS; row++) {
+      const t0 = row / FP_FLOOR_TILE_ROWS;
+      const t1 = (row + 1) / FP_FLOOR_TILE_ROWS;
+      const y0 = FP_HORIZON_Y + floorH * (t0 * t0);
+      const y1 = FP_HORIZON_Y + floorH * (t1 * t1);
+      for (let col = -FP_FLOOR_TILE_COLS; col <= FP_FLOOR_TILE_COLS; col++) {
+        const isLight = (row + col) % 2 === 0;
+        const x0top = vx + col * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t0 * 0.6);
+        const x1top = vx + (col + 1) * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t0 * 0.6);
+        const x0bot = vx + col * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t1 * 0.6);
+        const x1bot = vx + (col + 1) * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t1 * 0.6);
+        ctx.fillStyle = isLight ? tileColorB : tileColorA;
+        ctx.beginPath();
+        ctx.moveTo(x0top, y0);
+        ctx.lineTo(x1top, y0);
+        ctx.lineTo(x1bot, y1);
+        ctx.lineTo(x0bot, y1);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    // Tile grout lines
+    ctx.strokeStyle = 'rgba(58,42,42,0.08)';
     ctx.lineWidth = 1;
-    for (let i = 1; i <= FP_FLOOR_TILE_ROWS; i++) {
+    for (let i = 1; i < FP_FLOOR_TILE_ROWS; i++) {
       const t = i / FP_FLOOR_TILE_ROWS;
       const y = FP_HORIZON_Y + floorH * (t * t);
       ctx.beginPath();
@@ -4918,8 +5027,7 @@ export function init(canvas, elements) {
       ctx.lineTo(CANVAS_WIDTH, y);
       ctx.stroke();
     }
-    const vx = CANVAS_WIDTH / 2;
-    ctx.strokeStyle = 'rgba(58,42,42,0.07)';
+    ctx.strokeStyle = 'rgba(58,42,42,0.05)';
     for (let i = -FP_FLOOR_TILE_COLS; i <= FP_FLOOR_TILE_COLS; i++) {
       const baseX = vx + i * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2);
       ctx.beginPath();
@@ -4929,74 +5037,89 @@ export function init(canvas, elements) {
     }
     ctx.restore();
 
-    // Wall bookshelves (left and right edges)
+    // Light pools on floor
+    for (let i = 0; i < 3; i++) {
+      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
+      const poolY = FP_HORIZON_Y + floorH * 0.5;
+      const poolGrad = ctx.createRadialGradient(lx, poolY, 0, lx, poolY, 100);
+      poolGrad.addColorStop(0, 'rgba(255,240,200,0.15)');
+      poolGrad.addColorStop(0.6, 'rgba(255,240,200,0.05)');
+      poolGrad.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = poolGrad;
+      ctx.beginPath();
+      ctx.ellipse(lx, poolY, 100, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── Side walls (tall bookshelves with perspective) ───────────
+    const wallW = 65;
     ctx.save();
-    const wallW = 55;
-    // Left wall
-    const lwGrad = ctx.createLinearGradient(0, 0, wallW, 0);
-    lwGrad.addColorStop(0, 'rgba(100,70,40,0.35)');
-    lwGrad.addColorStop(1, 'rgba(100,70,40,0)');
-    ctx.fillStyle = lwGrad;
-    ctx.fillRect(0, FP_HORIZON_Y * 0.3, wallW, CANVAS_HEIGHT * 0.7 - FP_HORIZON_Y * 0.3);
-    // Left shelves
-    ctx.strokeStyle = 'rgba(60,40,20,0.3)';
-    ctx.lineWidth = 1.5;
-    for (let s = 0; s < 5; s++) {
-      const sy = FP_HORIZON_Y * 0.4 + s * (FP_HORIZON_Y * 0.25);
-      if (sy > CANVAS_HEIGHT * 0.7) break;
-      ctx.beginPath();
-      ctx.moveTo(0, sy);
-      ctx.lineTo(wallW * 0.8, sy);
-      ctx.stroke();
-      // Book spines
-      for (let b = 0; b < 6; b++) {
-        const bx = 4 + b * 7;
-        const bh = 10 + (b * 3) % 8;
-        const colors = ['#8b4513','#a0522d','#6b3410','#556b2f','#8b0000','#4a3728'];
-        ctx.fillStyle = colors[b % colors.length];
-        ctx.globalAlpha = 0.35;
-        ctx.fillRect(bx, sy - bh, 5, bh);
+    for (let side = 0; side < 2; side++) {
+      const isLeft = side === 0;
+      const edgeX = isLeft ? 0 : CANVAS_WIDTH;
+      const inward = isLeft ? 1 : -1;
+
+      // Wall face
+      const wGrad = ctx.createLinearGradient(edgeX, 0, edgeX + inward * wallW, 0);
+      wGrad.addColorStop(0, 'rgba(80,55,30,0.5)');
+      wGrad.addColorStop(0.6, 'rgba(80,55,30,0.2)');
+      wGrad.addColorStop(1, 'rgba(80,55,30,0)');
+      ctx.fillStyle = wGrad;
+      const wallTop = FP_HORIZON_Y * 0.12;
+      ctx.fillRect(isLeft ? 0 : CANVAS_WIDTH - wallW, wallTop, wallW, CANVAS_HEIGHT - wallTop);
+
+      // Bookshelf unit — vertical frame
+      const shelfX = isLeft ? 2 : CANVAS_WIDTH - wallW + 6;
+      const shelfW = wallW - 10;
+      ctx.fillStyle = 'rgba(90,60,30,0.25)';
+      ctx.fillRect(shelfX, wallTop + 6, shelfW, FP_HORIZON_Y + floorH * 0.4 - wallTop - 6);
+
+      // Shelf rows with books
+      const bookColors = ['#8b4513','#a0522d','#6b3410','#556b2f','#8b0000','#4a3728','#2e4a2e','#5c3d1e','#704020','#3a5a3a'];
+      const shelfCount = 6;
+      for (let s = 0; s < shelfCount; s++) {
+        const sy = wallTop + 10 + s * ((FP_HORIZON_Y * 0.7) / shelfCount);
+        // Shelf plank
+        ctx.fillStyle = 'rgba(120,85,45,0.4)';
+        ctx.fillRect(shelfX, sy, shelfW, 3);
+        // Books (varying heights, widths, colors)
+        let bx = shelfX + 2;
+        const shelfBottom = sy;
+        for (let b = 0; bx < shelfX + shelfW - 3; b++) {
+          const bw = 3 + (b * 7 + s * 3) % 4;
+          const bh = 12 + (b * 5 + s * 7) % 10;
+          const colorIdx = (b + s * 3) % bookColors.length;
+          ctx.fillStyle = bookColors[colorIdx];
+          ctx.globalAlpha = 0.4 - s * 0.03;
+          ctx.fillRect(bx, shelfBottom - bh, bw, bh);
+          // Spine highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(bx + 1, shelfBottom - bh + 1, 1, bh - 2);
+          bx += bw + 1;
+        }
       }
+      ctx.globalAlpha = 1;
+
+      // Ambient occlusion (darkening where wall meets ceiling/floor)
+      const aoTop = ctx.createLinearGradient(edgeX, wallTop, edgeX, wallTop + 30);
+      aoTop.addColorStop(0, 'rgba(0,0,0,0.08)');
+      aoTop.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = aoTop;
+      ctx.fillRect(isLeft ? 0 : CANVAS_WIDTH - wallW, wallTop, wallW, 30);
     }
-    ctx.globalAlpha = 1;
-    // Right wall
-    const rwGrad = ctx.createLinearGradient(CANVAS_WIDTH, 0, CANVAS_WIDTH - wallW, 0);
-    rwGrad.addColorStop(0, 'rgba(100,70,40,0.35)');
-    rwGrad.addColorStop(1, 'rgba(100,70,40,0)');
-    ctx.fillStyle = rwGrad;
-    ctx.fillRect(CANVAS_WIDTH - wallW, FP_HORIZON_Y * 0.3, wallW, CANVAS_HEIGHT * 0.7 - FP_HORIZON_Y * 0.3);
-    // Right shelves
-    ctx.strokeStyle = 'rgba(60,40,20,0.3)';
-    for (let s = 0; s < 5; s++) {
-      const sy = FP_HORIZON_Y * 0.4 + s * (FP_HORIZON_Y * 0.25);
-      if (sy > CANVAS_HEIGHT * 0.7) break;
-      ctx.beginPath();
-      ctx.moveTo(CANVAS_WIDTH, sy);
-      ctx.lineTo(CANVAS_WIDTH - wallW * 0.8, sy);
-      ctx.stroke();
-      for (let b = 0; b < 6; b++) {
-        const bx = CANVAS_WIDTH - 9 - b * 7;
-        const bh = 10 + (b * 3) % 8;
-        const colors = ['#556b2f','#8b4513','#8b0000','#a0522d','#4a3728','#6b3410'];
-        ctx.fillStyle = colors[b % colors.length];
-        ctx.globalAlpha = 0.35;
-        ctx.fillRect(bx, sy - bh, 5, bh);
-      }
-    }
-    ctx.globalAlpha = 1;
     ctx.restore();
 
-    // Horizon line
-    ctx.strokeStyle = 'rgba(58,42,42,0.20)';
-    ctx.lineWidth = 1;
+    // ── Horizon/baseboard line ──────────────────────────────────
+    ctx.strokeStyle = 'rgba(58,42,42,0.25)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(0, FP_HORIZON_Y);
     ctx.lineTo(CANVAS_WIDTH, FP_HORIZON_Y);
     ctx.stroke();
 
     // Floor label
-    ctx.fillStyle = '#8a6a4a';
-    ctx.font = 'bold 13px sans-serif';
+    ctx.fillStyle = 'rgba(138,106,74,0.8)';
+    ctx.font = 'bold 13px "Caprasimo", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(currentFloor === FLOOR_1 ? '1st Floor' : '2nd Floor', CANVAS_WIDTH / 2, 24);
   }
