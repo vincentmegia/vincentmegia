@@ -200,6 +200,7 @@ import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import { blurbForTitle, REVIEW_QUOTES } from './library/book-blurbs.js';
 import {
+  normalizeAngle,
   defaultFacingTowardCenter,
   projectScene,
   findInteractTarget,
@@ -820,6 +821,9 @@ export function init(canvas, elements) {
   const FP_TILT_MAX = 0.035;
   const FP_TILT_EASE = 8;
   const FP_SPRINT_FOV_EXTRA = 8;
+  const FP_MOUSE_SENSITIVITY = 0.003;
+  let fpPointerLocked = false;
+  let fpInteractFlash = 0;
   const FP_DUST_COUNT = 24;
   let fpDust = [];
   function initFpDust() {
@@ -1146,7 +1150,9 @@ export function init(canvas, elements) {
       fpJump = createJumpState();
       fpHeadBobT = 0;
       fpTiltAngle = 0;
+      fpInteractFlash = 0;
       fpScene = { projected: [], interactTarget: null };
+      if (fpPointerLocked) document.exitPointerLock?.();
     }
     updateCameraButton();
     updateFPControlsVisibility();
@@ -1254,6 +1260,7 @@ export function init(canvas, elements) {
     }
 
     fpJump = updateJump(fpJump, deltaSeconds);
+    if (fpInteractFlash > 0) fpInteractFlash = Math.max(0, fpInteractFlash - deltaSeconds * 5);
   }
 
   /**
@@ -1269,6 +1276,7 @@ export function init(canvas, elements) {
     if (!running || overlay || cameraMode !== 'first-person') return;
     const target = fpScene.interactTarget;
     if (!target) return;
+    fpInteractFlash = 1;
     if (target.entityKind === 'frontDeskSlot') {
       const slot = target.ref;
       pendingFrontDeskAction = slot.kind === 'karen' ? { kind: 'karen' } : (slot.kind === 'borrow-active' ? null : { kind: slot.kind, id: slot.id });
@@ -2390,12 +2398,12 @@ export function init(canvas, elements) {
       return;
     }
 
-    // Click-to-move doesn't apply in First Person (doc's Scope) — a canvas
-    // click there is instead the same "interact" action as the interact
-    // key/on-screen button, per that same section's "pressing the interact
-    // key/clicking triggers the exact same station-arrival logic."
     if (cameraMode === 'first-person') {
-      attemptInteract();
+      if (!fpPointerLocked) {
+        canvas.requestPointerLock?.();
+      } else {
+        attemptInteract();
+      }
       return;
     }
 
@@ -4840,18 +4848,38 @@ export function init(canvas, elements) {
   const FP_FLOOR_TILE_COLS = 9;
 
   function drawFirstPersonBackground() {
-    // Ceiling with a subtle gradient (darker at top, lighter near horizon)
+    // Ceiling with a subtle gradient
     const ceilGrad = ctx.createLinearGradient(0, 0, 0, FP_HORIZON_Y);
     ceilGrad.addColorStop(0, FP_CEILING_COLOR_TOP);
     ceilGrad.addColorStop(1, FP_CEILING_COLOR_BOT);
     ctx.fillStyle = ceilGrad;
     ctx.fillRect(0, 0, CANVAS_WIDTH, FP_HORIZON_Y);
 
-    // Ceiling light fixtures
-    ctx.fillStyle = 'rgba(255,248,230,0.35)';
+    // Ceiling beams (horizontal dark lines across ceiling for depth)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80,60,40,0.12)';
+    ctx.lineWidth = 2;
+    for (let i = 1; i <= 4; i++) {
+      const by = FP_HORIZON_Y * (0.15 + i * 0.17);
+      ctx.beginPath();
+      ctx.moveTo(0, by);
+      ctx.lineTo(CANVAS_WIDTH, by);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Ceiling light fixtures with glow
     for (let i = 0; i < 3; i++) {
       const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
       const ly = FP_HORIZON_Y * 0.35;
+      // Glow halo
+      const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, 60);
+      glow.addColorStop(0, 'rgba(255,248,230,0.18)');
+      glow.addColorStop(1, 'rgba(255,248,230,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(lx - 60, ly - 60, 120, 120);
+      // Fixture
+      ctx.fillStyle = 'rgba(255,248,230,0.4)';
       ctx.beginPath();
       ctx.ellipse(lx, ly, 40, 8, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -4864,10 +4892,22 @@ export function init(canvas, elements) {
     ctx.fillStyle = floorGrad;
     ctx.fillRect(0, FP_HORIZON_Y, CANVAS_WIDTH, CANVAS_HEIGHT - FP_HORIZON_Y);
 
+    // Light pools on the floor (under each ceiling fixture)
+    for (let i = 0; i < 3; i++) {
+      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
+      const poolY = FP_HORIZON_Y + (CANVAS_HEIGHT - FP_HORIZON_Y) * 0.55;
+      const poolGrad = ctx.createRadialGradient(lx, poolY, 0, lx, poolY, 90);
+      poolGrad.addColorStop(0, 'rgba(255,240,200,0.12)');
+      poolGrad.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = poolGrad;
+      ctx.beginPath();
+      ctx.ellipse(lx, poolY, 90, 35, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Perspective floor grid lines
     const floorH = CANVAS_HEIGHT - FP_HORIZON_Y;
     ctx.save();
-    // Horizontal lines (converge toward horizon — exponential spacing)
     ctx.strokeStyle = 'rgba(58,42,42,0.10)';
     ctx.lineWidth = 1;
     for (let i = 1; i <= FP_FLOOR_TILE_ROWS; i++) {
@@ -4878,7 +4918,6 @@ export function init(canvas, elements) {
       ctx.lineTo(CANVAS_WIDTH, y);
       ctx.stroke();
     }
-    // Vertical lines (converge at vanishing point)
     const vx = CANVAS_WIDTH / 2;
     ctx.strokeStyle = 'rgba(58,42,42,0.07)';
     for (let i = -FP_FLOOR_TILE_COLS; i <= FP_FLOOR_TILE_COLS; i++) {
@@ -4888,6 +4927,63 @@ export function init(canvas, elements) {
       ctx.lineTo(baseX, CANVAS_HEIGHT);
       ctx.stroke();
     }
+    ctx.restore();
+
+    // Wall bookshelves (left and right edges)
+    ctx.save();
+    const wallW = 55;
+    // Left wall
+    const lwGrad = ctx.createLinearGradient(0, 0, wallW, 0);
+    lwGrad.addColorStop(0, 'rgba(100,70,40,0.35)');
+    lwGrad.addColorStop(1, 'rgba(100,70,40,0)');
+    ctx.fillStyle = lwGrad;
+    ctx.fillRect(0, FP_HORIZON_Y * 0.3, wallW, CANVAS_HEIGHT * 0.7 - FP_HORIZON_Y * 0.3);
+    // Left shelves
+    ctx.strokeStyle = 'rgba(60,40,20,0.3)';
+    ctx.lineWidth = 1.5;
+    for (let s = 0; s < 5; s++) {
+      const sy = FP_HORIZON_Y * 0.4 + s * (FP_HORIZON_Y * 0.25);
+      if (sy > CANVAS_HEIGHT * 0.7) break;
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(wallW * 0.8, sy);
+      ctx.stroke();
+      // Book spines
+      for (let b = 0; b < 6; b++) {
+        const bx = 4 + b * 7;
+        const bh = 10 + (b * 3) % 8;
+        const colors = ['#8b4513','#a0522d','#6b3410','#556b2f','#8b0000','#4a3728'];
+        ctx.fillStyle = colors[b % colors.length];
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(bx, sy - bh, 5, bh);
+      }
+    }
+    ctx.globalAlpha = 1;
+    // Right wall
+    const rwGrad = ctx.createLinearGradient(CANVAS_WIDTH, 0, CANVAS_WIDTH - wallW, 0);
+    rwGrad.addColorStop(0, 'rgba(100,70,40,0.35)');
+    rwGrad.addColorStop(1, 'rgba(100,70,40,0)');
+    ctx.fillStyle = rwGrad;
+    ctx.fillRect(CANVAS_WIDTH - wallW, FP_HORIZON_Y * 0.3, wallW, CANVAS_HEIGHT * 0.7 - FP_HORIZON_Y * 0.3);
+    // Right shelves
+    ctx.strokeStyle = 'rgba(60,40,20,0.3)';
+    for (let s = 0; s < 5; s++) {
+      const sy = FP_HORIZON_Y * 0.4 + s * (FP_HORIZON_Y * 0.25);
+      if (sy > CANVAS_HEIGHT * 0.7) break;
+      ctx.beginPath();
+      ctx.moveTo(CANVAS_WIDTH, sy);
+      ctx.lineTo(CANVAS_WIDTH - wallW * 0.8, sy);
+      ctx.stroke();
+      for (let b = 0; b < 6; b++) {
+        const bx = CANVAS_WIDTH - 9 - b * 7;
+        const bh = 10 + (b * 3) % 8;
+        const colors = ['#556b2f','#8b4513','#8b0000','#a0522d','#4a3728','#6b3410'];
+        ctx.fillStyle = colors[b % colors.length];
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(bx, sy - bh, 5, bh);
+      }
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
 
     // Horizon line
@@ -4994,12 +5090,30 @@ export function init(canvas, elements) {
     ctx.moveTo(cx, cy + gap);
     ctx.lineTo(cx, cy + armLength);
     ctx.stroke();
-    if (hasTarget && target.entityKind === 'station') {
-      const label = target.ref.label || target.ref.kind;
+    // Center dot
+    ctx.fillStyle = hasTarget ? '#e0a83a' : 'rgba(58,42,42,0.5)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, hasTarget ? 2 : 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (hasTarget) {
+      const label = target.entityKind === 'station'
+        ? (target.ref.label || target.ref.kind)
+        : target.entityKind === 'returnCartBook' ? 'Book' : 'Patron';
       ctx.fillStyle = 'rgba(224,168,58,0.9)';
       ctx.font = 'bold 12px "Caprasimo", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(label, cx, cy + armLength + 16);
+      // Distance bar
+      const maxD = 150;
+      const pct = Math.max(0, 1 - target.distance / maxD);
+      const barW = 40;
+      const barH = 3;
+      const barX = cx - barW / 2;
+      const barY = cy + armLength + 22;
+      ctx.fillStyle = 'rgba(58,42,42,0.3)';
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = `rgba(224,168,58,${0.5 + pct * 0.4})`;
+      ctx.fillRect(barX, barY, barW * pct, barH);
     }
     // Sprint indicator
     if (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight)) {
@@ -5077,8 +5191,27 @@ export function init(canvas, elements) {
     vg.addColorStop(1, 'rgba(0,0,0,0.25)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Interaction flash
+    if (fpInteractFlash > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = fpInteractFlash * 0.25;
+      ctx.fillStyle = '#fff8e0';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.restore();
+    }
     drawFirstPersonCrosshair();
     drawFpMinimap();
+    // Pointer lock hint
+    if (!fpPointerLocked) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      drawRoundRect(ctx, CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT - 38, 200, 24, 8, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Click to enable mouse look', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
+      ctx.restore();
+    }
   }
 
   /**
@@ -5244,6 +5377,14 @@ export function init(canvas, elements) {
   document.addEventListener('visibilitychange', onVisibilityChange);
   elements.fullscreenButton.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('pointerlockchange', () => {
+    fpPointerLocked = document.pointerLockElement === canvas;
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    if (!fpPointerLocked || cameraMode !== 'first-person') return;
+    const dx = e.movementX || 0;
+    playerFacing = normalizeAngle(playerFacing + dx * FP_MOUSE_SENSITIVITY);
+  });
   elements.floorButton?.addEventListener('click', () => switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1));
   elements.cameraButton?.addEventListener('click', () => setCameraMode(cameraMode === 'top-down' ? 'first-person' : 'top-down'));
 
