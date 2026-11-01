@@ -28,3 +28,6 @@ config*.yaml
 
 # Local Claude Code output (reports, scratch artifacts).
 /Claude outputs/
+
+# Local git worktrees (superpowers SDD)
+.worktrees/
