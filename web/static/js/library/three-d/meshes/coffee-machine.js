@@ -8,6 +8,7 @@ const SPOUT = '#9aa3ad';
 const TRAY = '#22252a';
 const CUP = '#f2ece0';
 const COFFEE = '#5a3b22';
+export const PALETTE_COLORS = { BODY, TOP, SPOUT, TRAY, CUP, COFFEE };
 
 /** @returns {{vertices: number[][], faces: {indices:number[], color:string}[]}} */
 export function buildCoffeeMachine() {
@@ -17,7 +18,7 @@ export function buildCoffeeMachine() {
     // main body, set back
     box([-0.2, 0.03, -0.2], [0.2, 0.5, 0.05], BODY),
     // top cap, slightly proud
-    box([-0.205, 0.46, -0.205], [0.205, 0.5, 0.055], TOP),
+    box([-0.205, 0.46, -0.205], [0.205, 0.505, 0.055], TOP),
     // overhang housing the group head
     box([-0.2, 0.28, 0.05], [0.2, 0.4, 0.14], BODY),
     // spout jutting down from the overhang
