@@ -151,3 +151,13 @@ test('done state update is a no-op', () => {
   assert.equal(n.floorSwitched, false);
   assert.equal(n.t, done.t);
 });
+
+test('stairs forward drift follows engine convention (sin f, -cos f)', () => {
+  const mid = updateTransition(createTransition('stairs', 2), 0.75);
+  const n = transitionCamera(mid, { x: 0, y: 0, facing: 0 }).posOffset;
+  assert.ok(n.z < 0, 'facing 0 moves toward -z');
+  assert.ok(Math.abs(n.x) < 1e-9);
+  const e = transitionCamera(mid, { x: 0, y: 0, facing: Math.PI / 2 }).posOffset;
+  assert.ok(e.x > 0);
+  assert.ok(Math.abs(e.z) < 1e-9);
+});
