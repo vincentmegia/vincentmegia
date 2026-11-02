@@ -213,6 +213,10 @@ import {
   startJump,
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
+import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { drawScene } from './library/three-d/core.js';
+import { buildStationBox } from './library/three-d/meshes/station-box.js';
+import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
 // localStorage progress (doc's Data Model: "in-progress shift state, Gard,
@@ -815,7 +819,6 @@ export function init(canvas, elements) {
   let fpTiltAngle = 0;
   const FP_HEAD_BOB_FREQ = 8;
   const FP_HEAD_BOB_AMP = 3.5;
-  const FP_HEAD_BOB_SWAY = 2;
   const FP_SPRINT_MULTIPLIER = 1.6;
   const FP_STRAFE_SPEED = 160;
   const FP_TILT_MAX = 0.035;
@@ -824,6 +827,18 @@ export function init(canvas, elements) {
   const FP_MOUSE_SENSITIVITY = 0.003;
   let fpPointerLocked = false;
   let fpInteractFlash = 0;
+  // --- True-3D first-person renderer (three-d/*) ---------------------------
+  // The head-bob/jump/tilt/sprint effects move INTO the camera (vs. the old
+  // canvas transforms); interaction/targeting still runs on first-person.js.
+  const FP_BASE_VFOV_DEGREES = 60; // vertical FOV; sprint widens it a little
+  const FP_SPRINT_VFOV_EXTRA = 6;
+  const FP_LIGHT = { dir: [0.35, 1, 0.25], ambient: 0.5 }; // dir points toward the light
+  const FP_FOG = { color: '#d8ccb0', start: 520, end: 1500 }; // warm cream distance haze
+  const FP_KAREN_PALETTE = { skin: '#f0c7a0', hair: '#caa24e', top: '#c0432f', bottom: '#3a3238', angry: true };
+  // Active elevator/stair floor transition (null when none). While set, FP
+  // movement/turn/strafe/jump input is ignored and the camera is driven by
+  // transitions.js; cleared when the transition reaches 'done' or FP is left.
+  let fpTransition = null;
   const FP_DUST_COUNT = 24;
   let fpDust = [];
   function initFpDust() {
@@ -1151,6 +1166,7 @@ export function init(canvas, elements) {
       fpHeadBobT = 0;
       fpTiltAngle = 0;
       fpInteractFlash = 0;
+      fpTransition = null; // cancel any in-flight ride/climb and clear the input block
       fpScene = { projected: [], interactTarget: null };
       if (fpPointerLocked) document.exitPointerLock?.();
     }
@@ -1207,6 +1223,7 @@ export function init(canvas, elements) {
 
   function updateFirstPersonMovement(deltaSeconds) {
     if (cameraMode !== 'first-person') return;
+    if (fpTransition) return; // input is frozen while an elevator/stair transition plays
     let turnDirection = 0;
     if (heldFP.turnLeft) turnDirection -= 1;
     if (heldFP.turnRight) turnDirection += 1;
@@ -1264,6 +1281,27 @@ export function init(canvas, elements) {
   }
 
   /**
+   * Commits the floor switch for the CURRENT `fpTransition` state exactly once
+   * (on the single state whose `floorSwitched` is set) and clears the
+   * transition when it finishes. Reads `transitionCamera` on the state as-is —
+   * never call `updateTransition` on a done state before this, or its
+   * one-shot `floorSwitched` would be reset to false.
+   */
+  function commitFpTransition() {
+    if (!fpTransition) return;
+    const cam = transitionCamera(fpTransition, { x: player.x, y: player.y, facing: playerFacing });
+    if (cam.floorSwitched) switchFloor(fpTransition.targetFloor);
+    if (fpTransition.phase === 'done') fpTransition = null;
+  }
+
+  /** Per-frame transition advance: step the state machine, then commit once. */
+  function updateFpTransition(deltaSeconds) {
+    if (!fpTransition) return;
+    fpTransition = updateTransition(fpTransition, deltaSeconds);
+    commitFpTransition();
+  }
+
+  /**
    * First Person's "interact" action — the interact key/button, or a canvas
    * click while in First Person (doc: "a 'look at a station, then interact'
    * prompt... functionally equivalent to clicking that station in Top-Down
@@ -1274,9 +1312,18 @@ export function init(canvas, elements) {
    */
   function attemptInteract() {
     if (!running || overlay || cameraMode !== 'first-person') return;
+    if (fpTransition) return; // ignore new interacts while a ride/climb is playing
     const target = fpScene.interactTarget;
     if (!target) return;
     fpInteractFlash = 1;
+    // Elevator/stairs play an animated first-person ride/climb instead of
+    // Top-Down's instant teleport: start a transition and let the per-frame
+    // path call switchFloor when it reaches its commit point. (Top-Down's
+    // click-to-move arrival still switches instantly via handleArrival.)
+    if (target.entityKind === 'station' && (target.ref.kind === 'stairs' || target.ref.kind === 'elevator')) {
+      fpTransition = createTransition(target.ref.kind, target.ref.targetFloor);
+      return;
+    }
     if (target.entityKind === 'frontDeskSlot') {
       const slot = target.ref;
       pendingFrontDeskAction = slot.kind === 'karen' ? { kind: 'karen' } : (slot.kind === 'borrow-active' ? null : { kind: slot.kind, id: slot.id });
@@ -2553,7 +2600,7 @@ export function init(canvas, elements) {
         e.preventDefault();
         if (fpScene.interactTarget) {
           attemptInteract();
-        } else if (!e.repeat) {
+        } else if (!e.repeat && !fpTransition) {
           fpJump = startJump(fpJump);
         }
         return;
@@ -4839,346 +4886,6 @@ export function init(canvas, elements) {
 
   // -- First Person rendering --------------------------------------------
 
-  const FP_HORIZON_Y = CANVAS_HEIGHT / 2;
-  const FP_FLOOR_TILE_ROWS = 14;
-  const FP_FLOOR_TILE_COLS = 11;
-
-  function drawFirstPersonBackground() {
-    const floorH = CANVAS_HEIGHT - FP_HORIZON_Y;
-    const vx = CANVAS_WIDTH / 2;
-
-    // ── Back wall (at horizon) ──────────────────────────────────
-    const wallGrad = ctx.createLinearGradient(0, 0, 0, FP_HORIZON_Y);
-    wallGrad.addColorStop(0, '#c4b8a0');
-    wallGrad.addColorStop(0.7, '#d8ccb4');
-    wallGrad.addColorStop(1, '#e2d6be');
-    ctx.fillStyle = wallGrad;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, FP_HORIZON_Y);
-
-    // Wainscoting (lower wall panel, darker wood tone)
-    const wainscotTop = FP_HORIZON_Y * 0.55;
-    const wainGrad = ctx.createLinearGradient(0, wainscotTop, 0, FP_HORIZON_Y);
-    wainGrad.addColorStop(0, '#a08060');
-    wainGrad.addColorStop(1, '#8a6a4a');
-    ctx.fillStyle = wainGrad;
-    ctx.fillRect(0, wainscotTop, CANVAS_WIDTH, FP_HORIZON_Y - wainscotTop);
-    // Chair rail (divider between upper wall and wainscoting)
-    ctx.strokeStyle = '#7a5a3a';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(0, wainscotTop);
-    ctx.lineTo(CANVAS_WIDTH, wainscotTop);
-    ctx.stroke();
-    // Wainscot panels
-    ctx.strokeStyle = 'rgba(90,65,35,0.2)';
-    ctx.lineWidth = 1;
-    const panelW = CANVAS_WIDTH / 8;
-    for (let i = 1; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * panelW, wainscotTop + 4);
-      ctx.lineTo(i * panelW, FP_HORIZON_Y - 2);
-      ctx.stroke();
-    }
-    // Baseboard
-    ctx.fillStyle = '#6a4a2a';
-    ctx.fillRect(0, FP_HORIZON_Y - 4, CANVAS_WIDTH, 4);
-
-    // Back-wall windows (arched tops, warm light inside)
-    for (let i = 0; i < 3; i++) {
-      const wx = CANVAS_WIDTH * (0.2 + i * 0.3);
-      const wy = FP_HORIZON_Y * 0.2;
-      const ww = 50;
-      const wh = wainscotTop - wy - 8;
-      // Window recess shadow
-      ctx.fillStyle = 'rgba(60,40,20,0.15)';
-      ctx.fillRect(wx - ww / 2 - 3, wy - 3, ww + 6, wh + 6);
-      // Window pane (warm daylight)
-      const paneGrad = ctx.createLinearGradient(wx, wy, wx, wy + wh);
-      paneGrad.addColorStop(0, '#e8e0c8');
-      paneGrad.addColorStop(0.5, '#f5ecd8');
-      paneGrad.addColorStop(1, '#fff8e8');
-      ctx.fillStyle = paneGrad;
-      ctx.beginPath();
-      ctx.moveTo(wx - ww / 2, wy + wh);
-      ctx.lineTo(wx - ww / 2, wy + ww / 4);
-      ctx.arc(wx, wy + ww / 4, ww / 2, Math.PI, 0);
-      ctx.lineTo(wx + ww / 2, wy + wh);
-      ctx.closePath();
-      ctx.fill();
-      // Window frame
-      ctx.strokeStyle = '#7a5a3a';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      // Mullion (vertical divider)
-      ctx.beginPath();
-      ctx.moveTo(wx, wy);
-      ctx.lineTo(wx, wy + wh);
-      ctx.stroke();
-      // Cross bar
-      ctx.beginPath();
-      ctx.moveTo(wx - ww / 2, wy + wh * 0.5);
-      ctx.lineTo(wx + ww / 2, wy + wh * 0.5);
-      ctx.stroke();
-      // Light spill from window onto upper wall
-      const spillGrad = ctx.createRadialGradient(wx, wy + wh, 0, wx, wy + wh, ww * 1.2);
-      spillGrad.addColorStop(0, 'rgba(255,248,230,0.1)');
-      spillGrad.addColorStop(1, 'rgba(255,248,230,0)');
-      ctx.fillStyle = spillGrad;
-      ctx.fillRect(wx - ww * 1.2, wy, ww * 2.4, wh + 20);
-    }
-
-    // ── Ceiling beams (receding perspective, thicker near camera) ──
-    ctx.save();
-    for (let i = 1; i <= 5; i++) {
-      const t = i / 6;
-      const by = FP_HORIZON_Y * t;
-      const thickness = 1 + (1 - t) * 3;
-      ctx.strokeStyle = `rgba(100,75,45,${0.08 + (1 - t) * 0.06})`;
-      ctx.lineWidth = thickness;
-      ctx.beginPath();
-      ctx.moveTo(0, by);
-      ctx.lineTo(CANVAS_WIDTH, by);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // ── Ceiling light fixtures (hanging pendants with warm glow) ──
-    for (let i = 0; i < 3; i++) {
-      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
-      const ly = FP_HORIZON_Y * 0.28;
-      // Wide warm glow on ceiling
-      const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, 80);
-      glow.addColorStop(0, 'rgba(255,240,200,0.2)');
-      glow.addColorStop(0.5, 'rgba(255,240,200,0.08)');
-      glow.addColorStop(1, 'rgba(255,240,200,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(lx - 80, ly - 80, 160, 160);
-      // Pendant wire
-      ctx.strokeStyle = 'rgba(80,60,40,0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(lx, 0);
-      ctx.lineTo(lx, ly - 8);
-      ctx.stroke();
-      // Shade (trapezoid)
-      ctx.fillStyle = '#b09060';
-      ctx.beginPath();
-      ctx.moveTo(lx - 14, ly - 8);
-      ctx.lineTo(lx + 14, ly - 8);
-      ctx.lineTo(lx + 20, ly);
-      ctx.lineTo(lx - 20, ly);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#8a6a4a';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      // Bulb glow (bright spot under shade)
-      const bulb = ctx.createRadialGradient(lx, ly + 2, 0, lx, ly + 2, 12);
-      bulb.addColorStop(0, 'rgba(255,250,220,0.6)');
-      bulb.addColorStop(1, 'rgba(255,250,220,0)');
-      ctx.fillStyle = bulb;
-      ctx.beginPath();
-      ctx.arc(lx, ly + 2, 12, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // ── Floor ────────────────────────────────────────────────────
-    // Base gradient
-    const floorGrad = ctx.createLinearGradient(0, FP_HORIZON_Y, 0, CANVAS_HEIGHT);
-    floorGrad.addColorStop(0, '#9a7a50');
-    floorGrad.addColorStop(0.3, '#b08f5e');
-    floorGrad.addColorStop(1, '#cbab7c');
-    ctx.fillStyle = floorGrad;
-    ctx.fillRect(0, FP_HORIZON_Y, CANVAS_WIDTH, floorH);
-
-    // Checkerboard tiles (perspective-correct)
-    ctx.save();
-    const tileColorA = 'rgba(90,65,35,0.08)';
-    const tileColorB = 'rgba(180,150,100,0.06)';
-    for (let row = 0; row < FP_FLOOR_TILE_ROWS; row++) {
-      const t0 = row / FP_FLOOR_TILE_ROWS;
-      const t1 = (row + 1) / FP_FLOOR_TILE_ROWS;
-      const y0 = FP_HORIZON_Y + floorH * (t0 * t0);
-      const y1 = FP_HORIZON_Y + floorH * (t1 * t1);
-      for (let col = -FP_FLOOR_TILE_COLS; col <= FP_FLOOR_TILE_COLS; col++) {
-        const isLight = (row + col) % 2 === 0;
-        const x0top = vx + col * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t0 * 0.6);
-        const x1top = vx + (col + 1) * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t0 * 0.6);
-        const x0bot = vx + col * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t1 * 0.6);
-        const x1bot = vx + (col + 1) * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2) * (1 - t1 * 0.6);
-        ctx.fillStyle = isLight ? tileColorB : tileColorA;
-        ctx.beginPath();
-        ctx.moveTo(x0top, y0);
-        ctx.lineTo(x1top, y0);
-        ctx.lineTo(x1bot, y1);
-        ctx.lineTo(x0bot, y1);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    // Tile grout lines
-    ctx.strokeStyle = 'rgba(58,42,42,0.08)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < FP_FLOOR_TILE_ROWS; i++) {
-      const t = i / FP_FLOOR_TILE_ROWS;
-      const y = FP_HORIZON_Y + floorH * (t * t);
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(CANVAS_WIDTH, y);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(58,42,42,0.05)';
-    for (let i = -FP_FLOOR_TILE_COLS; i <= FP_FLOOR_TILE_COLS; i++) {
-      const baseX = vx + i * (CANVAS_WIDTH / FP_FLOOR_TILE_COLS / 2);
-      ctx.beginPath();
-      ctx.moveTo(vx, FP_HORIZON_Y);
-      ctx.lineTo(baseX, CANVAS_HEIGHT);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // Light pools on floor
-    for (let i = 0; i < 3; i++) {
-      const lx = CANVAS_WIDTH * (0.25 + i * 0.25);
-      const poolY = FP_HORIZON_Y + floorH * 0.5;
-      const poolGrad = ctx.createRadialGradient(lx, poolY, 0, lx, poolY, 100);
-      poolGrad.addColorStop(0, 'rgba(255,240,200,0.15)');
-      poolGrad.addColorStop(0.6, 'rgba(255,240,200,0.05)');
-      poolGrad.addColorStop(1, 'rgba(255,240,200,0)');
-      ctx.fillStyle = poolGrad;
-      ctx.beginPath();
-      ctx.ellipse(lx, poolY, 100, 40, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // ── Side walls (tall bookshelves with perspective) ───────────
-    const wallW = 65;
-    ctx.save();
-    for (let side = 0; side < 2; side++) {
-      const isLeft = side === 0;
-      const edgeX = isLeft ? 0 : CANVAS_WIDTH;
-      const inward = isLeft ? 1 : -1;
-
-      // Wall face
-      const wGrad = ctx.createLinearGradient(edgeX, 0, edgeX + inward * wallW, 0);
-      wGrad.addColorStop(0, 'rgba(80,55,30,0.5)');
-      wGrad.addColorStop(0.6, 'rgba(80,55,30,0.2)');
-      wGrad.addColorStop(1, 'rgba(80,55,30,0)');
-      ctx.fillStyle = wGrad;
-      const wallTop = FP_HORIZON_Y * 0.12;
-      ctx.fillRect(isLeft ? 0 : CANVAS_WIDTH - wallW, wallTop, wallW, CANVAS_HEIGHT - wallTop);
-
-      // Bookshelf unit — vertical frame
-      const shelfX = isLeft ? 2 : CANVAS_WIDTH - wallW + 6;
-      const shelfW = wallW - 10;
-      ctx.fillStyle = 'rgba(90,60,30,0.25)';
-      ctx.fillRect(shelfX, wallTop + 6, shelfW, FP_HORIZON_Y + floorH * 0.4 - wallTop - 6);
-
-      // Shelf rows with books
-      const bookColors = ['#8b4513','#a0522d','#6b3410','#556b2f','#8b0000','#4a3728','#2e4a2e','#5c3d1e','#704020','#3a5a3a'];
-      const shelfCount = 6;
-      for (let s = 0; s < shelfCount; s++) {
-        const sy = wallTop + 10 + s * ((FP_HORIZON_Y * 0.7) / shelfCount);
-        // Shelf plank
-        ctx.fillStyle = 'rgba(120,85,45,0.4)';
-        ctx.fillRect(shelfX, sy, shelfW, 3);
-        // Books (varying heights, widths, colors)
-        let bx = shelfX + 2;
-        const shelfBottom = sy;
-        for (let b = 0; bx < shelfX + shelfW - 3; b++) {
-          const bw = 3 + (b * 7 + s * 3) % 4;
-          const bh = 12 + (b * 5 + s * 7) % 10;
-          const colorIdx = (b + s * 3) % bookColors.length;
-          ctx.fillStyle = bookColors[colorIdx];
-          ctx.globalAlpha = 0.4 - s * 0.03;
-          ctx.fillRect(bx, shelfBottom - bh, bw, bh);
-          // Spine highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.08)';
-          ctx.fillRect(bx + 1, shelfBottom - bh + 1, 1, bh - 2);
-          bx += bw + 1;
-        }
-      }
-      ctx.globalAlpha = 1;
-
-      // Ambient occlusion (darkening where wall meets ceiling/floor)
-      const aoTop = ctx.createLinearGradient(edgeX, wallTop, edgeX, wallTop + 30);
-      aoTop.addColorStop(0, 'rgba(0,0,0,0.08)');
-      aoTop.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = aoTop;
-      ctx.fillRect(isLeft ? 0 : CANVAS_WIDTH - wallW, wallTop, wallW, 30);
-    }
-    ctx.restore();
-
-    // ── Horizon/baseboard line ──────────────────────────────────
-    ctx.strokeStyle = 'rgba(58,42,42,0.25)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, FP_HORIZON_Y);
-    ctx.lineTo(CANVAS_WIDTH, FP_HORIZON_Y);
-    ctx.stroke();
-
-    // Floor label
-    ctx.fillStyle = 'rgba(138,106,74,0.8)';
-    ctx.font = 'bold 13px "Caprasimo", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(currentFloor === FLOOR_1 ? '1st Floor' : '2nd Floor', CANVAS_WIDTH / 2, 24);
-  }
-
-  /**
-   * Draws one projected entity (as produced by `first-person.js`'s
-   * `projectScene`) via the SAME art functions Top-Down uses —
-   * `drawLibraryPerson` for a front-desk patron, `drawStation`'s billboard
-   * mode for every station — per the doc's explicit instruction not to
-   * reinvent the art for this camera mode. `entity.groundY` is where the
-   * entity's ground-contact point sits on screen (first-person.js's
-   * perspective stand-in); each branch below anchors its own art to that
-   * point using its own known height, same as Top-Down anchors each shape
-   * to the station/player's own y.
-   */
-  function drawFirstPersonEntityShadow(entity) {
-    const shadowW = 30 * entity.scale;
-    const shadowH = 8 * entity.scale;
-    const fogAlpha = Math.min(0.6, Math.max(0, (entity.distance - 200) / 550) ** 1.5);
-    ctx.save();
-    ctx.globalAlpha = (0.25 - fogAlpha * 0.25);
-    ctx.fillStyle = '#3a2a2a';
-    ctx.beginPath();
-    ctx.ellipse(entity.screenX, entity.groundY + 2 * entity.scale, shadowW, shadowH, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawFirstPersonEntity(entity) {
-    const fogAlpha = Math.min(0.6, Math.max(0, (entity.distance - 200) / 550) ** 1.5);
-    ctx.save();
-    if (fogAlpha > 0.01) ctx.globalAlpha = 1 - fogAlpha;
-
-    if (entity.entityKind === 'frontDeskSlot' || entity.entityKind === 'finesSlot') {
-      const slot = entity.ref;
-      const personality = personalityForSlot(slot, entity.slotIndex ?? 0);
-      drawLibraryPerson(ctx, entity.screenX, entity.groundY, {
-        personalityKey: personality,
-        scale: entity.scale * 0.62,
-        angryTint: slot.kind === 'karen',
-      });
-    } else if (entity.entityKind === 'returnCartBook') {
-      const book = entity.ref;
-      const genre = findGenre(book.genreId);
-      const w = 18 * entity.scale;
-      const h = 24 * entity.scale;
-      drawRoundRect(ctx, entity.screenX - w / 2, entity.groundY - h, w, h, 2 * entity.scale, genre ? genre.color : '#8a6a4a');
-    } else {
-      const station = entity.ref;
-      const halfOnScreen = stationExtents(station).hh * entity.scale;
-      drawStation(station, {
-        scale: entity.scale,
-        centerX: entity.screenX,
-        centerY: entity.groundY - halfOnScreen,
-        skipLabel: true,
-      });
-    }
-    ctx.restore();
-  }
 
   function drawFpDust() {
     ctx.save();
@@ -5290,25 +4997,83 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  /**
+   * Camera params for the 3D renderer, derived from the live effect state:
+   * head-bob -> a small eye-height bob, jump -> eye-height lift, strafe tilt ->
+   * camera roll, sprint -> a slightly wider vertical FOV. `extraEyeY` folds in
+   * an active transition's vertical camera offset.
+   */
+  function fpCameraParams(extraEyeY) {
+    const bobOffset = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
+    const sprinting = heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
+    const fovDeg = FP_BASE_VFOV_DEGREES + (sprinting ? FP_SPRINT_VFOV_EXTRA : 0);
+    return {
+      bobOffset,
+      jumpOffset: fpJump.offset + extraEyeY,
+      pitch: 0,
+      roll: fpTiltAngle,
+      fov: (fovDeg * Math.PI) / 180,
+    };
+  }
+
+  /** A 3D humanoid palette for a queued patron (or Karen), from their design. */
+  function fpPaletteFor(personalityKey, angry) {
+    if (personalityKey === 'karen') return FP_KAREN_PALETTE;
+    const d = findLibraryDesign(personalityKey);
+    if (!d) return { skin: '#efc49f', hair: '#2a2030', top: '#6a7a8a', bottom: '#3a3a48', angry: !!angry };
+    const o = d.outfit ?? {};
+    return {
+      skin: d.skin ?? '#efc49f',
+      hair: d.hair?.color ?? '#2a2030',
+      top: o.top ?? '#6a7a8a',
+      bottom: o.bottom ?? o.skirt ?? o.inner ?? '#3a3a48',
+      angry: !!angry,
+    };
+  }
+
   function drawFirstPersonView() {
-    const jumpOff = fpJump.offset;
-    const bobY = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
-    const bobX = fpHeadBobT > 0 ? Math.cos(fpHeadBobT * 0.5) * FP_HEAD_BOB_SWAY : 0;
-    const totalOffY = jumpOff + bobY;
-    const hasOffset = totalOffY !== 0 || fpTiltAngle !== 0 || bobX !== 0;
-    if (hasOffset) {
-      ctx.save();
-      ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-      if (fpTiltAngle !== 0) ctx.rotate(fpTiltAngle);
-      ctx.translate(-CANVAS_WIDTH / 2 + bobX, -CANVAS_HEIGHT / 2 - totalOffY);
+    // The bob/jump/tilt/sprint effects now move into the 3D camera (vs. the
+    // old canvas transforms); a running transition adds its own camera offset.
+    let offX = 0, offY = 0, offZ = 0;
+    if (fpTransition) {
+      const tcam = transitionCamera(fpTransition, { x: player.x, y: player.y, facing: playerFacing });
+      offX = tcam.posOffset.x * UNIT_SCALE;
+      offY = tcam.posOffset.y * UNIT_SCALE;
+      offZ = tcam.posOffset.z * UNIT_SCALE;
     }
-    drawFirstPersonBackground();
-    // Shadows first (behind entities), then entities
-    for (const entity of fpScene.projected) drawFirstPersonEntityShadow(entity);
-    for (const entity of fpScene.projected) drawFirstPersonEntity(entity);
+    // Characters + Return Cart books mirror what the old billboard path drew:
+    // the Front Desk / Fines Counter queues (1st Floor only).
+    const characters = [];
+    const books = [];
+    if (currentFloor === FLOOR_1) {
+      for (const e of buildFirstPersonEntities()) {
+        if (e.entityKind === 'frontDeskSlot' || e.entityKind === 'finesSlot') {
+          const personality = personalityForSlot(e.ref, e.slotIndex ?? 0);
+          characters.push({ x: e.x, y: e.y, palette: fpPaletteFor(personality, e.ref.kind === 'karen') });
+        } else if (e.entityKind === 'returnCartBook') {
+          books.push(e);
+        }
+      }
+    }
+    const viewport = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
+    const { camera, placed } = buildFirstPersonScene({
+      player: { x: player.x + offX, y: player.y + offZ, facing: playerFacing },
+      floor: currentFloor,
+      stations,
+      characters,
+      cameraParams: fpCameraParams(offY),
+      viewport,
+    });
+    for (const e of books) {
+      const genre = findGenre(e.ref.genreId);
+      placed.push({
+        mesh: buildStationBox({ width: 18, depth: 10, height: 26, color: genre ? genre.color : '#8a6a4a' }),
+        placement: { pos: [e.x, 0, e.y], yaw: 0, scale: 1 },
+      });
+    }
+    drawScene(ctx, camera, placed, { viewport, light: FP_LIGHT, fog: FP_FOG });
     drawFpDust();
-    if (hasOffset) ctx.restore();
-    // Vignette (drawn outside the camera offset so it stays fixed on screen)
+    // Vignette (screen-space, like the rest of the HUD)
     const vg = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.35, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.75);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
     vg.addColorStop(1, 'rgba(0,0,0,0.25)');
@@ -5415,6 +5180,7 @@ export function init(canvas, elements) {
       updatePlayer(deltaSeconds);
       updateFirstPersonMovement(deltaSeconds);
     }
+    updateFpTransition(deltaSeconds);
     updateAmbient(deltaSeconds);
 
     const beforeBorrowStage = shiftState.activeBorrow?.stage;
@@ -5612,6 +5378,15 @@ export function init(canvas, elements) {
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       attemptInteractNow: () => attemptInteract(),
+      // Elevator/stair transition hooks: inspect the active ride/climb and
+      // force it to complete (commits the floor switch now and clears it), so
+      // specs never block on the ~1.5-2s animation.
+      getActiveTransition: () => (fpTransition ? { kind: fpTransition.kind, phase: fpTransition.phase, targetFloor: fpTransition.targetFloor } : null),
+      forceCompleteTransition: () => {
+        if (!fpTransition) return;
+        fpTransition = forceComplete(fpTransition);
+        commitFpTransition();
+      },
       getJumpState: () => ({ ...fpJump }),
       triggerJump: () => { fpJump = startJump(fpJump); },
       wasPlayerSpriteDrawnLastFrame: () => lastFrameDrewPlayerSprite,
