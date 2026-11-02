@@ -21,6 +21,12 @@
 // Top-Down mode, just fed a screen position and scale instead of a world
 // position.
 //
+// NOTE (true-3D renderer): the first-person *drawing* is now the software-3D
+// renderer in three-d/ (docs/features/library-first-person-3d.md). This
+// module's projection drives INTERACTION/TARGETING only
+// (findInteractTarget / the crosshair); the "billboard sprite" rendering
+// described above is historical.
+//
 // Facing-angle convention (arbitrary but fixed, documented once here so
 // every function agrees): angle 0 points "north" — the world's -y
 // direction (up, same sense as the top-down floor plan's y axis) — and

@@ -73,6 +73,11 @@ HTMX + Tailwind + PostgreSQL.
   every game that imports it. Library's people otherwise have
   their own renderers in `web/static/js/library/` (Min-jun, Ji-ho, the
   staff on `staff-kit.js`, patrons in `patron.js`, Karen).
+- **Library first-person is software 3D**: `web/static/js/library/three-d/`
+  (pure core, meshes, room, scene, transitions; canvas-2D, no WebGL) draws the
+  FP view with one parameterized 3D humanoid `buildCharacter` for all FP
+  characters; Top-Down keeps the detailed 2D art. Changing a `three-d/` mesh
+  or the core affects only the FP camera. Doc: `library-first-person-3d.md`.
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):

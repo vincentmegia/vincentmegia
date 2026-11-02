@@ -59,8 +59,28 @@ handling, in place of Kitchen Shift's cooking and serving.
 
 * `GET /library-game`, a canvas game with click-to-move (Enter walks to
   the station under the cursor). It also has a First Person camera
-  (`#library-camera-button`), which uses billboard sprites and its own
-  turn/move/interact controls (`library/first-person.js`).
+  (`#library-camera-button`): a true software-3D view (see
+  **First Person Mode** below and `library-first-person-3d.md`) with its
+  own turn/move/interact controls (`library/first-person.js`).
+* **First Person Mode** is a software-3D renderer on the same 2D canvas
+  (no WebGL, no dependencies) under `web/static/js/library/three-d/`: a
+  pure `core.js` (matrices, camera, painter-sorted draw list, flat
+  shading and fog), `room.js` (room shell), `scene.js` (per-frame
+  assembly), `transitions.js`, and per-object builders in `meshes/` (one
+  parameterized `buildCharacter` humanoid for every FP character,
+  bookshelf, coffee machine, stairs, elevator, generic station box).
+  Top-Down keeps its detailed 2D art. Interaction and targeting are
+  unchanged: `first-person.js` still projects entities for
+  `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
+  HUD (crosshair, minimap, vignette, dust, interact flash) draws on top.
+  Head-bob, jump, strafe tilt and sprint FOV move the 3D camera
+  (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
+  animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
+  with movement input frozen; the floor switches at the commit point, and
+  Top-Down still switches instantly. Only the Front Desk / Fines Counter
+  queues (1st Floor) and Return Cart books are drawn as characters/props;
+  the ambient staff are not drawn in FP, and the elevator door-open
+  animation isn't wired into the scene yet (the camera ride is).
 * A 30-shift month in three 10-shift tiers. The clock gets shorter and
   volumes grow with each tier. Progress is saved to `localStorage`.
 * Two floors on one canvas, switched with the Stairs, the Elevator or the
@@ -669,7 +689,8 @@ screenshot of all three regular patrons side by side. Projects-grid
 screenshot recaptured again. `node --test`/`go test ./...` unaffected
 (450/450 JS, Go green) — cosmetic-only change.
 
-**v1.3 First Person Mode** — built per the Scope addition above (the
+**v1.3 First Person Mode** (superseded by the v2.22 3D renderer below; the
+billboard description here is historical) — built per the Scope addition above (the
 user's explicit "seeing in first person and seeing anything but
 yourself"): a new `web/static/js/library/first-person.js` pure module
 (angle/distance projection math — `projectEntity`/`projectScene`/
@@ -829,7 +850,7 @@ kitchen." Three changes, all rendering-only in `library-game.js`:
    register and coin stacks. The boss's office is a paneled door, with the
    lock drawn as a badge over it while locked. The stairs show an up/down
    badge, and the elevator shows its target floor. Drawn in each station's
-   local space, so First Person billboards pick it up unchanged.
+   local space, so the Top-Down art is unchanged (First Person now draws 3D meshes instead).
 3. The graph-paper grid floor became staggered wooden planks with a soft
    vignette (replaced by Hospital Shift's anime tiles in v2.21).
 
@@ -1121,7 +1142,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   truncate to the wider pitch, "+N waiting" moved down below the English
   title line, and the Front Desk and Fines Counter name chips are drawn
   again on top of the queue (`drawQueueStationLabels`). The Karen event
-  screen and First Person billboards keep their own scales.
+  screen and First Person billboards keep their own scales. (First Person no longer uses billboards.)
 * **More characters** ("make 19 more newest character and 4 more staff"):
   `web/static/js/library/library-people.js` holds Library Shift's own
   designs, in Hospital's anime-people data format and drawn by its
@@ -1300,7 +1321,7 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the
-  queue offsets, `drawStation` and First Person's billboards. There's a
+  queue offsets, `drawStation`; First Person's 3D station boxes use `w`/`h` too (`scene.js`). There's a
   fixture row under the wall at y=110 (Boss's Office, a 124px-wide Front
   Desk, Return Cart, Stairs), 124×100 bookcases at y=340, the Fines
   Counter as a 130×130 room at (860, 320), and the Coffee Machine and
@@ -1835,6 +1856,14 @@ arrival), and the First Person "toggle back to Top-Down" test checks
 that walking to the Coffee Machine opens its pour. It used to check for
 an instant Sanity refill on arrival, from before the Coffee Pour
 minigame, and only passed while the walk was short.
+
+**v2.22 true-3D First Person** — the First Person view was rebuilt as a
+software-3D renderer (`web/static/js/library/three-d/`, see
+`library-first-person-3d.md`) replacing the billboard sprites. Targeting
+still uses `first-person.js`; the Stairs/Elevator play an animated
+climb/ride in FP. Covered by node tests beside each `three-d/` module and
+the `e2e/library-game.spec.js` First Person transition tests (they call
+`__libraryGameTestHooks.forceCompleteTransition()` to skip the animation).
 
 ### Superseded v1 plan: Scope, User Flow and Visual Direction
 
