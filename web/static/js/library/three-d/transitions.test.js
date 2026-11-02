@@ -105,7 +105,7 @@ test('stairs camera climbs steps * rise and advances steps * run', () => {
   assert.ok(Math.abs(end.y - STAIRS_STEPS * STAIR_RISE_PER_STEP) < 1e-9);
   assert.ok(Math.abs(Math.hypot(end.x, end.z) - STAIRS_STEPS * STAIR_RUN_PER_STEP) < 1e-9);
   const start = transitionCamera(createTransition('stairs', 2), POSE).posOffset;
-  assert.deepEqual(start, { x: 0, y: 0, z: 0 });
+  assert.ok(start.x === 0 && start.y === 0 && Math.abs(start.z) === 0);
   let prev = 0;
   for (const s of log) {
     const y = transitionCamera(s, POSE).posOffset.y;

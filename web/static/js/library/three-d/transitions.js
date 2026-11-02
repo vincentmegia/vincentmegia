@@ -86,7 +86,7 @@ export function forceComplete(state) {
   };
 }
 
-// basePose = { x, y, facing } (facing in radians; forward = (sin f, cos f) in x/z).
+// basePose = { x, y, facing } (facing in radians; forward = (sin f, -cos f) in x/z).
 export function transitionCamera(state, basePose = { x: 0, y: 0, facing: 0 }) {
   const floorSwitched = !!state.justSwitched;
   let y = 0;
@@ -109,7 +109,7 @@ export function transitionCamera(state, basePose = { x: 0, y: 0, facing: 0 }) {
   }
   const f = basePose.facing || 0;
   return {
-    posOffset: { x: Math.sin(f) * fwd, y, z: Math.cos(f) * fwd },
+    posOffset: { x: Math.sin(f) * fwd, y, z: -Math.cos(f) * fwd },
     doorOpen,
     floorSwitched,
   };
