@@ -386,6 +386,52 @@ test.describe('floor switching', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(1);
 	});
 
+	// First Person floor changes are animated (ride/climb) rather than instant:
+	// the real interact path (attemptInteract) starts a transition when the
+	// crosshair target is a stairs/elevator station. forceCompleteTransition
+	// commits it deterministically so nothing waits out the ~1.5-2 s animation.
+	for (const kind of ['elevator', 'stairs']) {
+		test(`First Person: interacting with the ${kind} starts an animated transition that switches floors`, async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('first-person'));
+
+			const station = await getStation(page, kind);
+			const floorBefore = await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor());
+			expect(floorBefore).toBe(1);
+
+			// Stand 90 world units from the station toward the room's centre and
+			// face it (facing 0 = up, forward = (sin f, -cos f)), so the crosshair
+			// acquires it as the interact target.
+			await page.evaluate(({ sx, sy }) => {
+				const hooks = window.__libraryGameTestHooks;
+				const dx = 480 - sx;
+				const dy = 300 - sy;
+				const len = Math.hypot(dx, dy);
+				hooks.setPlayerPosition(sx + (dx / len) * 90, sy + (dy / len) * 90);
+				hooks.setPlayerFacing(Math.atan2(-dx, dy));
+			}, { sx: station.x, sy: station.y });
+
+			await page.waitForFunction((k) => {
+				const t = window.__libraryGameTestHooks.getFirstPersonScene().interactTarget;
+				return t && t.entityKind === 'station' && t.ref.kind === k;
+			}, kind);
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition())).toBeNull();
+
+			await page.evaluate(() => window.__libraryGameTestHooks.attemptInteractNow());
+			const active = await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition());
+			expect(active).not.toBeNull();
+			expect(active.kind).toBe(kind);
+			expect(active.targetFloor).toBe(2);
+			// The floor only switches at the transition's commit point.
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(floorBefore);
+
+			await page.evaluate(() => window.__libraryGameTestHooks.forceCompleteTransition());
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition())).toBeNull();
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		});
+	}
+
 	test('floor switching still works during closing-wait (a 2nd-Floor trip must not strand the player away from the 1st-Floor-only Boss\'s Office)', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
