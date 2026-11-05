@@ -100,7 +100,7 @@ export function projectPoint(camera, world, viewport) {
 
 /**
  * @typedef {[number, number, number]} Vec3
- * @typedef {{indices: number[], color: string}} Face   color: '#rgb' | '#rrggbb' | 'rgb(r,g,b)'
+ * @typedef {{indices: number[], color: string, unlit?: boolean}} Face   unlit: skip scene lighting (fog still applies). color: '#rgb' | '#rrggbb' | 'rgb(r,g,b)'
  * @typedef {{vertices: Vec3[], faces: Face[]}} Mesh
  * @typedef {{pos: Vec3, yaw: number, scale: number|Vec3}} Placement   yaw: radians about +Y
  * @typedef {{mesh: Mesh, placement: Placement}} Placed
@@ -194,7 +194,7 @@ export function buildDrawList(camera, placed, opts) {
       for (const p of poly) depthSum += p[3];
       const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
       const n = normalize(cross(sub(b, a), sub(c, a)));
-      const intensity = light.ambient + Math.max(0, dot(n, ld));
+      const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
       const depth = depthSum / poly.length;
       const screen = poly.map(([cx, cy, , cw]) => [
         (cx / cw * 0.5 + 0.5) * viewport.width,

@@ -146,3 +146,65 @@ test('drawScene fills each poly via the ctx', () => {
   // tiled room shell) don't show an antialiasing hairline between them.
   assert.ok(calls.includes('set:strokeStyle') && calls.includes('stroke'));
 });
+
+// ---- unlit faces ----
+const litDir = (dir) => ({ ...SCENE, light: { dir, ambient: 0.2 } });
+const quadWith = (extra) => {
+  const q = quad('#808080');
+  q.faces[0] = { ...q.faces[0], ...extra };
+  return q;
+};
+
+test('an unlit face ignores light direction', () => {
+  const toward = litDir([0, 0, 1]), away = litDir([0, 0, -1]);
+  const unlit = quadWith({ unlit: true });
+  assert.equal(
+    buildDrawList(CAM, [at(unlit, -5)], toward)[0].color,
+    buildDrawList(CAM, [at(unlit, -5)], away)[0].color,
+  );
+  // Control: the same mesh without the flag does react to the light.
+  assert.notEqual(
+    buildDrawList(CAM, [at(quad(), -5)], toward)[0].color,
+    buildDrawList(CAM, [at(quad(), -5)], away)[0].color,
+  );
+});
+
+test('an unlit face renders at full intensity', () => {
+  const [p] = buildDrawList(CAM, [at(quadWith({ unlit: true }), -5)], litDir([0, 0, -1]));
+  assert.equal(p.color, shadeColor('#808080', 1));
+});
+
+test('an unlit face still fogs with depth', () => {
+  const scene = { ...SCENE, fog: { color: '#ffffff', start: 2, end: 20 } };
+  const unlit = quadWith({ unlit: true });
+  const nearC = buildDrawList(CAM, [at(unlit, -3)], scene)[0].color;
+  const farC = buildDrawList(CAM, [at(unlit, -15)], scene)[0].color;
+  assert.notEqual(nearC, farC);
+  assert.ok(lightness(farC) > lightness(nearC)); // fog is white; far is closer to it
+});
+
+test('faces without the flag are unchanged', () => {
+  // Golden output captured from buildDrawList before `unlit` existed.
+  const mesh = {
+    vertices: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, 1, -2], [1, 1, -2]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#c08060' }, { indices: [3, 2, 5, 4], color: '#40a0ff' }],
+  };
+  const scene = {
+    viewport: VP, light: { dir: [0.35, 1, 0.25], ambient: 0.5 },
+    fog: { color: '#e8dcc8', start: 2, end: 20 },
+  };
+  const placed = [{ mesh, placement: { pos: [0, 0, -6], yaw: 0.4, scale: 1 } }];
+  const cam = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 0 });
+  assert.deepEqual(buildDrawList(cam, placed, scene), [
+    {
+      screen: [[314.69737707341363, 207.3865645358996], [474.9046792531569, 218.67565802822145],
+        [408.97789672559924, 236.8750900293754], [281.4802270285438, 230.27829000410242]],
+      color: 'rgb(110,176,240)', depth: 6.921060994002885,
+    },
+    {
+      screen: [[314.69737707341363, 392.6134354641004], [474.9046792531569, 381.32434197177855],
+        [474.9046792531569, 218.67565802822145], [314.69737707341363, 207.3865645358996]],
+      color: 'rgb(177,132,107)', depth: 6,
+    },
+  ]);
+});
