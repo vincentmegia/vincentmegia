@@ -18,8 +18,13 @@
 .ed-engine.ed-tool-connector,
 .ed-engine.ed-tool-place { cursor: crosshair; }
 
-/* mxGraph's in-place label editor */
+/* mxGraph's in-place label editor. mxCellEditor sets only left/top inline and
+   takes position from the stylesheet, which upstream ships in its own CSS that
+   we don't vendor; without this the editor is static and drops to the bottom
+   of the canvas instead of sitting over the label. */
 .ed-engine .mxCellEditor {
+  position: absolute;
+  z-index: 4;
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
   outline: none;
   -webkit-user-select: text;
@@ -178,7 +183,11 @@
 @keyframes edNBounce { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-8px); } 55% { transform: translateY(0); } 70% { transform: translateY(-3px); } 85% { transform: translateY(0); } }
 @keyframes edNFloat { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-9px) rotate(1.2deg); } }
 @keyframes edNWiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 50% { transform: rotate(1.5deg); } 75% { transform: rotate(-1deg); } }
-@keyframes edNGlow { 0%, 100% { filter: drop-shadow(0 0 0 var(--ed-glow)); } 50% { filter: drop-shadow(0 0 14px var(--ed-glow)); } }
+/* drop-shadow alone renders nothing for the `text` kind: its shape node is a
+   transparent rect and its label is HTML in a foreignObject, neither of which
+   casts a silhouette. text-shadow inherits into the label markup, so the
+   glyphs glow too and every shape kind shows the effect. */
+@keyframes edNGlow { 0%, 100% { filter: drop-shadow(0 0 3px var(--ed-glow)); text-shadow: 0 0 2px var(--ed-glow); } 50% { filter: drop-shadow(0 0 10px var(--ed-glow)) drop-shadow(0 0 25px var(--ed-glow)); text-shadow: 0 0 8px var(--ed-glow), 0 0 16px var(--ed-glow); } }
 @keyframes edNBlink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes edNPop { 0% { transform: scale(.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes edEFlow { to { stroke-dashoffset: -25; } }

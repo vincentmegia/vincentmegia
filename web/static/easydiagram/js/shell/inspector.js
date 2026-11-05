@@ -30,12 +30,17 @@ const sparkTitle = () => h('span.ed-card-title', null,
   ' Animation');
 
 // Commit a text input on Enter or blur, revert on Esc.
-function textInput(attrs, onCommit) {
+// onPreview (optional): called on every keystroke for live canvas feedback.
+function textInput(attrs, onCommit, onPreview) {
   const input = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', ...attrs });
-  input.addEventListener('change', () => onCommit(input.value));
+  input.addEventListener('change', () => {
+    if (onPreview && input.dataset.orig != null) onPreview(input.dataset.orig);
+    onCommit(input.value);
+  });
+  if (onPreview) input.addEventListener('input', () => onPreview(input.value));
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    if (e.key === 'Escape') { e.stopPropagation(); input.value = input.dataset.orig || ''; input.blur(); }
+    if (e.key === 'Escape') { e.stopPropagation(); if (onPreview) onPreview(input.dataset.orig || ''); input.value = input.dataset.orig || ''; input.blur(); }
   });
   input.addEventListener('focus', () => { input.dataset.orig = input.value; });
   return input;
@@ -62,7 +67,7 @@ export function buildInspector(ctx) {
     const setAnim = (p) => upd({ anim: Object.assign(anim(), p) });
 
     const kindName = label('', true);
-    const labelIn = textInput({ 'aria-label': 'Label' }, (v) => upd({ label: v }));
+    const labelIn = textInput({ 'aria-label': 'Label' }, (v) => upd({ label: v }), (v) => engine.previewLabel(id, v));
     const head = h('div.ed-group.tight', null, kindName, h('label.field.title', null, srOnly('Label'), labelIn));
 
     const sw = COLORS.map(([c, name]) => h('button.swatch', { 'aria-label': `Fill ${name}`, 'aria-pressed': 'false', vars: { '--sw': `var(--c-${c})` }, onclick: () => upd({ color: c }) }));
@@ -183,7 +188,7 @@ export function buildInspector(ctx) {
     const setAnim = (p) => upd({ anim: Object.assign(anim(), p) });
 
     const from = h('span'), to = h('span');
-    const labelIn = textInput({ 'aria-label': 'Connector label', placeholder: 'Add a label' }, (v) => upd({ label: v }));
+    const labelIn = textInput({ 'aria-label': 'Connector label', placeholder: 'Add a label' }, (v) => upd({ label: v }), (v) => engine.previewLabel(id, v));
     const head = h('div.ed-group.g6', null,
       label('Connector', true),
       h('div.ed-fromto', null, from, s('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }, s('path', { d: I.arrowR })), to),

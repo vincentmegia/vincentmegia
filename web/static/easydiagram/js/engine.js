@@ -1917,6 +1917,12 @@ export function createEngine(container, options) {
       });
       return true;
     },
+    previewLabel(id, text) {
+      const cell = model.getCell(id);
+      if (!cell) return;
+      suppress++;
+      try { setLabel(cell, text == null ? '' : text); } finally { suppress--; }
+    },
     remove(ids) {
       const cells = (Array.isArray(ids) ? ids : [ids]).map((i) => model.getCell(i)).filter((c) => c && (model.isVertex(c) || model.isEdge(c)));
       if (!cells.length) return;

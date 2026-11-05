@@ -642,6 +642,49 @@ test.describe('engine', () => {
 		expect((await nodeOf(c)).play).toBe('paused');
 		await page.getByRole('button', { name: 'Motion' }).click();
 		expect((await nodeOf(c)).play).toBe('running');
+
+		// Glow on a basic shape: the multi-shadow filter is applied and visible.
+		await E(page, (id) => window.__easyDiagram.engine.update(id, { anim: { name: 'glow', trigger: 'loop' } }), a);
+		const glowNode = page.locator('.ed-canvas g.ed-na-glow').first();
+		await expect(glowNode).toHaveCount(1);
+		await expect.poll(() => glowNode.evaluate((n) => {
+			const f = getComputedStyle(n).filter;
+			return f && f !== 'none';
+		})).toBe(true);
+	});
+
+	// Regression: glow used drop-shadow only. The `text` kind draws no outline
+	// (transparent shape node, HTML label in a foreignObject), so drop-shadow
+	// cast no silhouette and that kind showed no glow at all. Checking the
+	// edAnim style or the ed-na-glow class would NOT have caught it; only what
+	// the shape actually paints does.
+	test('glow paints on every shape kind, the outline-less text kind included', async ({ page }) => {
+		await openEditor(page);
+		for (const kind of ['rect', 'ellipse', 'diamond', 'note', 'text']) {
+			const id = await E(page, (k) => {
+				const e = window.__easyDiagram.engine;
+				const id = e.addShape(k, { x: 320, y: 220, w: 160, h: 80, label: 'Glow' });
+				e.update(id, { anim: { name: 'glow', trigger: 'loop' } });
+				e.clearSelection();
+				return id;
+			}, kind);
+			// Seek to the 50% peak so the sample is deterministic.
+			const peak = await E(page, () => {
+				const ns = [...document.querySelectorAll('.ed-canvas g.ed-na-glow')];
+				ns.forEach((n) => n.getAnimations().forEach((a) => {
+					const d = a.effect.getTiming().duration;
+					if (typeof d === 'number') { a.pause(); a.currentTime = d * 0.5; }
+				}));
+				return ns.map((n) => ({ filter: getComputedStyle(n).filter, textShadow: getComputedStyle(n).textShadow }));
+			});
+			expect(peak.length, `${kind} has glow nodes`).toBeGreaterThan(0);
+			const paints = peak.some((p) => (p.filter && p.filter !== 'none') || (p.textShadow && p.textShadow !== 'none'));
+			expect(paints, `${kind} actually paints a glow`).toBe(true);
+			if (kind === 'text') {
+				expect(peak.some((p) => p.textShadow && p.textShadow !== 'none'), 'the text kind glows through text-shadow').toBe(true);
+			}
+			await E(page, (i) => window.__easyDiagram.engine.remove([i]), id);
+		}
 	});
 
 	test('prefers-reduced-motion turns animation off', async ({ page }) => {
@@ -1066,6 +1109,25 @@ test.describe('ui', () => {
 		expect((await cell(page, id)).label).toBe('Hello <world>');
 		await expect(page.getByTestId('readout')).toContainText('Hello <world>');
 
+		// Live text preview: the CANVAS, not just the model, updates as you type.
+		// Asserting only engine.getCell(id).label would pass even if the SVG
+		// never repainted, so read the rendered label back too.
+		const painted = () => E(page, (i) => {
+			const g = [...document.querySelectorAll('.ed-canvas g')].find((n) => n.getAttribute('data-cell-id') === i);
+			const scope = g || document.querySelector('.ed-canvas');
+			const clone = scope.cloneNode(true);
+			clone.querySelectorAll('.mxCellEditor').forEach((n) => n.remove());
+			return clone.textContent.trim();
+		}, id);
+		await label.click();
+		await label.selectText();
+		await page.keyboard.type('Live');
+		expect((await cell(page, id)).label).toBe('Live');
+		expect(await painted(), 'the canvas repaints while typing').toContain('Live');
+		await page.keyboard.press('Escape');
+		expect((await cell(page, id)).label).toBe('Hello <world>');
+		expect(await painted(), 'Escape repaints the original').toContain('Hello <world>');
+
 		// In-canvas label editing too (double click, type, click away).
 		const c = await centerOf(page, id);
 		await page.mouse.dblclick(c.x, c.y);
@@ -1085,6 +1147,30 @@ test.describe('ui', () => {
 		await expect(empty).toBeVisible();
 		await page.keyboard.press('Control+z');
 		expect(await shapes(page)).toHaveLength(1);
+	});
+
+	// Regression: mxCellEditor sets only left/top inline and takes `position`
+	// from the stylesheet. Ours never set it, so the editor was `static` and
+	// dropped to the bottom-left of the canvas instead of sitting on the label,
+	// which made typing into a shape look like it did nothing. Asserting the
+	// model label here would NOT have caught it: the editor is a DOM overlay.
+	test('the in-canvas label editor opens over the shape and shows what you type', async ({ page }) => {
+		await openEditor(page);
+		const id = await E(page, () => window.__easyDiagram.engine.addShape('rect', { x: 300, y: 200, w: 200, h: 90 }));
+		const c = await centerOf(page, id);
+		await page.mouse.dblclick(c.x, c.y);
+		const editor = page.locator('.mxCellEditor');
+		await expect(editor).toBeVisible();
+		expect(await editor.evaluate((n) => getComputedStyle(n).position)).toBe('absolute');
+		const box = await editor.boundingBox();
+		expect(Math.abs(box.x + box.width / 2 - c.x), 'editor sits on the shape in x').toBeLessThan(c.w / 2);
+		expect(Math.abs(box.y + box.height / 2 - c.y), 'editor sits on the shape in y').toBeLessThan(c.h / 2);
+		// What you type is visible in place, over the shape.
+		await page.keyboard.press('ControlOrMeta+a');
+		await page.keyboard.type('Typing');
+		await expect(editor).toHaveText('Typing');
+		const after = await editor.boundingBox();
+		expect(Math.abs(after.y + after.height / 2 - c.y), 'still on the shape while typing').toBeLessThan(c.h / 2);
 	});
 
 	test('tool keys R O D N add shapes; A T H V arm tools; all ignored while typing', async ({ page }) => {
@@ -1861,6 +1947,11 @@ test.describe('aws icons', () => {
 		// Glow uses the service's category colour (Lambda = Compute orange).
 		await inspector(page).getByRole('button', { name: 'Animation: Glow' }).click();
 		expect(await page.locator('.ed-canvas g.ed-na-glow').first().evaluate((n) => n.style.getPropertyValue('--ed-glow'))).toBe('#ED7100');
+		// The glow filter is actually rendered (multi-shadow keyframe works).
+		await expect.poll(() => page.locator('.ed-canvas g.ed-na-glow').first().evaluate((n) => {
+			const f = getComputedStyle(n).filter;
+			return f && f !== 'none';
+		})).toBe(true);
 		await inspector(page).getByRole('button', { name: 'Animation: Pulse' }).click();
 		await shot(page, testInfo, 'aws-animated-inspector');
 		// Motion off pauses it; on again resumes.
