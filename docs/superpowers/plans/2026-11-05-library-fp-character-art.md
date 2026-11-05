@@ -81,7 +81,7 @@ Expected: FAIL — cannot find module `./geom.js`
 
 - [ ] **Step 3: Implement `geom.js`**
 
-Move `box` verbatim from `character.js` (keep its `index = x + 2*y + 4*z` vertex order and its six quads), then add the `tint` lookup. For `prism`, place ring vertex `i` at angle `(i / sides) * 2π + π / sides` so an even `sides` gives a flat front face toward +Z; emit each side band as `[lo+i, lo+j, hi+j, hi+i]`. Caps: top ring reversed, bottom ring in order.
+Move `box` verbatim from `character.js` (keep its `index = x + 2*y + 4*z` vertex order and its six quads), then add the `tint` lookup. For `prism`, place ring vertex `i` at angle `(i / sides) * 2π + π / sides` so an even `sides` gives a flat front face toward +Z; emit each side band as `[lo+i, lo+j, hi+j, hi+i]`. Caps: top ring in order, bottom ring reversed (with this angle formula that is what points each cap outward).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
