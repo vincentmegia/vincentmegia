@@ -1,28 +1,7 @@
 // Low-poly parameterized humanoid. Pure and deterministic.
 // Model space: X right, Y up, Z depth; feet at y=0, centered on x/z, facing +Z.
 
-/**
- * Axis-aligned box: 8 vertices + 6 quad faces (CCW seen from outside).
- * @returns {{vertices: number[][], faces: {indices: number[], color: string}[]}}
- */
-export function box(min, max, color) {
-  const [x0, y0, z0] = min;
-  const [x1, y1, z1] = max;
-  const vertices = [];
-  for (let i = 0; i < 8; i++) {
-    vertices.push([i & 1 ? x1 : x0, i & 2 ? y1 : y0, i & 4 ? z1 : z0]);
-  }
-  // index = x + 2*y + 4*z (each 0=min, 1=max)
-  const quads = [
-    [4, 5, 7, 6], // +Z
-    [1, 0, 2, 3], // -Z
-    [5, 1, 3, 7], // +X
-    [0, 4, 6, 2], // -X
-    [6, 7, 3, 2], // +Y
-    [0, 1, 5, 4], // -Y
-  ];
-  return { vertices, faces: quads.map((indices) => ({ indices, color })) };
-}
+import { box } from './geom.js';
 
 function shift(hex, amount) {
   const n = parseInt(hex.slice(1), 16);

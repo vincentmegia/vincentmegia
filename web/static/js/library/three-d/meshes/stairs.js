@@ -1,6 +1,6 @@
 // Stairs mesh: a flight of stacked step boxes plus two side rails.
 // Model space: base at y=0, centered on x=0, ascends toward +Z.
-import { box } from './character.js';
+import { box } from './geom.js';
 
 export const STAIR_RISE_PER_STEP = 0.18;
 export const STAIR_RUN_PER_STEP = 0.28;

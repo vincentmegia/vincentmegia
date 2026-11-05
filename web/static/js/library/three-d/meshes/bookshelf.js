@@ -2,7 +2,7 @@
 // closes the unit) and two book blocks per row. Base at y=0, centered on x/z.
 // Pure and deterministic. Details sit 0.01 proud of backing surfaces so the
 // painter's sort never sees exactly-coplanar faces.
-import { box } from './character.js';
+import { box } from './geom.js';
 
 const HEIGHT = 2.0;
 const DEPTH = 0.35;

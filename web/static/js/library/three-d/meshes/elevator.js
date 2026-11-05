@@ -1,7 +1,7 @@
 // Elevator doorway + car. Pure and deterministic.
 // Model space: X right, Y up, Z depth; base y=0, centered x=0. The doors face -Z
 // (toward the player); the car extends back toward +Z.
-import { box } from './character.js';
+import { box } from './geom.js';
 
 export const ELEVATOR_DOOR_COLOR = '#b8bec6';
 export const ELEVATOR_HALF_DOORWAY = 0.5;

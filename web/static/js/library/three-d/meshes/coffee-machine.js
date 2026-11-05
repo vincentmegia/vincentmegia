@@ -1,6 +1,6 @@
 // Coffee machine mesh: body, group-head spout, drip tray, cup. Front faces +Z.
 // Model space: base at y=0, centered x=0/z=0. ~0.4w x 0.5h x 0.4d.
-import { box } from './character.js';
+import { box } from './geom.js';
 
 const BODY = '#3a3f47';
 const TOP = '#505762';

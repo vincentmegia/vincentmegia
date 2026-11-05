@@ -1,0 +1,116 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge } from './geom.js';
+
+function normal(mesh, face) {
+  const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
+  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  return [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+}
+function centroid(pts) {
+  const n = pts.length;
+  return [0, 1, 2].map((k) => pts.reduce((s, p) => s + p[k], 0) / n);
+}
+function assertOutward(mesh, centre) {
+  for (const f of mesh.faces) {
+    const n = normal(mesh, f);
+    const c = centroid(f.indices.map((i) => mesh.vertices[i]));
+    const d = n[0] * (c[0] - centre[0]) + n[1] * (c[1] - centre[1]) + n[2] * (c[2] - centre[2]);
+    assert.ok(d > 0, `face ${f.indices} wound inward (dot ${d})`);
+  }
+}
+const rings3 = [
+  { y: 0, rx: 0.2, rz: 0.2, color: '#100000' },
+  { y: 0.5, rx: 0.3, rz: 0.25, color: '#200000' },
+  { y: 1, rx: 0.1, rz: 0.1, color: '#300000' },
+];
+
+test('box has 8 vertices and 6 quad faces', () => {
+  const m = box([0, 0, 0], [1, 1, 1], '#111111');
+  assert.equal(m.vertices.length, 8);
+  assert.equal(m.faces.length, 6);
+  for (const f of m.faces) assert.equal(f.indices.length, 4);
+});
+
+test('box tint overrides only the named faces', () => {
+  const m = box([0, 0, 0], [1, 1, 1], '#111111', { top: '#222222' });
+  assert.equal(m.faces.filter((f) => f.color === '#222222').length, 1);
+  assert.equal(m.faces.filter((f) => f.color === '#111111').length, 5);
+  assert.equal(m.faces[4].color, '#222222');
+});
+
+test('box faces wind counter-clockwise seen from outside', () => {
+  assertOutward(box([-1, 0, -2], [1, 3, 2], '#111111'), [0, 1.5, 0]);
+});
+
+test('prism ring count drives vertices and side faces', () => {
+  const m = prism(rings3, 8, null, null);
+  assert.equal(m.vertices.length, 24);
+  assert.equal(m.faces.length, 16);
+});
+
+test('prism adds caps when colours are given', () => {
+  const m = prism(rings3, 8, '#aa0000', '#00aa00');
+  assert.equal(m.faces.length, 18);
+  assert.equal(m.faces.filter((f) => f.indices.length === 8).length, 2);
+});
+
+test('prism side band takes the upper ring colour', () => {
+  const m = prism(rings3, 8, null, null);
+  assert.ok(m.faces.slice(0, 8).every((f) => f.color === '#200000'));
+  assert.ok(m.faces.slice(8, 16).every((f) => f.color === '#300000'));
+});
+
+test('prism faces wind counter-clockwise seen from outside', () => {
+  const m = prism(rings3, 8, '#aa0000', '#00aa00');
+  assertOutward(m, [0, 0.5, 0]);
+});
+
+test('prism with even sides has a flat face toward +Z', () => {
+  const m = prism(rings3.slice(0, 2), 4, null, null);
+  const front = m.faces.find((f) => normal(m, f)[2] > 0 && Math.abs(normal(m, f)[0]) < 1e-9);
+  assert.ok(front);
+});
+
+test('quad marks the face unlit when asked', () => {
+  const m = quad([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], '#fff', { unlit: true });
+  assert.equal(m.faces[0].unlit, true);
+  assert.equal(m.vertices.length, 4);
+  assert.equal(quad([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], '#fff').faces[0].unlit, undefined);
+});
+
+test('translate and scaleMesh do not mutate the source', () => {
+  const src = box([0, 0, 0], [1, 1, 1], '#111111');
+  const snap = JSON.stringify(src);
+  const t = translate(src, [1, 2, 3]);
+  const s = scaleMesh(src, 2);
+  assert.equal(JSON.stringify(src), snap);
+  assert.deepEqual(t.vertices[0], [1, 2, 3]);
+  assert.deepEqual(s.vertices[7], [2, 2, 2]);
+  assert.equal(t.faces, src.faces);
+  assert.equal(s.faces, src.faces);
+});
+
+test('scaleAbout keeps the pivot plane fixed', () => {
+  const src = { vertices: [[1, 0.5, 1], [1, 1.5, 1]], faces: [] };
+  const m = scaleAbout(src, 2, 0.5);
+  assert.deepEqual(m.vertices[0], [2, 0.5, 2]);
+  assert.deepEqual(m.vertices[1], [2, 2.5, 2]);
+  assert.deepEqual(src.vertices[0], [1, 0.5, 1]);
+});
+
+test('merge offsets indices and mutates the target', () => {
+  const t = emptyMesh();
+  merge(t, box([0, 0, 0], [1, 1, 1], '#111111'));
+  const r = merge(t, box([2, 0, 0], [3, 1, 1], '#111111'));
+  assert.equal(r, t);
+  assert.equal(t.vertices.length, 16);
+  assert.ok(t.faces[6].indices.every((i) => i >= 8));
+});
+
+test('every index is in range for box and prism', () => {
+  for (const m of [box([0, 0, 0], [1, 1, 1], '#111111'), prism(rings3, 6, '#aa0000', '#00aa00')]) {
+    for (const f of m.faces) for (const i of f.indices) assert.ok(i >= 0 && i < m.vertices.length);
+  }
+});
