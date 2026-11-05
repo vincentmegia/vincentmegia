@@ -29,5 +29,13 @@ config*.yaml
 # Local Claude Code output (reports, scratch artifacts).
 /Claude outputs/
 
+# graphify's generated knowledge graph (see ~/.claude/skills/graphify) —
+# regenerated from the codebase on demand, so it's derived output, not source.
+/graphify-out/
+
+# macOS Finder metadata. Anchored nowhere on purpose: Finder drops one of
+# these in any directory it browses, not just the repo root.
+.DS_Store
+
 # Local git worktrees (superpowers SDD)
 .worktrees/
