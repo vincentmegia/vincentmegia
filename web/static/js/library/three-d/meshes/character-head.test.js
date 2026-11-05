@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHead, buildFace, buildHeadwear, faceOps } from './character-head.js';
+import { buildHead, buildFace, buildHeadwear, buildSkull, buildHair } from './character-head.js';
 import { paletteFor } from './character-palette.js';
 import { metricsFor, FRAME, PX } from './character-frame.js';
 
@@ -163,39 +163,67 @@ test('headwear sits above the eyes', () => {
   }
 });
 
-test('the skull and hair render every tone they claim', () => {
+test('the skull bands in three skin tones and the hair in three plus a shine cap', () => {
   const d = design();
   const p = paletteFor(d);
-  const colours = new Set(head(d).faces.map((f) => f.color));
-  for (const c of [p.skin.deep, p.skin.shade, p.skin.skin, p.hair.deep, p.hair.base, p.hair.mid, p.hair.shine]) assert.ok(colours.has(c), c);
+  const m = metricsFor(d);
+  // buildSkull: a 5-ring prism (4 bands x 8 sides) first, then the caps and ears.
+  const skull = buildSkull(p.skin, m);
+  assert.deepEqual(new Set(skull.faces.slice(0, 32).map((f) => f.color)), new Set([p.skin.deep, p.skin.shade, p.skin.skin]));
+  // buildHair: a 4-ring cap (3 bands x 8 sides) then its top cap.
+  const hair = buildHair(d, p, m);
+  assert.deepEqual(new Set(hair.faces.slice(0, 24).map((f) => f.color)), new Set([p.hair.deep, p.hair.base, p.hair.mid]));
+  assert.equal(hair.faces[24].color, p.hair.shine);
 });
 
-test('face features lie on the skull surface, on the front', () => {
-  const d = design({ eyes: { style: 'big', color: '#4a3a6a', lashes: true }, brows: 'thick', mouth: 'open', age: 'adult' });
+/** The skull's own surface z at (x, y): the front-facing facet spanning x, from the mesh's vertices. */
+function skullZ(skull, x, yv) {
+  const bandY = [FRAME.chin, 47.6 * PX, 53 * PX, 60 * PX, FRAME.crown];
+  let k = bandY.findIndex((top, i) => i > 0 && yv <= top + 1e-12);
+  if (k < 1) k = 1;
+  const t = (yv - bandY[k - 1]) / (bandY[k] - bandY[k - 1]);
+  for (let i = 0; i < 8; i++) {
+    const [a, b, c, dd] = skull.faces[(k - 1) * 8 + i].indices.map((n) => skull.vertices[n]);
+    // a,b on the lower ring; dd,c above them.
+    const p0 = [a[0] + (dd[0] - a[0]) * t, a[2] + (dd[2] - a[2]) * t];
+    const p1 = [b[0] + (c[0] - b[0]) * t, b[2] + (c[2] - b[2]) * t];
+    if (p0[1] <= 0 && p1[1] <= 0) continue; // a back facet
+    const lo = Math.min(p0[0], p1[0]);
+    const hi = Math.max(p0[0], p1[0]);
+    if (x >= lo - 1e-9 && x <= hi + 1e-9) return p0[1] + ((p1[1] - p0[1]) * (x - p0[0])) / (p1[0] - p0[0]);
+  }
+  return null;
+}
+
+test('face features lie on the real skull, the right distance proud', () => {
+  const d = design({ eyes: { style: 'big', color: '#4a3a6a', lashes: true }, brows: 'thick', mouth: 'open' });
   const m = metricsFor(d);
   const p = paletteFor(d);
-  const { surfaceZ } = faceOps(m.halfHeadX, m.halfHeadZ);
-  const S2 = Math.sin((3 * Math.PI) / 8);
-  const epsOk = [1, 0.8, 1.4, 1.8].map((k) => k * 0.01);
+  const skull = buildSkull(p.skin, m);
+  const eps = { '#fbfbff': 0.01, [p.eyes]: 0.014, '#ffffff': 0.018, '#1e1418': 0.014, '#f2a29a': 0.008, [p.skin.deep]: 0.008, [p.brow]: 0.01, [p.lips]: 0.01, '#5a2a30': 0.014 };
   for (const opts of [{}, { angry: true }]) {
     const face = buildFace(d, p, m, opts);
     for (const f of face.faces) {
-      for (const i of f.indices) {
-        const [x, vy, z] = face.vertices[i];
-        const yPx = vy / PX;
-        const xPx = x / PX;
-        assert.ok(Math.abs(xPx) <= S2 * (m.halfHeadX / PX) * 1.0001 + 1e-9, `x ${xPx} past the widest vertex`);
-        const diff = z - surfaceZ(xPx, yPx);
-        assert.ok(epsOk.some((e) => Math.abs(diff - e) < 1e-9), `z is ${diff} off the surface`);
+      assert.ok(f.color in eps, `unexpected face colour ${f.color}`);
+      const vs = f.indices.map((i) => face.vertices[i]);
+      // Corners lie on the skull, and so do the horizontal edges' midpoints (no chord sinks into a facet change).
+      const samples = vs.map((v) => ({ v, tol: 1e-9 }));
+      const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+      // Only the horizontal edges: a tall quad legitimately sags a little across a skull ring (y) kink.
+      samples.push({ v: mid(vs[0], vs[1]), tol: 0.003, sinkOnly: true }, { v: mid(vs[3], vs[2]), tol: 0.003, sinkOnly: true });
+      for (const { v, tol, sinkOnly } of samples) {
+        const z = skullZ(skull, v[0], v[1]);
+        assert.notEqual(z, null, `x ${v[0] / PX} px is past the widest front vertex at y ${v[1] / PX} px`);
+        const diff = v[2] - z;
+        if (sinkOnly) assert.ok(diff >= eps[f.color] - tol, `${f.color} sinks into the skull by ${eps[f.color] - diff}`);
+        else assert.ok(Math.abs(diff - eps[f.color]) < tol, `${f.color} is ${diff} off the skull, expected ${eps[f.color]}`);
       }
     }
   }
-  const eyes = buildFace(d, p, m).faces.filter((f) => f.color === '#fbfbff');
-  assert.equal(eyes.length >= 2, true);
   const face = buildFace(d, p, m);
-  const ys = eyes.flatMap((f) => f.indices.map((i) => face.vertices[i][1]));
-  const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
-  assert.ok(Math.abs(mid - FRAME.eye) < PX, `eyes centred at ${mid}, eye line ${FRAME.eye}`);
+  const ys = face.faces.filter((f) => f.color === '#fbfbff').flatMap((f) => f.indices.map((i) => face.vertices[i][1]));
+  assert.ok(ys.length >= 8);
+  assert.ok(Math.abs((Math.min(...ys) + Math.max(...ys)) / 2 - FRAME.eye) < PX);
 });
 
 test('an angry thick-browed patron keeps thick brows', () => {

@@ -93,7 +93,7 @@ export function faceOps(hx, hz) {
 
 // -- Skull and ears --
 
-function buildSkull(skin, { halfHeadX: hx, halfHeadZ: hz }) {
+export function buildSkull(skin, { halfHeadX: hx, halfHeadZ: hz }) {
   const parts = [prism(rings([
     [SKULL[0][0], SKULL[0][1], skin.deep], // first row is never rendered
     [SKULL[1][0], SKULL[1][1], skin.deep],
@@ -159,7 +159,7 @@ export function buildFace(design, palette, metrics, opts = {}) {
 
 const CAP_F = 1.1; // the hair cap's rim width factor
 
-function buildHair(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
+export function buildHair(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
   const hair = palette.hair;
   const back = design.hair?.back;
   const { strip } = faceOps(hx, hz);
