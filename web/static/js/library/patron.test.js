@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { drawPatron } from './patron.js';
-import { isPatronBlinkingAt, hairTones } from './patron-head.js';
+import { isPatronBlinkingAt } from './patron-head.js';
+import { hairTones } from '../shared/people.js';
 import { PROPS } from './patron-props.js';
 import { drawTorsoTrinkets, drawWristTrinkets, drawLegTrinkets, drawHeadTrinkets } from './patron-trinkets.js';
 import { drawKaren, isKarenBlinkingAt } from './karen.js';

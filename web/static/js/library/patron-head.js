@@ -7,27 +7,13 @@
 // Coordinates follow Hospital Shift's anime adult frame (face centre about
 // -55); see staff-kit.js.
 
-import { shadeColor } from '../shared/people.js';
+import { shadeColor, hairTones, skinTones } from '../shared/people.js';
 import {
   fillPath, rr, dot, isBlinkingAt, drawFace, drawEars, drawNose, drawEyes, drawBrows, drawMouth, drawBlush, hairStrands,
 } from './staff-kit.js';
 
 export const HEAD_Y = -55;
 const EYE_Y = -53.8;
-
-/** Hair tones from the design's one colour: mid (lit), deep (shadow), shine (strands). */
-export function hairTones(colour) {
-  return {
-    base: colour,
-    mid: shadeColor(colour, 0.18),
-    deep: shadeColor(colour, -0.32),
-    shine: shadeColor(colour, 0.45),
-  };
-}
-
-function skinTones(skin) {
-  return { skin, shade: shadeColor(skin, -0.1), deep: shadeColor(skin, -0.22) };
-}
 
 /** A design's blink, offset by its key so a queue doesn't blink in unison. */
 export function isPatronBlinkingAt(design, t) {

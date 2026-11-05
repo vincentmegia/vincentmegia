@@ -193,6 +193,20 @@ export function shadeColor(hex, amount) {
   return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 }
 
+/** Hair tones from the design's one colour: mid (lit), deep (shadow), shine (strands). */
+export function hairTones(colour) {
+  return {
+    base: colour,
+    mid: shadeColor(colour, 0.18),
+    deep: shadeColor(colour, -0.32),
+    shine: shadeColor(colour, 0.45),
+  };
+}
+
+export function skinTones(skin) {
+  return { skin, shade: shadeColor(skin, -0.1), deep: shadeColor(skin, -0.22) };
+}
+
 /** Hair that sits *behind* the head circle (drawn before it): bob volume, pigtails. */
 function drawBackHair(ctx, x, headY, s, personality) {
   const color = personality.hairColor;
