@@ -271,6 +271,19 @@ web/templates/components/hospital-leaderboard.html
 
 ---
 
+**Overlay dialogs scroll.** `#hospital-start-screen` and
+`#hospital-paycheck-screen` are `absolute inset-0 flex justify-center
+overflow-y-auto overscroll-contain p-4`, with `my-auto` on the `ha-card`
+inside (it previously carried `mt-6`, which `my-auto` replaces). The canvas
+holds a fixed aspect ratio, so its height shrinks with the viewport and the
+two-column start card is taller than it on a phone. `my-auto` centers the
+panel while it fits and collapses to zero when it doesn't, so Start Shift,
+Play Daily Challenge and the paycheck's name form stay reachable.
+`items-center` must not be used on these containers: combined with
+`overflow-y-auto` — which these two screens already had — it pushes the
+panel's top into unreachable negative scroll space, so the heading was being
+clipped. See `docs/skills/tailwind-ui/SKILL.md`, "Overlay Dialogs".
+
 ## HTMX Interactions
 
 | Trigger                  | Method | Endpoint                       | Target                  | Swap        | Indicator |

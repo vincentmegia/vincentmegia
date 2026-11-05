@@ -266,6 +266,38 @@ Avoid nesting cards excessively.
 
 ---
 
+## Overlay Dialogs
+
+A full-bleed overlay (a game's start screen, a paycheck or run-over panel)
+must stay scrollable: its canvas shrinks with the viewport, so a panel that
+fits on a desktop will overflow on a phone and put its buttons out of reach.
+
+```html
+<div class="absolute inset-0 flex justify-center overflow-y-auto overscroll-contain p-4">
+  <div class="my-auto w-full max-w-xs rounded-card border border-line bg-surface p-6">
+```
+
+The panel is centered by `my-auto`, not by `items-center` on the container.
+Auto margins collapse to zero once the content is taller than the box, so the
+whole panel stays reachable.
+
+**Do not** combine `items-center` with `overflow-y-auto`:
+
+```html
+<!-- broken: the top of the panel is clipped and cannot be scrolled to -->
+<div class="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
+```
+
+`align-items: center` overflows the item equally in both directions, and the
+part above the container has no scroll range — it is unreachable. Measured in
+Chromium, a panel 280px taller than its box lost 100px off the top this way.
+
+An overlay whose own inner card scrolls instead (`max-h-full overflow-y-auto`
+on the card, as in Kitchen Shift's station picker and recipe book) is the
+equivalent alternative; use one or the other, not `items-center` plus scroll.
+
+---
+
 ## Buttons
 
 Buttons are pill-shaped (`rounded-full`), per Organic's `.btn` — this is
@@ -424,6 +456,21 @@ The UI should look intentional rather than merely functional.
 
 ---
 
+## Feature Docs Are Part of the Change
+
+Every feature has a doc under `docs/features/<feature>.md`. A requirement
+change is not finished until that doc describes what the code now does.
+
+* Read the doc before touching the feature, and verify its claims against the
+  code — these docs have drifted before.
+* Update it in the same commit as the behavior change: added, changed or
+  removed requirements, routes, markup structure, and the reason behind a
+  non-obvious choice.
+* A change spanning several features updates each of their docs.
+* A new feature starts from `docs/features/template.md` and gets its row in
+  the table in `CLAUDE.md`.
+* "Code works, doc not updated yet" is incomplete work, not a follow-up task.
+
 ## Definition of Done
 
 UI work is complete when:
@@ -436,4 +483,5 @@ UI work is complete when:
 * Mobile behavior is intentional.
 * No unnecessary custom CSS exists.
 * Visual hierarchy is clear.
+* The feature's `docs/features/<feature>.md` is updated in the same commit.
 

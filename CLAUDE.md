@@ -43,6 +43,10 @@ HTMX + Tailwind + PostgreSQL.
 - Every feature has `docs/features/<feature>.md` (new ones start from
   `docs/features/template.md`). Read it before touching that feature, and
   verify its claims against the code — these docs have drifted before.
+- **Update that doc in the same commit as every requirement or behavior
+  change.** A change isn't done until its feature doc matches the code; if the
+  change spans features, update each one's doc. See "Feature Docs Are Part of
+  the Change" in the skill docs above.
 
 | Feature | Route | Doc |
 |---|---|---|

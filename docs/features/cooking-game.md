@@ -184,6 +184,22 @@ web/static/js/
 The canvas uses its own fixed warm palette regardless of dark mode; the
 surrounding chrome follows the site theme.
 
+**Overlay dialogs scroll.** `#cooking-start-screen` and
+`#cooking-paycheck-screen` are `absolute inset-0 flex justify-center
+overflow-y-auto overscroll-contain p-4`, with `my-auto` on the panel inside.
+The canvas holds a fixed aspect ratio, so its height shrinks with the viewport
+and these panels are taller than it on a phone; `my-auto` centers the panel
+while it fits and collapses to zero when it doesn't, so Start/Resume Shift and
+the paycheck's buttons stay reachable. `items-center` must not be used on
+these containers: combined with `overflow-y-auto` it pushes the panel's top
+into unreachable negative scroll space.
+
+`#cooking-station-panel` and `#cooking-recipe-book` keep the other valid
+pattern instead — `items-center` centering with `max-h-full overflow-y-auto`
+on the card itself, so the card scrolls internally. Both are fine; what is
+broken is `items-center` on a container that scrolls. See
+`docs/skills/tailwind-ui/SKILL.md`, "Overlay Dialogs".
+
 ---
 
 ## HTMX Interactions

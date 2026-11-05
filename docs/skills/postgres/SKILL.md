@@ -454,6 +454,21 @@ Do not optimize database queries based solely on assumptions.
 
 ---
 
+## Feature Docs Are Part of the Change
+
+Every feature has a doc under `docs/features/<feature>.md`. A requirement
+change is not finished until that doc describes what the code now does.
+
+* Read the doc before touching the feature, and verify its claims against the
+  code — these docs have drifted before.
+* Update it in the same commit as the behavior change: added, changed or
+  removed requirements, schema and migrations, and the reason behind a
+  non-obvious choice.
+* A change spanning several features updates each of their docs.
+* A new feature starts from `docs/features/template.md` and gets its row in
+  the table in `CLAUDE.md`.
+* "Code works, doc not updated yet" is incomplete work, not a follow-up task.
+
 ## Definition of Done
 
 Database work is complete when:
@@ -470,4 +485,5 @@ Database work is complete when:
 * Security requirements are met.
 * Important database behavior is tested.
 * Performance has been considered.
+* The feature's `docs/features/<feature>.md` is updated in the same commit.
 

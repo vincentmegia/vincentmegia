@@ -269,6 +269,19 @@ States this feature's UI must handle:
 
 ---
 
+**Overlay dialogs scroll.** `#fishing-start-screen` and
+`#fishing-round-over-screen` are `absolute inset-0 flex justify-center
+overflow-y-auto overscroll-contain p-4`, with `my-auto` on the panel inside
+(`#fishing-shop-screen` already scrolled, via `absolute inset-0
+overflow-y-auto` with no flex centering). The canvas holds a fixed aspect
+ratio, so its height shrinks with the viewport and these panels are taller
+than it on a phone. `my-auto` centers the panel while it fits and collapses to
+zero when it doesn't, so the whole panel — "Start Dive", the shop button, the
+name form on the round-over screen — stays reachable. `items-center` must not
+be used on these containers: combined with `overflow-y-auto` it pushes the
+panel's top into unreachable negative scroll space. See
+`docs/skills/tailwind-ui/SKILL.md`, "Overlay Dialogs".
+
 ## HTMX Interactions
 
 The game loop itself (canvas rendering, input, collisions, scoring, gear

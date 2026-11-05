@@ -409,6 +409,20 @@ so it stays sharp on high-DPI screens.
 
 ---
 
+**Overlay dialogs scroll.** `#bus-rush-start-screen` and
+`#bus-rush-run-over-screen` are `absolute inset-0 flex justify-center
+overflow-y-auto overscroll-contain p-4`, with `my-auto` on the panel inside
+(`#bus-rush-shop-screen` already scrolled, via `absolute inset-0
+overflow-y-auto` with no flex centering). The canvas holds a fixed aspect
+ratio, so its height shrinks with the viewport and the start screen — which
+carries the full controls/hazard copy — is taller than it on a phone.
+`my-auto` centers the panel while it fits and collapses to zero when it
+doesn't, so the whole panel, Start Run / Daily Challenge / Depot Shop
+included, stays reachable. `items-center` must not be used on these
+containers: combined with `overflow-y-auto` it pushes the panel's top into
+unreachable negative scroll space. See `docs/skills/tailwind-ui/SKILL.md`,
+"Overlay Dialogs".
+
 ## HTMX Interactions
 
 | Trigger                | Method | Endpoint               | Target                   | Swap        | Indicator |
