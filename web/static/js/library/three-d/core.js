@@ -109,6 +109,42 @@ export function projectPoint(camera, world, viewport) {
 
 const NEAR_EPS = 1e-9;
 
+/**
+ * Sutherland-Hodgman clip of a convex polygon against the near plane, in clip
+ * space. A vertex is in front of the near plane when z + w >= 0 (with this
+ * perspective matrix that is exactly "at least `near` away"), so the signed
+ * distance is z + w and a crossing edge is split at t = d0 / (d0 - d1).
+ *
+ * Clipping (rather than dropping the whole face) is what lets the camera stand
+ * *inside* the room: the floor, ceiling and walls all straddle the near plane
+ * from in there, and a dropped face leaves a hole in the frame.
+ *
+ * @param {number[][]} poly clip-space [x, y, z, w] points, convex, in order
+ * @returns {number[][]} the part in front of the near plane ([] if none)
+ */
+function clipNear(poly) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i];
+    const prev = poly[(i + poly.length - 1) % poly.length];
+    const dCur = cur[2] + cur[3];
+    const dPrev = prev[2] + prev[3];
+    const curIn = dCur >= NEAR_EPS;
+    const prevIn = dPrev >= NEAR_EPS;
+    if (curIn !== prevIn) {
+      const t = dPrev / (dPrev - dCur);
+      out.push([
+        prev[0] + (cur[0] - prev[0]) * t,
+        prev[1] + (cur[1] - prev[1]) * t,
+        prev[2] + (cur[2] - prev[2]) * t,
+        prev[3] + (cur[3] - prev[3]) * t,
+      ]);
+    }
+    if (curIn) out.push(cur);
+  }
+  return out;
+}
+
 function parseColor(c) {
   if (c[0] === '#') {
     const h = c.length === 4 ? c.slice(1).replace(/./g, (x) => x + x) : c.slice(1, 7);
@@ -149,22 +185,21 @@ export function buildDrawList(camera, placed, opts) {
     for (const face of mesh.faces) {
       const idx = face.indices;
       if (idx.length < 3) continue;
-      let clipped = false;
+      // Clip against the near plane; a face entirely behind it yields nothing.
+      // Shading still comes from the unclipped world vertices, so a face looks
+      // the same whether or not the camera happens to cut it.
+      const poly = clipNear(idx.map((i) => clip[i]));
+      if (poly.length < 3) continue;
       let depthSum = 0;
-      for (const i of idx) {
-        const [, , cz, cw] = clip[i];
-        if (cw <= 0 || cz + cw <= NEAR_EPS) { clipped = true; break; }
-        depthSum += cw;
-      }
-      if (clipped) continue;
+      for (const p of poly) depthSum += p[3];
       const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
       const n = normalize(cross(sub(b, a), sub(c, a)));
       const intensity = light.ambient + Math.max(0, dot(n, ld));
-      const depth = depthSum / idx.length;
-      const screen = idx.map((i) => {
-        const [cx, cy, , cw] = clip[i];
-        return [(cx / cw * 0.5 + 0.5) * viewport.width, (1 - (cy / cw * 0.5 + 0.5)) * viewport.height];
-      });
+      const depth = depthSum / poly.length;
+      const screen = poly.map(([cx, cy, , cw]) => [
+        (cx / cw * 0.5 + 0.5) * viewport.width,
+        (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
+      ]);
       out.push({ screen, color: shadeColor(face.color, intensity, fog, depth), depth });
     }
   }
@@ -178,5 +213,12 @@ export function drawScene(ctx, camera, placed, opts) {
     ctx.closePath();
     ctx.fillStyle = poly.color;
     ctx.fill();
+    // Canvas antialiases each fill independently, so two polygons meeting on a
+    // shared edge leave a half-covered hairline of whatever is underneath —
+    // a visible grid over the tiled room shell. Stroking in the fill color
+    // covers that seam without changing the shape.
+    ctx.strokeStyle = poly.color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 }

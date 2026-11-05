@@ -84,14 +84,45 @@ test('polys are sorted farthest-first across meshes', () => {
   assert.equal(list[0].screen.length, 4);
 });
 
-test('faces touching or behind the near plane are dropped', () => {
-  const behind = at(quad(), 5);
-  assert.deepEqual(buildDrawList(CAM, [behind], SCENE), []);
-  // one vertex exactly on the near plane (z = -near) drops the face
-  const onPlane = { vertices: [[-1, -1, -0.1], [1, -1, -3], [1, 1, -3]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
+test('faces entirely behind the near plane are dropped', () => {
+  assert.deepEqual(buildDrawList(CAM, [at(quad(), 5)], SCENE), []);
+  // exactly on the near plane (z = -near) has no area in front of it either
+  const onPlane = { vertices: [[-1, -1, -0.1], [1, -1, -0.1], [1, 1, -0.1]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
   assert.deepEqual(buildDrawList(CAM, [at(onPlane, 0)], SCENE), []);
-  const clear = { vertices: [[-1, -1, -0.2], [1, -1, -3], [1, 1, -3]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
-  assert.equal(buildDrawList(CAM, [at(clear, 0)], SCENE).length, 1);
+});
+
+// Regression (the room shell): the floor/ceiling/walls the camera stands
+// inside always straddle the near plane. Dropping such a face left a third of
+// the first-person frame unpainted, so these faces must be CLIPPED, not
+// dropped.
+test('a face straddling the near plane is clipped, not dropped', () => {
+  const straddling = {
+    vertices: [[-1, -1, -3], [1, -1, -3], [1, -1, 5], [-1, -1, 5]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#808080' }],
+  };
+  const list = buildDrawList(CAM, [at(straddling, 0)], SCENE);
+  assert.equal(list.length, 1);
+  assert.ok(list[0].screen.length >= 3);
+  for (const [x, y] of list[0].screen) {
+    assert.ok(Number.isFinite(x) && Number.isFinite(y), `non-finite screen point ${x},${y}`);
+    assert.ok(Math.abs(x) < 1e5 && Math.abs(y) < 1e5, `runaway screen point ${x},${y}`);
+  }
+  assert.ok(list[0].depth > 0);
+});
+
+test('a face with one vertex behind the camera is kept and clipped', () => {
+  const tri = { vertices: [[-1, -1, 2], [1, -1, -3], [1, 1, -3]], faces: [{ indices: [0, 1, 2], color: '#fff' }] };
+  const list = buildDrawList(CAM, [at(tri, 0)], SCENE);
+  assert.equal(list.length, 1);
+  assert.ok(list[0].screen.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)));
+});
+
+test('clipping does not change a face\'s shading', () => {
+  const far = { vertices: [[-1, -1, -3], [1, -1, -3], [1, -1, -2], [-1, -1, -2]], faces: [{ indices: [0, 1, 2, 3], color: '#808080' }] };
+  const straddling = { vertices: [[-1, -1, -3], [1, -1, -3], [1, -1, 5], [-1, -1, 5]], faces: [{ indices: [0, 1, 2, 3], color: '#808080' }] };
+  const a = buildDrawList(CAM, [at(far, 0)], SCENE)[0];
+  const b = buildDrawList(CAM, [at(straddling, 0)], SCENE)[0];
+  assert.equal(a.color, b.color);
 });
 
 test('face toward the light is brighter than one facing away', () => {
@@ -111,4 +142,7 @@ test('drawScene fills each poly via the ctx', () => {
   const ctx = new Proxy({}, { get: (_, k) => (...a) => calls.push(k), set: (_, k) => { calls.push('set:' + k); return true; } });
   drawScene(ctx, CAM, [at(quad(), -5)], SCENE);
   assert.ok(calls.includes('moveTo') && calls.includes('closePath') && calls.includes('fill'));
+  // Each poly is also stroked in its own fill color, so adjacent faces (the
+  // tiled room shell) don't show an antialiasing hairline between them.
+  assert.ok(calls.includes('set:strokeStyle') && calls.includes('stroke'));
 });

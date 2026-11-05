@@ -1431,6 +1431,35 @@ test.describe('First Person Mode', () => {
 		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.wasPlayerSpriteDrawnLastFrame())).toBe(true);
 	});
 
+	// Regression (docs/features/library-first-person-3d.md, "Rendering model"):
+	// nothing clears the canvas between frames, and First Person draws polygons
+	// rather than a full-canvas background like Top-Down's drawFloor. Any pixel
+	// the scene missed therefore kept the frame before it, and the vignette drawn
+	// over it every frame compounded into a black smear that moved with the
+	// player. Frozen, the world does not move, so consecutive frames of the same
+	// scene must be pixel-identical; before the fix they kept darkening.
+	test('the First Person frame is fully repainted, with no stale pixels from the frame before', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+		// Scene areas, away from the HUD bars/minimap (top) and the pointer-lock
+		// hint (bottom centre), sampled in canvas backing-store pixels.
+		const sample = () => page.evaluate(() => {
+			const canvas = document.getElementById('library-canvas');
+			const ctx = canvas.getContext('2d');
+			return [[0.05, 0.5], [0.95, 0.5], [0.08, 0.9], [0.92, 0.2]].map(([fx, fy]) => {
+				const px = ctx.getImageData(Math.round(canvas.width * fx), Math.round(canvas.height * fy), 1, 1).data;
+				return [px[0], px[1], px[2], px[3]];
+			});
+		});
+
+		const first = await sample();
+		await page.waitForTimeout(600); // ~35 further frames of the same scene
+		expect(await sample()).toEqual(first);
+	});
+
 	test('on-screen buttons and arrow keys both turn and move the player', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
@@ -1511,6 +1540,14 @@ test.describe('First Person Mode', () => {
 			.toBe('stairs');
 
 		await page.locator('#library-fp-interact-button').click();
+
+		// First Person floor changes are animated: the click starts the climb
+		// and the floor only switches at its commit point (see the Stairs /
+		// Elevator transition test above). Complete it rather than waiting the
+		// animation out, exactly as that test does.
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition()))
+			.toMatchObject({ kind: 'stairs', targetFloor: 2 });
+		await page.evaluate(() => window.__libraryGameTestHooks.forceCompleteTransition());
 
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
 		// FLOOR_2_ENTRY_POINT (floor-plan.js) is exactly the canvas center, so

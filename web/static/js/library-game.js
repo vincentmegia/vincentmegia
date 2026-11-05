@@ -834,6 +834,12 @@ export function init(canvas, elements) {
   const FP_SPRINT_VFOV_EXTRA = 6;
   const FP_LIGHT = { dir: [0.35, 1, 0.25], ambient: 0.5 }; // dir points toward the light
   const FP_FOG = { color: '#d8ccb0', start: 520, end: 1500 }; // warm cream distance haze
+  // Painted over the whole frame before the 3D scene. Top-Down repaints every
+  // pixel via drawFloor, but First Person draws polygons only, so without this
+  // the canvas would keep the previous frame: dust would smear into streaks,
+  // the per-frame vignette would compound into black, and Top-Down art would
+  // sit under the scene. Matches FP_FOG.color so any far gap reads as haze.
+  const FP_BACKDROP = FP_FOG.color;
   const FP_KAREN_PALETTE = { skin: '#f0c7a0', hair: '#caa24e', top: '#c0432f', bottom: '#3a3238', angry: true };
   // Active elevator/stair floor transition (null when none). While set, FP
   // movement/turn/strafe/jump input is ignored and the camera is driven by
@@ -5123,6 +5129,13 @@ export function init(canvas, elements) {
 
   function render() {
     syncBackingStore();
+    // Start every frame from a known state. Done outside the shake transform
+    // below so a shaken frame can't leave an unpainted strip at the edge.
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    if (cameraMode === 'first-person') {
+      ctx.fillStyle = FP_BACKDROP;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
     lastFrameDrewPlayerSprite = false;
     const shake = currentIntensity() > 0.6 ? (currentIntensity() - 0.6) * 5 : 0;
     ctx.save();

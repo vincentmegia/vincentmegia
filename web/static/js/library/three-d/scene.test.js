@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFirstPersonScene, meshForStationKind, ROOM_HEIGHT, BASE_EYE } from './scene.js';
+import { buildDrawList } from './core.js';
 import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
@@ -64,4 +65,71 @@ test('camera params thread through', () => {
   const fov = buildFirstPersonScene(input({ cameraParams: { ...CAM, fov: 1.4 } })).camera;
   assert.notDeepEqual(Array.from(roll.viewProj), Array.from(base.viewProj));
   assert.notDeepEqual(Array.from(fov.viewProj), Array.from(base.viewProj));
+});
+
+// ---- Regression: the first-person frame must be fully painted ----
+// The canvas keeps whatever was drawn last frame, so any pixel the scene
+// does not cover shows stale art (and the per-frame vignette compounds on
+// it into a black smear). Standing inside the room shell, the shell alone
+// has to cover every pixel of the viewport.
+const LIGHT = { dir: [0.35, 1, 0.25], ambient: 0.5 };
+
+// A sample that lands exactly on the shared edge of two tiles is counted as
+// covered: the even-odd rule below assigns such a point to neither polygon,
+// but the canvas paints both tiles up to that edge, so it is not a hole.
+function pointInPoly(poly, px, py) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+    const dx = xi - xj;
+    const dy = yi - yj;
+    const t = Math.max(0, Math.min(1, ((px - xj) * dx + (py - yj) * dy) / (dx * dx + dy * dy || 1)));
+    if (Math.hypot(px - (xj + t * dx), py - (yj + t * dy)) < 1e-6) return true;
+  }
+  return inside;
+}
+
+function uncoveredPixels(pose, viewport = { width: 960, height: 600 }) {
+  const { camera, placed } = buildFirstPersonScene(
+    input({ player: pose, stations: [], characters: [], viewport }),
+  );
+  const list = buildDrawList(camera, placed, { viewport, light: LIGHT });
+  const misses = [];
+  for (let y = 4; y < viewport.height; y += 12) {
+    for (let x = 4; x < viewport.width; x += 12) {
+      if (!list.some((p) => pointInPoly(p.screen, x, y))) misses.push([x, y]);
+    }
+  }
+  return misses;
+}
+
+test('the room shell covers the whole viewport from inside', () => {
+  for (const pose of [
+    { x: 480, y: 300, facing: 0 },
+    { x: 480, y: 300, facing: Math.PI },
+    { x: 60, y: 60, facing: Math.PI * 0.75 },
+    { x: 900, y: 540, facing: -0.4 },
+    { x: 480, y: 30, facing: 0 },
+  ]) {
+    const misses = uncoveredPixels(pose);
+    assert.equal(
+      misses.length,
+      0,
+      `facing ${pose.facing} at (${pose.x},${pose.y}): ${misses.length} unpainted samples, e.g. ${JSON.stringify(misses.slice(0, 3))}`,
+    );
+  }
+});
+
+test('the draw list stays sorted back to front once faces are clipped', () => {
+  const viewport = { width: 960, height: 600 };
+  const { camera, placed } = buildFirstPersonScene(
+    input({ player: { x: 480, y: 500, facing: 0 }, viewport }),
+  );
+  const list = buildDrawList(camera, placed, { viewport, light: LIGHT });
+  assert.ok(list.length > 0);
+  for (let i = 1; i < list.length; i++) {
+    assert.ok(list[i - 1].depth >= list[i].depth, 'draw list must stay sorted back to front');
+  }
 });

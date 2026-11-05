@@ -72,7 +72,10 @@ handling, in place of Kitchen Shift's cooking and serving.
   Top-Down keeps its detailed 2D art. Interaction and targeting are
   unchanged: `first-person.js` still projects entities for
   `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
-  HUD (crosshair, minimap, vignette, dust, interact flash) draws on top.
+  HUD (crosshair, minimap, vignette, dust, interact flash) draws on top of
+  a frame that is cleared and backdrop-filled first, since the 3D scene
+  paints polygons rather than a full-canvas background like Top-Down's
+  `drawFloor`.
   Head-bob, jump, strafe tilt and sprint FOV move the 3D camera
   (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)

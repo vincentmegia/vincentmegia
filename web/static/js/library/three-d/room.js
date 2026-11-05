@@ -13,6 +13,12 @@ const CEILING = '#c4b8a0';
 const LIGHT = '#fff0c8';
 
 const PROUD = 0.1; // detail offset off its surface (painter-sort, no z-buffer)
+// Longest edge of one shell face. The shell is the only geometry the camera
+// stands inside, so its faces are the ones that straddle the near plane and
+// that span the whole frame. Tiles bound both: each tile clips to a small
+// piece and carries its own sort depth, instead of one room-sized quad whose
+// single mean depth could put the floor over the furniture standing on it.
+export const TILE = 120;
 
 /**
  * @param {{width:number, depth:number, height:number, floorTint:string}} opts
@@ -21,10 +27,28 @@ const PROUD = 0.1; // detail offset off its surface (painter-sort, no z-buffer)
 export function buildRoom({ width, depth, height, floorTint }) {
   const vertices = [];
   const faces = [];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const lerp = (a, b, t) => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+  // Emits the quad [p0, p1, p2, p3] as a grid of at most TILE-sized tiles,
+  // keeping the winding (so every tile's normal matches the original face).
   const quad = (pts, color) => {
-    const base = vertices.length;
-    for (const p of pts) vertices.push(p);
-    faces.push({ indices: [base, base + 1, base + 2, base + 3], color });
+    const [p0, p1, p2, p3] = pts;
+    const nu = Math.max(1, Math.ceil(Math.max(dist(p0, p1), dist(p3, p2)) / TILE));
+    const nv = Math.max(1, Math.ceil(Math.max(dist(p0, p3), dist(p1, p2)) / TILE));
+    const at = (u, v) => lerp(lerp(p0, p1, u), lerp(p3, p2, u), v);
+    for (let iv = 0; iv < nv; iv++) {
+      for (let iu = 0; iu < nu; iu++) {
+        const u0 = iu / nu, u1 = (iu + 1) / nu;
+        const v0 = iv / nv, v1 = (iv + 1) / nv;
+        const base = vertices.length;
+        vertices.push(at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1));
+        faces.push({ indices: [base, base + 1, base + 2, base + 3], color });
+      }
+    }
   };
 
   quad([[0, 0, 0], [width, 0, 0], [width, 0, depth], [0, 0, depth]], floorTint);

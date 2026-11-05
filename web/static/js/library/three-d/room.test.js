@@ -54,8 +54,24 @@ test('all vertices lie inside the room box', () => {
   }
 });
 
+// The shell used to be six room-sized quads. With no z-buffer a face that
+// large sorts by one mean depth, so the floor could paint over the objects
+// standing on it, and the whole face vanished the moment it straddled the
+// near plane (which, standing inside the room, it always does). Tiling keeps
+// both the sort and the near-plane clip local.
+test('no shell face spans more than one tile', () => {
+  const m = buildRoom(OPTS);
+  for (const f of m.faces) {
+    const pts = f.indices.map((i) => m.vertices[i]);
+    const span = (axis) => Math.max(...pts.map((p) => p[axis])) - Math.min(...pts.map((p) => p[axis]));
+    const biggest = Math.max(span(0), span(1), span(2));
+    assert.ok(biggest <= 150, `face spans ${biggest.toFixed(1)} units (${f.color})`);
+  }
+});
+
 test('face count within budget', () => {
-  assert.ok(buildRoom(OPTS).faces.length <= 120);
+  // Tiling the shell trades face count for correct sorting and clipping.
+  assert.ok(buildRoom(OPTS).faces.length <= 900);
 });
 
 test('deterministic', () => {
