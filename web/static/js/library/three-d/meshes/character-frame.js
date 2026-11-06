@@ -14,6 +14,12 @@ export const FRAME = {
   crown: 66.3 / 40,
 };
 
+// geom.js's `prism` puts flat faces on the axes, so an 8-sided ring of radius r
+// is only r*cos(pi/8) = 0.9239r wide and deep. Ring radii are therefore scaled
+// up by CIRC so the silhouette a player sees equals the width we designed.
+// character-body.js applies its own copy of this to the torso rings.
+export const CIRC = 1 / Math.cos(Math.PI / 8);
+
 export const AGE_SCALE = { kid: 0.74, teen: 0.95, elder: 0.95, adult: 1 };
 export const KID_HEAD = 1.26;
 
@@ -22,6 +28,8 @@ export function metricsFor(design) {
   const kid = age === 'kid';
   const elder = age === 'elder';
   const slim = Boolean(design?.outfit?.skirt) || kid;
+  // Half-width of the head as the 2D art measures it (17.85 px across for an
+  // adult, so 9 px either side of the centre line).
   const halfHeadX = (kid ? 9.4 : elder ? 9.2 : 9) / 40;
   return {
     kid,
@@ -33,8 +41,13 @@ export function metricsFor(design) {
     headScale: kid ? KID_HEAD : 1,
     halfTorso: (slim ? 7.8 : 9.8) / 40,
     halfShoulder: (slim ? 9.2 : 10.6) / 40,
-    halfHeadX,
-    halfHeadZ: halfHeadX * 0.94,
+    // RADII of the 8-sided head prism, not half-widths: every part of the head
+    // is such a prism, or is placed relative to one, so the compensation lives
+    // here, once, and the whole head (skull, ears, face details via
+    // `faceOps`, hair, headwear) widens together. What renders is
+    // headRX * cos(pi/8) === halfHeadX, the designed half-width above.
+    headRX: halfHeadX * CIRC,
+    headRZ: halfHeadX * 0.94 * CIRC,
     depth: (slim ? 5.6 : 6.6) / 40,
   };
 }

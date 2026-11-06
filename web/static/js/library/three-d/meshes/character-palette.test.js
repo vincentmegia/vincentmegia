@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { shadeColor } from '../../../shared/people.js';
-import { metricsFor, FRAME, PX } from './character-frame.js';
+import { metricsFor, FRAME, PX, CIRC } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
 import { LIBRARY_PATRON_DESIGNS } from '../../library-people.js';
 
@@ -27,14 +27,16 @@ test('metricsFor marks a kid slim and scales the head', () => {
   assert.equal(m.kid, true);
   assert.equal(m.headScale, 1.26);
   assert.equal(m.ageScale, 0.74);
-  assert.equal(m.halfHeadX, 9.4 / 40);
+  // headRX is a prism radius, so the width that renders is radius*cos(pi/8).
+  assert.ok(Math.abs(m.headRX / CIRC - 9.4 / 40) < 1e-15, `kid head ${m.headRX / CIRC}`);
 });
 
 test('metricsFor uses the elder head width', () => {
   const m = metricsFor({ age: 'elder', outfit: {} });
   assert.equal(m.elder, true);
-  assert.equal(m.halfHeadX, 9.2 / 40);
-  assert.equal(m.halfHeadZ, (9.2 / 40) * 0.94);
+  // An elder's head renders 2*9.2 px wide: the stored radius is that over cos(pi/8).
+  assert.ok(Math.abs(m.headRX / CIRC - 9.2 / 40) < 1e-15, `elder head ${m.headRX / CIRC}`);
+  assert.equal(m.headRZ, m.headRX * 0.94);
   assert.equal(m.ageScale, 0.95);
   assert.equal(m.headScale, 1);
 });

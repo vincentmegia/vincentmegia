@@ -10,6 +10,14 @@
 //
 // Pure and DOM-free. Dimensions are 2D px (y measured up from the feet, like
 // FRAME) and divide by PX; x is px from the centre line.
+//
+// Throughout, `hx`/`hz` are metrics.headRX/headRZ: the head prism's RADII, not
+// its half-widths. An 8-sided ring of radius r only reaches r*cos(pi/8), and
+// character-frame.js has already scaled the radii up by CIRC so what renders is
+// the half-width measured off the 2D art. Everything here therefore stays
+// expressed as a multiple of hx/hz — the skull, the ears, the face details
+// (`faceOps` reads the same radii), hair, hats — so the whole head keeps one
+// silhouette. A part placed off an absolute offset instead would drift.
 
 import { emptyMesh, merge, box, prism, quad, translate, scaleAbout } from './geom.js';
 import { FRAME, PX } from './character-frame.js';
@@ -48,7 +56,9 @@ const rings = (rows, hx, hz) => rows.map(([yp, f, color]) => ({ y: y(yp), rx: hx
 
 /**
  * Operations that hug the 8-sided skull (or a same-shaped shell of width
- * factor `fOverride`, e.g. the hair cap).
+ * factor `fOverride`, e.g. the hair cap). `hx`/`hz` are the skull prism's
+ * radii (metrics.headRX/headRZ), the same values buildSkull is given, so face
+ * details land on the skull's real surface.
  */
 export function faceOps(hx, hz) {
   /**
@@ -93,7 +103,7 @@ export function faceOps(hx, hz) {
 
 // -- Skull and ears --
 
-export function buildSkull(skin, { halfHeadX: hx, halfHeadZ: hz }) {
+export function buildSkull(skin, { headRX: hx, headRZ: hz }) {
   const parts = [prism(rings([
     [SKULL[0][0], SKULL[0][1], skin.deep], // first row is never rendered
     [SKULL[1][0], SKULL[1][1], skin.deep],
@@ -112,7 +122,7 @@ export function buildSkull(skin, { halfHeadX: hx, halfHeadZ: hz }) {
 
 /** Eyes, brows, blush, nose and mouth, 0.01 proud of the skull. */
 export function buildFace(design, palette, metrics, opts = {}) {
-  const { strip, rect } = faceOps(metrics.halfHeadX, metrics.halfHeadZ);
+  const { strip, rect } = faceOps(metrics.headRX, metrics.headRZ);
   const d = design ?? {};
   const ex = d.extras ?? {};
   const lashes = Boolean(d.eyes?.lashes);
@@ -159,7 +169,7 @@ export function buildFace(design, palette, metrics, opts = {}) {
 
 const CAP_F = 1.1; // the hair cap's rim width factor
 
-export function buildHair(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
+export function buildHair(design, palette, { headRX: hx, headRZ: hz }) {
   const hair = palette.hair;
   const back = design.hair?.back;
   const { strip } = faceOps(hx, hz);
@@ -198,7 +208,7 @@ export function buildHair(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
 }
 
 /** Hair that falls, hangs or is tied up behind and above the head. */
-function buildHairBack(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
+function buildHairBack(design, palette, { headRX: hx, headRZ: hz }) {
   const hair = palette.hair;
   const ex = design.extras ?? {};
   const back = design.hair?.back;
@@ -229,7 +239,7 @@ function buildHairBack(design, palette, { halfHeadX: hx, halfHeadZ: hz }) {
 
 // -- Facial hair, mask, glasses, earrings --
 
-function buildFacialHair(ex, palette, { halfHeadX: hx, halfHeadZ: hz }) {
+function buildFacialHair(ex, palette, { headRX: hx, headRZ: hz }) {
   const { rect } = faceOps(hx, hz);
   const parts = [];
   if (ex.beard) {
@@ -247,14 +257,14 @@ function buildFacialHair(ex, palette, { halfHeadX: hx, halfHeadZ: hz }) {
   return join(parts);
 }
 
-function buildMask({ halfHeadX: hx, halfHeadZ: hz }) {
+function buildMask({ headRX: hx, headRZ: hz }) {
   // Rings sit just outside the skull so the face features are covered.
   const m = (yp, c) => [yp, widthAt(yp) + 0.08 / hx, c];
   return prism(rings([m(44.9, '#e4e4ec'), m(47.2, '#e4e4ec'), m(49.5, '#eeeef2'), m(53.2, '#f6f6f8')], hx, hz), 8, null, '#dcdce4');
 }
 
 function buildGlasses(kind, metrics) {
-  const { strip, rect } = faceOps(metrics.halfHeadX, metrics.halfHeadZ);
+  const { strip, rect } = faceOps(metrics.headRX, metrics.headRZ);
   const square = kind === 'square';
   const frame = square ? '#1e1a22' : '#6a4a32';
   const t = square ? 0.6 : 0.45;
@@ -276,7 +286,9 @@ function buildGlasses(kind, metrics) {
 }
 
 /** Sunglasses pushed up onto the front of the head. */
-function buildSunglasses({ halfHeadX: hx, halfHeadZ: hz }) {
+function buildSunglasses({ headRX: hx, headRZ: hz }) {
+  // cos(pi/8): the z the skull's front facet would reach at full width, so the
+  // lenses clear the brow whatever the head's radius.
   const zf = hz * 0.924 * 1.05 + 0.02;
   const parts = [];
   for (const dir of [-1, 1]) {
@@ -287,7 +299,7 @@ function buildSunglasses({ halfHeadX: hx, halfHeadZ: hz }) {
   return join(parts);
 }
 
-function buildEarrings(colour, { halfHeadX: hx }) {
+function buildEarrings(colour, { headRX: hx }) {
   const c = hexOr(colour, '#c9a24a');
   return join([-1, 1].map((dir) => {
     const cx = dir * hx * 1.04;
@@ -302,7 +314,7 @@ const dome = (rows, hx, hz, capTop) => prism(rings(rows, hx, hz), 8, capTop);
 /** A brim: two rings, a lit top, a dark underside. */
 const brim = (yLow, yHigh, f, c, hx, hz) => prism(rings([[yLow, f, shadeColor(c, -0.2)], [yHigh, f, c]], hx, hz), 8, c, shadeColor(c, -0.3));
 
-export function buildHeadwear(ex, back, { halfHeadX: hx, halfHeadZ: hz }) {
+export function buildHeadwear(ex, back, { headRX: hx, headRZ: hz }) {
   const sh = shadeColor;
   const parts = [];
   if (ex.beanie) {
@@ -372,7 +384,7 @@ export function buildHeadwear(ex, back, { halfHeadX: hx, halfHeadZ: hz }) {
   return join(parts);
 }
 
-function buildHeadphones(colour, { halfHeadX: hx }) {
+function buildHeadphones(colour, { headRX: hx }) {
   const c = hexOr(colour, '#ffffff');
   const edge = shadeColor(c, -0.3);
   const out = hx * 1.12;

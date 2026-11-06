@@ -23,7 +23,6 @@ const skirt = { ...adult, outfit: { kind: 'cardigan', top: '#e8709c', skirt: '#4
 const ys = (m) => m.vertices.map((v) => v[1]);
 const range = (a) => [Math.min(...a), Math.max(...a)];
 const verts = (m, faces) => faces.flatMap((f) => f.indices.map((i) => m.vertices[i]));
-const OCT = Math.cos(Math.PI / 8); // an 8-sided ring's x extent is radius * cos(pi/8)
 
 // Everything is measured on the built mesh, after undoing the whole-figure age
 // scale (so a kid's bands line up with the unscaled frame).
@@ -33,9 +32,10 @@ const OCT = Math.cos(Math.PI / 8); // an 8-sided ring's x extent is radius * cos
 //   below the chin and headwear above the crown are other colours.
 // - headW: the skull's own width, from the skin-toned head vertices on the skull's
 //   upper rim ring (FRAME's 60px row, moved by the kid's head scale). That row is
-//   above the ear boxes (52-56px), so ears are excluded. The skull is an 8-sided
-//   prism, so its x extent is rx*cos(pi/8); dividing by cos(pi/8) recovers the
-//   ring radius the builder was given (2*halfHeadX), as the torso's CIRC does.
+//   above the ear boxes (52-56px), so ears are excluded. This is the RAW x extent
+//   of those vertices — the silhouette a player sees — with no trigonometric
+//   correction: metricsFor scales the head's ring radii by CIRC (as the torso's
+//   own CIRC does), so an 8-sided ring already reaches the half-width we designed.
 // - shoulderW: x extent of the lit body vertices on the torso's 38px shoulder ring
 //   (the band y 36-40px). Sleeves (box corners at 28 and 43px) and hands (24-28px)
 //   have no vertices in that band, so this is the torso's own widest point.
@@ -60,7 +60,7 @@ function measure(design, legColour = design.outfit.bottom) {
     m: built,
     top: Math.max(...ys(built)),
     headH: (y1 - y0) * k,
-    headW: ((h1 - h0) / OCT) * k,
+    headW: (h1 - h0) * k,
     shoulderW: (s1 - s0) * k,
     legTop: legTop * k,
   };
@@ -71,9 +71,11 @@ test('an adult is 3.0 heads tall', () => {
   assert.ok(Math.abs(top / headH - 3.0) <= 0.15, `heads tall ${top / headH}`);
 });
 
-// The 0.85 +- 0.05 contract is the spec's reference (non-slim) adult. A slim adult
-// (skirt) has narrower shoulders under the same head, so its ratio is higher by
-// design (~0.98); it gets its own, wider bound so a runaway is still caught.
+// The 0.85 +- 0.05 contract is the spec's reference (non-slim) adult, measured on
+// the silhouette: head 2*9 = 18 px over shoulders 2*10.6 = 21.2 px is 0.849. A slim
+// adult (skirt) has narrower shoulders (18.4 px) under the same head, so its ratio
+// is higher by design (18/18.4 = 0.978); it gets its own, wider bound so a runaway
+// is still caught.
 test('head is 85% of shoulder width (non-slim adult)', () => {
   const { headW, shoulderW } = measure(bald);
   assert.ok(Math.abs(headW / shoulderW - 0.85) <= 0.05, `ratio ${headW / shoulderW}`);
@@ -148,12 +150,21 @@ test('output is deterministic and every index is in range', () => {
 });
 
 // Proportion envelope over the real roster (nothing else measures shipped patrons).
-// Observed: heads tall 2.73-3.97, head/shoulder 0.849-1.287. Limits and why:
-// - heads tall in [2.5, 4.2]: a bald adult is 3.03; hair adds ~0.13; a kid's head is
-//   1.26x larger (2.73 lowest); the witch hat is the tallest headwear (3.97).
-// - head/shoulder: non-slim, non-kid designs honour the spec's 0.85 +- 0.05 (elders
-//   have a slightly wider head, 0.868); slim non-kids stay <= 1.05 (0.98 observed);
-//   kids (slim, 1.26x head) stay <= 1.35 (1.287 observed).
+// Observed: heads tall 2.73-3.97, head/shoulder 0.849-1.287. Every bound below is
+// derived from the designed px widths, which `headW` now measures directly: head
+// 2*9 px (adult), 2*9.2 (elder), 2*9.4*1.26 = 23.69 (kid); shoulders 2*10.6 px
+// (non-slim) or 2*9.2 (slim). The ratios are unchanged from the first derivation
+// because the cos(pi/8) factor this test used to divide out by hand now lives in
+// metricsFor's ring radii — the numbers mean the silhouette, not the design intent.
+// - heads tall in [2.5, 4.2]: untouched by that change (it widens x/z only, never
+//   y): a bald adult is 3.03; hair adds ~0.13; a kid's head is 1.26x larger (2.73
+//   lowest); the witch hat is the tallest headwear (3.97).
+// - non-slim non-kids honour the spec's 0.85 +- 0.05: 18/21.2 = 0.849, and an
+//   elder's wider head 18.4/21.2 = 0.868; both sit inside [0.80, 0.90].
+// - slim non-kids run 18/18.4 = 0.978 to an elder's 18.4/18.4 = 1.0, so [0.9, 1.05]
+//   brackets them with a margin on each side rather than hugging the observed pair.
+// - kids are slim with a 1.26x head: 23.69/18.4 = 1.287 for all nine, inside
+//   [1.0, 1.35].
 test('every shipped design stays inside the proportion envelope', () => {
   for (const d of LIBRARY_PATRON_DESIGNS) {
     const me = metricsFor(d);
