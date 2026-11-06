@@ -52,7 +52,10 @@ export function buildFirstPersonScene({ player, floor, stations, characters, cam
 
   for (const c of characters) {
     if (c.floor !== undefined && c.floor !== floor) continue;
-    placed.push({ mesh: buildCharacter(c.palette), placement: { pos: [c.x, 0, c.y], yaw: 0, scale: UNIT_SCALE } });
+    placed.push({
+      mesh: buildCharacter(c.design, { angry: Boolean(c.angry) }),
+      placement: { pos: [c.x, 0, c.y], yaw: 0, scale: UNIT_SCALE },
+    });
   }
 
   const camera = cameraFromPose(player, {

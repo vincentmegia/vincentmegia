@@ -17,7 +17,7 @@ export const FRAME = {
 // geom.js's `prism` puts flat faces on the axes, so an 8-sided ring of radius r
 // is only r*cos(pi/8) = 0.9239r wide and deep. Ring radii are therefore scaled
 // up by CIRC so the silhouette a player sees equals the width we designed.
-// character-body.js applies its own copy of this to the torso rings.
+// character-body.js imports it for the torso rings, so both widen alike.
 export const CIRC = 1 / Math.cos(Math.PI / 8);
 
 export const AGE_SCALE = { kid: 0.74, teen: 0.95, elder: 0.95, adult: 1 };

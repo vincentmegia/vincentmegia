@@ -4,7 +4,7 @@ import { buildCharacter } from './character.js';
 import { FRAME, PX, metricsFor } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
 // library-people.js is pure data (no imports, no DOM), so the real roster is safe to load.
-import { LIBRARY_PATRON_DESIGNS } from '../../library-people.js';
+import { LIBRARY_PATRON_DESIGNS, KAREN_DESIGN } from '../../library-people.js';
 
 const COLOR_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\(/i;
 
@@ -187,6 +187,30 @@ test('every face colour is valid for parseColor', () => {
   for (const d of LIBRARY_PATRON_DESIGNS) {
     for (const f of buildCharacter(d).faces) assert.match(f.color, COLOR_RE, d.key);
   }
+});
+
+// Karen is the one character whose design is not in LIBRARY_PATRON_DESIGNS and
+// the sparsest one shipped (no extras, no trinkets), so she is the design most
+// likely to hit an unset optional slot.
+test('the Karen design builds', () => {
+  assert.doesNotThrow(() => buildCharacter(KAREN_DESIGN), 'calm');
+  assert.doesNotThrow(() => buildCharacter(KAREN_DESIGN, { angry: true }), 'angry');
+  for (const opts of [{}, { angry: true }]) {
+    const m = buildCharacter(KAREN_DESIGN, opts);
+    assert.ok(m.faces.length > 0);
+    for (const f of m.faces) {
+      assert.match(f.color, COLOR_RE, `${JSON.stringify(opts)} ${f.color}`);
+      for (const i of f.indices) assert.ok(Number.isInteger(i) && i >= 0 && i < m.vertices.length);
+    }
+    // Her four signature colours survive the trip through paletteFor.
+    const colors = new Set(m.faces.map((f) => f.color));
+    for (const c of [KAREN_DESIGN.skin, KAREN_DESIGN.outfit.top, KAREN_DESIGN.outfit.bottom, KAREN_DESIGN.outfit.shoes]) {
+      assert.ok(colors.has(c), c);
+    }
+  }
+  // She stays inside the non-slim adult proportion envelope.
+  const r = measure(KAREN_DESIGN);
+  assert.ok(Math.abs(r.headW / r.shoulderW - 0.85) <= 0.05, `karen ratio ${r.headW / r.shoulderW}`);
 });
 
 // Guards runaway growth, not a hard limit: the heaviest shipped design is 278 faces.

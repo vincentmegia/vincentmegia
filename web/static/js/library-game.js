@@ -61,7 +61,7 @@ import { drawStoryteller } from './library/storyteller.js';
 import { drawArchivist } from './library/archivist.js';
 import { drawKaren } from './library/karen.js';
 import { drawPatron } from './library/patron.js';
-import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
+import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import {
@@ -840,7 +840,6 @@ export function init(canvas, elements) {
   // the per-frame vignette would compound into black, and Top-Down art would
   // sit under the scene. Matches FP_FOG.color so any far gap reads as haze.
   const FP_BACKDROP = FP_FOG.color;
-  const FP_KAREN_PALETTE = { skin: '#f0c7a0', hair: '#caa24e', top: '#c0432f', bottom: '#3a3238', angry: true };
   // Active elevator/stair floor transition (null when none). While set, FP
   // movement/turn/strafe/jump input is ignored and the camera is driven by
   // transitions.js; cleared when the transition reaches 'done' or FP is left.
@@ -5022,19 +5021,15 @@ export function init(canvas, elements) {
     };
   }
 
-  /** A 3D humanoid palette for a queued patron (or Karen), from their design. */
-  function fpPaletteFor(personalityKey, angry) {
-    if (personalityKey === 'karen') return FP_KAREN_PALETTE;
-    const d = findLibraryDesign(personalityKey);
-    if (!d) return { skin: '#efc49f', hair: '#2a2030', top: '#6a7a8a', bottom: '#3a3a48', angry: !!angry };
-    const o = d.outfit ?? {};
-    return {
-      skin: d.skin ?? '#efc49f',
-      hair: d.hair?.color ?? '#2a2030',
-      top: o.top ?? '#6a7a8a',
-      bottom: o.bottom ?? o.skirt ?? o.inner ?? '#3a3a48',
-      angry: !!angry,
-    };
+  /**
+   * The design the 3D humanoid is built from: the very same patron design
+   * Top-Down draws. Karen is not in the roster (`findLibraryDesign('karen')`
+   * is null), so she has her own `KAREN_DESIGN`. An unknown key gives null and
+   * `buildCharacter` falls back to its own defaults.
+   */
+  function fpDesignFor(personalityKey) {
+    if (personalityKey === 'karen') return KAREN_DESIGN;
+    return findLibraryDesign(personalityKey);
   }
 
   function drawFirstPersonView() {
@@ -5055,7 +5050,7 @@ export function init(canvas, elements) {
       for (const e of buildFirstPersonEntities()) {
         if (e.entityKind === 'frontDeskSlot' || e.entityKind === 'finesSlot') {
           const personality = personalityForSlot(e.ref, e.slotIndex ?? 0);
-          characters.push({ x: e.x, y: e.y, palette: fpPaletteFor(personality, e.ref.kind === 'karen') });
+          characters.push({ x: e.x, y: e.y, design: fpDesignFor(personality), angry: e.ref.kind === 'karen' });
         } else if (e.entityKind === 'returnCartBook') {
           books.push(e);
         }

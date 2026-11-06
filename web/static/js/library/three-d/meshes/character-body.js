@@ -5,12 +5,11 @@
 
 import { shadeColor } from '../../../shared/people.js';
 import { box, prism, merge, emptyMesh } from './geom.js';
-import { FRAME, PX } from './character-frame.js';
+// CIRC is the head's too: one constant, so the head and the body can never
+// widen by different amounts. It assumes SIDES === 8, as the head's prisms do.
+import { FRAME, PX, CIRC } from './character-frame.js';
 
 const SIDES = 8;
-// prism() puts flat faces on the axes, so a ring of radius r reaches only
-// r*cos(pi/sides); scale radii up so a ring spans the half-width we mean.
-const CIRC = 1 / Math.cos(Math.PI / SIDES);
 const PROUD = 0.01;
 
 const WAIST_Y = 21 * PX;

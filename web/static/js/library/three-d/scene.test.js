@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFirstPersonScene, meshForStationKind, ROOM_HEIGHT, BASE_EYE } from './scene.js';
+import { buildFirstPersonScene, meshForStationKind, ROOM_HEIGHT, BASE_EYE, UNIT_SCALE } from './scene.js';
 import { buildDrawList } from './core.js';
 import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
 import { buildElevator } from './meshes/elevator.js';
 import { buildStationBox } from './meshes/station-box.js';
+// library-people.js is pure data (no imports, no DOM), so a real design is safe to load.
+import { KAREN_DESIGN, findLibraryDesign } from '../library-people.js';
 
-const PALETTE = { skin: '#e0b090', hair: '#222', top: '#3a6', bottom: '#348', angry: false };
+// Characters carry the same 2D design the top-down view draws, not a palette.
+const DESIGN = findLibraryDesign('libExamStudent');
 const CAM = { bobOffset: 0, jumpOffset: 0, pitch: 0, roll: 0, fov: 1 };
 function input(over = {}) {
   return {
@@ -19,7 +22,7 @@ function input(over = {}) {
       { kind: 'coffee-machine', x: 400, y: 200, floor: 1 },
       { kind: 'bookshelf', x: 500, y: 250, floor: 2 },
     ],
-    characters: [{ x: 300, y: 350, floor: 1, palette: PALETTE }],
+    characters: [{ x: 300, y: 350, floor: 1, design: DESIGN }],
     cameraParams: { ...CAM },
     viewport: { width: 960, height: 600 },
     ...over,
@@ -35,6 +38,25 @@ test('places room + floor stations + characters, culls other floors', () => {
   assert.deepEqual(placed[3].placement.pos, [300, 0, 350]);
   assert.ok(!placed.some((p) => p.placement.pos[0] === 500));
   assert.ok(ROOM_HEIGHT > 0);
+});
+
+test('a character entry carries a design and is placed in the scene', () => {
+  const bare = buildFirstPersonScene(input({ characters: [] })).placed.length;
+  const { placed } = buildFirstPersonScene(input({ characters: [{ x: 120, y: 340, design: DESIGN }] }));
+  assert.equal(placed.length, bare + 1);
+  const ch = placed[placed.length - 1];
+  assert.deepEqual(ch.placement.pos, [120, 0, 340]);
+  assert.equal(ch.placement.scale, UNIT_SCALE);
+  // The design reaches buildCharacter: its own outfit colours are in the mesh.
+  const colors = new Set(ch.mesh.faces.map((f) => f.color));
+  assert.ok(colors.has(DESIGN.outfit.top), 'top colour');
+  assert.ok(colors.has(DESIGN.outfit.shoes), 'shoe colour');
+});
+
+test('angry rides in buildCharacter opts, not in the character data', () => {
+  const calm = buildFirstPersonScene(input({ characters: [{ x: 1, y: 2, design: KAREN_DESIGN }] }));
+  const mad = buildFirstPersonScene(input({ characters: [{ x: 1, y: 2, design: KAREN_DESIGN, angry: true }] }));
+  assert.notDeepEqual(mad.placed[mad.placed.length - 1].mesh, calm.placed[calm.placed.length - 1].mesh);
 });
 
 test('meshForStationKind mapping and unknown fallback', () => {

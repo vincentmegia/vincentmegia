@@ -35,7 +35,63 @@ call in `drawScene` is pure and DOM-free.
 | `room.js` | `buildRoom({width, depth, height, floorTint})`: floor, ceiling, four walls, wainscot, windows, light fixtures |
 | `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
-| `meshes/*.js` | One builder per object: `character.js` (also exports `box`), `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout` |
+| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+
+### The character meshes
+
+A First Person patron is built from **the very same design object the
+top-down art draws** (`library/library-people.js`, Hospital Shift's
+`anime-people.js` format), not from a reduced palette, so a patron's hair,
+outfit, glasses, hat and age are the same in both cameras.
+
+| File | Role |
+|---|---|
+| `meshes/character.js` | `buildCharacter(design, opts)`: metrics + palette, body and head merged at the chin, then the one and only age scale |
+| `meshes/character-frame.js` | `FRAME` (the proportions, in 2D art px), `PX`, `CIRC`, `AGE_SCALE`, `KID_HEAD`, and `metricsFor(design)` |
+| `meshes/character-palette.js` | `paletteFor(design)` resolves every colour the mesh needs (skin/hair tones, top, inner, apron, tie, trim, bottom, skirt, legs, shoes, eyes, brow, lips); optional slots are `null`, never `undefined` |
+| `meshes/character-body.js` | `buildBody(design, palette, metrics)`: shoes, legs, lower garment, torso, sleeves, hands, neck — chin down |
+| `meshes/character-head.js` | `buildHead(design, palette, metrics, {angry})`: skull, ears, face, hair, facial hair and headwear — chin up |
+
+```js
+buildCharacter(design, { angry: true })   // angry is an OPTION, not design data
+```
+
+`opts.angry` scowls (Karen's outburst); it is deliberately not part of the
+design, since the design is shared with the 2D renderer. Nothing outside the
+mesh layer builds a palette: callers pass the design straight through.
+`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?}`.
+
+Karen is the one character with no roster entry (`findLibraryDesign('karen')`
+is `null`), so `library-people.js` also exports `KAREN_DESIGN` — a design in
+the same shape, carrying the four colours her old first-person palette had so
+her 3D look is unchanged. `fpDesignFor` in `library-game.js` is the whole
+mapping: `'karen'` to `KAREN_DESIGN`, anything else to `findLibraryDesign`.
+
+#### Proportions
+
+Everything is measured off the 2D art (`patron.js`/`patron-head.js`) in its
+own pixels and divided by `UNIT_SCALE` (40) by `PX`, so a 3D patron is the
+same chibi — 3.0 heads tall — the top-down view draws.
+
+| Constant | Where | Value (2D px) |
+|---|---|---|
+| `FRAME` | `character-frame.js` | `foot` 0, `shoeTop` 4.5, `hem` 19.4, `shoulder` 43.4, `chin` 44.4, `eye` 53.8, `crown` 66.3 |
+| head half-width | `metricsFor` | 9 (adult), 9.2 (elder), 9.4 (kid) either side of the centre line |
+| `halfTorso` / `halfShoulder` | `metricsFor` | 9.8 / 10.6, or 7.8 / 9.2 when `slim` (a skirt, or a kid) |
+| `depth` | `metricsFor` | 6.6, or 5.6 when `slim` |
+| `AGE_SCALE` | `character-frame.js` | kid 0.74, teen 0.95, elder 0.95, adult 1 |
+| `KID_HEAD` | `character-frame.js` | 1.26 (a kid's head alone, about `FRAME.chin`) |
+| `STOOP` / `DETAIL` | `character-head.js` | 0.05 units forward for an elder; 0.01 units proud for face detail |
+
+`CIRC = 1 / cos(pi/8)` is the one correction both halves share (the body
+imports it from the frame): `geom.js`'s `prism` puts flat faces on the axes,
+so an 8-sided ring of radius r is only `r*cos(pi/8)` wide. Ring radii are
+scaled up by `CIRC` so the silhouette a player sees is the width that was
+designed. `metricsFor` therefore returns the head prism's **radii**
+(`headRX`, `headRZ`), not half-widths, and every part of the head — skull,
+ears, face details, hair, hats — is placed as a multiple of them, so the whole
+head widens together.
 
 Wiring lives in `web/static/js/library-game.js`: `drawFirstPersonView`
 builds the scene and calls `drawScene(ctx, camera, placed, {viewport,
@@ -48,7 +104,8 @@ used for `findInteractTarget`; it does not draw.
 
 * `Vec3` = `[x, y, z]`.
 * `Mesh` = `{vertices: Vec3[], faces: Face[]}`; `Face` = `{indices: number[],
-  color: string}` with color `#rgb`, `#rrggbb` or `rgb(r,g,b)`. Faces are
+  color: string, unlit?: boolean}` with color `#rgb`, `#rrggbb` or
+  `rgb(r,g,b)`; `unlit` skips scene lighting (see Rendering model). Faces are
   convex polygons (3+ indices), wound counter-clockwise seen from outside:
   the normal comes from the first three vertices, and a face lit from behind
   gets only the ambient term. There is no back-face culling.
@@ -72,7 +129,8 @@ roughly metre units, then scaled into game pixels by `UNIT_SCALE`.
 plane** (Sutherland-Hodgman in clip space, keeping `z + w >= 0`; a face
 entirely behind it is dropped, one that straddles it is cut down to the part
 in front), computes flat intensity `ambient + max(0, n . lightDir)` from the
-*unclipped* world vertices, fogs toward `fog.color` between `fog.start` and
+*unclipped* world vertices (a face marked `unlit` takes intensity 1 instead),
+fogs toward `fog.color` between `fog.start` and
 `fog.end` by face depth, and sorts back to front (painter's algorithm, face
 depth = mean clip-space w of the clipped polygon's vertices).
 
@@ -81,6 +139,23 @@ ceiling and walls always straddle the near plane from in there. `drawScene`
 fills each polygon and then strokes it in the same color, which covers the
 antialiasing hairline that would otherwise show between two faces meeting on
 a shared edge (visible as a grid over the tiled shell).
+
+**`unlit` faces: the whole head, and nothing else.** Every face
+`buildHead` emits is `unlit`; no body face is. The head's shading is already
+baked into its ring and band colours (the skull runs deep to shade to skin up
+its rows), exactly as the 2D art paints it, and the scene light points down,
+so lighting a forward-facing face again would only grey it out. Fog still
+applies to an `unlit` face, so a distant patron still recedes into the haze.
+
+That split was checked by eye against the same patrons in Top-Down (see
+Testing Plan) and kept as is: the body's own baked band colours already carry
+most of its gradient, so the lit term only adds about a 25% spread and the
+head does not read as pasted on. The one residual tell is skin that lives in
+the body mesh — the hands and the neck — rendering about 25% darker than the
+face above it; at first-person distances that reads as hands in shadow, which
+is how the 2D art shades them too. If it ever stops reading that way, the
+fix is to narrow `unlit` to the face detail quads in `buildFace` or to raise
+the body's baked band colours, not to light the head.
 
 **Every First Person frame starts from a clean canvas.** `render` in
 `library-game.js` calls `ctx.clearRect` and, in First Person, fills
@@ -120,9 +195,10 @@ leftover Top-Down art showed through.
 | `FP_HEAD_BOB_AMP`, `FP_TILT_MAX` | `library-game.js` | 3.5 px, 0.035 rad (bob and roll) |
 
 Generic station boxes use `BOX_HEIGHT` 40 and default 60x40 (`s.w`/`s.h`
-override) in `scene.js`. Characters take a palette `{skin, hair, top,
-bottom, angry?}` (`fpPaletteFor` in `library-game.js` derives it from the
-patron design; Karen uses `FP_KAREN_PALETTE`).
+override) in `scene.js`. Characters take `{x, y, design, angry?, floor?}`
+(`fpDesignFor` in `library-game.js` looks the design up; Karen uses
+`KAREN_DESIGN`); their own proportion constants are in the table under
+**The character meshes**.
 
 ## Floor transitions
 
@@ -148,10 +224,11 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 ## How to add a new object mesh
 
 1. Write `meshes/<name>.js` exporting `build<Name>(opts)` that returns a
-   `Mesh`. Compose it from `box(min, max, color)` (exported by
-   `character.js`), offsetting indices when merging boxes (see `merge` in
-   `bookshelf.js`). Model space: base at y=0, centered on x/z, about one
-   unit tall per metre, front facing +Z.
+   `Mesh`. Compose it from `meshes/geom.js`'s primitives — `box(min, max,
+   color)`, `prism(rings, sides, capTop, capBottom)`, `quad(points, color)`
+   — and `merge(target, part)`, which offsets the indices for you. Model
+   space: base at y=0, centered on x/z, about one unit tall per metre, front
+   facing +Z.
 2. Map the station kind to it in `scene.js`: add the entry to `BUILDERS`
    (`meshForStationKind(kind)` falls back to `buildStationBox` for unknown
    kinds). Builders are placed with `scale: UNIT_SCALE`, so no-arg
@@ -168,7 +245,12 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   camera animates during the ride.
 * In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
   Cart books are drawn as characters/props, as before.
-* The visual constants above are plausible but untuned.
+* The visual constants above are plausible but untuned; the character
+  proportions are the exception — they are measured off the 2D art.
+* Nothing tests the head's attachments against the head's own silhouette:
+  ears, hats, earrings and headphones are placed off `headRX`/`headRZ` by
+  convention only, so one of them could be decoupled from the skull and the
+  suite would stay green.
 
 ## Testing Plan
 
@@ -189,5 +271,7 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   simulation frozen (`freeze(true)`), the loop keeps rendering the same
   scene, so sampled canvas pixels must be identical ~35 frames later. Before
   the clear they darkened frame by frame.
-* Visual tuning is manual: run `make dev` and look at `/library-game` in
-  First Person.
+* Visual tuning is manual: run `make dev` (on a port other than 8080, which
+  is a developer's own server) and look at `/library-game` in First Person
+  beside the same patrons in Top-Down. That comparison is what settled the
+  `unlit` set above; `character.test.js` covers the proportions it cannot.

@@ -67,8 +67,9 @@ handling, in place of Kitchen Shift's cooking and serving.
   pure `core.js` (matrices, camera, painter-sorted draw list, flat
   shading and fog), `room.js` (room shell), `scene.js` (per-frame
   assembly), `transitions.js`, and per-object builders in `meshes/` (one
-  parameterized `buildCharacter` humanoid for every FP character,
-  bookshelf, coffee machine, stairs, elevator, generic station box).
+  parameterized `buildCharacter` humanoid for every FP character, built
+  from the same patron design the top-down art draws, plus bookshelf,
+  coffee machine, stairs, elevator and generic station box).
   Top-Down keeps its detailed 2D art. Interaction and targeting are
   unchanged: `first-person.js` still projects entities for
   `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
