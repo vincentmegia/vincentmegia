@@ -224,7 +224,7 @@ Fallbacks, matching today's `fpPaletteFor` and the 2D renderer: `skin` `#efc49f`
 ```js
 test('metricsFor marks a skirted design slim', …)
 test('metricsFor marks a kid slim and scales the head', …) // headScale === 1.26, ageScale === 0.74
-test('metricsFor uses the elder head width', …)            // halfHeadX === 9.2/40
+test('metricsFor uses the elder head width', …)            // headRX / CIRC === 9.2/40
 test('paletteFor keeps every outfit colour', …)            // a design with top/inner/tie/trim/shoes/legs
                                                            // → each value present on the palette
 test('paletteFor derives hair and skin tones', …)          // four hair tones, three skin tones, all distinct
