@@ -8,7 +8,9 @@
 
 Library Shift's First Person camera is a software-3D renderer that draws
 flat-shaded, painter-sorted polygons onto the existing 2D canvas (no WebGL,
-no dependencies). It replaced the older billboard-sprite view. Parent doc:
+no dependencies). Its objects are referenced to their Top-Down 2D art
+(`docs/skills/2d-to-3d/SKILL.md`): characters are built from the same design
+the 2D draws, and the bookshelf wears the 2D drawer's own art as a texture. It replaced the older billboard-sprite view. Parent doc:
 `library-game.md`.
 
 ## Scope
@@ -18,8 +20,8 @@ books drawn as 3D meshes; head-bob/jump/tilt/sprint as camera effects; the
 animated elevator ride and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
-targeting (still `library/first-person.js`); textures, z-buffer, lighting
-beyond one directional light plus ambient; ambient staff in FP (not drawn);
+targeting (still `library/first-person.js`); textures other than a 2D
+drawer's own art; z-buffer, lighting beyond one directional light plus ambient; ambient staff in FP (not drawn);
 elevator door animation in the scene (see Known gaps).
 
 ---
@@ -131,15 +133,44 @@ vignette, interact flash, crosshair, minimap). `fpCameraParams` maps the
 effect state to camera params. `first-person.js` is still the projection
 used for `findInteractTarget`; it does not draw.
 
+### The prop meshes
+
+A prop with a flat, readable front wears **its own Top-Down drawer's art**
+(`docs/skills/2d-to-3d/SKILL.md`; design:
+`docs/superpowers/specs/2026-11-07-library-fp-prop-art-design.md`). Only the
+bookshelf does so far; the coffee machine, stairs and elevator are still flat
+colours (see Known gaps).
+
+| Piece | Where | Role |
+|---|---|---|
+| `bookcaseLayout(st, rows = 2)` | `library/anime-furniture.js` | Where `drawBookcase` puts the case, sign, back panel and each shelf's plank; `drawBookcase` draws from it, the mesh maps onto it |
+| `drawBookcase(ctx, st, {color, sign, titles, rows?})`, `BOOKCASE_COLORS` | `library/anime-furniture.js` | The 2D drawer (Top-Down draws 2 rows) and its case/back/plank colours |
+| `BOOKSHELF_SIZE`, `BOOKSHELF_ART`, `ART_SCALE` | `meshes/bookshelf.js` | 1.0 × 2.0 × 0.35 units; the art box `{w: 124, h: 242, rows: 4}` (its case inset is exactly the mesh's 1:2); 3 image px per art px |
+| `paintBookshelfArt(ctx, station, drawOpts)` | `meshes/bookshelf.js` | Paints an opaque case-colour backing, then `drawBookcase` at `BOOKSHELF_ART` |
+| `buildBookshelf({art})` | `meshes/bookshelf.js` | Crown (with the sign), plinth and sides at the front plane, four spine rows recessed 0.07, four plank lips 0.01 proud; each front textured with exactly its layout region; 37 faces, all `cull` |
+| `bookcaseDrawOpts`, `fpArtFor` | `library-game.js` | The one set of draw options Top-Down and FP share (so both show the same books), and the per-shelf canvas cache handed to the scene as `artFor` |
+
+Textured fronts are `unlit` (the 2D art carries its own top-lit gradients);
+sides, tops and the back stay lit so the case reads as solid. Without `art`
+(node tests) the same faces take `BOOKCASE_COLORS`. `buildFirstPersonScene`
+asks `artFor(station)` for each same-floor station with its own mesh and
+memoises the built mesh per station object and art.
+
 ### Data shapes (JSDoc in `core.js`)
 
 * `Vec3` = `[x, y, z]`.
 * `Mesh` = `{vertices: Vec3[], faces: Face[]}`; `Face` = `{indices: number[],
-  color: string, unlit?: boolean}` with color `#rgb`, `#rrggbb` or
-  `rgb(r,g,b)`; `unlit` skips scene lighting (see Rendering model). Faces are
-  convex polygons (3+ indices), wound counter-clockwise seen from outside:
-  the normal comes from the first three vertices, and a face lit from behind
-  gets only the ambient term. There is no back-face culling.
+  color: string, unlit?: boolean, cull?: boolean, texture?: Texture}` with
+  color `#rgb`, `#rrggbb` or `rgb(r,g,b)`; `unlit` skips scene lighting (see
+  Rendering model). Faces are convex polygons (3+ indices), wound
+  counter-clockwise seen from outside: the normal comes from the first three
+  vertices, and a face lit from behind gets only the ambient term. Back-face
+  culling is **opt-in per face**: `cull` drops a face turned away from the
+  camera. Only meshes whose winding a test checks from both sides set it (the
+  bookshelf); the room shell and characters don't.
+* `Texture` = `{image, uv, div?}` on a 4-index face: `image` any canvas image
+  source, `uv` one `[u, v]` in image px per index, `div` the `[nu, nv]` cells
+  (default `[1, 1]`). The mapped region must be opaque.
 * `Placement` = `{pos: Vec3, yaw, scale}`; `yaw` is radians about +Y,
   `scale` a number or `Vec3`. Order is scale, yaw, translate.
 * `Placed` = `{mesh, placement}`.
@@ -180,6 +211,16 @@ carries the flag (a wall or the ceiling in that layer *would* occlude wrongly),
 `core.test.js` pins the layer order, and `scene.test.js` renders a patron at
 interact range with and without the floor behind them and requires every row of
 their legs to win a pixel.
+
+**Textured faces** are cut into `div` cells, bilinear in world and uv space,
+and each cell is emitted as two triangles with their own depth. A cell the
+near plane cuts is emitted as a flat clipped polygon in `face.color`, so it
+leaves no hole. `drawScene` maps the image onto each triangle through the
+affine transform from its uv triangle (canvas 2D has no perspective divide,
+which the small cells hide), clipped to the triangle grown by 0.6 px so
+cells meet without a seam, and sampling only that triangle's uv box. Darkening
+by `1 - intensity` and fog are then painted over the exact triangle as
+overlays, which is why the mapped region must be opaque.
 
 Clipping is what lets the camera stand inside the room: the shell's floor,
 ceiling and walls always straddle the near plane from in there. `drawScene`
@@ -231,6 +272,11 @@ leftover Top-Down art showed through.
 * **Coplanar-offset rule.** Faces that share a plane tie in the sort and
   z-fight. Sit details a small distance proud of their backing surface
   (`room.js` uses `PROUD = 0.1`; meshes use about 0.01 in unit space).
+* **Textures are affine per triangle.** Perspective is only approximated by
+  the `div` cells; a large textured face seen up close and edge-on will warp.
+  Each cell costs a clip and an image draw, so keep `div` small (the bookshelf
+  uses `[2, 1]` wide and `[1, 3]` tall; a floor with three shelves in view
+  ran at 60 fps in headless Chromium).
 * **Near-plane clipping is per face, not per scene.** A face is cut against
   the near plane only; there is no side/top clipping, so off-screen geometry
   is still rasterized by the canvas.
@@ -247,6 +293,7 @@ leftover Top-Down art showed through.
 | `FP_LIGHT` | `library-game.js` | `{dir: [0.35, 1, 0.25], ambient: 0.5}` |
 | `FP_FOG` / `FP_BACKDROP` | `library-game.js` | `{color: '#d8ccb0', start: 520, end: 1500}` / the same cream |
 | `TILE` | `room.js` | 120 (longest edge of one shell face) |
+| `ART_SCALE`, `RECESS`, `LIP` | `meshes/bookshelf.js` | 3 image px per art px; spine rows 0.07 behind the frame; plank lips 0.01 proud |
 | `FP_HEAD_BOB_AMP`, `FP_TILT_MAX` | `library-game.js` | 3.5 px, 0.035 rad (bob and roll) |
 
 Generic station boxes use `BOX_HEIGHT` 40 and default 60x40 (`s.w`/`s.h`
@@ -278,6 +325,10 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 
 ## How to add a new object mesh
 
+Follow `docs/skills/2d-to-3d/SKILL.md` first: it decides whether the object
+gets the 2D art as a texture (flat-fronted props) or measured geometry
+(characters), and lists what the tests must pin.
+
 1. Write `meshes/<name>.js` exporting `build<Name>(opts)` that returns a
    `Mesh`. Compose it from `meshes/geom.js`'s primitives — `box(min, max,
    color)`, `prism(rings, sides, capTop, capBottom)`, `quad(points, color)`
@@ -298,6 +349,13 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 * `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
   `doorOpen`, but `buildFirstPersonScene` does not pass it, so only the
   camera animates during the ride.
+* Only the bookshelf wears its 2D art. The coffee machine, stairs and
+  elevator still use their own flat colours, and the front desk, return
+  cart, fines counter, boss office and reading nook are plain station boxes.
+  Next: move `drawCoffeeMachineDetail` out of `library-game.js` into
+  `library/anime-furniture.js`, and give Hospital Shift's `drawStairs` /
+  `drawElevator` layout exports that leave Hospital's drawing byte-identical
+  (spec Follow-ups).
 * In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
   Cart books are drawn as characters/props, as before.
 * The visual constants above are plausible but untuned; the character
@@ -319,7 +377,8 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   their modules. They need no DOM or canvas. Three of them guard what the
   renderer actually puts on screen, which face/vertex counts alone missed:
   `core.test.js` requires a near-plane-straddling face to be clipped (not
-  dropped) with its shading unchanged, `room.test.js` requires no shell face
+  dropped) with its shading unchanged (and a textured cell to fall back to a
+  flat poly there), `room.test.js` requires no shell face
   to span more than one `TILE`, and `scene.test.js` samples a grid of screen
   points from five poses inside the room and requires the shell to paint
   every one of them.
@@ -335,3 +394,9 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   is a developer's own server) and look at `/library-game` in First Person
   beside the same patrons in Top-Down. That comparison is what settled the
   `unlit` set above; `character.test.js` covers the proportions it cannot.
+* Props referenced to 2D: `bookshelf.test.js` pins each textured front to its
+  exact `bookcaseLayout` region, the art's aspect, no untextured face coplanar
+  with a textured front, and culling from in front and behind;
+  `anime-furniture.test.js` pins `bookcaseLayout` to the Top-Down geometry.
+  When changing a drawer a mesh wears, diff its canvas call trace before and
+  after (the skill's step 2): Top-Down must stay byte-identical.

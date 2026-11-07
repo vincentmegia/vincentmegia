@@ -1,61 +1,114 @@
-// Low-poly bookshelf: side panels, back panel, `rows`+1 planks (the topmost
-// closes the unit) and two book blocks per row. Base at y=0, centered on x/z.
-// Pure and deterministic. Details sit 0.01 proud of backing surfaces so the
-// painter's sort never sees exactly-coplanar faces.
-import { box } from './geom.js';
+// First Person bookshelf, referenced to Top-Down's drawBookcase
+// (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// the depth: a case of crown, plinth and two sides, a recessed bay, and plank
+// lips standing proud. The surface is the 2D art itself: the game paints
+// drawBookcase into a canvas (paintBookshelfArt) and each box's front face
+// shows exactly its own region of it, read from bookcaseLayout, the same
+// layout drawBookcase draws with. Without art (tests, no canvas) the same
+// faces fall back to the bookcase's flat colours.
+//
+// Model space: base at y=0, centered on x/z, front facing +Z. Pure and
+// deterministic.
+import { box, quad, merge, emptyMesh } from './geom.js';
+import { bookcaseLayout, drawBookcase, BOOKCASE_COLORS } from '../../anime-furniture.js';
 
-const HEIGHT = 2.0;
-const DEPTH = 0.35;
-const T = 0.04; // panel / plank thickness
-const BACK = 0.03;
-const KICK = 0.1;
-const PLANK_COLOR = '#8a5a30';
-const FRAME_COLOR = '#7a4e2a';
-const PALETTE = ['#a8402f', '#2f5d8a', '#4f7a3a', '#c79a2e', '#6b3f7a', '#d9c9a3', '#2f7a74'];
+/** Real-world size, in units (~1 = one metre). */
+export const BOOKSHELF_SIZE = { width: 1.0, height: 2.0, depth: 0.35 };
+/**
+ * The box drawBookcase is drawn into for First Person: the same 124 px width
+ * as Top-Down, with the height chosen so the case (inset 3 px each side) has
+ * the mesh's own 1:2 aspect, and 4 rows to suit a 2 m case.
+ */
+export const BOOKSHELF_ART = { w: 124, h: 242, rows: 4 };
+/** Image px per art px: sharp at interact range without a large canvas. */
+export const ART_SCALE = 3;
 
-function merge(parts) {
-  const vertices = [];
-  const faces = [];
-  for (const p of parts) {
-    const off = vertices.length;
-    vertices.push(...p.vertices);
-    for (const f of p.faces) faces.push({ indices: f.indices.map((i) => i + off), color: f.color });
-  }
-  return { vertices, faces };
+const RECESS = 0.07; // spine rows sit this far behind the frame's front
+const LIP = 0.01; // plank lips stand this far proud of it
+// [nu, nv] cells per textured face: enough to hide the affine mapping's
+// missing perspective divide, few enough for four shelves on screen.
+const DIV_WIDE = [2, 1];
+const DIV_TALL = [1, 3];
+
+/**
+ * Paints the First Person bookshelf art: an opaque backing in the case colour
+ * (the renderer needs the mapped region opaque, and the case's rounded corners
+ * are not), then drawBookcase at BOOKSHELF_ART. `ctx` is a canvas of
+ * BOOKSHELF_ART.w x .h times ART_SCALE; `drawOpts` are the same {color, sign,
+ * titles} Top-Down passes, so both views show the same books.
+ */
+export function paintBookshelfArt(ctx, station, drawOpts) {
+  ctx.save();
+  ctx.fillStyle = BOOKCASE_COLORS.case;
+  ctx.fillRect(0, 0, BOOKSHELF_ART.w * ART_SCALE, BOOKSHELF_ART.h * ART_SCALE);
+  ctx.scale(ART_SCALE, ART_SCALE);
+  ctx.translate(BOOKSHELF_ART.w / 2, BOOKSHELF_ART.h / 2);
+  drawBookcase(ctx, { id: station.id, w: BOOKSHELF_ART.w, h: BOOKSHELF_ART.h }, { ...drawOpts, rows: BOOKSHELF_ART.rows });
+  ctx.restore();
 }
 
-export function buildBookshelf({ width = 1.0, rows = 4, accent } = {}) {
-  const hw = width / 2;
-  const hd = DEPTH / 2;
-  const frame = accent || FRAME_COLOR;
-  const parts = [];
-  parts.push(box([-hw, 0, -hd], [-hw + T, HEIGHT, hd], frame));
-  parts.push(box([hw - T, 0, -hd], [hw, HEIGHT, hd], frame));
-  parts.push(box([-hw + T, 0, -hd], [hw - T, HEIGHT, -hd + BACK], frame));
+/** A box without the faces named in `drop` (hidden ones would only tie in the painter's sort). */
+function boxWithout(min, max, color, drop) {
+  const names = ['front', 'back', 'right', 'left', 'top', 'bottom']; // geom.box's face order
+  const b = box(min, max, color);
+  return { vertices: b.vertices, faces: b.faces.filter((_, i) => !drop.includes(names[i])) };
+}
 
-  const step = (HEIGHT - KICK - T) / rows; // plank-to-plank pitch
-  const zBack = -hd + BACK;
-  let n = 0;
-  for (let i = 0; i <= rows; i++) {
-    const y0 = i === rows ? HEIGHT - T : KICK + i * step;
-    // Recessed 0.01 so front faces don't tie with the side panels' fronts.
-    parts.push(box([-hw + T, y0, zBack], [hw - T, y0 + T, hd - 0.01], PLANK_COLOR));
-  }
-  const inner = width - 2 * T;
-  for (let i = 0; i < rows; i++) {
-    const base = KICK + i * step + T;
-    const clear = step - T;
-    let x = -hw + T + 0.02;
-    for (let b = 0; b < 2; b++) {
-      const w = inner * (b === 0 ? 0.38 : 0.3);
-      const h = clear * (0.65 + 0.05 * ((n * 3) % 5));
-      const d = DEPTH - BACK - 0.08 - 0.02 * (n % 3);
-      const gap = b === 0 ? 0 : inner * 0.12;
-      x += gap;
-      parts.push(box([x, base, zBack + 0.01], [x + w, base + h, zBack + 0.01 + d], PALETTE[n % PALETTE.length]));
-      x += w;
-      n++;
+/**
+ * @param {{art?: CanvasImageSource}} [opts] art: a canvas paintBookshelfArt painted
+ * @returns {{vertices: number[][], faces: object[]}}
+ */
+export function buildBookshelf({ art } = {}) {
+  const { width: W, height: H, depth: D } = BOOKSHELF_SIZE;
+  const L = bookcaseLayout(BOOKSHELF_ART, BOOKSHELF_ART.rows);
+  const c = L.case;
+  // Art px -> model units: the case rect fills the mesh's width and height.
+  const mx = (x) => ((x - c.x0) / (c.x1 - c.x0)) * W - W / 2;
+  const my = (y) => ((c.y1 - y) / (c.y1 - c.y0)) * H;
+  const zBack = -D / 2;
+  const zFront = D / 2;
+  const zRow = zFront - RECESS;
+  const mesh = emptyMesh();
+
+  // Texture the +Z face of a part (geom.box's first face) with art region r.
+  const front = (part, r, color, div) => {
+    const f = part.faces[0];
+    if (art) {
+      // box's front winds (x0,y0) (x1,y0) (x1,y1) (x0,y1) in model space;
+      // model y up is art y down.
+      const u = (x) => (x + BOOKSHELF_ART.w / 2) * ART_SCALE;
+      const v = (y) => (y + BOOKSHELF_ART.h / 2) * ART_SCALE;
+      f.texture = { image: art, uv: [[u(r.x0), v(r.y1)], [u(r.x1), v(r.y1)], [u(r.x1), v(r.y0)], [u(r.x0), v(r.y0)]], div };
+      f.unlit = true;
+    } else {
+      f.color = color;
     }
-  }
-  return merge(parts);
+    merge(mesh, part);
+  };
+  // A part spanning art region r, from z0 to z1, its front textured.
+  const part = (r, z0, z1, color, drop, div) =>
+    front(boxWithout([mx(r.x0), my(r.y1), z0], [mx(r.x1), my(r.y0), z1], color, drop), r, color, div);
+
+  const last = L.shelves[L.shelves.length - 1].plank;
+  // The case: crown (with the sign), plinth, and the two sides between them.
+  part({ x0: c.x0, y0: c.y0, x1: c.x1, y1: L.back.y0 }, zBack, zFront, BOOKCASE_COLORS.case, [], DIV_WIDE);
+  part({ x0: c.x0, y0: last.y1, x1: c.x1, y1: c.y1 }, zBack, zFront, BOOKCASE_COLORS.case, [], DIV_WIDE);
+  part({ x0: c.x0, y0: L.back.y0, x1: L.back.x0, y1: last.y1 }, zBack, zFront, BOOKCASE_COLORS.case, ['top', 'bottom'], DIV_TALL);
+  part({ x0: L.back.x1, y0: L.back.y0, x1: c.x1, y1: last.y1 }, zBack, zFront, BOOKCASE_COLORS.case, ['top', 'bottom'], DIV_TALL);
+  // The bay: a spine row on the recessed plane above each plank lip.
+  L.shelves.forEach((s, r) => {
+    const rowTop = r === 0 ? L.back.y0 : L.shelves[r - 1].plank.y1;
+    const row = quad([[mx(L.back.x0), my(s.plank.y0), zRow], [mx(L.back.x1), my(s.plank.y0), zRow], [mx(L.back.x1), my(rowTop), zRow], [mx(L.back.x0), my(rowTop), zRow]], BOOKCASE_COLORS.back);
+    front(row, { x0: L.back.x0, y0: rowTop, x1: L.back.x1, y1: s.plank.y0 }, BOOKCASE_COLORS.back, DIV_WIDE);
+    // The lip's ends sink into the sides and its back sits on the row plane, so neither shows.
+    part(s.plank, zRow, zFront + LIP, BOOKCASE_COLORS.plank, ['back', 'left', 'right'], DIV_WIDE);
+  });
+  // The case's back, seen from behind the shelf.
+  merge(mesh, quad([[mx(L.back.x1), my(last.y1), zBack], [mx(L.back.x0), my(last.y1), zBack], [mx(L.back.x0), my(L.back.y0), zBack], [mx(L.back.x1), my(L.back.y0), zBack]], BOOKCASE_COLORS.case));
+  // Every face is wound to face out of the shelf (bookshelf.test.js renders it
+  // from both sides), so all of them cull: a face turned away from the camera,
+  // like the crown's top above eye level, can then never be painted over the
+  // sign by the painter's sort.
+  for (const f of mesh.faces) f.cull = true;
+  return mesh;
 }

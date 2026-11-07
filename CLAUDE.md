@@ -39,7 +39,9 @@ HTMX + Tailwind + PostgreSQL.
 
 ## Read before working in an area
 
-- Conventions: `docs/skills/{go-backend,postgres,htmx-ui,tailwind-ui}/SKILL.md`.
+- Conventions: `docs/skills/{go-backend,postgres,htmx-ui,tailwind-ui}/SKILL.md`;
+  `docs/skills/2d-to-3d/SKILL.md` before building or changing a First Person
+  mesh, or a 2D drawer one is referenced to.
 - Every feature has `docs/features/<feature>.md` (new ones start from
   `docs/features/template.md`). Read it before touching that feature, and
   verify its claims against the code — these docs have drifted before.
@@ -81,7 +83,9 @@ HTMX + Tailwind + PostgreSQL.
   (pure core, meshes, room, scene, transitions; canvas-2D, no WebGL) draws the
   FP view with one parameterized 3D humanoid `buildCharacter` for all FP
   characters; Top-Down keeps the detailed 2D art. Changing a `three-d/` mesh
-  or the core affects only the FP camera. Doc: `library-first-person-3d.md`.
+  or the core affects only the FP camera, but the FP bookshelf wears
+  `drawBookcase`'s own art (via `bookcaseLayout`), so a bookcase art change
+  shows in both cameras. Doc: `library-first-person-3d.md`.
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):

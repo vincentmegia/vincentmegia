@@ -101,40 +101,74 @@ function inkFor(hex) {
 // Stations
 // ---------------------------------------------------------------------------
 
+/** The bookcase's own wood and paper colours (the genre colour comes in through opts). */
+export const BOOKCASE_COLORS = { case: '#e3b98a', back: '#fff3e6', plank: '#c9925e' };
+
+/**
+ * Where drawBookcase puts its parts, in the station's centered px: the case,
+ * the sign, the back panel the spines stand on, and each shelf (its spine
+ * baseline `y` + 3 and its plank). First Person's bookshelf mesh maps its faces
+ * onto these same regions of the drawn art (docs/skills/2d-to-3d/SKILL.md),
+ * so this is the one contract between the two renderers: move a part here and
+ * both views follow.
+ *
+ * @param {{w: number, h: number}} st
+ * @param {number} [rows] shelves (Top-Down draws 2)
+ */
+export function bookcaseLayout(st, rows = 2) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const back = { x0: -hw + 10, y0: -hh + 27, x1: hw - 10, y1: hh - 9 };
+  const rowH = (back.y1 - back.y0) / rows;
+  const shelves = [];
+  for (let r = 0; r < rows; r++) {
+    const y = back.y0 + (r + 1) * rowH;
+    shelves.push({ y, plank: { x0: back.x0 - 2, y0: y - 3, x1: back.x1 + 2, y1: y + 1 } });
+  }
+  return {
+    case: { x0: -hw + 3, y0: -hh + 3, x1: hw - 3, y1: hh - 3 },
+    sign: { x0: -hw + 9, y0: -hh + 7, x1: hw - 9, y1: -hh + 22 },
+    back,
+    rowH,
+    shelves,
+  };
+}
+
 /**
  * A wide wooden bookcase: a glossy genre-colored sign across the top
- * (`opts.sign`, e.g. "추리 · Mystery"), two shelves of outlined spines in
+ * (`opts.sign`, e.g. "추리 · Mystery"), shelves of outlined spines in
  * tints of the genre's color, each carrying a title from its pool (the
- * Korean of a {ko, en} pair, or a plain string), and a sparkle.
+ * Korean of a {ko, en} pair, or a plain string), and a sparkle. Top-Down
+ * draws 2 shelves; First Person's taller bookshelf asks for `opts.rows`.
  *
  * @param {{id: string, w: number, h: number}} st
- * @param {{color: string, sign: string, titles: (string | {ko: string, en: string})[]}} opts
+ * @param {{color: string, sign: string, titles: (string | {ko: string, en: string})[], rows?: number}} opts
  */
 export function drawBookcase(ctx, st, opts) {
   const hw = st.w / 2;
   const hh = st.h / 2;
   const color = opts.color;
-  block(ctx, -hw + 3, -hh + 3, st.w - 6, st.h - 6, 8, '#e3b98a', 1.5); // case
+  const L = bookcaseLayout(st, opts.rows);
+  const sg = L.sign;
+  block(ctx, L.case.x0, L.case.y0, L.case.x1 - L.case.x0, L.case.y1 - L.case.y0, 8, BOOKCASE_COLORS.case, 1.5); // case
   // Sign.
-  block(ctx, -hw + 9, -hh + 7, st.w - 18, 15, 7, color, 1.3);
+  block(ctx, sg.x0, sg.y0, sg.x1 - sg.x0, sg.y1 - sg.y0, 7, color, 1.3);
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   path(ctx, -hw + 14, -hh + 9, st.w - 28, 4, 2);
   ctx.fill();
   plaqueText(ctx, opts.sign, 0, -hh + 15, 'bold 9.5px sans-serif', '#ffffff', tint(color, -0.5), 2.2);
   // Back panel and shelves.
-  const left = -hw + 10;
-  const right = hw - 10;
-  const top = -hh + 27;
-  const bottom = hh - 9;
-  flat(ctx, left, top, right - left, bottom - top, 4, '#fff3e6', 1.2);
-  const rows = 2;
-  const rowH = (bottom - top) / rows;
+  const left = L.back.x0;
+  const right = L.back.x1;
+  const top = L.back.y0;
+  const bottom = L.back.y1;
+  flat(ctx, left, top, right - left, bottom - top, 4, BOOKCASE_COLORS.back, 1.2);
+  const rowH = L.rowH;
   const rand = seeded(st.id);
   const titles = opts.titles?.length ? opts.titles : ['Untitled'];
   let titleIndex = Math.floor(rand() * titles.length);
   const palette = [tint(color, 0.55), tint(color, 0.3), color, tint(color, -0.2), '#fff1c8', tint(color, 0.7)];
-  for (let r = 0; r < rows; r++) {
-    const shelfY = top + (r + 1) * rowH;
+  L.shelves.forEach(({ y: shelfY, plank }, r) => {
     let x = left + 3;
     while (x < right - 5) {
       const w = Math.min(10 + Math.floor(rand() * 3), right - 3 - x);
@@ -179,8 +213,8 @@ export function drawBookcase(ctx, st, opts) {
       ctx.restore();
       x += w + 0.6;
     }
-    block(ctx, left - 2, shelfY - 3, right - left + 4, 4, 2, '#c9925e', 1);
-  }
+    block(ctx, plank.x0, plank.y0, plank.x1 - plank.x0, plank.y1 - plank.y0, 2, BOOKCASE_COLORS.plank, 1);
+  });
   sparkle(ctx, hw - 10, -hh + 12, 3.5, '#ffffff');
 }
 

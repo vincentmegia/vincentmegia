@@ -248,3 +248,96 @@ test('ground polys are painted before everything that stands on them', () => {
   const groundDepths = list.filter((p) => p.ground).map((p) => p.depth);
   assert.deepEqual(groundDepths, [...groundDepths].sort((a, b) => b - a), 'ground not far-to-near');
 });
+
+// ---- textured faces (docs/skills/2d-to-3d/SKILL.md) ----
+// A face may carry `texture: {image, uv, div?}`: the 2D drawer's own art,
+// painted onto the face. uv is one [u, v] (texture px) per index.
+const IMAGE = { width: 64, height: 32 };
+const texQuad = (extra = {}) => {
+  const q = quad('#808080');
+  q.faces[0] = { ...q.faces[0], texture: { image: IMAGE, uv: [[0, 32], [64, 32], [64, 0], [0, 0]], ...extra } };
+  return q;
+};
+
+test('a textured quad is emitted as two textured triangles per cell', () => {
+  const list = buildDrawList(CAM, [at(texQuad(), -5)], SCENE);
+  assert.equal(list.length, 2);
+  for (const p of list) {
+    assert.equal(p.image, IMAGE);
+    assert.equal(p.screen.length, 3);
+    assert.equal(p.uv.length, 3);
+  }
+  // The first triangle's corners keep the face's own uv.
+  assert.deepEqual(list[0].uv, [[0, 32], [64, 32], [64, 0]]);
+});
+
+test('div subdivides the face into nu x nv cells with interpolated uv', () => {
+  const list = buildDrawList(CAM, [at(texQuad({ div: [2, 3] }), -5)], SCENE);
+  assert.equal(list.length, 2 * 2 * 3);
+  const us = new Set(list.flatMap((p) => p.uv.map(([u]) => u)));
+  assert.deepEqual([...us].sort((a, b) => a - b), [0, 32, 64]);
+  // Cells carry their own depth, like room.js's tiles.
+  assert.ok(list.every((p) => Number.isFinite(p.depth)));
+});
+
+test('a textured cell crossing the near plane falls back to a flat clipped poly', () => {
+  // The quad passes through the camera plane: some cells are behind it.
+  const q = {
+    vertices: [[-1, -1, 1], [1, -1, 1], [1, -1, -9], [-1, -1, -9]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#808080', texture: { image: IMAGE, uv: [[0, 32], [64, 32], [64, 0], [0, 0]], div: [1, 4] } }],
+  };
+  const list = buildDrawList(CAM, [at(q, 0)], SCENE);
+  assert.ok(list.some((p) => p.image), 'cells in front keep their texture');
+  const flat = list.filter((p) => !p.image);
+  assert.ok(flat.length >= 1, 'the straddling cell is drawn flat, not dropped');
+  for (const p of flat) assert.match(p.color, /^rgb\(/);
+});
+
+test('a textured face carries its shading and fog for the draw pass', () => {
+  const lit = buildDrawList(CAM, [at(texQuad(), -5)], litDir([0, 0, -1]));
+  assert.ok(lit.every((p) => p.intensity < 1));
+  const unlit = buildDrawList(CAM, [at(quadWith({ unlit: true, texture: texQuad().faces[0].texture }), -5)], litDir([0, 0, -1]));
+  assert.ok(unlit.every((p) => p.intensity === 1));
+  const fogged = buildDrawList(CAM, [at(texQuad(), -5)], { ...SCENE, fog: { color: '#e8dcc8', start: 0, end: 10 } });
+  assert.ok(fogged.every((p) => p.fog > 0 && p.fog < 1 && p.fogColor === '#e8dcc8'));
+});
+
+test('drawScene paints a textured triangle with the image, clipped to it', () => {
+  const calls = [];
+  const ctx = new Proxy({}, { get: (_, k) => (...a) => calls.push([k, a]), set: (_, k) => { calls.push(['set:' + k]); return true; } });
+  drawScene(ctx, CAM, [at(quadWith({ unlit: true, texture: texQuad().faces[0].texture }), -5)], SCENE);
+  const names = calls.map(([k]) => k);
+  assert.equal(names.filter((k) => k === 'drawImage').length, 2);
+  assert.ok(names.includes('clip') && names.includes('transform'));
+  for (const [k, a] of calls.filter(([k]) => k === 'drawImage')) assert.equal(a[0], IMAGE, k);
+  // Unlit and unfogged: no shading overlay fill.
+  assert.ok(!names.includes('fill'));
+});
+
+test('drawScene shades a lit, fogged textured triangle with an overlay', () => {
+  const calls = [];
+  const ctx = new Proxy({}, { get: (_, k) => (...a) => calls.push(k), set: (_, k) => { calls.push('set:' + k); return true; } });
+  drawScene(ctx, CAM, [at(texQuad(), -5)], { ...litDir([0, 0, -1]), fog: { color: '#e8dcc8', start: 0, end: 10 } });
+  assert.equal(calls.filter((k) => k === 'fill').length, 4, 'one darken + one fog fill per triangle');
+});
+
+// ---- opt-in back-face culling ----
+// The painter's sort has no z-buffer, so a face turned away from the camera
+// can still be painted over a nearer one (a bookshelf's crown top, above eye
+// level, over its own sign). A face that sets `cull` is dropped when it faces
+// away; meshes opt in only where their winding is tested.
+test('a culled face is dropped when it faces away from the camera', () => {
+  const facing = quadWith({ cull: true }); // normal +Z, camera at z=0 looking down -Z
+  assert.equal(buildDrawList(CAM, [at(facing, -5)], SCENE).length, 1);
+  assert.equal(buildDrawList(CAM, [at(facing, -5, Math.PI)], SCENE).length, 0, 'turned away');
+});
+
+test('faces without cull are drawn from either side, as before', () => {
+  assert.equal(buildDrawList(CAM, [at(quad(), -5, Math.PI)], SCENE).length, 1);
+});
+
+test('a culled textured face is dropped when it faces away', () => {
+  const t = texQuad();
+  t.faces[0].cull = true;
+  assert.equal(buildDrawList(CAM, [at(t, -5, Math.PI)], SCENE).length, 0);
+});

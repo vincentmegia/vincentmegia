@@ -233,3 +233,34 @@ test('a patron at interact range keeps its legs and feet on screen', () => {
   assert.deepEqual(swallowed, [],
     `${swallowed.length}/${N + 1} leg rows are entirely floor, at screen y ${swallowed}`);
 });
+
+// ---- prop art (docs/skills/2d-to-3d/SKILL.md) ----
+const shelfMeshes = (scene) => scene.placed.filter((p) => p.mesh.faces.some((f) => f.texture));
+
+test('artFor hands each station its 2D art; the bookshelf wears it', () => {
+  const asked = [];
+  const art = { width: 372, height: 726 };
+  const inp = input();
+  const scene = buildFirstPersonScene({ ...inp, artFor: (st) => { asked.push(st); return st.kind === 'bookshelf' ? art : null; } });
+  assert.ok(asked.includes(inp.stations[0]), 'asked for the floor-1 bookshelf');
+  assert.ok(!asked.includes(inp.stations[2]), 'not asked for another floor');
+  const shelves = shelfMeshes(scene);
+  assert.equal(shelves.length, 1);
+  assert.ok(shelves[0].mesh.faces.filter((f) => f.texture).every((f) => f.texture.image === art));
+  assert.equal(shelves[0].placement.scale, UNIT_SCALE);
+});
+
+test('without artFor the bookshelf falls back to flat colours', () => {
+  assert.equal(shelfMeshes(buildFirstPersonScene(input())).length, 0);
+});
+
+test('a station mesh is built once per art, then reused frame to frame', () => {
+  const inp = input();
+  const art = { width: 372, height: 726 };
+  const frame = (a) => buildFirstPersonScene({ ...inp, artFor: () => a }).placed;
+  const meshOf = (placed) => placed.find((p) => p.placement.pos[0] === 100 && p.placement.pos[2] === 120).mesh;
+  const first = meshOf(frame(art));
+  assert.equal(meshOf(frame(art)), first, 'same art: same mesh object');
+  const other = { width: 372, height: 726 };
+  assert.notEqual(meshOf(frame(other)), first, 'new art: rebuilt');
+});

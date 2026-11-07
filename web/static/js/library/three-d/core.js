@@ -100,11 +100,17 @@ export function projectPoint(camera, world, viewport) {
 
 /**
  * @typedef {[number, number, number]} Vec3
- * @typedef {{indices: number[], color: string, unlit?: boolean}} Face   unlit: skip scene lighting (fog still applies). color: '#rgb' | '#rrggbb' | 'rgb(r,g,b)'
+ * @typedef {{indices: number[], color: string, unlit?: boolean, cull?: boolean, texture?: Texture}} Face   unlit: skip scene lighting (fog still applies). cull: drop the face when it is turned away from the camera (opt in only where the winding is tested). color: '#rgb' | '#rrggbb' | 'rgb(r,g,b)'
+ * @typedef {{image: CanvasImageSource, uv: [number, number][], div?: [number, number]}} Texture
+ *   A quad face's surface art (docs/skills/2d-to-3d/SKILL.md): `image` is the 2D
+ *   drawer's own output, `uv` one [u, v] in image px per face index, `div` the
+ *   [nu, nv] cells it is cut into (default [1, 1]). The mapped region must be
+ *   opaque: shading and fog are painted over each triangle as overlays.
  * @typedef {{vertices: Vec3[], faces: Face[]}} Mesh
  * @typedef {{pos: Vec3, yaw: number, scale: number|Vec3}} Placement   yaw: radians about +Y
  * @typedef {{mesh: Mesh, placement: Placement}} Placed
  * @typedef {{screen: [number, number][], color: string, depth: number}} DrawPoly
+ *   A textured cell's triangles add `image`, `uv`, `intensity`, `fog` (0..1) and `fogColor`.
  */
 
 const NEAR_EPS = 1e-9;
@@ -168,6 +174,53 @@ export function shadeColor(base, intensity, fog, depth = 0) {
   return `rgb(${rgb.map((v) => Math.round(v)).join(',')})`;
 }
 
+const lerp3 = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
+const bilerp = (q, u, v) => lerp3(lerp3(q[0], q[1], u), lerp3(q[3], q[2], u), v);
+const fogAmount = (fog, depth) => (fog ? Math.min(1, Math.max(0, (depth - fog.start) / (fog.end - fog.start))) : 0);
+
+/**
+ * Cuts a textured quad into div[0] x div[1] cells (bilinear in world space and
+ * in uv) and pushes each cell as two textured triangles. Canvas 2D can only
+ * draw an image through an affine map, so a small cell is what keeps the
+ * missing perspective divide invisible. A cell the near plane cuts is pushed
+ * as a flat, clipped polygon in the face's colour instead, so it leaves no hole.
+ */
+function pushTexturedFace(out, face, world, camera, viewport, fog, intensity) {
+  const { image, uv, div = [1, 1] } = face.texture;
+  const W = face.indices.map((i) => world[i]);
+  const [nu, nv] = div;
+  const toScreen = ([cx, cy, , cw]) => [(cx / cw * 0.5 + 0.5) * viewport.width, (1 - (cy / cw * 0.5 + 0.5)) * viewport.height];
+  for (let iv = 0; iv < nv; iv++) {
+    for (let iu = 0; iu < nu; iu++) {
+      const corners = [[iu, iv], [iu + 1, iv], [iu + 1, iv + 1], [iu, iv + 1]].map(([a, b]) => [a / nu, b / nv]);
+      const clip = corners.map(([a, b]) => transformPoint(camera.viewProj, bilerp(W, a, b)));
+      if (clip.some((c) => c[2] + c[3] < NEAR_EPS)) {
+        const poly = clipNear(clip);
+        if (poly.length < 3) continue;
+        const depth = poly.reduce((acc, c) => acc + c[3], 0) / poly.length;
+        out.push({ screen: poly.map(toScreen), color: shadeColor(face.color, intensity, fog, depth), depth, ground: false });
+        continue;
+      }
+      const cellUv = corners.map(([a, b]) => bilerp(uv, a, b));
+      const screen = clip.map(toScreen);
+      for (const tri of [[0, 1, 2], [0, 2, 3]]) {
+        const depth = tri.reduce((acc, i) => acc + clip[i][3], 0) / 3;
+        out.push({
+          screen: tri.map((i) => screen[i]),
+          uv: tri.map((i) => cellUv[i]),
+          image,
+          intensity,
+          fog: fogAmount(fog, depth),
+          fogColor: fog?.color,
+          color: face.color,
+          depth,
+          ground: false,
+        });
+      }
+    }
+  }
+}
+
 function modelPoint(p, pl) {
   const s = Array.isArray(pl.scale) ? pl.scale : [pl.scale, pl.scale, pl.scale];
   const x = p[0] * s[0], y = p[1] * s[1], z = p[2] * s[2];
@@ -185,6 +238,17 @@ export function buildDrawList(camera, placed, opts) {
     for (const face of mesh.faces) {
       const idx = face.indices;
       if (idx.length < 3) continue;
+      if (face.cull) {
+        const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
+        if (dot(cross(sub(b, a), sub(c, a)), sub(camera.position, a)) <= 0) continue;
+      }
+      if (face.texture && idx.length === 4) {
+        const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
+        const n = normalize(cross(sub(b, a), sub(c, a)));
+        const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
+        pushTexturedFace(out, face, world, camera, viewport, fog, intensity);
+        continue;
+      }
       // Clip against the near plane; a face entirely behind it yields nothing.
       // Shading still comes from the unclipped world vertices, so a face looks
       // the same whether or not the camera happens to cut it.
@@ -217,6 +281,10 @@ export function buildDrawList(camera, placed, opts) {
 
 export function drawScene(ctx, camera, placed, opts) {
   for (const poly of buildDrawList(camera, placed, opts)) {
+    if (poly.image) {
+      drawTexturedTriangle(ctx, poly);
+      continue;
+    }
     ctx.beginPath();
     poly.screen.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.closePath();
@@ -230,4 +298,64 @@ export function drawScene(ctx, camera, placed, opts) {
     ctx.lineWidth = 1;
     ctx.stroke();
   }
+}
+
+const SEAM_GROW = 0.6; // px the image clip grows about the centroid, so cells meet without hairlines
+
+function trianglePath(ctx, pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  ctx.lineTo(pts[1][0], pts[1][1]);
+  ctx.lineTo(pts[2][0], pts[2][1]);
+  ctx.closePath();
+}
+
+/**
+ * Paints one textured triangle: the image through the affine map that takes
+ * its uv triangle onto its screen triangle, clipped to that triangle (grown by
+ * SEAM_GROW), then darkening (1 - intensity) and fog as flat overlays clipped
+ * to the exact triangle.
+ */
+function drawTexturedTriangle(ctx, p) {
+  const [[x0, y0], [x1, y1], [x2, y2]] = p.screen;
+  const [[u0, v0], [u1, v1], [u2, v2]] = p.uv;
+  const det = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0);
+  if (Math.abs(det) < 1e-12) return;
+  const a = ((x1 - x0) * (v2 - v0) - (x2 - x0) * (v1 - v0)) / det;
+  const c = ((x2 - x0) * (u1 - u0) - (x1 - x0) * (u2 - u0)) / det;
+  const b = ((y1 - y0) * (v2 - v0) - (y2 - y0) * (v1 - v0)) / det;
+  const d = ((y2 - y0) * (u1 - u0) - (y1 - y0) * (u2 - u0)) / det;
+  const e = x0 - a * u0 - c * v0;
+  const f = y0 - b * u0 - d * v0;
+  const cx = (x0 + x1 + x2) / 3, cy = (y0 + y1 + y2) / 3;
+  const grown = p.screen.map(([x, y]) => {
+    const dx = x - cx, dy = y - cy, len = Math.hypot(dx, dy) || 1;
+    return [x + (dx / len) * SEAM_GROW, y + (dy / len) * SEAM_GROW];
+  });
+  // Only the triangle's own uv box is sampled, not the whole image.
+  const sx = Math.max(0, Math.floor(Math.min(u0, u1, u2)) - 1);
+  const sy = Math.max(0, Math.floor(Math.min(v0, v1, v2)) - 1);
+  const sw = Math.min(p.image.width, Math.ceil(Math.max(u0, u1, u2)) + 1) - sx;
+  const sh = Math.min(p.image.height, Math.ceil(Math.max(v0, v1, v2)) + 1) - sy;
+  ctx.save();
+  trianglePath(ctx, grown);
+  ctx.clip();
+  ctx.transform(a, b, c, d, e, f);
+  if (sw > 0 && sh > 0) ctx.drawImage(p.image, sx, sy, sw, sh, sx, sy, sw, sh);
+  ctx.restore();
+  const dark = 1 - Math.min(1, Math.max(0, p.intensity));
+  if (dark <= 0 && p.fog <= 0) return;
+  ctx.save();
+  trianglePath(ctx, p.screen);
+  if (dark > 0) {
+    ctx.globalAlpha = dark;
+    ctx.fillStyle = '#000000';
+    ctx.fill();
+  }
+  if (p.fog > 0) {
+    ctx.globalAlpha = p.fog;
+    ctx.fillStyle = p.fogColor;
+    ctx.fill();
+  }
+  ctx.restore();
 }

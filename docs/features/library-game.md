@@ -1334,7 +1334,12 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   Operating Room ("벌금 · FINES"), the Boss's door ("관장 · BOSS") and the
   Reading Nook. Stairs and the Elevator are Hospital's own drawers; the
   Coffee Machine keeps its original art, as Hospital's does. Return Cart
-  covers get line art and shadows.
+  covers get line art and shadows. The bookcase's layout is
+  exported as `bookcaseLayout` and `drawBookcase` takes an optional
+  `rows` (Top-Down draws 2): First Person's bookshelf paints this same
+  drawer at its own 1:2 shape with 4 rows and wears it as a texture
+  (`library-first-person-3d.md`), so a change to the bookcase art shows
+  in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

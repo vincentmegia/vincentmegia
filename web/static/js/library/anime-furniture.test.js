@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  bookcaseLayout,
   drawBookcase,
   drawFrontDesk,
   drawReturnCart,
@@ -63,5 +64,41 @@ describe('library anime furniture', () => {
       assert.ok(ctx.calls.count > 50, `${shelf.id} drew too little`);
       drawBookcase(fakeContext(), box(shelf), { color: genre.color, sign: genre.name, titles: [] });
     }
+  });
+
+  // The First Person bookshelf maps its faces onto these same regions of the
+  // art (docs/skills/2d-to-3d/SKILL.md), so the layout is the one contract
+  // between the two renderers.
+  test('bookcaseLayout keeps the Top-Down bookcase geometry', () => {
+    const L = bookcaseLayout({ w: 124, h: 100 });
+    assert.deepEqual(L.case, { x0: -59, y0: -47, x1: 59, y1: 47 });
+    assert.deepEqual(L.sign, { x0: -53, y0: -43, x1: 53, y1: -28 });
+    assert.deepEqual(L.back, { x0: -52, y0: -23, x1: 52, y1: 41 });
+    assert.equal(L.shelves.length, 2);
+    assert.deepEqual(L.shelves.map((s) => s.y), [9, 41]);
+    assert.deepEqual(L.shelves[1].plank, { x0: -54, y0: 38, x1: 54, y1: 42 });
+  });
+
+  test('bookcaseLayout splits the back panel into `rows` equal rows', () => {
+    const L = bookcaseLayout({ w: 124, h: 242 }, 4);
+    assert.equal(L.shelves.length, 4);
+    const pitch = (L.back.y1 - L.back.y0) / 4;
+    L.shelves.forEach((s, r) => assert.ok(Math.abs(s.y - (L.back.y0 + (r + 1) * pitch)) < 1e-9));
+    assert.equal(L.shelves.at(-1).y, L.back.y1);
+  });
+
+  test('drawBookcase draws one plank per row when given rows', () => {
+    const planks = (rows) => {
+      let n = 0;
+      const ctx = fakeContext();
+      const orig = ctx.roundRect;
+      // Count the plank blocks: 4 px tall and the back panel's width + 4 (the
+      // sign's shine strip is 4 px tall too, but narrower).
+      const counting = new Proxy(ctx, { get: (t, k) => (k === 'roundRect' ? (x, y, w, h) => { if (h === 4 && w === 108) n++; return orig(x, y, w, h); } : t[k]) });
+      drawBookcase(counting, { id: 'bookshelf-mystery', w: 124, h: 242 }, { color: '#4a4e69', sign: 'Mystery', titles: ['가'], rows });
+      return n;
+    };
+    assert.equal(planks(undefined), 2);
+    assert.equal(planks(4), 4);
   });
 });

@@ -214,6 +214,7 @@ import {
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -3138,16 +3139,35 @@ export function init(canvas, elements) {
   }
 
   /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
+  /** drawBookcase's options for a shelf: the same for Top-Down and First Person's art, so both views show the same books. */
+  function bookcaseDrawOpts(station) {
+    const genre = findGenre(station.genreId);
+    const ko = GENRE_SIGNS_KO[station.genreId];
+    return {
+      color: genre?.color ?? ANIME.coral,
+      sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
+      titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
+    };
+  }
+
+  // First Person art (docs/skills/2d-to-3d/SKILL.md): a station's own 2D
+  // drawer, painted once into a canvas its 3D mesh wears. Station id -> canvas.
+  const fpArtCache = new Map();
+  function fpArtFor(station) {
+    if (station.kind !== 'bookshelf') return null;
+    let art = fpArtCache.get(station.id);
+    if (!art) {
+      art = document.createElement('canvas');
+      art.width = BOOKSHELF_ART.w * ART_SCALE;
+      art.height = BOOKSHELF_ART.h * ART_SCALE;
+      paintBookshelfArt(art.getContext('2d'), station, bookcaseDrawOpts(station));
+      fpArtCache.set(station.id, art);
+    }
+    return art;
+  }
+
   const STATION_DETAIL_DRAWERS = {
-    bookshelf: (station) => {
-      const genre = findGenre(station.genreId);
-      const ko = GENRE_SIGNS_KO[station.genreId];
-      drawBookcase(ctx, station, {
-        color: genre?.color ?? ANIME.coral,
-        sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
-        titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
-      });
-    },
+    bookshelf: (station) => drawBookcase(ctx, station, bookcaseDrawOpts(station)),
     'return-cart': (station) => drawReturnCart(ctx, station),
     'front-desk': (station) => drawFrontDesk(ctx, station),
     'fines-counter': (station) => drawFinesRoom(ctx, station),
@@ -5064,6 +5084,7 @@ export function init(canvas, elements) {
       characters,
       cameraParams: fpCameraParams(offY),
       viewport,
+      artFor: fpArtFor,
     });
     for (const e of books) {
       const genre = findGenre(e.ref.genreId);
