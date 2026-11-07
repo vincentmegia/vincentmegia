@@ -39,3 +39,14 @@ config*.yaml
 
 # Local git worktrees (superpowers SDD)
 .worktrees/
+
+# Claude Code local state. These were previously ignored only through
+# .git/info/exclude and ~/.config/git/ignore, both of which are local to this
+# machine and never travel to another clone — and this repo is public, so the
+# rules belong here instead:
+#   - settings.local.json holds a machine-specific absolute path
+#   - worktrees/ are full working copies created by agent isolation
+#   - RESUME.md is private source material, not site content
+/.claude/settings.local.json
+/.claude/worktrees/
+/.claude/RESUME.md
