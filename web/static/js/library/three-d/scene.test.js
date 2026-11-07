@@ -250,6 +250,20 @@ test('artFor hands each station its 2D art; the bookshelf wears it', () => {
   assert.equal(shelves[0].placement.scale, UNIT_SCALE);
 });
 
+test('the elevator wears its own art too, facing the player (-Z), at UNIT_SCALE', () => {
+  const art = { width: 252, height: 342 };
+  const lift = { kind: 'elevator', x: 80, y: 540, floor: 1, targetFloor: 2 };
+  const scene = buildFirstPersonScene(input({ stations: [lift], characters: [] }));
+  const flat = scene.placed[1];
+  assert.ok(!flat.mesh.faces.some((f) => f.texture), 'no artFor: flat colours');
+  const dressed = buildFirstPersonScene(input({ stations: [lift], characters: [], artFor: (s) => (s === lift ? art : null) })).placed[1];
+  const tex = dressed.mesh.faces.filter((f) => f.texture);
+  assert.ok(tex.length > 0 && tex.every((f) => f.texture.image === art));
+  assert.equal(dressed.placement.scale, UNIT_SCALE);
+  assert.deepEqual(dressed.placement.pos, [80, 0, 540]);
+  assert.equal(dressed.placement.yaw, 0, 'doors keep facing -Z, toward the room (the elevator sits at the room\'s south edge)');
+});
+
 test('without artFor the bookshelf falls back to flat colours', () => {
   assert.equal(shelfMeshes(buildFirstPersonScene(input())).length, 0);
 });

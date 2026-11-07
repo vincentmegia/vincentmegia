@@ -364,27 +364,77 @@ export function drawStairs(ctx, st) {
   ctx.fill();
 }
 
-/** The Elevator: lavender-silver doors, a floor indicator and a glowing call button. */
+/**
+ * drawElevator's own colours (Library Shift's First Person elevator falls back
+ * to them), plus `tile`: the station tile both games draw it on (their
+ * STATION_COLORS.elevator; elevator.test.js pins that they agree).
+ */
+export const ELEVATOR_COLORS = {
+  tile: '#d8b9f2',
+  indicator: '#3b2a4a',
+  text: ANIME.gold,
+  frame: '#ece6fa',
+  door: '#c9c0e6',
+  shine: 'rgba(255,255,255,0.5)',
+  panel: '#ece6fa',
+  button: ANIME.gold,
+};
+
+/** A layout rect: the drawer's {x, y, w, h} plus its corners for a mesh to map onto. */
+function elevatorRect(x, y, w, h) {
+  return { x, y, w, h, x0: x, y0: y, x1: x + w, y1: y + h };
+}
+
+/**
+ * Where drawElevator puts each part, in the station's centered px (y down):
+ * the floor indicator plate and its label's anchor, the frame, each door
+ * (with its `shine` highlight), the call panel and its button
+ * ({cx, cy, r} plus its bounding rect). `opts.height` is the drawing's height
+ * (default `st.w`, the square Top-Down box); only the vertical runs follow it,
+ * and the call panel stays on the centre line. Library Shift's First Person
+ * elevator maps its faces onto these rects (docs/skills/2d-to-3d/SKILL.md).
+ */
+export function elevatorLayout(st, opts = {}) {
+  const h = opts.height ?? st.w;
+  const top = -h / 2;
+  const r = 2.8;
+  return {
+    indicator: elevatorRect(-16, top + 5, 32, 12),
+    label: { x: 0, y: top + 11.5 },
+    frame: elevatorRect(-28, top + 20, 56, h - 26),
+    doors: [-25, 0.5].map((dx) => ({ ...elevatorRect(dx, top + 23, 24.5, h - 32), shine: elevatorRect(dx + 4, top + 26, 3, h - 38) })),
+    panel: elevatorRect(31, -8, 9, 18),
+    button: { cx: 35.5, cy: 1, r, ...elevatorRect(35.5 - r, 1 - r, 2 * r, 2 * r) },
+  };
+}
+
+/**
+ * The Elevator: lavender-silver doors, a floor indicator and a glowing call
+ * button, drawn from elevatorLayout. `opts.t` drives the button's pulse;
+ * `opts.pulse` (0..1) fixes it instead and `opts.height` draws it taller
+ * (both for First Person's art; Top-Down passes neither).
+ */
 export function drawElevator(ctx, st, opts = {}) {
-  const half = st.w / 2;
+  const L = elevatorLayout(st, opts);
   const t = opts.t ?? 0;
-  flat(ctx, -16, -half + 5, 32, 12, 5, '#3b2a4a', 1.2);
-  ctx.fillStyle = ANIME.gold;
+  const C = ELEVATOR_COLORS;
+  flat(ctx, L.indicator.x, L.indicator.y, L.indicator.w, L.indicator.h, 5, C.indicator, 1.2);
+  ctx.fillStyle = C.text;
   ctx.font = 'bold 8px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`${st.targetFloor > st.floor ? '▲' : '▼'} ${st.targetFloor}`, 0, -half + 11.5);
-  block(ctx, -28, -half + 20, 56, half * 2 - 26, 5, '#ece6fa', 1.4);
-  for (const dx of [-25, 0.5]) {
-    block(ctx, dx, -half + 23, 24.5, half * 2 - 32, 3, '#c9c0e6', 1.1);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillRect(dx + 4, -half + 26, 3, half * 2 - 38);
+  ctx.fillText(`${st.targetFloor > st.floor ? '▲' : '▼'} ${st.targetFloor}`, L.label.x, L.label.y);
+  block(ctx, L.frame.x, L.frame.y, L.frame.w, L.frame.h, 5, C.frame, 1.4);
+  for (const d of L.doors) {
+    block(ctx, d.x, d.y, d.w, d.h, 3, C.door, 1.1);
+    ctx.fillStyle = C.shine;
+    ctx.fillRect(d.shine.x, d.shine.y, d.shine.w, d.shine.h);
   }
-  flat(ctx, 31, -8, 9, 18, 4, '#ece6fa', 1.1);
-  const pulse = 0.65 + 0.35 * Math.sin(t * 3);
+  flat(ctx, L.panel.x, L.panel.y, L.panel.w, L.panel.h, 4, C.panel, 1.1);
+  const pulse = opts.pulse ?? 0.65 + 0.35 * Math.sin(t * 3);
   ctx.save();
   ctx.globalAlpha = pulse;
-  circle(ctx, 35.5, 1, 2.8, ANIME.gold, 0.9);
+  circle(ctx, L.button.cx, L.button.cy, L.button.r, C.button, 0.9);
   ctx.restore();
 }
 

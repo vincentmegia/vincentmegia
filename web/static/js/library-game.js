@@ -215,6 +215,7 @@ import {
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
+import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -3161,6 +3162,12 @@ export function init(canvas, elements) {
       w: BOOKSHELF_ART.w * ART_SCALE,
       h: BOOKSHELF_ART.h * ART_SCALE,
       paint: (c, station) => paintBookshelfArt(c, station, bookcaseDrawOpts(station)),
+    },
+    // The indicator shows the station's own targetFloor, fixed per station id.
+    elevator: {
+      w: ELEVATOR_ART.w * ELEVATOR_ART_SCALE,
+      h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
+      paint: (c, station) => paintElevatorArt(c, station),
     },
   };
   // `${station.id}|${stateKey}` -> canvas.
