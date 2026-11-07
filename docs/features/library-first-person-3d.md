@@ -60,6 +60,18 @@ buildCharacter(design, { angry: true })   // angry is an OPTION, not design data
 `opts.angry` scowls (Karen's outburst); it is deliberately not part of the
 design, since the design is shared with the 2D renderer. Nothing outside the
 mesh layer builds a palette: callers pass the design straight through.
+
+`buildCharacter` is **memoised on the design object's identity** (a `WeakMap`,
+one slot each for calm and angry). `buildFirstPersonScene` runs per frame and
+rebuilt every visible character every time — about 0.074 ms each, against
+effectively nothing for a cache hit. Identity, not `design.key`: the roster's
+designs are stable module-level objects, so identity hits every frame just as a
+key would, but a key *collides* — `{ ...design, outfit: other }` keeps the key
+while being a different character, and would be served the original's mesh.
+Keying on `design.key` fails seven tests in the suite for exactly that reason.
+The returned mesh is **shared, so treat it as read-only**; `buildDrawList` does,
+mapping each vertex into world space rather than moving it. A design built fresh
+on every call simply misses the cache, as before.
 `scene.js`'s `characters` entries are `{x, y, design, angry?, floor?}`.
 
 Karen is the one character with no roster entry (`findLibraryDesign('karen')`
@@ -153,6 +165,22 @@ fogs toward `fog.color` between `fog.start` and
 `fog.end` by face depth, and sorts back to front (painter's algorithm, face
 depth = mean clip-space w of the clipped polygon's vertices).
 
+**Ground is its own layer.** A mean depth is wrong for a wide, near-horizontal
+face: the floor tile a patron *stands on* can have a nearer centroid than the
+patron, so a plain depth sort paints the floor over their legs and feet. (It
+did: a patron at interact range kept only the top quarter of their legs and
+never showed their shoes at all.) So every face a mesh marks `ground` — only
+`room.js`'s floor does — sorts as a layer before everything else, each layer
+still back to front within itself, which keeps the floor's own overlap and fog
+gradient. This is sound because the floor is the shell's lowest surface:
+everything in the room rests on it, so it can never *legitimately* occlude any
+of it, while the walls rise from its edges and the ceiling is above, so neither
+overlaps a floor tile on screen. `room.test.js` pins that exactly the floor
+carries the flag (a wall or the ceiling in that layer *would* occlude wrongly),
+`core.test.js` pins the layer order, and `scene.test.js` renders a patron at
+interact range with and without the floor behind them and requires every row of
+their legs to win a pixel.
+
 Clipping is what lets the camera stand inside the room: the shell's floor,
 ceiling and walls always straddle the near plane from in there. `drawScene`
 fills each polygon and then strokes it in the same color, which covers the
@@ -195,8 +223,11 @@ leftover Top-Down art showed through.
 * **No z-buffer.** Sorting is per face, so large faces and interpenetrating
   or very close objects can mis-order. Keep objects as small boxes — and keep
   shell faces tiled (`room.js` emits every quad as a grid of at most
-  `TILE` = 120 units, so no face is large enough for its single mean depth to
-  sort it in front of the furniture standing on it).
+  `TILE` = 120 units, so no single face spans the frame and each carries its
+  own sort depth and fog). Tiling *narrows* a bad mean-depth sort but cannot
+  fix one — halving a tile halves the error and doubles the polygons — so the
+  floor's case is settled by the ground layer above, not by `TILE`. `TILE`
+  stays for the per-tile fog gradient and near-plane clipping.
 * **Coplanar-offset rule.** Faces that share a plane tie in the sort and
   z-fight. Sit details a small distance proud of their backing surface
   (`room.js` uses `PROUD = 0.1`; meshes use about 0.01 in unit space).

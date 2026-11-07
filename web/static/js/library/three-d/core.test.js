@@ -199,12 +199,52 @@ test('faces without the flag are unchanged', () => {
     {
       screen: [[314.69737707341363, 207.3865645358996], [474.9046792531569, 218.67565802822145],
         [408.97789672559924, 236.8750900293754], [281.4802270285438, 230.27829000410242]],
-      color: 'rgb(110,176,240)', depth: 6.921060994002885,
+      color: 'rgb(110,176,240)', depth: 6.921060994002885, ground: false,
     },
     {
       screen: [[314.69737707341363, 392.6134354641004], [474.9046792531569, 381.32434197177855],
         [474.9046792531569, 218.67565802822145], [314.69737707341363, 207.3865645358996]],
-      color: 'rgb(177,132,107)', depth: 6,
+      color: 'rgb(177,132,107)', depth: 6, ground: false,
     },
   ]);
+});
+
+// A ground plane cannot occlude what stands on it, but a painter's sort on mean
+// depth does exactly that: the tile the camera stands on has a nearer centroid
+// than a figure a few metres away, so it is painted LAST and covers that
+// figure's feet and lower legs. room.js's TILE subdivision only narrows the
+// band -- the whole-branch review measured a patron at interact range keeping
+// 26% of its legs and losing its shoes entirely. So the plane sorts before
+// everything resting on it, whatever the centroids say. This is sound for the
+// shell because the floor is its lowest surface: walls rise from its edges and
+// the ceiling is above, so neither overlaps a floor tile on screen.
+test('ground polys are painted before everything that stands on them', () => {
+  const cam = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 60, near: 1, far: 2000 });
+  // Two 120-deep floor tiles, as room.js emits them, and a figure standing just
+  // inside the far edge of the NEAR tile: that tile's centroid (z -60) is nearer
+  // than the figure (z -111), so mean-depth order paints the tile over it.
+  const tile = (z0, z1) => ({
+    vertices: [[-60, 0, z0], [60, 0, z0], [60, 0, z1], [-60, 0, z1]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#b08f5e', ground: true }],
+  });
+  const figure = {
+    vertices: [
+      [-4, 0, -119], [4, 0, -119], [4, 0, -111], [-4, 0, -111],
+      [-4, 30, -119], [4, 30, -119], [4, 30, -111], [-4, 30, -111],
+    ],
+    faces: [{ indices: [3, 2, 6, 7], color: '#334455' }],
+  };
+  const flat = (m) => ({ mesh: m, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
+  const list = buildDrawList(cam, [flat(tile(-120, 0)), flat(tile(-240, -120)), flat(figure)], SCENE);
+
+  const lastGround = list.reduce((acc, p, i) => (p.ground ? i : acc), -1);
+  const firstStanding = list.findIndex((p) => !p.ground);
+  assert.ok(lastGround >= 0, 'a ground poly is drawn');
+  assert.ok(firstStanding >= 0, 'a standing poly is drawn');
+  assert.ok(lastGround < firstStanding,
+    `ground poly at ${lastGround} is painted after the standing poly at ${firstStanding}`);
+  // ...and the ground is still sorted farthest-first among itself, so its own
+  // fog gradient and overlaps stay right.
+  const groundDepths = list.filter((p) => p.ground).map((p) => p.depth);
+  assert.deepEqual(groundDepths, [...groundDepths].sort((a, b) => b - a), 'ground not far-to-near');
 });

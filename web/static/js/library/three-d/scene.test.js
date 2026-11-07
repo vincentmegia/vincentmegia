@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFirstPersonScene, meshForStationKind, ROOM_HEIGHT, BASE_EYE, UNIT_SCALE } from './scene.js';
-import { buildDrawList } from './core.js';
+import { buildDrawList, projectPoint } from './core.js';
+import { FRAME } from './meshes/character-frame.js';
 import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
@@ -144,14 +145,91 @@ test('the room shell covers the whole viewport from inside', () => {
   }
 });
 
-test('the draw list stays sorted back to front once faces are clipped', () => {
+// This used to assert one back-to-front run over the whole list. core.js now
+// paints the ground as its own layer first, so depth restarts at the far end
+// once the floor is done: the invariant is back-to-front WITHIN a layer, plus
+// the layer split itself. Asserting it across the join would forbid the fix for
+// the floor painting over a patron's legs, which is the whole point.
+test('the draw list stays sorted back to front within each layer', () => {
   const viewport = { width: 960, height: 600 };
   const { camera, placed } = buildFirstPersonScene(
     input({ player: { x: 480, y: 500, facing: 0 }, viewport }),
   );
   const list = buildDrawList(camera, placed, { viewport, light: LIGHT });
   assert.ok(list.length > 0);
-  for (let i = 1; i < list.length; i++) {
-    assert.ok(list[i - 1].depth >= list[i].depth, 'draw list must stay sorted back to front');
+  const split = list.findIndex((p) => !p.ground);
+  assert.ok(split > 0, 'the floor is drawn, and before everything standing on it');
+  assert.ok(list.slice(split).every((p) => !p.ground), 'ground is one contiguous layer');
+  for (const layer of [list.slice(0, split), list.slice(split)]) {
+    for (let i = 1; i < layer.length; i++) {
+      assert.ok(layer[i - 1].depth >= layer[i].depth, 'each layer must stay sorted back to front');
+    }
   }
+});
+
+// Even-odd point-in-polygon, and the colour a player actually sees at a pixel:
+// the LAST poly in paint order that covers it.
+const covers = (poly, x, y) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < xi + ((xj - xi) * (y - yi)) / (yj - yi)) inside = !inside;
+  }
+  return inside;
+};
+const topColourAt = (list, x, y) => {
+  let c = null;
+  for (const p of list) if (covers(p.screen, x, y)) c = p.color;
+  return c;
+};
+
+// Blocking finding 2 of the whole-branch review: the floor tile the patron
+// stands on sorted NEARER than the patron (a wide tile's mean depth beats a
+// figure a couple of metres off) and painted over their lower body. At interact
+// range only 26% of the legs survived and the shoes never did at all — which
+// voided most of this branch's leg work.
+//
+// Asserting the draw order is not enough on its own, because it cannot tell
+// whether the surviving order puts the patron where a player can see them. So
+// this renders the same scene twice, with the patron and without, and samples
+// up the patron's centre line: a sample whose top colour changes is a pixel the
+// patron won off the floor. The legs are the band from the floor to FRAME.hem.
+test('a patron at interact range keeps its legs and feet on screen', () => {
+  const viewport = { width: 960, height: 600 };
+  // Dead ahead at 120 units: facing 0 looks down -z, so the patron is 120 nearer.
+  const base = {
+    player: { x: 480, y: 500, facing: 0 },
+    stations: [],
+    characters: [{ x: 480, y: 380, floor: 1, design: DESIGN }],
+    viewport,
+  };
+  const shown = buildFirstPersonScene(input(base));
+  const hidden = buildFirstPersonScene(input({ ...base, characters: [] }));
+  const opts = { viewport, light: LIGHT };
+  const lit = buildDrawList(shown.camera, shown.placed, opts);
+  const bare = buildDrawList(hidden.camera, hidden.placed, opts);
+
+  const foot = projectPoint(shown.camera, [480, 0, 380], viewport);
+  const hem = projectPoint(shown.camera, [480, FRAME.hem * UNIT_SCALE, 380], viewport);
+  assert.ok(foot.visible && hem.visible, 'the legs are on screen at all');
+  assert.ok(foot.y > hem.y, `foot ${foot.y} should project below hem ${hem.y}`);
+
+  // The figure stands on two legs with a gap on its centre line, so sampling
+  // that line alone reads the floor between the legs as a loss. A row counts as
+  // visible when ANY pixel across the figure's width is the patron's; a row
+  // where none is, is a row the floor swallowed whole. That band, counted up
+  // from the feet, is what the review measured.
+  const N = 20;
+  const swallowed = [];
+  for (let i = 0; i <= N; i++) {
+    const py = hem.y + ((foot.y - hem.y) * i) / N;
+    let won = false;
+    for (let px = foot.x - 30; px <= foot.x + 30 && !won; px += 1) {
+      if (topColourAt(lit, px, py) !== topColourAt(bare, px, py)) won = true;
+    }
+    if (!won) swallowed.push(Math.round(py));
+  }
+  assert.deepEqual(swallowed, [],
+    `${swallowed.length}/${N + 1} leg rows are entirely floor, at screen y ${swallowed}`);
 });

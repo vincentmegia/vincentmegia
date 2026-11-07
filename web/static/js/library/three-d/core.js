@@ -200,10 +200,19 @@ export function buildDrawList(camera, placed, opts) {
         (cx / cw * 0.5 + 0.5) * viewport.width,
         (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
       ]);
-      out.push({ screen, color: shadeColor(face.color, intensity, fog, depth), depth });
+      out.push({
+        screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground),
+      });
     }
   }
-  return out.sort((p, q) => q.depth - p.depth);
+  // Ground is its own layer, painted first and farthest-first within itself.
+  // The floor is the shell's lowest surface and everything in the room rests on
+  // it, so it can never legitimately occlude any of them — but its tiles are
+  // wide, and sorting them by mean depth puts the tile underfoot in front of a
+  // patron two metres away, painting out their feet and lower legs. Ordering by
+  // (ground, depth) is still a total order, so the sort stays stable and the
+  // floor keeps its own back-to-front overlap and fog gradient.
+  return out.sort((p, q) => (p.ground === q.ground ? q.depth - p.depth : (p.ground ? -1 : 1)));
 }
 
 export function drawScene(ctx, camera, placed, opts) {

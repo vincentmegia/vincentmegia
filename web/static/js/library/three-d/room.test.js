@@ -77,3 +77,26 @@ test('face count within budget', () => {
 test('deterministic', () => {
   assert.deepEqual(buildRoom(OPTS), buildRoom(OPTS));
 });
+
+// core.js paints ground polys as their own layer, before everything resting on
+// them, so that a wide floor tile's mean depth cannot sort in front of a patron
+// and paint out their legs. That layer is selected by this flag alone, so if the
+// floor ever stopped carrying it the sort would silently go back to mean depth
+// and core.js's own test would still pass, on an empty ground layer. Only the
+// floor may carry it: a wall or the ceiling in that layer WOULD occlude wrongly,
+// since things stand in front of walls but never in front of the floor.
+test('exactly the floor faces are marked ground', () => {
+  const m = buildRoom(OPTS);
+  const isFloor = (f) => f.indices.every((i) => near(m.vertices[i][1], 0));
+  const floor = m.faces.filter(isFloor);
+  assert.ok(floor.length > 0, 'the floor has faces');
+  for (const f of m.faces) {
+    assert.equal(Boolean(f.ground), isFloor(f),
+      `face at y=${m.vertices[f.indices[0]][1]} ground=${Boolean(f.ground)}`);
+  }
+  // The wall bases also sit at y=0 but are not horizontal, so `isFloor` must not
+  // have swept them in: the floor is exactly the tiles of the y=0 rectangle.
+  const nu = Math.ceil(OPTS.width / 120);
+  const nv = Math.ceil(OPTS.depth / 120);
+  assert.equal(floor.length, nu * nv, `floor tiles ${floor.length}`);
+});

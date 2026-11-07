@@ -242,3 +242,27 @@ test('face budget', () => {
   for (const d of [adult, ...LIBRARY_PATRON_DESIGNS]) max = Math.max(max, buildCharacter(d).faces.length);
   assert.ok(max <= 340, `max faces ${max}`);
 });
+
+// buildCharacter memoises on the design OBJECT's identity (see character.js).
+// The collision case is the point: keying on design.key would hand a spread
+// copy the original's mesh, so a changed outfit or skin would render as the
+// character it was copied from.
+test('buildCharacter memoises per design object and per mood, without colliding', () => {
+  const d = LIBRARY_PATRON_DESIGNS[0];
+  assert.equal(buildCharacter(d), buildCharacter(d), 'same design and mood should hit the cache');
+  assert.equal(buildCharacter(d, { angry: true }), buildCharacter(d, { angry: true }));
+  assert.notEqual(buildCharacter(d, { angry: true }), buildCharacter(d),
+    'angry and calm are separate meshes');
+
+  // Same key, separate object: must get its own slot, and build the same mesh.
+  const twin = { ...d };
+  assert.equal(twin.key, d.key, 'the trap only bites while the key is unchanged');
+  assert.notEqual(buildCharacter(twin), buildCharacter(d), 'a distinct object shares no slot');
+  assert.deepEqual(buildCharacter(twin), buildCharacter(d), 'but builds an identical mesh');
+
+  // Same key, genuinely different character: must not be served the original.
+  const repainted = { ...d, skin: d.skin === '#f0c8a0' ? '#5b3a21' : '#f0c8a0' };
+  assert.equal(repainted.key, d.key);
+  assert.notDeepEqual(buildCharacter(repainted), buildCharacter(d),
+    'a different skin under the same key must build a different mesh');
+});
