@@ -101,3 +101,46 @@ export function scaleAbout(mesh, k, pivotY) {
     faces: mesh.faces,
   };
 }
+
+const BOX_FACE_NAMES = ['front', 'back', 'right', 'left', 'top', 'bottom']; // box's face order
+
+/**
+ * A box without the faces named in `drop` ('front', 'back', 'right', 'left',
+ * 'top', 'bottom'). Hidden faces would only tie in the painter's sort
+ * (docs/skills/2d-to-3d/SKILL.md, step 7). The front (+Z), when kept, stays faces[0].
+ */
+export function boxWithout(min, max, color, drop = []) {
+  const b = box(min, max, color);
+  return { vertices: b.vertices, faces: b.faces.filter((_, i) => !drop.includes(BOX_FACE_NAMES[i])) };
+}
+
+/**
+ * The uv corners for a box's +Z front (box winds it (x0,y0) (x1,y0) (x1,y1)
+ * (x0,y1) in model space, y up) showing art rect `r`. `r` is in the drawer's
+ * centered px (y down) for an art box of `artBox.w` x `artBox.h`, painted at
+ * `scale` image px per art px.
+ */
+export function artFrontUV(r, artBox, scale) {
+  const u = (x) => (x + artBox.w / 2) * scale;
+  const v = (y) => (y + artBox.h / 2) * scale;
+  return [[u(r.x0), v(r.y1)], [u(r.x1), v(r.y1)], [u(r.x1), v(r.y0)], [u(r.x0), v(r.y0)]];
+}
+
+/**
+ * Dress a part's +Z front (its faces[0]) in its own region `r` of the 2D art:
+ * textured and unlit when `image` is given, else the flat fallback `color`.
+ * Mutates and returns `part`.
+ * @param {{faces: object[]}} part
+ * @param {{x0:number,y0:number,x1:number,y1:number}} r
+ * @param {{image?: CanvasImageSource, artBox: {w:number,h:number}, scale: number, color: string, div?: number[]}} opts
+ */
+export function textureFront(part, r, { image, artBox, scale, color, div }) {
+  const f = part.faces[0];
+  if (image) {
+    f.texture = { image, uv: artFrontUV(r, artBox, scale), div };
+    f.unlit = true;
+  } else {
+    f.color = color;
+  }
+  return part;
+}

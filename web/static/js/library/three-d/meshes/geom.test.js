@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge } from './geom.js';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront } from './geom.js';
 
 function normal(mesh, face) {
   const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
@@ -113,4 +113,32 @@ test('every index is in range for box and prism', () => {
   for (const m of [box([0, 0, 0], [1, 1, 1], '#111111'), prism(rings3, 6, '#aa0000', '#00aa00')]) {
     for (const f of m.faces) for (const i of f.indices) assert.ok(i >= 0 && i < m.vertices.length);
   }
+});
+
+test('boxWithout drops only the named faces and keeps the front first', () => {
+  const b = boxWithout([0, 0, 0], [1, 1, 1], '#111', ['back', 'top']);
+  assert.equal(b.faces.length, 4);
+  assert.deepEqual(b.faces[0].indices, box([0, 0, 0], [1, 1, 1], '#111').faces[0].indices);
+  assert.equal(boxWithout([0, 0, 0], [1, 1, 1], '#111').faces.length, 6);
+});
+
+test('artFrontUV maps an art rect onto the +Z front, model y up = art y down', () => {
+  const uv = artFrontUV({ x0: -10, y0: -20, x1: 10, y1: 20 }, { w: 40, h: 80 }, 2);
+  // corners in box front order: (x0,yLow) (x1,yLow) (x1,yHigh) (x0,yHigh)
+  assert.deepEqual(uv, [[20, 120], [60, 120], [60, 40], [20, 40]]);
+});
+
+test('textureFront textures and unlights faces[0] with art, else flat-colours it', () => {
+  const r = { x0: 0, y0: 0, x1: 5, y1: 5 };
+  const opts = { artBox: { w: 10, h: 10 }, scale: 1, color: '#abc', div: [2, 1] };
+  const img = { width: 10, height: 10 };
+  const lit = textureFront(box([0, 0, 0], [1, 1, 1], '#000'), r, { ...opts, image: img });
+  assert.equal(lit.faces[0].texture.image, img);
+  assert.deepEqual(lit.faces[0].texture.div, [2, 1]);
+  assert.equal(lit.faces[0].unlit, true);
+  assert.equal(lit.faces[1].texture, undefined);
+  const flat = textureFront(box([0, 0, 0], [1, 1, 1], '#000'), r, opts);
+  assert.equal(flat.faces[0].color, '#abc');
+  assert.equal(flat.faces[0].texture, undefined);
+  assert.equal(flat.faces[0].unlit, undefined);
 });

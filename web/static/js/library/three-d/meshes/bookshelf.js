@@ -9,7 +9,7 @@
 //
 // Model space: base at y=0, centered on x/z, front facing +Z. Pure and
 // deterministic.
-import { box, quad, merge, emptyMesh } from './geom.js';
+import { quad, merge, emptyMesh, boxWithout, textureFront } from './geom.js';
 import { bookcaseLayout, drawBookcase, BOOKCASE_COLORS } from '../../anime-furniture.js';
 
 /** Real-world size, in units (~1 = one metre). */
@@ -47,13 +47,6 @@ export function paintBookshelfArt(ctx, station, drawOpts) {
   ctx.restore();
 }
 
-/** A box without the faces named in `drop` (hidden ones would only tie in the painter's sort). */
-function boxWithout(min, max, color, drop) {
-  const names = ['front', 'back', 'right', 'left', 'top', 'bottom']; // geom.box's face order
-  const b = box(min, max, color);
-  return { vertices: b.vertices, faces: b.faces.filter((_, i) => !drop.includes(names[i])) };
-}
-
 /**
  * @param {{art?: CanvasImageSource}} [opts] art: a canvas paintBookshelfArt painted
  * @returns {{vertices: number[][], faces: object[]}}
@@ -70,21 +63,9 @@ export function buildBookshelf({ art } = {}) {
   const zRow = zFront - RECESS;
   const mesh = emptyMesh();
 
-  // Texture the +Z face of a part (geom.box's first face) with art region r.
-  const front = (part, r, color, div) => {
-    const f = part.faces[0];
-    if (art) {
-      // box's front winds (x0,y0) (x1,y0) (x1,y1) (x0,y1) in model space;
-      // model y up is art y down.
-      const u = (x) => (x + BOOKSHELF_ART.w / 2) * ART_SCALE;
-      const v = (y) => (y + BOOKSHELF_ART.h / 2) * ART_SCALE;
-      f.texture = { image: art, uv: [[u(r.x0), v(r.y1)], [u(r.x1), v(r.y1)], [u(r.x1), v(r.y0)], [u(r.x0), v(r.y0)]], div };
-      f.unlit = true;
-    } else {
-      f.color = color;
-    }
-    merge(mesh, part);
-  };
+  // Show art region r on a part's +Z face (geom.box's first face).
+  const front = (part, r, color, div) =>
+    merge(mesh, textureFront(part, r, { image: art, artBox: BOOKSHELF_ART, scale: ART_SCALE, color, div }));
   // A part spanning art region r, from z0 to z1, its front textured.
   const part = (r, z0, z1, color, drop, div) =>
     front(boxWithout([mx(r.x0), my(r.y1), z0], [mx(r.x1), my(r.y0), z1], color, drop), r, color, div);

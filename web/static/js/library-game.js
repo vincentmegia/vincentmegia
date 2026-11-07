@@ -3151,17 +3151,31 @@ export function init(canvas, elements) {
   }
 
   // First Person art (docs/skills/2d-to-3d/SKILL.md): a station's own 2D
-  // drawer, painted once into a canvas its 3D mesh wears. Station id -> canvas.
+  // drawer, painted into a canvas its 3D mesh wears. One entry per station
+  // kind whose mesh wears art: `w`/`h` are the canvas size in image px,
+  // `paint(ctx, station)` paints it, and the optional `stateKey(station)`
+  // names the state the art depends on (a new key paints a new canvas, and
+  // the scene rebuilds that one mesh).
+  const FP_ART = {
+    bookshelf: {
+      w: BOOKSHELF_ART.w * ART_SCALE,
+      h: BOOKSHELF_ART.h * ART_SCALE,
+      paint: (c, station) => paintBookshelfArt(c, station, bookcaseDrawOpts(station)),
+    },
+  };
+  // `${station.id}|${stateKey}` -> canvas.
   const fpArtCache = new Map();
   function fpArtFor(station) {
-    if (station.kind !== 'bookshelf') return null;
-    let art = fpArtCache.get(station.id);
+    const spec = FP_ART[station.kind];
+    if (!spec) return null;
+    const key = `${station.id}|${spec.stateKey ? spec.stateKey(station) : ''}`;
+    let art = fpArtCache.get(key);
     if (!art) {
       art = document.createElement('canvas');
-      art.width = BOOKSHELF_ART.w * ART_SCALE;
-      art.height = BOOKSHELF_ART.h * ART_SCALE;
-      paintBookshelfArt(art.getContext('2d'), station, bookcaseDrawOpts(station));
-      fpArtCache.set(station.id, art);
+      art.width = spec.w;
+      art.height = spec.h;
+      spec.paint(art.getContext('2d'), station);
+      fpArtCache.set(key, art);
     }
     return art;
   }
