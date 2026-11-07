@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBody } from './character-body.js';
-import { FRAME, metricsFor } from './character-frame.js';
+import { FRAME, PX, artY, metricsFor } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
 import { LIBRARY_PATRON_DESIGNS } from '../../library-people.js';
 
@@ -36,7 +36,7 @@ test('feet sit on the floor and the body stops at the chin', () => {
 test('a skirted design builds a flared lower garment', () => {
   const { mesh } = build(skirted);
   const atHem = widthIn(mesh, FRAME.foot, FRAME.hem);
-  const atWaist = widthIn(mesh, 21 / 40, 22.5 / 40);
+  const atWaist = widthIn(mesh, artY(21), artY(22.5));
   assert.ok(atHem > atWaist + 2 / 40, `hem ${atHem} should flare past waist ${atWaist}`);
 });
 
@@ -112,13 +112,72 @@ test('every shoe face is the palette shoe colour', () => {
   }
 });
 
-test('no face is marked unlit and every colour is valid', () => {
+// One material, one rule (see buildBody): the skin tones already carry their
+// shading, so every surface painted in them opts out of the scene light — the
+// head's faces do, and so must the hands, the neck and bare legs, or the same
+// hex renders 27% brighter on the face than on the hands of the same patron.
+// Clothing keeps its flat design colours and stays lit.
+test('only the baked skin-toned faces are unlit, and every colour is valid', () => {
   for (const d of [trousered, skirted, shorts, teeLong, ...LIBRARY_PATRON_DESIGNS]) {
-    const { mesh } = build(d);
+    const { mesh, palette } = build(d);
+    const skin = new Set(Object.values(palette.skin));
     for (const f of mesh.faces) {
-      assert.ok(!f.unlit);
+      assert.equal(Boolean(f.unlit), skin.has(f.color), `${d.key ?? d.outfit.kind} ${f.color} unlit=${Boolean(f.unlit)}`);
       assert.match(f.color, COLOUR);
     }
+  }
+});
+
+// The sleeve's inner edge used to be pinned at the torso's hem half-width for
+// its whole run, but torso() pulls its top ring in to halfShoulder * 0.7, so
+// above the 38px shoulder ring each sleeve floated 0.6-1.7px clear of the body
+// (+0.57 at y 41, +1.74 at 43). It now follows the torso's own profile. This
+// measures the real thing: for every box the sleeve is built from, at nine
+// heights across it, the box's inner face is inside the torso's silhouette at
+// that height.
+test('the sleeves stay attached to the torso at every height, slim and not', () => {
+  const ARM_Z = 2.4 * PX;
+  for (const d of [trousered, skirted]) {
+    const { mesh, metrics } = build(d);
+    // The torso prism's rings: the vertices at a ring height that are not a
+    // sleeve's (|z| exactly ARM_Z). Its widest x at a height is its half-width.
+    const ringYs = [artY(20.6), artY(30), artY(38), FRAME.shoulder];
+    const halves = ringYs.map((ry) =>
+      maxAbsX(mesh.vertices.filter((v) => Math.abs(v[1] - ry) < EPS && Math.abs(Math.abs(v[2]) - ARM_Z) > EPS)));
+    const torsoHalf = (yv) => {
+      if (yv <= ringYs[0]) return halves[0];
+      for (let i = 1; i < ringYs.length; i++) {
+        if (yv <= ringYs[i]) return halves[i - 1] + ((halves[i] - halves[i - 1]) * (yv - ringYs[i - 1])) / (ringYs[i] - ringYs[i - 1]);
+      }
+      return halves[halves.length - 1];
+    };
+    assert.ok(Math.abs(halves[2] - metrics.halfShoulder) < 1e-9, `shoulder ring ${halves[2]}`);
+    // A sleeve box's +Z face: four vertices at z = +ARM_Z. Take the right side.
+    const faces = mesh.faces.filter((f) => {
+      const vs = faceVerts(mesh, f);
+      return vs.length === 4 && vs.every((v) => Math.abs(v[2] - ARM_Z) < EPS) && vs.every((v) => v[0] > 0);
+    });
+    assert.ok(faces.length >= 3, `found ${faces.length} sleeve boxes`);
+    let highest = 0;
+    let protrudes = false;
+    for (const f of faces) {
+      const vs = faceVerts(mesh, f);
+      const inner = Math.min(...vs.map((v) => v[0]));
+      const outer = Math.max(...vs.map((v) => v[0]));
+      const yb = Math.min(...vs.map((v) => v[1]));
+      const yt = Math.max(...vs.map((v) => v[1]));
+      highest = Math.max(highest, yt);
+      for (let i = 0; i <= 8; i++) {
+        const yv = yb + ((yt - yb) * i) / 8;
+        assert.ok(inner <= torsoHalf(yv) + EPS,
+          `sleeve inner ${inner / PX}px is ${(inner - torsoHalf(yv)) / PX}px clear of the torso at ${yv / PX}px`);
+      }
+      if (outer > torsoHalf(yb)) protrudes = true;
+    }
+    // ...and it still reaches the shoulder and still reads as an arm, so the
+    // gap cannot be closed by shortening or burying the sleeve.
+    assert.ok(highest >= artY(42) - EPS, `sleeve stops at ${highest / PX}px`);
+    assert.ok(protrudes, 'the sleeve never clears the torso silhouette');
   }
 });
 

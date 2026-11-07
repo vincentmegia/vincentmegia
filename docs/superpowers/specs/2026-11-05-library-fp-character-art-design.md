@@ -24,18 +24,32 @@ proportioned mannequin, while the 2D art is a chibi-anime figure.
 Measured from `patron.js`, `patron-head.js` and `staff-kit.js`'s `facePath`
 (2D, px, adult) against `character.js` (units × `UNIT_SCALE` 40):
 
+> **Correction (2026-11-07, whole-branch review).** The first version of this
+> table measured the 2D figure's vertical frame from `patron.js`'s drawing
+> origin, which is hip height — **not** the ground. The figure stands 7.1 px
+> below that origin (`legPoses` puts the ankle at +1.6, `drawShoe` lays the
+> sole to +5.5, and `groundShadow` draws its contact ellipse at +7), so every
+> height below was 7.1 px short and the whole deficit fell in the legs. The
+> widths were measured correctly and are unchanged. The table below is the
+> corrected one; `character-frame.js` now keeps the art's own coordinates in
+> `ART` and converts once through `artY`, so the mistake cannot recur.
+
 | Measure | 2D art | 3D today | Verdict |
 |---|---|---|---|
-| Overall height | 66 px | 68 px | matches |
-| Head height | 22 px | 10.4 px | less than half size |
-| Shoulder width | 21 px | 26 px | too broad |
+| Overall height | 73.35 px | 68 px | 7% short |
+| Head height | 21.85 px | 10.4 px | less than half size |
+| Shoulder width | 21.2 px | 26 px | too broad |
 | Head ÷ shoulder width | 85% | 41% | wrong |
 | Torso height | 24 px | 22 px | close |
-| Leg length | 19 px (29% of height) | 32 px (47%) | 65% too long |
-| **Heads tall** | **3.0** | **6.5** | the core mismatch |
+| Leg length | 26.5 px (36% of height) | 32 px (47%) | 21% too long |
+| **Heads tall** | **3.36** | **6.5** | the core mismatch |
 
-Overall height already agrees, so neither the camera nor `UNIT_SCALE` moves.
-The error is entirely in the figure's internal proportions.
+Overall height is 7% out, not a match: the figure grows about 10.6% against
+the original (wrong) measurement. That is still well inside the room and
+`UNIT_SCALE` stays 40, and `scene.js`'s `BASE_EYE` (60 px) stays too — the
+corrected eye line is 60.9 px, so the player now meets a patron's eye
+instead of looking 6.2 px over it. No camera constant moves, but for a
+different reason than this spec first gave.
 
 Three further gaps, on the axes the user named:
 
@@ -158,15 +172,18 @@ outside, as `core.js` requires.
 
 Constants are the 2D frame divided by `UNIT_SCALE` 40 (`PX = 1/40`):
 
-| Landmark | 2D (px) | Units |
-|---|---|---|
-| Feet | 0 | 0 |
-| Shoe top | 4.5 | 0.1125 |
-| Torso hem | 19.4 | 0.485 |
-| Shoulders | 43.4 | 1.085 |
-| Chin | 44.4 | 1.11 |
-| Eyes | 53.8 | 1.345 |
-| Crown | 66.3 | 1.6575 |
+Art px are measured up from `patron.js`'s drawing origin; the floor is 7.1 px
+below it (`GROUND`), so a landmark's height is `art px + 7.1`.
+
+| Landmark | 2D art (px) | Height (px) | Units |
+|---|---|---|---|
+| Feet | -7.1 | 0 | 0 |
+| Shoe top | -2.1 | 5.0 | 0.125 |
+| Torso hem | 19.4 | 26.5 | 0.6625 |
+| Shoulders | 43.4 | 50.5 | 1.2625 |
+| Chin | 44.4 | 51.5 | 1.2875 |
+| Eyes | 53.8 | 60.9 | 1.5225 |
+| Crown | 66.25 | 73.35 | 1.834 |
 
 Half-widths: torso 9.8 (7.8 slim), shoulder 10.6 (9.2 slim), head 9 (9.4
 kid, 9.2 elder). `slim` is `Boolean(outfit.skirt) || age === 'kid'`, matching
@@ -233,10 +250,11 @@ body. The implementation ships the mechanism, tunes the set by eye against
 **`character.test.js`** — rewritten:
 
 - **Proportions** (the guard that matters), for an **adult** design, with
-  explicit tolerances so the test is unambiguous: heads-tall 3.0 ± 0.15,
-  head ÷ shoulder width 0.85 ± 0.05, legs 29% ± 2% of total height, overall
-  height 1.66 ± 0.02 units. This encodes the requirement so it cannot
-  silently regress.
+  explicit tolerances so the test is unambiguous: heads-tall 3.357 ± 0.05,
+  head ÷ shoulder width 0.85 ± 0.05, legs 36.1% ± 2% of total height, overall
+  height 1.834 ± 0.02 units. This encodes the requirement so it cannot
+  silently regress. (The 3.0 / 29% / 1.66 first written here came from the
+  mis-measured frame corrected above.)
 - **No colour dropped**: every colour present in a design appears on some
   face of the mesh — the exact failure being fixed.
 - **Age variants**: a kid's head-to-height ratio exceeds an adult's; kid and

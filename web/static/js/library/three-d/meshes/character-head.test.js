@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildHead, buildFace, buildHeadwear, buildSkull, buildHair } from './character-head.js';
 import { paletteFor } from './character-palette.js';
-import { metricsFor, FRAME, PX } from './character-frame.js';
+import { metricsFor, FRAME, PX, artY } from './character-frame.js';
 
 const COLOUR = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\))$/i;
 
@@ -178,7 +178,7 @@ test('the skull bands in three skin tones and the hair in three plus a shine cap
 
 /** The skull's own surface z at (x, y): the front-facing facet spanning x, from the mesh's vertices. */
 function skullZ(skull, x, yv) {
-  const bandY = [FRAME.chin, 47.6 * PX, 53 * PX, 60 * PX, FRAME.crown];
+  const bandY = [FRAME.chin, artY(47.6), artY(53), artY(60), FRAME.crown];
   let k = bandY.findIndex((top, i) => i > 0 && yv <= top + 1e-12);
   if (k < 1) k = 1;
   const t = (yv - bandY[k - 1]) / (bandY[k] - bandY[k - 1]);
@@ -200,7 +200,7 @@ test('face features lie on the real skull, the right distance proud', () => {
   const m = metricsFor(d);
   const p = paletteFor(d);
   const skull = buildSkull(p.skin, m);
-  const eps = { '#fbfbff': 0.01, [p.eyes]: 0.014, '#ffffff': 0.018, '#1e1418': 0.014, '#f2a29a': 0.008, [p.skin.deep]: 0.008, [p.brow]: 0.01, [p.lips]: 0.01, '#5a2a30': 0.014 };
+  const eps = { '#fbfbff': 0.01, [p.eyes]: 0.014, '#1e120c': 0.016, '#ffffff': 0.02, '#1e1418': 0.014, '#f2a29a': 0.008, [p.skin.deep]: 0.008, [p.brow]: 0.01, [p.lips]: 0.01, '#5a2a30': 0.014 };
   for (const opts of [{}, { angry: true }]) {
     const face = buildFace(d, p, m, opts);
     for (const f of face.faces) {

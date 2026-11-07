@@ -1,14 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { shadeColor } from '../../../shared/people.js';
-import { metricsFor, FRAME, PX, CIRC } from './character-frame.js';
+import { metricsFor, ART, FRAME, GROUND, PX, CIRC, artY } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
 import { LIBRARY_PATRON_DESIGNS } from '../../library-people.js';
 
 test('frame landmarks agree in px and units', () => {
   assert.equal(PX, 1 / 40);
-  assert.equal(FRAME.crown, 66.3 / 40);
-  assert.equal(FRAME.eye, 53.8 / 40);
+  // The art's own numbers (patron.js / patron-head.js), lifted onto the floor
+  // the figure stands on: GROUND px below patron.js's drawing origin.
+  assert.equal(GROUND, 7.1);
+  assert.equal(FRAME.foot, 0);
+  // In px, so the numbers read as the art measures them (artY is float maths,
+  // hence the epsilon rather than strict equality).
+  const px = (v) => v / PX;
+  const near = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what} ${a} != ${b}`);
+  near(px(artY(ART.chin)), 44.4 + 7.1, 'chin');
+  near(px(FRAME.crown), 73.35, 'crown');
+  near(px(FRAME.eye), 60.9, 'eye');
+  near(px(FRAME.hem), 26.5, 'hem');
+  near(px(FRAME.shoulder), 50.5, 'shoulder');
+  near(px(FRAME.shoeTop), 5.0, 'shoeTop');
+  // Head height and the leg share, the two numbers the first measurement got wrong.
+  near((FRAME.crown - FRAME.chin) / PX, 21.85, 'head height');
+  assert.ok(Math.abs(FRAME.hem / FRAME.crown - 0.361) < 0.001);
 });
 
 test('metricsFor marks a skirted design slim', () => {

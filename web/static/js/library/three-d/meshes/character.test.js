@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCharacter } from './character.js';
-import { FRAME, PX, metricsFor } from './character-frame.js';
+import { FRAME, PX, artY, metricsFor } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
 // library-people.js is pure data (no imports, no DOM), so the real roster is safe to load.
 import { LIBRARY_PATRON_DESIGNS, KAREN_DESIGN } from '../../library-people.js';
@@ -36,10 +36,13 @@ const verts = (m, faces) => faces.flatMap((f) => f.indices.map((i) => m.vertices
 //   of those vertices — the silhouette a player sees — with no trigonometric
 //   correction: metricsFor scales the head's ring radii by CIRC (as the torso's
 //   own CIRC does), so an 8-sided ring already reaches the half-width we designed.
-// - shoulderW: x extent of the lit body vertices on the torso's 38px shoulder ring
-//   (the band y 36-40px). Sleeves (box corners at 28 and 43px) and hands (24-28px)
-//   have no vertices in that band, so this is the torso's own widest point.
-// - legTop: highest vertex of the leg boxes, i.e. the lit faces in `legColour`
+// - shoulderW: x extent of the torso's own 38px shoulder ring. The sleeves now
+//   follow the shoulder slope, so they DO have vertices at that height; they are
+//   the only body part there whose |z| is exactly the sleeve half-depth
+//   (2.4px), so excluding that one z isolates the torso ring. (Filtering on z >
+//   some threshold instead would silently drop a slim torso's widest vertices,
+//   whose |z| is only 2.32px: in an 8-gon the widest x comes with the smallest z.)
+// - legTop: highest vertex of the leg boxes, i.e. the faces in `legColour`
 //   that reach down below 0.3 (the hips, same colour, start higher).
 function measure(design, legColour = design.outfit.bottom) {
   const built = buildCharacter(design);
@@ -47,14 +50,19 @@ function measure(design, legColour = design.outfit.bottom) {
   const k = metrics.ageScale;
   const m = { vertices: built.vertices.map((v) => v.map((c) => c / k)), faces: built.faces };
   const tones = new Set(Object.values(paletteFor(design).skin));
-  const skull = verts(m, m.faces.filter((f) => f.unlit && tones.has(f.color)));
+  // `unlit` alone no longer separates head from body — the hands, the neck and
+  // bare legs are baked skin and opt out too — so the head is taken as the
+  // skin-toned faces at or above the chin.
+  const skull = verts(m, m.faces.filter((f) => f.unlit && tones.has(f.color)
+    && f.indices.every((i) => m.vertices[i][1] >= FRAME.chin - 1e-9)));
   const [y0, y1] = range(skull.map((v) => v[1]));
-  const rimY = FRAME.chin + (60 * PX - FRAME.chin) * metrics.headScale;
+  const rimY = FRAME.chin + (artY(60) - FRAME.chin) * metrics.headScale;
   const rim = skull.filter((v) => Math.abs(v[1] - rimY) < 0.005);
   const [h0, h1] = range(rim.map((v) => v[0]));
-  const shoulder = verts(m, m.faces.filter((f) => !f.unlit)).filter((v) => v[1] >= 36 * PX && v[1] <= 40 * PX);
+  const ARM_Z = 2.4 * PX;
+  const shoulder = m.vertices.filter((v) => Math.abs(v[1] - artY(38)) < 1e-9 && Math.abs(Math.abs(v[2]) - ARM_Z) > 1e-9);
   const [s0, s1] = range(shoulder.map((v) => v[0]));
-  const legs = verts(m, m.faces.filter((f) => !f.unlit && f.color === legColour && Math.min(...f.indices.map((i) => m.vertices[i][1])) < 0.3));
+  const legs = verts(m, m.faces.filter((f) => f.color === legColour && Math.min(...f.indices.map((i) => m.vertices[i][1])) < 0.3));
   const legTop = legs.length ? Math.max(...legs.map((v) => v[1])) : NaN;
   return {
     m: built,
@@ -66,9 +74,14 @@ function measure(design, legColour = design.outfit.bottom) {
   };
 }
 
-test('an adult is 3.0 heads tall', () => {
+// patron.js's figure stands 7.1 px below its drawing origin (see
+// character-frame.js), so the 2D art is crown 66.25 px over a floor at +7.1 =
+// 73.35 px tall on a head of 21.85 px: 3.357 heads, not the 3.0 the frame was
+// first measured as. The bound is tight because both numbers are exact
+// geometry, not a judgement.
+test('an adult is 3.36 heads tall', () => {
   const { top, headH } = measure(bald);
-  assert.ok(Math.abs(top / headH - 3.0) <= 0.15, `heads tall ${top / headH}`);
+  assert.ok(Math.abs(top / headH - 3.357) <= 0.05, `heads tall ${top / headH}`);
 });
 
 // The 0.85 +- 0.05 contract is the spec's reference (non-slim) adult, measured on
@@ -87,17 +100,22 @@ test('a slim adult keeps the head within 0.9-1.05 of its shoulders', () => {
   assert.ok(r >= 0.9 && r <= 1.05, `slim ratio ${r}`);
 });
 
-test('legs are 29% of total height', () => {
+// Ground (+7.1 in the art) to the hem (-19.4) is 26.5 px of the 73.35 px
+// figure: 36.1%. The 29% this used to assert came from measuring the legs from
+// the drawing origin instead of the floor, which dropped the shoes and the
+// lower 7.1 px of shin.
+test('legs are 36% of total height', () => {
   // Leg length is read off the built leg boxes, not FRAME.hem.
   const { top, legTop } = measure(bald);
-  assert.ok(Math.abs(legTop / top - 0.29) <= 0.02, `legs ${legTop / top}`);
+  assert.ok(Math.abs(legTop / top - 0.361) <= 0.02, `legs ${legTop / top}`);
   const s = measure({ ...bald, outfit: skirt.outfit }, skirt.outfit.legs);
-  assert.ok(Math.abs(s.legTop / s.top - 0.29) <= 0.02, `skirt legs ${s.legTop / s.top}`);
+  assert.ok(Math.abs(s.legTop / s.top - 0.361) <= 0.02, `skirt legs ${s.legTop / s.top}`);
 });
 
-test('an adult is 1.66 units tall', () => {
+test('an adult is 1.83 units tall', () => {
   const { top } = measure(bald);
-  assert.ok(Math.abs(top - 1.66) <= 0.02, `height ${top}`);
+  // 73.35 px / UNIT_SCALE 40 = 1.834 units.
+  assert.ok(Math.abs(top - 1.834) <= 0.02, `height ${top}`);
   // With hair the figure stays within the same silhouette band (hair adds < 0.08).
   // The hair cap puffs above the skull (2D art too): between 2% and 7% of the crown height.
   const puff = measure(adult).top - top;
@@ -150,16 +168,21 @@ test('output is deterministic and every index is in range', () => {
 });
 
 // Proportion envelope over the real roster (nothing else measures shipped patrons).
-// Observed: heads tall 2.73-3.97, head/shoulder 0.849-1.287. Every bound below is
-// derived from the designed px widths, which `headW` now measures directly: head
-// 2*9 px (adult), 2*9.2 (elder), 2*9.4*1.26 = 23.69 (kid); shoulders 2*10.6 px
-// (non-slim) or 2*9.2 (slim). The ratios are unchanged from the first derivation
-// because the cos(pi/8) factor this test used to divide out by hand now lives in
-// metricsFor's ring radii — the numbers mean the silhouette, not the design intent.
-// - heads tall in [2.5, 4.2]: untouched by that change (it widens x/z only, never
-//   y): a bald adult is 3.03; hair adds ~0.13; a kid's head is 1.26x larger (2.73
-//   lowest); the witch hat is the tallest headwear (3.97).
-// - non-slim non-kids honour the spec's 0.85 +- 0.05: 18/21.2 = 0.849, and an
+// Every bound is derived from the geometry, not fitted to what the roster happens
+// to produce. The widths are the designed px: head 2*9 px (adult), 2*9.2 (elder),
+// 2*9.4*1.26 = 23.69 (kid); shoulders 2*10.6 px (non-slim) or 2*9.2 (slim) — the
+// cos(pi/8) factor this test used to divide out by hand lives in metricsFor's ring
+// radii, so `headW` measures the silhouette directly.
+// - heads tall in [2.85, 4.45]. The frame fix moved this band bodily upward: the
+//   figure is 73.35 px, not 66.3, on the same 21.85 px head, so a bald adult is
+//   73.35/21.85 = 3.357 and hair adds 2.75 px (3.48). The LOW end is a kid, whose
+//   1.26x head outgrows the figure: chin 51.5 + 1.26*(76.1 - 51.5) = 82.5 px over
+//   a 27.53 px head = 3.00. The HIGH end is the witch hat, whose top dome ring is
+//   at art y 87 = 94.1 px above the floor: 94.1/21.85 = 4.31. [2.85, 4.45] clears
+//   both by ~0.15, so neither bound is the one the roster sits on.
+// - the three width ratios are UNCHANGED by the frame fix (it moves y only, never
+//   x or z), and the roster still measures exactly the derived values:
+//   non-slim non-kids honour the spec's 0.85 +- 0.05: 18/21.2 = 0.849, and an
 //   elder's wider head 18.4/21.2 = 0.868; both sit inside [0.80, 0.90].
 // - slim non-kids run 18/18.4 = 0.978 to an elder's 18.4/18.4 = 1.0, so [0.9, 1.05]
 //   brackets them with a margin on each side rather than hugging the observed pair.
@@ -170,7 +193,7 @@ test('every shipped design stays inside the proportion envelope', () => {
     const me = metricsFor(d);
     const r = measure(d);
     const tall = r.top / r.headH;
-    assert.ok(tall >= 2.5 && tall <= 4.2, `${d.key} heads tall ${tall}`);
+    assert.ok(tall >= 2.85 && tall <= 4.45, `${d.key} heads tall ${tall}`);
     const ratio = r.headW / r.shoulderW;
     if (me.kid) assert.ok(ratio >= 1.0 && ratio <= 1.35, `${d.key} kid ratio ${ratio}`);
     else if (me.slim) assert.ok(ratio >= 0.9 && ratio <= 1.05, `${d.key} slim ratio ${ratio}`);

@@ -4,7 +4,7 @@
 
 **Goal:** Make Library Shift's First Person characters read as the same people as their Top-Down 2D art — same proportions, palette, baked shading and silhouette — while staying 3D geometry.
 
-**Architecture:** Replace the four-colour palette flattening with the patron design object itself, rebuild `buildCharacter` at the 2D art's chibi proportions (3.0 heads tall, not 6.5) out of new `geom.js` primitives, and add one optional `unlit` flag to `core.js` so baked-shade surfaces opt out of scene lighting. The builder splits into frame/palette/body/head modules mirroring the 2D side's `patron.js` / `patron-head.js` seam.
+**Architecture:** Replace the four-colour palette flattening with the patron design object itself, rebuild `buildCharacter` at the 2D art's chibi proportions (3.36 heads tall, not 6.5) out of new `geom.js` primitives, and add one optional `unlit` flag to `core.js` so baked-shade surfaces opt out of scene lighting. The builder splits into frame/palette/body/head modules mirroring the 2D side's `patron.js` / `patron-head.js` seam.
 
 **Tech Stack:** Plain ES modules, no dependencies. `node --test` (`npm run test:unit`). The `three-d/` layer stays pure and DOM-free.
 
@@ -212,7 +212,7 @@ git commit -m "people: share hairTones/skinTones between the 2D and 3D renderers
 **Interfaces:**
 - Consumes: `hairTones`, `skinTones`, `shadeColor` from Task 3.
 - Produces:
-  - `FRAME` (`character-frame.js`): `{foot: 0, shoeTop: 4.5/40, hem: 19.4/40, shoulder: 43.4/40, chin: 44.4/40, eye: 53.8/40, crown: 66.3/40}`
+  - `FRAME` (`character-frame.js`), as heights above the floor — the art's own y is measured from `patron.js`'s hip-height origin, and the figure stands `GROUND` = 7.1 px below it, so `artY(px) = (px + 7.1) * PX` converts once: `{foot: 0, shoeTop: 5.0/40, hem: 26.5/40, shoulder: 50.5/40, chin: 51.5/40, eye: 60.9/40, crown: 73.35/40}` (art px `-2.1 / 19.4 / 43.4 / 44.4 / 53.8 / 66.25`, kept in `ART`)
   - `AGE_SCALE = {kid: 0.74, teen: 0.95, elder: 0.95, adult: 1}`, `KID_HEAD = 1.26`
   - `metricsFor(design): {kid, elder, slim, ageScale, headScale, halfTorso, halfShoulder, headRX, headRZ, depth}` where `slim = Boolean(design.outfit?.skirt) || age === 'kid'`; `halfTorso = (slim ? 7.8 : 9.8)/40`; `halfShoulder = (slim ? 9.2 : 10.6)/40`; `headRX = (kid ? 9.4 : elder ? 9.2 : 9)/40 * CIRC`; `headRZ = headRX * 0.94`, where `CIRC = 1/Math.cos(Math.PI/8)`. An 8-gon's widest points sit at `cos(pi/8)` of its radius, so the prism radius must exceed the designed half-width for the silhouette to equal it — the compensation `character-body.js` already applies to the torso. Without it the head renders 7.6% narrow and head ÷ shoulder lands at 0.784, below the contract's floor; `depth = (slim ? 5.6 : 6.6)/40`; `headScale = kid ? KID_HEAD : 1`
   - `paletteFor(design)` (`character-palette.js`): `{skin: {skin, shade, deep}, hair: {base, mid, deep, shine}, top, inner, apron, tie, trim, bottom, skirt, legs, shoes, eyes, brow, lips}`
@@ -331,7 +331,7 @@ Geometry:
 |---|---|
 | Head | a 5-ring `prism`, `sides: 8`, tapering to a chin at `FRAME.chin` and a crown at `FRAME.crown`, banded in the three skin tones |
 | Ears | one box per side at the head's half-width |
-| Face | `quad`s 0.01 proud of the head front at `FRAME.eye`: eye white, iris in `palette.eyes`, a highlight, a brow bar (thicker when `design.brows === 'thick'`), a lash bar when `eyes.lashes`, a mouth in `palette.lips` (taller when `mouth === 'open'`), blush when kid or `eyes.lashes` or `mouth === 'smile'` |
+| Face | `quad`s 0.01 proud of the head front at `FRAME.eye`, to `drawEyes`'s own measurements: a 5.5 px eye white (`inner` = cx - dir*2.6 to `outer` = cx + dir*2.9), an iris in `palette.eyes` of r = 1.95 (×1.15 for `big`/`round`) at cx + dir*0.1 — 82% of the eye's width — a 1.7 × 2.1 px pupil, a highlight, a brow bar (thicker when `design.brows === 'thick'`), the heavy upper lash bar **unconditionally** (`drawEyes` draws it outside its `if (lashes)`; the flag adds only the outer-corner flicks), a mouth in `palette.lips` (taller when `mouth === 'open'`), blush when kid or `eyes.lashes` or `mouth === 'smile'` |
 | Hair | a 4-ring `prism` cap in the four hair tones, plus a fringe quad across the brow |
 | `hair.back` | `long`/`medium`/`bob` → a fall box behind the head (24/11/8.6 px); `twintails` → a `prism` each side; `ponytail` → one behind; `bun` → one above |
 | `extras` | `glasses` (lens + frame quads), `mask` (a `prism` over the lower face), `cap`/`beanie`/`sunhat`/`bikeHelmet`/`hachimaki` (a `prism`; `cap` also gets a forward peak), `catEars`, `headphones` |
@@ -392,10 +392,10 @@ git commit -m "three-d: build a patron's head, hair and extras from their 2D des
 
 ```js
 // The guard that matters — adult design, tolerances from the spec:
-test('an adult is 3.0 heads tall', …)                      // height / headHeight === 3.0 ± 0.15
+test('an adult is 3.36 heads tall', …)                     // height / headHeight === 3.357 ± 0.05
 test('head is 85% of shoulder width', …)                   // ± 0.05
-test('legs are 29% of total height', …)                    // ± 2 percentage points
-test('an adult is 1.66 units tall', …)                     // ± 0.02
+test('legs are 36% of total height', …)                    // 36.1% ± 2 percentage points
+test('an adult is 1.83 units tall', …)                     // 1.834 ± 0.02
 
 test('feet sit on the floor', …)                           // min y === 0 (±1e-9)
 test('no colour from the design is dropped', …)

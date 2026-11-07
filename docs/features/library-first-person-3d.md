@@ -48,7 +48,7 @@ outfit, glasses, hat and age are the same in both cameras.
 | File | Role |
 |---|---|
 | `meshes/character.js` | `buildCharacter(design, opts)`: metrics + palette, body and head merged at the chin, then the one and only age scale |
-| `meshes/character-frame.js` | `FRAME` (the proportions, in 2D art px), `PX`, `CIRC`, `AGE_SCALE`, `KID_HEAD`, and `metricsFor(design)` |
+| `meshes/character-frame.js` | `FRAME` (the proportions, as heights above the floor), `ART`/`GROUND`/`artY` (the art's own coordinates and the lift onto the floor), `PX`, `CIRC`, `AGE_SCALE`, `KID_HEAD`, and `metricsFor(design)` |
 | `meshes/character-palette.js` | `paletteFor(design)` resolves every colour the mesh needs (skin/hair tones, top, inner, apron, tie, trim, bottom, skirt, legs, shoes, eyes, brow, lips); optional slots are `null`, never `undefined` |
 | `meshes/character-body.js` | `buildBody(design, palette, metrics)`: shoes, legs, lower garment, torso, sleeves, hands, neck — chin down |
 | `meshes/character-head.js` | `buildHead(design, palette, metrics, {angry})`: skull, ears, face, hair, facial hair and headwear — chin up |
@@ -72,17 +72,36 @@ mapping: `'karen'` to `KAREN_DESIGN`, anything else to `findLibraryDesign`.
 
 Everything is measured off the 2D art (`patron.js`/`patron-head.js`) in its
 own pixels and divided by `UNIT_SCALE` (40) by `PX`, so a 3D patron is the
-same chibi — 3.0 heads tall — the top-down view draws.
+same chibi — **3.36 heads tall** — the top-down view draws.
+
+**Art px are not heights.** `patron.js` draws a patron around a hip-height
+origin and the figure stands `GROUND` = 7.1 px *below* it: `legPoses({hipY:
+-19.6, thigh: 10.8, shin: 10.4})` puts the ankle at +1.6, `drawShoe` lays the
+sole to ankle-local +5.5, and `groundShadow`'s contact ellipse sits at +7.
+`artY(px) = (px + GROUND) * PX` is the one place art coordinates become scene
+units above the floor, and `ART` holds the landmarks in the art's own numbers
+so each can be checked against the 2D source; `character-body.js` and
+`character-head.js` both write their dimensions as art px and convert through
+it. (The frame was first measured as if the origin *were* the floor, which
+cost 7.1 px off every landmark and out of the legs alone: the figure came out
+3.03 heads tall with legs 29% of its height, against the art's 3.36 and 36%.)
 
 | Constant | Where | Value (2D px) |
 |---|---|---|
-| `FRAME` | `character-frame.js` | `foot` 0, `shoeTop` 4.5, `hem` 19.4, `shoulder` 43.4, `chin` 44.4, `eye` 53.8, `crown` 66.3 |
+| `GROUND` / `artY` / `ART` | `character-frame.js` | 7.1 px below patron.js's origin; `artY` lifts art px onto the floor; `ART` = `shoeTop` -2.1, `hem` 19.4, `shoulder` 43.4, `chin` 44.4, `eye` 53.8, `crown` 66.25 |
+| `FRAME` | `character-frame.js` | heights above the floor: `foot` 0, `shoeTop` 5.0, `hem` 26.5, `shoulder` 50.5, `chin` 51.5, `eye` 60.9, `crown` 73.35 |
 | head half-width | `metricsFor` | 9 (adult), 9.2 (elder), 9.4 (kid) either side of the centre line |
 | `halfTorso` / `halfShoulder` | `metricsFor` | 9.8 / 10.6, or 7.8 / 9.2 when `slim` (a skirt, or a kid) |
 | `depth` | `metricsFor` | 6.6, or 5.6 when `slim` |
 | `AGE_SCALE` | `character-frame.js` | kid 0.74, teen 0.95, elder 0.95, adult 1 |
 | `KID_HEAD` | `character-frame.js` | 1.26 (a kid's head alone, about `FRAME.chin`) |
 | `STOOP` / `DETAIL` | `character-head.js` | 0.05 units forward for an elder; 0.01 units proud for face detail |
+
+So an adult is 73.35 px tall on a 21.85 px head (3.357 heads), legs are
+26.5/73.35 = 36.1% of the height, and head ÷ shoulder stays 18/21.2 = 0.849 —
+the frame fix moves y only, never x or z. `FRAME.eye` at 60.9 px also lands
+within 1 px of `scene.js`'s `BASE_EYE` (60), so the player now meets a
+patron's eye line instead of looking 6 px over it; no camera constant moves.
 
 `CIRC = 1 / cos(pi/8)` is the one correction both halves share (the body
 imports it from the frame): `geom.js`'s `prism` puts flat faces on the axes,
@@ -140,22 +159,27 @@ fills each polygon and then strokes it in the same color, which covers the
 antialiasing hairline that would otherwise show between two faces meeting on
 a shared edge (visible as a grid over the tiled shell).
 
-**`unlit` faces: the whole head, and nothing else.** Every face
-`buildHead` emits is `unlit`; no body face is. The head's shading is already
-baked into its ring and band colours (the skull runs deep to shade to skin up
-its rows), exactly as the 2D art paints it, and the scene light points down,
-so lighting a forward-facing face again would only grey it out. Fog still
-applies to an `unlit` face, so a distant patron still recedes into the haze.
+**`unlit` faces: one material, one rule — everything painted in a skin tone.**
+Every face `buildHead` emits is `unlit`, and so are the body's skin-toned
+parts: the hands, the neck and bare legs. Clothing keeps its flat design
+colours and stays lit. The rule is the material, not the mesh: `skinTones()`
+already bakes skin/shade/deep out of one hex exactly as the 2D paints them,
+and the scene light points down, so lighting a forward-facing skin surface
+again only greys it out. Fog still applies to an `unlit` face, so a distant
+patron still recedes into the haze.
 
-That split was checked by eye against the same patrons in Top-Down (see
-Testing Plan) and kept as is: the body's own baked band colours already carry
-most of its gradient, so the lit term only adds about a 25% spread and the
-head does not read as pasted on. The one residual tell is skin that lives in
-the body mesh — the hands and the neck — rendering about 25% darker than the
-face above it; at first-person distances that reads as hands in shadow, which
-is how the 2D art shades them too. If it ever stops reading that way, the
-fix is to narrow `unlit` to the face detail quads in `buildFace` or to raise
-the body's baked band colours, not to light the head.
+The earlier rule — the whole head `unlit`, no body face ever — split that
+material in half. The hands use `palette.skin.skin`, the *same hex* as the
+skull's upper bands, so one colour rendered `rgb(239,196,159)` on the face
+and `rgb(174,143,116)` on the hands: a 27% step across the wrist, and the
+same step from chin to neck. Checked by eye at first-person distance against
+the same patron in Top-Down, that read as a seam rather than as hands in
+shadow. The alternative — dropping `unlit` from the head's skin and leaving
+it only on `buildFace`'s detail quads — was rejected because it greys out the
+face, which is what `unlit` exists to prevent. Bare legs stay flat under
+`unlit` because the 2D paints a bare leg as one fill with a thin crease.
+`character-body.test.js` pins the rule: a body face is `unlit` if and only if
+its colour is one of that design's skin tones.
 
 **Every First Person frame starts from a clean canvas.** `render` in
 `library-game.js` calls `ctx.clearRect` and, in First Person, fills
@@ -247,6 +271,11 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   Cart books are drawn as characters/props, as before.
 * The visual constants above are plausible but untuned; the character
   proportions are the exception — they are measured off the 2D art.
+* The face budget (`character.test.js`, ceiling 340) now has less headroom:
+  the heaviest shipped design is 320 faces, up from 278, after the sleeve
+  gained three y bands per side and each eye gained a pupil and an
+  unconditional lash line. The ceiling still guards runaway growth, but a
+  future design stacking headwear would reach it sooner.
 * Nothing tests the head's attachments against the head's own silhouette:
   ears, hats, earrings and headphones are placed off `headRX`/`headRZ` by
   convention only, so one of them could be decoupled from the skull and the

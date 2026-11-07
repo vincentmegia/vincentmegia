@@ -8,8 +8,10 @@
 // first ring colour is never rendered; every row below is written with that
 // in mind.
 //
-// Pure and DOM-free. Dimensions are 2D px (y measured up from the feet, like
-// FRAME) and divide by PX; x is px from the centre line.
+// Pure and DOM-free. Dimensions are 2D art px: y measured up from patron.js's
+// drawing origin, exactly as patron-head.js writes them (HEAD_Y = -55 here is
+// y = 55), and `y()` is character-frame.js's artY, the one place they become
+// scene units above the floor. x is art px from the centre line.
 //
 // Throughout, `hx`/`hz` are metrics.headRX/headRZ: the head prism's RADII, not
 // its half-widths. An 8-sided ring of radius r only reaches r*cos(pi/8), and
@@ -20,20 +22,20 @@
 // silhouette. A part placed off an absolute offset instead would drift.
 
 import { emptyMesh, merge, box, prism, quad, translate, scaleAbout } from './geom.js';
-import { FRAME, PX } from './character-frame.js';
+import { ART, FRAME, PX, artY } from './character-frame.js';
 import { shadeColor } from '../../../shared/people.js';
 
 const HEX6 = /^#[0-9a-f]{6}$/i;
 const hexOr = (v, fallback) => (typeof v === 'string' && HEX6.test(v) ? v : fallback);
-const y = (px) => px * PX;
+const y = artY;
 const join = (parts) => parts.reduce((acc, p) => merge(acc, p), emptyMesh());
 
-const EYE = FRAME.eye / PX; // 53.8 px
+const EYE = ART.eye; // 53.8 px, patron-head.js's EYE_Y
 const STOOP = 0.05; // an elder's head leans forward by this many units
 const DETAIL = 0.01; // how far detail faces sit proud of the head
 
 // The skull: [y px, width factor] from chin to crown.
-const SKULL = [[FRAME.chin / PX, 0.42], [47.6, 0.82], [53, 1], [60, 1], [FRAME.crown / PX, 0.62]];
+const SKULL = [[ART.chin, 0.42], [47.6, 0.82], [53, 1], [60, 1], [ART.crown, 0.62]];
 const S1 = Math.sin(Math.PI / 8);
 const S2 = Math.sin((3 * Math.PI) / 8);
 const C1 = Math.cos(Math.PI / 8);
@@ -127,14 +129,38 @@ export function buildFace(design, palette, metrics, opts = {}) {
   const ex = d.extras ?? {};
   const lashes = Boolean(d.eyes?.lashes);
   const eyeHalfH = { big: 1.9, round: 1.9, smile: 0.7, sharp: 1.2, calm: 1.4 }[d.eyes?.style] ?? 1.5;
+  // The eye, to the 2D's own measurements (staff-kit.js drawEyes): the white
+  // spans `inner` = ex - dir*2.6 to `outer` = ex + dir*2.9, so 5.5 px, and the
+  // iris is a circle of r = 1.95 (x1.15 for the round-eyed styles, which
+  // patron-head.js's EYE_SHAPE maps from `big` and `round`) centred at
+  // ex + dir*0.1 — 82% of the eye's width, not the 55%/60% this used to draw.
+  // A 1.7 x 2.1 px pupil sits on the iris, as the 2D's does, so the eye reads
+  // dark-dominant like the art instead of white-dominant.
+  const round = d.eyes?.style === 'big' || d.eyes?.style === 'round';
+  const irisR = 1.95 * (round ? 1.15 : 1);
   const thick = d.brows === 'thick';
   const parts = [];
   for (const dir of [-1, 1]) {
     const cx = dir * 4.3;
-    parts.push(rect(cx - 1.5, cx + 1.5, EYE - eyeHalfH, EYE + eyeHalfH, '#fbfbff'));
-    parts.push(rect(cx - 0.9, cx + 0.9, EYE - eyeHalfH * 0.9, EYE + eyeHalfH * 0.9, palette.eyes, DETAIL * 1.4));
-    parts.push(rect(cx - 0.5, cx + 0.1, EYE + eyeHalfH * 0.3, EYE + eyeHalfH * 0.75, '#ffffff', DETAIL * 1.8));
-    if (lashes) parts.push(rect(cx - 1.9, cx + 1.9, EYE + eyeHalfH, EYE + eyeHalfH + 0.6, '#1e1418', DETAIL * 1.4));
+    const [ex0, ex1] = dir > 0 ? [cx - 2.6, cx + 2.9] : [cx - 2.9, cx + 2.6];
+    const ic = cx + dir * 0.1; // the iris's centre, as the 2D offsets it
+    // Vertically the iris fills the lens and is clipped by it, as the 2D's
+    // circle is clipped by the eye path.
+    const irisHalfH = Math.min(irisR, eyeHalfH * 0.9);
+    const pupilHalfH = Math.min(1.05, irisHalfH * 0.95);
+    parts.push(rect(ex0, ex1, EYE - eyeHalfH, EYE + eyeHalfH, '#fbfbff'));
+    parts.push(rect(ic - irisR, ic + irisR, EYE - irisHalfH, EYE + irisHalfH, palette.eyes, DETAIL * 1.4));
+    parts.push(rect(ic - 0.85, ic + 0.85, EYE - pupilHalfH, EYE + pupilHalfH, '#1e120c', DETAIL * 1.6));
+    parts.push(rect(cx - 0.5, cx + 0.1, EYE + eyeHalfH * 0.3, EYE + eyeHalfH * 0.75, '#ffffff', DETAIL * 2));
+    // The heavy upper lash line: drawEyes draws it after its ctx.restore(),
+    // outside any `if (lashes)`, for every design — the `lashes` flag only
+    // adds the outer-corner flicks below. 44 of the 66 shipped designs used to
+    // lose it here.
+    parts.push(rect(ex0 - 0.2, ex1 + 0.2, EYE + eyeHalfH, EYE + eyeHalfH + 0.7, '#1e1418', DETAIL * 1.4));
+    if (lashes) {
+      const [f0, f1] = dir > 0 ? [ex1 - 0.2, ex1 + 1.1] : [ex0 - 1.1, ex0 + 0.2];
+      parts.push(rect(f0, f1, EYE + eyeHalfH + 0.5, EYE + eyeHalfH + 1.3, '#1e1418', DETAIL * 1.4));
+    }
 
     const [a, b] = dir > 0 ? [1.7, 6.8] : [-6.8, -1.7];
     if (opts.angry) {
