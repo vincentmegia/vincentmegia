@@ -215,6 +215,7 @@ import {
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
+import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -3161,6 +3162,12 @@ export function init(canvas, elements) {
       w: BOOKSHELF_ART.w * ART_SCALE,
       h: BOOKSHELF_ART.h * ART_SCALE,
       paint: (c, station) => paintBookshelfArt(c, station, bookcaseDrawOpts(station)),
+    },
+    // The stairs' arrow badge (up or down: per station, and stations are keyed by id).
+    stairs: {
+      w: STAIRS_BADGE_ART.w * BADGE_ART_SCALE,
+      h: STAIRS_BADGE_ART.h * BADGE_ART_SCALE,
+      paint: (c, station) => paintStairsBadgeArt(c, station),
     },
   };
   // `${station.id}|${stateKey}` -> canvas.
