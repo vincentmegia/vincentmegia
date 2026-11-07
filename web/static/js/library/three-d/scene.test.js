@@ -250,6 +250,22 @@ test('artFor hands each station its 2D art; the bookshelf wears it', () => {
   assert.equal(shelves[0].placement.scale, UNIT_SCALE);
 });
 
+test('the coffee machine wears its art, and a new canvas (out of order) rebuilds just its mesh', () => {
+  const inp = input();
+  const machineAt = (placed) => placed.find((p) => p.placement.pos[0] === 400 && p.placement.pos[2] === 200);
+  const working = { width: 336, height: 378 };
+  const taped = { width: 336, height: 378 };
+  const frame = (a) => buildFirstPersonScene({ ...inp, artFor: (st) => (st.kind === 'coffee-machine' ? a : null) }).placed;
+  const m1 = machineAt(frame(working));
+  assert.equal(m1.placement.scale, UNIT_SCALE);
+  const tex = m1.mesh.faces.filter((f) => f.texture);
+  assert.ok(tex.length > 0 && tex.every((f) => f.texture.image === working));
+  assert.equal(machineAt(frame(working)).mesh, m1.mesh, 'reused while the art is unchanged');
+  const m2 = machineAt(frame(taped)).mesh;
+  assert.notEqual(m2, m1.mesh);
+  assert.ok(m2.faces.filter((f) => f.texture).every((f) => f.texture.image === taped));
+});
+
 test('without artFor the bookshelf falls back to flat colours', () => {
   assert.equal(shelfMeshes(buildFirstPersonScene(input())).length, 0);
 });
