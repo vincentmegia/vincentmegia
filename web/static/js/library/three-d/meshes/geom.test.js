@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront } from './geom.js';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack } from './geom.js';
 
 function normal(mesh, face) {
   const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
@@ -126,6 +126,37 @@ test('artFrontUV maps an art rect onto the +Z front, model y up = art y down', (
   const uv = artFrontUV({ x0: -10, y0: -20, x1: 10, y1: 20 }, { w: 40, h: 80 }, 2);
   // corners in box front order: (x0,yLow) (x1,yLow) (x1,yHigh) (x0,yHigh)
   assert.deepEqual(uv, [[20, 120], [60, 120], [60, 40], [20, 40]]);
+});
+
+test('artBackUV maps an art rect onto the -Z face, seen from -Z (art x = -model x)', () => {
+  // A viewer on the -Z side looking toward +Z has model -X on their right, so
+  // a part showing art rect r spans model x from -r.x1 to -r.x0.
+  const r = { x0: -10, y0: -20, x1: 6, y1: 20 };
+  const artBox = { w: 40, h: 80 };
+  const b = box([-r.x1, -r.y1, 0], [-r.x0, -r.y0, 1], '#000');
+  const back = b.faces[1];
+  const uv = artBackUV(r, artBox, 2);
+  back.indices.forEach((vi, k) => {
+    const [X, Y] = b.vertices[vi];
+    assert.deepEqual(uv[k], [(-X + artBox.w / 2) * 2, (-Y + artBox.h / 2) * 2], `corner ${k}`);
+  });
+});
+
+test('textureBack textures and unlights the -Z face, wherever boxWithout left it', () => {
+  const r = { x0: 0, y0: 0, x1: 5, y1: 5 };
+  const opts = { artBox: { w: 10, h: 10 }, scale: 1, color: '#abc', div: [1, 2] };
+  const img = { width: 10, height: 10 };
+  for (const drop of [[], ['front'], ['front', 'top']]) {
+    const part = textureBack(boxWithout([0, 0, 0], [1, 1, 1], '#000', drop), r, { ...opts, image: img });
+    const tex = part.faces.filter((f) => f.texture);
+    assert.equal(tex.length, 1);
+    assert.deepEqual(tex[0].indices, [1, 0, 2, 3], 'the -Z face');
+    assert.equal(tex[0].unlit, true);
+    assert.deepEqual(tex[0].texture.uv, artBackUV(r, opts.artBox, 1));
+  }
+  const flat = textureBack(boxWithout([0, 0, 0], [1, 1, 1], '#000', ['front']), r, opts);
+  assert.equal(flat.faces[0].color, '#abc');
+  assert.ok(!flat.faces.some((f) => f.texture || f.unlit));
 });
 
 test('textureFront textures and unlights faces[0] with art, else flat-colours it', () => {

@@ -219,6 +219,7 @@ import {
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
+import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -3109,6 +3110,12 @@ export function init(canvas, elements) {
       h: COFFEE_MACHINE_ART.h * COFFEE_ART_SCALE,
       paint: (c, station) => paintCoffeeMachineArt(c, station, { outOfOrder: coffeeOutOfOrder() }),
       stateKey: () => (coffeeOutOfOrder() ? 'out' : ''),
+    },
+    // The indicator shows the station's own targetFloor, fixed per station id.
+    elevator: {
+      w: ELEVATOR_ART.w * ELEVATOR_ART_SCALE,
+      h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
+      paint: (c, station) => paintElevatorArt(c, station),
     },
   };
   // `${station.id}|${stateKey}` -> canvas.

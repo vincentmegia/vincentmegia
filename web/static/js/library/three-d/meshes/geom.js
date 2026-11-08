@@ -127,6 +127,35 @@ export function artFrontUV(r, artBox, scale) {
 }
 
 /**
+ * The uv corners for a box's -Z face showing art rect `r`, for a part that
+ * faces -Z: seen from -Z, model -X is the viewer's right, so the part spans
+ * model x from -r.x1 to -r.x0 (art x = -model x). box winds that face
+ * (x1,y0) (x0,y0) (x0,y1) (x1,y1), which is the viewer's bottom-left first,
+ * exactly like the +Z front seen from +Z, so the corners come out the same
+ * as artFrontUV's.
+ */
+export function artBackUV(r, artBox, scale) {
+  return artFrontUV(r, artBox, scale);
+}
+
+const BACK_INDICES = '1,0,2,3'; // box's -Z face, kept as is by boxWithout
+
+/**
+ * textureFront for a part facing -Z: dresses its -Z face (box's 'back', found
+ * wherever boxWithout left it) in art region `r`. Mutates and returns `part`.
+ */
+export function textureBack(part, r, { image, artBox, scale, color, div }) {
+  const f = part.faces.find((x) => x.indices.join() === BACK_INDICES);
+  if (image) {
+    f.texture = { image, uv: artBackUV(r, artBox, scale), div };
+    f.unlit = true;
+  } else {
+    f.color = color;
+  }
+  return part;
+}
+
+/**
  * Dress a part's +Z front (its faces[0]) in its own region `r` of the 2D art:
  * textured and unlit when `image` is given, else the flat fallback `color`.
  * Mutates and returns `part`.
