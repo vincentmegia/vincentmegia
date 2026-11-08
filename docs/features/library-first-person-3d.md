@@ -46,7 +46,7 @@ call in `drawScene` is pure and DOM-free.
 | `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
 | `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
-| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js`, `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
 
 ### The character meshes
 
@@ -185,7 +185,10 @@ Textured fronts are `unlit` (the 2D art carries its own top-lit gradients);
 sides, tops and backs stay lit so each prop reads as solid. Without `art`
 (node tests) the same faces take the drawer's exported flat colours.
 `buildFirstPersonScene` asks `artFor(station)` for each same-floor station
-with its own mesh and memoises the built mesh per station object and art.
+with its own mesh, and `optsFor(station)` for any extra build options that
+station's kind needs (the Boss's Office's `{locked}`). The mesh is memoised
+per station object, art, builder and those options serialised, so a station
+whose state flips rebuilds and one that holds still does not.
 
 ### Data shapes (JSDoc in `core.js`)
 
@@ -203,8 +206,12 @@ with its own mesh and memoises the built mesh per station object and art.
 * `Texture` = `{image, uv, div?}` on a 4-index face: `image` any canvas image
   source, `uv` one `[u, v]` in image px per index, `div` the `[nu, nv]` cells
   (default `[1, 1]`). The mapped region must be opaque.
-* `Placement` = `{pos: Vec3, yaw, scale}`; `yaw` is radians about +Y,
-  `scale` a number or `Vec3`. Order is scale, yaw, translate.
+* `Placement` = `{pos: Vec3, yaw, scale, alpha?}`; `yaw` is radians about +Y,
+  `scale` a number or `Vec3`. Order is scale, yaw, translate. `alpha`
+  (default 1) is a paint property only — `buildDrawList` copies it onto
+  every poly the placement yields and both paint paths honour it, but it
+  changes neither geometry nor colour, so a translucent mesh sorts and
+  shades exactly as the opaque one does.
 * `Placed` = `{mesh, placement}`.
 * Camera = `{viewProj, position}` from `cameraFromPose(player, {eyeHeight,
   pitch, roll, fov, aspect, near, far})` where `player` is `{x, y, facing}`
@@ -445,15 +452,15 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Top-Down draws | Where | In FP today |
 |---|---|---|
 | Every floor-plan station | `drawStation` | ✅ all present; bookshelf, coffee machine, elevator, stairs referenced to 2D |
-| Front Desk, Return Cart, Fines Counter, Boss's Office, Reading Nook | `STATION_DETAIL_DRAWERS` | ⚠️ plain brown boxes (`buildStationBox`) |
-| Boss's Office locked state (grey + padlock) | `drawStation` | ❌ |
-| Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; all face yaw 0 |
-| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ⚠️ drawn as a solid normal patron |
-| Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ❌ not passed to the scene; and none has a design object (bespoke 2D renderers in `STAFF_RENDERERS`, `jiho.js`, `minjun.js`) |
+| Front Desk, Return Cart, Fines Counter, Boss's Office, Reading Nook | `STATION_DETAIL_DRAWERS` | ✅ geometry meshes in `meshes/{front-desk,return-cart,fines-counter,boss-office,reading-nook}.js` |
+| Boss's Office locked state (grey + padlock) | `drawStation` | ✅ `optsFor` passes `{locked}` to `buildBossOffice`; grey door + lock badge |
+| Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
+| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha` ("???" chip ❌, Step 10) |
+| Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
 | Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ❌ |
 | Staff help interactions | Top-Down click | ❌ staff aren't FP entities |
 | Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ⚠️ untextured 18×26×10 boxes |
-| Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ❌ |
+| Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
 | Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ❌ one `FLOOR_TINT` for both floors |
 | Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ❌ |
 | Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
@@ -467,37 +474,41 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 Ordered so each step is independently shippable; sizes are rough
 (S < ½ day, M ≈ 1 day, L = several).
 
-1. **Inventory + parity test (M)** — P1, P2. Add pure
-   `library/world-inventory.js` (`worldInventory(floor, state)`), switch both
-   renderers and `buildFirstPersonEntities` to it, and add a node test that
-   every inventory kind maps to an FP builder or an exemption. Expose
-   `getWorldInventory()` on `window.__libraryGameTestHooks`. Lands red on
-   the kinds below and turns green as they ship (mark them `todo` in the
-   test, not skipped).
+1. **~~Inventory + parity test (M)~~** ✅ — P1, P2. `world-inventory.js`
+   (`worldInventory(floor, state)`), both renderers and
+   `buildFirstPersonEntities` rewired to it, 14-test
+   `world-inventory.test.js` with `FP_TODO_KINDS` that shrink as steps ship.
+   `getWorldInventory()` exposed on `window.__libraryGameTestHooks`.
 2. **Lossless-flip e2e (S)** — P3. Playwright: snapshot inventory + state,
    flip FP → Top-Down → FP several times (including mid-ride), assert equal.
-3. **Ambient staff in FP (L)** — P2, P4. Author a design object per staff
-   member referenced to their 2D renderer (Security, Janitor, Shelver,
-   Volunteer, Storyteller, Archivist on `staff-kit.js`; Ji-ho; Min-jun),
-   extending `buildCharacter` only where a design needs a part it lacks
-   (caps, mop/broom, book stacks). Pass `ambient` for the floor into the
-   scene with each walker's yaw from `a.dir`. Pin each mesh's proportions
-   and palette to its 2D like `character.test.js` does for patrons.
-4. **Character facing and state (S)** — P4. Queue patrons face their desk;
-   ghosts draw translucent (needs per-placement alpha in `drawScene`);
-   memoise character meshes per design so 8 more people don't rebuild
-   every frame.
+3. **~~Ambient staff in FP (L)~~** ✅ — P2, P4. `LIBRARY_STAFF_DESIGNS` in
+   `library-people.js` (8 designs matching the 2D renderers' palettes),
+   `findStaffDesign(key)`, wired into `drawFirstPersonView` via the world
+   inventory. `staff-design.test.js` pins skin/hair/outfit colours to the
+   2D.
+4. ✅ **Character facing and state (S)** — P4. `placement.yaw` per
+   character: queue patrons `atan2` towards their desk, ambient staff take
+   the walker's own `a.facing` (set in `updateAmbient` from its step).
+   `placement.alpha` threads through `buildDrawList` and both paint paths,
+   so ghost patrons shimmer and drift as `drawFrontDeskSlots` paints them.
+   Character meshes were already memoised on design identity
+   (`meshes/character.js`'s `CACHE`).
 5. **Staff interactions in FP (S)** — P6. Add helpful staff to the FP
    entity list; route interact to the same `staffHelp` / `askMinjunForHelp`
    path Top-Down uses.
-6. **Remaining station meshes (L)** — P4. Front Desk, Return Cart, Fines
-   Counter, Boss's Office (locked/unlocked via `stateKey`), Reading Nook,
-   each referenced to its `STATION_DETAIL_DRAWERS` art via `FP_ART`.
-   One commit per prop, as the bookshelf/coffee/elevator/stairs did.
+6. ✅ **Remaining station meshes (L)** — P4. Front Desk, Return Cart,
+   Fines Counter, Boss's Office (locked/unlocked via `optsFor`), Reading
+   Nook: geometry-technique meshes in `meshes/` matching the 2D drawers'
+   colours; `scene.js` BUILDERS map wired; boss locked state via `optsFor`
+   callback.
 7. **Return Cart books (S)** — P4. Book meshes in the genre colour wearing
    `drawCoverTitle`'s cover as art, coin-hunt star included.
-8. **Decor meshes (M)** — P2, P4. Water cooler, plant, ladder, waiting
-   chairs from `drawDecor`'s art; `LIBRARY_DECOR` joins the inventory.
+8. ✅ **Decor meshes (M)** — P2, P4. `meshes/decor.js`: water cooler,
+   plant, ladder and waiting chairs as geometry in `drawDecor`'s own
+   colours (its drawers are 3/4 sprites, not plan views, so there is no
+   front texture to wear). `buildFirstPersonScene` takes a `decor` list
+   and memoises one shared mesh per kind. `meshes/decor.test.js` pins the
+   kinds Library places, their standing heights and those colours.
 9. **Room dressing per floor (M)** — P4. `buildRoom` takes a per-floor
    palette (1F mint checker, 2F cream), floor decals for the guide stripes
    and rugs, and back-wall art (sign, sakura, wall shelf, live wall clock)

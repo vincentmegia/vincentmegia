@@ -7,6 +7,11 @@ import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
 import { buildElevator } from './meshes/elevator.js';
+import { buildFrontDesk } from './meshes/front-desk.js';
+import { buildReturnCart } from './meshes/return-cart.js';
+import { buildFinesCounter } from './meshes/fines-counter.js';
+import { buildBossOffice } from './meshes/boss-office.js';
+import { buildReadingNook } from './meshes/reading-nook.js';
 import { buildStationBox } from './meshes/station-box.js';
 // library-people.js is pure data (no imports, no DOM), so a real design is safe to load.
 import { KAREN_DESIGN, findLibraryDesign } from '../library-people.js';
@@ -65,7 +70,11 @@ test('meshForStationKind mapping and unknown fallback', () => {
   assert.equal(meshForStationKind('coffee-machine'), buildCoffeeMachine);
   assert.equal(meshForStationKind('stairs'), buildStairs);
   assert.equal(meshForStationKind('elevator'), buildElevator);
-  assert.equal(meshForStationKind('front-desk'), buildStationBox);
+  assert.equal(meshForStationKind('front-desk'), buildFrontDesk);
+  assert.equal(meshForStationKind('return-cart'), buildReturnCart);
+  assert.equal(meshForStationKind('fines-counter'), buildFinesCounter);
+  assert.equal(meshForStationKind('boss-office'), buildBossOffice);
+  assert.equal(meshForStationKind('reading-nook'), buildReadingNook);
   assert.doesNotThrow(() => meshForStationKind('totally-unknown-kind'));
   assert.equal(meshForStationKind('totally-unknown-kind'), buildStationBox);
 });
@@ -311,4 +320,60 @@ test('the stairs wear their own badge art, centred on the station, foot toward +
     const zs = p.mesh.vertices.map((v) => v[2]);
     assert.ok(Math.abs(Math.max(...zs) + Math.min(...zs)) < 1e-9, 'centred in z');
   }
+});
+
+test('a character placement carries its own yaw and alpha', () => {
+  const inp = input({
+    characters: [
+      { x: 300, y: 350, floor: 1, design: DESIGN, yaw: Math.PI / 2 },
+      { x: 320, y: 350, floor: 1, design: DESIGN, alpha: 0.4 },
+      { x: 340, y: 350, floor: 1, design: DESIGN },
+    ],
+  });
+  const { placed } = buildFirstPersonScene(inp);
+  const people = placed.slice(-3).map((p) => p.placement);
+  assert.equal(people[0].yaw, Math.PI / 2);
+  assert.equal(people[0].alpha, 1, 'yaw alone leaves alpha opaque');
+  assert.equal(people[1].alpha, 0.4);
+  assert.equal(people[1].yaw, 0, 'alpha alone leaves yaw facing +Z');
+  assert.deepEqual([people[2].yaw, people[2].alpha], [0, 1], 'neither given: the old defaults');
+});
+
+test("buildBossOffice's locked state changes the mesh and busts the memo", () => {
+  const office = { id: 'boss-1', kind: 'boss-office', x: 500, y: 200, floor: 1 };
+  const meshFor = (locked) => {
+    const scene = buildFirstPersonScene({
+      ...input({ stations: [office], characters: [] }),
+      optsFor: () => ({ locked }),
+    });
+    return scene.placed.find((p) => p.placement.pos[0] === 500).mesh;
+  };
+  const open = meshFor(false);
+  const shut = meshFor(true);
+  assert.notEqual(open, shut, 'a different locked state rebuilds');
+  assert.ok(shut.faces.length > open.faces.length, 'locked adds the lock badge');
+  assert.equal(meshFor(true), shut, 'the same state hits the memo');
+});
+
+test('decor is placed on its own floor and shares one mesh per kind', () => {
+  const decor = [
+    { decorKind: 'plant', x: 930, y: 240, floor: 1 },
+    { decorKind: 'plant', x: 930, y: 420, floor: 1 },
+    { decorKind: 'water-cooler', x: 200, y: 120, floor: 1 },
+    { decorKind: 'ladder', x: 150, y: 300, floor: 2 },
+  ];
+  const { placed } = buildFirstPersonScene({ ...input({ characters: [] }), decor });
+  const props = placed.filter((p) => decor.some((d) => d.x === p.placement.pos[0] && d.y === p.placement.pos[2]));
+  assert.equal(props.length, 3, "floor 2's ladder is left out");
+  const plants = props.filter((p) => p.placement.pos[0] === 930);
+  assert.equal(plants.length, 2);
+  assert.equal(plants[0].mesh, plants[1].mesh, 'both plants share the memoised mesh');
+  assert.notEqual(plants[0].mesh, props.find((p) => p.placement.pos[0] === 200).mesh);
+});
+
+test('a decor kind with no mesh yet is skipped, not drawn as a box', () => {
+  const decor = [{ decorKind: 'vending-machine', x: 300, y: 300, floor: 1 }];
+  const bare = buildFirstPersonScene(input({ characters: [] })).placed.length;
+  const { placed } = buildFirstPersonScene({ ...input({ characters: [] }), decor });
+  assert.equal(placed.length, bare);
 });

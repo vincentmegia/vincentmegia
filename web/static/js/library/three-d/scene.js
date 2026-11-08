@@ -8,6 +8,12 @@ import { buildStationBox } from './meshes/station-box.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
 import { buildElevator } from './meshes/elevator.js';
+import { buildFrontDesk } from './meshes/front-desk.js';
+import { buildReturnCart } from './meshes/return-cart.js';
+import { buildFinesCounter } from './meshes/fines-counter.js';
+import { buildBossOffice } from './meshes/boss-office.js';
+import { buildReadingNook } from './meshes/reading-nook.js';
+import { meshForDecorKind } from './meshes/decor.js';
 
 export const ROOM_HEIGHT = 300;
 export const BASE_EYE = 60;
@@ -24,6 +30,11 @@ const BUILDERS = {
   'coffee-machine': buildCoffeeMachine,
   stairs: buildStairs,
   elevator: buildElevator,
+  'front-desk': buildFrontDesk,
+  'return-cart': buildReturnCart,
+  'fines-counter': buildFinesCounter,
+  'boss-office': buildBossOffice,
+  'reading-nook': buildReadingNook,
 };
 
 export function meshForStationKind(kind) {
@@ -35,12 +46,28 @@ export function meshForStationKind(kind) {
 // run, so identity hits every frame.
 const stationMeshes = new WeakMap();
 
-function stationMesh(s, builder, artFor) {
+function stationMesh(s, builder, artFor, optsFor) {
   const art = artFor ? artFor(s) ?? undefined : undefined;
+  const extra = optsFor ? optsFor(s) : undefined;
+  const cacheKey = extra ? JSON.stringify(extra) : '';
   const hit = stationMeshes.get(s);
-  if (hit && hit.art === art && hit.builder === builder) return hit.mesh;
-  const mesh = builder({ art });
-  stationMeshes.set(s, { art, builder, mesh });
+  if (hit && hit.art === art && hit.builder === builder && hit.cacheKey === cacheKey) return hit.mesh;
+  const mesh = builder({ art, ...extra });
+  stationMeshes.set(s, { art, builder, cacheKey, mesh });
+  return mesh;
+}
+
+// Builder -> mesh. A decor prop's mesh depends on nothing but its kind, and
+// the world inventory rebuilds its items every frame, so the memo is keyed on
+// the builder: every plant in the room shares one read-only mesh.
+const decorMeshes = new Map();
+
+function decorMesh(builder) {
+  let mesh = decorMeshes.get(builder);
+  if (!mesh) {
+    mesh = builder();
+    decorMeshes.set(builder, mesh);
+  }
   return mesh;
 }
 
@@ -49,8 +76,13 @@ function stationMesh(s, builder, artFor) {
  * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
  *   a station's 2D art for its mesh to wear (docs/skills/2d-to-3d/SKILL.md);
  *   asked only for stations on this floor that have their own mesh.
+ * @param {(station: object) => (object | undefined)} [input.optsFor]
+ *   extra build options a station's kind needs (the Boss's Office's
+ *   `{locked}`); they take part in the mesh memo's key.
+ * @param {{decorKind: string, x: number, y: number, floor?: number}[]} [input.decor]
+ *   decor props from the world inventory; a kind with no mesh is skipped.
  */
-export function buildFirstPersonScene({ player, floor, stations, characters, cameraParams, viewport, artFor }) {
+export function buildFirstPersonScene({ player, floor, stations, characters, decor, cameraParams, viewport, artFor, optsFor }) {
   const placed = [];
   const room = buildRoom({ width: viewport.width, depth: viewport.height, height: ROOM_HEIGHT, floorTint: FLOOR_TINT });
   placed.push({ mesh: room, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
@@ -66,15 +98,22 @@ export function buildFirstPersonScene({ player, floor, stations, characters, cam
         placement: { pos: [s.x, 0, s.y], yaw: 0, scale: 1 },
       });
     } else {
-      placed.push({ mesh: stationMesh(s, builder, artFor), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
+      placed.push({ mesh: stationMesh(s, builder, artFor, optsFor), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
     }
+  }
+
+  for (const d of decor ?? []) {
+    if (d.floor !== undefined && d.floor !== floor) continue;
+    const builder = meshForDecorKind(d.decorKind);
+    if (!builder) continue;
+    placed.push({ mesh: decorMesh(builder), placement: { pos: [d.x, 0, d.y], yaw: d.yaw ?? 0, scale: UNIT_SCALE } });
   }
 
   for (const c of characters) {
     if (c.floor !== undefined && c.floor !== floor) continue;
     placed.push({
       mesh: buildCharacter(c.design, { angry: Boolean(c.angry) }),
-      placement: { pos: [c.x, 0, c.y], yaw: 0, scale: UNIT_SCALE },
+      placement: { pos: [c.x, 0, c.y], yaw: c.yaw ?? 0, scale: UNIT_SCALE, alpha: c.alpha ?? 1 },
     });
   }
 

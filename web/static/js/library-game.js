@@ -64,7 +64,7 @@ import { drawStoryteller } from './library/storyteller.js';
 import { drawArchivist } from './library/archivist.js';
 import { drawKaren } from './library/karen.js';
 import { drawPatron } from './library/patron.js';
-import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN } from './library/library-people.js';
+import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN, findStaffDesign } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import {
@@ -217,6 +217,7 @@ import {
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { worldInventory } from './library/world-inventory.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
@@ -645,7 +646,7 @@ export function init(canvas, elements) {
     const minjunOff = Boolean(daily?.twist.effect.noMinjun);
     ambient = AMBIENT_STAFF.filter((def) => !(minjunOff && def.key === 'minjun')).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
-      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null, dir: 1, phase: i * 1.3 };
+      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null, dir: 1, facing: 0, phase: i * 1.3 };
     });
   }
 
@@ -686,6 +687,7 @@ export function init(canvas, elements) {
         a.x += (dx / dist) * step;
         if (Math.abs(dx) > 0.5) a.dir = dx > 0 ? 1 : -1;
         a.y += (dy / dist) * step;
+        a.facing = Math.atan2(dx, dy);
       }
     }
   }
@@ -1200,20 +1202,28 @@ export function init(canvas, elements) {
 
   /** Builds this frame's First Person entity list: every station on the current floor, plus (1st Floor only, mirroring `drawFrontDeskSlots`/`drawReturnCartBooks`'s own floor gate) every front-desk patron slot and Return Cart book — the doc's "every station... and every visible patron on the current floor." */
   function buildFirstPersonEntities() {
+    const inv = getWorldInventory();
     const entities = [];
-    for (const station of stationsOnFloor(stations, currentFloor)) {
-      entities.push({ id: station.id, x: station.x, y: station.y, entityKind: 'station', ref: station });
-    }
-    if (currentFloor === FLOOR_1) {
-      frontDeskSlots().forEach((slot, i) => {
-        entities.push({ id: `fd-${slot.id}`, x: slot.x, y: slot.y, entityKind: 'frontDeskSlot', ref: slot, slotIndex: i });
-      });
-      finesCounterSlots().forEach((slot, i) => {
-        entities.push({ id: `fc-${slot.id}`, x: slot.x, y: slot.y, entityKind: 'finesSlot', ref: slot, slotIndex: i });
-      });
-      returnCartSlots().forEach((book) => {
-        entities.push({ id: `cart-${book.id}`, x: book.x, y: book.y, entityKind: 'returnCartBook', ref: book });
-      });
+    for (const item of inv) {
+      switch (item.kind) {
+        case 'station':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'station', ref: item.ref });
+          break;
+        case 'front-desk-patron':
+        case 'karen':
+        case 'ghost-patron':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'frontDeskSlot', ref: item.ref, slotIndex: item.slotIndex });
+          break;
+        case 'fines-patron':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'finesSlot', ref: item.ref, slotIndex: item.slotIndex });
+          break;
+        case 'return-cart-book':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref });
+          break;
+        case 'ambient-staff':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey });
+          break;
+      }
     }
     return entities;
   }
@@ -2872,6 +2882,26 @@ export function init(canvas, elements) {
     { kind: 'plant', floor: FLOOR_2, x: 40, y: 420, w: 30, h: 46 },
   ];
 
+  function inventoryOpts() {
+    const bossLocked = shiftState
+      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
+    return {
+      stations,
+      frontDeskSlots: currentFloor === FLOOR_1 ? frontDeskSlots : () => [],
+      finesCounterSlots: currentFloor === FLOOR_1 ? finesCounterSlots : () => [],
+      returnCartSlots: currentFloor === FLOOR_1 ? returnCartSlots : () => [],
+      ambient,
+      decorItems: LIBRARY_DECOR,
+      halluc,
+      bossOfficeLocked: Boolean(bossLocked),
+      coffeeOutOfOrder: coffeeOutOfOrder(),
+    };
+  }
+
+  function getWorldInventory(floor) {
+    return worldInventory(floor ?? currentFloor, inventoryOpts());
+  }
+
   function drawFloor() {
     if (currentFloor === FLOOR_1) {
       drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
@@ -3140,6 +3170,15 @@ export function init(canvas, elements) {
       fpArtCache.set(key, art);
     }
     return art;
+  }
+
+  function fpOptsFor(station) {
+    if (station.kind === 'boss-office') {
+      const locked = shiftState
+        && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
+      return { locked: Boolean(locked) };
+    }
+    return undefined;
   }
 
   const STATION_DETAIL_DRAWERS = {
@@ -5023,18 +5062,36 @@ export function init(canvas, elements) {
       offY = tcam.posOffset.y * UNIT_SCALE;
       offZ = tcam.posOffset.z * UNIT_SCALE;
     }
-    // Characters + Return Cart books mirror what the old billboard path drew:
-    // the Front Desk / Fines Counter queues (1st Floor only).
+    // Characters, Return Cart books and decor from the world inventory
+    // (P1: one list, two renderers).
+    const inv = getWorldInventory();
     const characters = [];
     const books = [];
-    if (currentFloor === FLOOR_1) {
-      for (const e of buildFirstPersonEntities()) {
-        if (e.entityKind === 'frontDeskSlot' || e.entityKind === 'finesSlot') {
-          const personality = personalityForSlot(e.ref, e.slotIndex ?? 0);
-          characters.push({ x: e.x, y: e.y, design: fpDesignFor(personality), angry: e.ref.kind === 'karen' });
-        } else if (e.entityKind === 'returnCartBook') {
-          books.push(e);
-        }
+    const decor = [];
+    for (const item of inv) {
+      if (item.kind === 'front-desk-patron' || item.kind === 'karen' || item.kind === 'fines-patron' || item.kind === 'ghost-patron') {
+        const personality = personalityForSlot(item.ref, item.slotIndex ?? 0);
+        const stationKind = item.kind === 'fines-patron' ? 'fines-counter' : 'front-desk';
+        const desk = stations.find((s) => s.kind === stationKind);
+        const yaw = desk ? Math.atan2(desk.x - item.x, desk.y - item.y) : 0;
+        // Ghosts shimmer and drift exactly as drawFrontDeskSlots paints them.
+        const ghost = item.kind === 'ghost-patron';
+        const now = performance.now();
+        characters.push({
+          x: item.x + (ghost ? Math.sin(now / 140) * 2 : 0),
+          y: item.y,
+          yaw,
+          design: fpDesignFor(personality),
+          angry: item.ref.kind === 'karen',
+          alpha: ghost ? 0.35 + 0.2 * Math.sin(now / 90) : 1,
+        });
+      } else if (item.kind === 'ambient-staff') {
+        const design = findStaffDesign(item.staffKey);
+        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design });
+      } else if (item.kind === 'return-cart-book') {
+        books.push(item);
+      } else if (item.kind === 'decor') {
+        decor.push(item);
       }
     }
     const viewport = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -5043,9 +5100,11 @@ export function init(canvas, elements) {
       floor: currentFloor,
       stations,
       characters,
+      decor,
       cameraParams: fpCameraParams(offY),
       viewport,
       artFor: fpArtFor,
+      optsFor: fpOptsFor,
     });
     for (const e of books) {
       const genre = findGenre(e.ref.genreId);
@@ -5350,6 +5409,7 @@ export function init(canvas, elements) {
       isPlayerMoving: () => moveTarget !== null,
       getCurrentFloor: () => currentFloor,
       getStations: () => stations.map((s) => ({ ...s })),
+      getWorldInventory: (floor) => getWorldInventory(floor),
       getFrontDeskSlots: () => frontDeskSlots(),
       getFinesCounterSlots: () => finesCounterSlots(),
       getFinesStartShift: () => finesStartShiftNumber,

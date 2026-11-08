@@ -583,3 +583,80 @@ export const KAREN_DESIGN = {
   eyes: { color: '#3a6a9a', style: 'sharp', lashes: true }, brows: 'thin', mouth: 'flat',
   outfit: { kind: 'blazer', top: '#c0432f', bottom: '#3a3238', shoes: '#141018' },
 };
+
+// --- Staff design objects for the First Person 3D view ---
+// Each matches its 2D renderer's P palette. buildCharacter maps these
+// through character-palette.js / character-body.js / character-head.js.
+export const LIBRARY_STAFF_DESIGNS = [
+  // Security (security.js): navy uniform jacket, pale-blue shirt, dark tie,
+  // dark trousers, black boots. Short black hair, sharp eyes.
+  {
+    key: 'guard', label: 'Security', age: 'adult', skin: '#dca578',
+    hair: { color: '#141012', back: 'short', fringe: 'textured' },
+    eyes: { color: '#3a2416', style: 'sharp' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#2e3a5a', inner: '#c9e4ff', tie: '#1c2238', bottom: '#242c38', shoes: '#14181f' },
+  },
+  // Volunteer (volunteer.js): teal knit vest over white collar, teal skirt,
+  // white socks, brown shoes. Brown hair in a ponytail, round eyes.
+  {
+    key: 'volunteer', label: 'Volunteer', age: 'adult', skin: '#f8dcc6',
+    hair: { color: '#6a3e2a', back: 'ponytail', fringe: 'side' },
+    eyes: { color: '#6a3e22', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'cardigan', top: '#3f7a6a', inner: '#ffffff', skirt: '#3f7a6a', legs: '#ffffff', shoes: '#7a4a32' },
+  },
+  // Min-jun (minjun.js): navy vest over white shirt, dark red tie, dark
+  // slacks, white shoes. Dark hair, purple eyes, lanyard.
+  {
+    key: 'minjun', label: 'Min-jun', age: 'teen', skin: '#f8dcc4',
+    hair: { color: '#2a2028', back: 'medium', fringe: 'messy' },
+    eyes: { color: '#5a2c96', style: 'big' }, brows: 'thin', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#2d3a64', inner: '#fbfbf8', tie: '#8a2a3a', bottom: '#3a3a46', shoes: '#fafafa' },
+  },
+  // Janitor (janitor.js): teal work shirt under a dark vest, dark trousers,
+  // green boots, yellow gloves, bandana. Grey hair, calm eyes.
+  {
+    key: 'libJanitor', label: 'Janitor', age: 'elder', skin: '#e6b48c',
+    hair: { color: '#9a949c', back: 'short', fringe: 'textured' },
+    eyes: { color: '#2a1a12', style: 'calm' }, brows: 'thick', mouth: 'flat',
+    outfit: { kind: 'hoodie', top: '#4e6270', inner: '#5a8a9a', bottom: '#4a5866', shoes: '#3f7a4a' },
+  },
+  // Shelver (shelver.js): green cardigan over white blouse, navy skirt,
+  // tights, brown shoes. Brown hair with a clip, calm eyes, glasses.
+  {
+    key: 'libShelver', label: 'Shelver', age: 'adult', skin: '#f6d6bd',
+    hair: { color: '#5a3420', back: 'medium', fringe: 'side' },
+    eyes: { color: '#3a2a1a', style: 'calm' }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'cardigan', top: '#3fb58f', inner: '#ffffff', skirt: '#2e3a5a', legs: '#e8d2c2', shoes: '#6a3a2a' },
+    extras: { glasses: 'round' },
+  },
+  // Storyteller (storyteller.js): yellow top with a pink apron, blue skirt,
+  // white tights, pink shoes, pink beret. Brown hair, round eyes.
+  {
+    key: 'libStoryteller', label: 'Storyteller', age: 'adult', skin: '#efc49f',
+    hair: { color: '#8a4a2a', back: 'medium', fringe: 'side' },
+    eyes: { color: '#5a3a2a', style: 'round', lashes: true }, brows: 'thin', mouth: 'smile',
+    outfit: { kind: 'apron', top: '#ffd166', apron: '#ff8fb8', skirt: '#4fa8e0', legs: '#ffffff', shoes: '#e8558f' },
+  },
+  // Archivist (archivist.js): cream overcoat, gold cardigan, striped shirt,
+  // navy tie, brown trousers, brown shoes. Silver/grey hair, calm eyes.
+  {
+    key: 'libArchivist', label: 'Archivist', age: 'elder', skin: '#f6d6bd',
+    hair: { color: '#c8c6cc', back: 'short', fringe: 'parted' },
+    eyes: { color: '#3a2e26', style: 'calm' }, brows: 'thick', mouth: 'smile',
+    outfit: { kind: 'cardigan', top: '#f4f0e6', inner: '#eef2f8', tie: '#2e3a5a', bottom: '#6a4e3a', shoes: '#6a3a22' },
+  },
+  // Ji-ho (jiho.js): navy blazer with gold piping, white shirt, dark red tie,
+  // grey trousers, white canvas shoes. Dark brown fluffy hair, warm eyes.
+  {
+    key: 'jiho', label: 'Ji-ho', age: 'teen', skin: '#f8dcc6',
+    hair: { color: '#4a2e22', back: 'short', fringe: 'messy' },
+    eyes: { color: '#5a3826', style: 'round' }, brows: 'thin', mouth: 'flat',
+    outfit: { kind: 'blazer', top: '#22305a', inner: '#f6f6f2', tie: '#8a2a3e', bottom: '#6e7280', shoes: '#f6f2e8' },
+  },
+];
+
+export const LIBRARY_STAFF_DESIGN_KEYS = LIBRARY_STAFF_DESIGNS.map((d) => d.key);
+
+export function findStaffDesign(key) {
+  return LIBRARY_STAFF_DESIGNS.find((d) => d.key === key) ?? null;
+}

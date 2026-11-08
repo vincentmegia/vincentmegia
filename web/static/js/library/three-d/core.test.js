@@ -199,12 +199,12 @@ test('faces without the flag are unchanged', () => {
     {
       screen: [[314.69737707341363, 207.3865645358996], [474.9046792531569, 218.67565802822145],
         [408.97789672559924, 236.8750900293754], [281.4802270285438, 230.27829000410242]],
-      color: 'rgb(110,176,240)', depth: 6.921060994002885, ground: false,
+      color: 'rgb(110,176,240)', depth: 6.921060994002885, ground: false, alpha: 1,
     },
     {
       screen: [[314.69737707341363, 392.6134354641004], [474.9046792531569, 381.32434197177855],
         [474.9046792531569, 218.67565802822145], [314.69737707341363, 207.3865645358996]],
-      color: 'rgb(177,132,107)', depth: 6, ground: false,
+      color: 'rgb(177,132,107)', depth: 6, ground: false, alpha: 1,
     },
   ]);
 });
@@ -340,4 +340,20 @@ test('a culled textured face is dropped when it faces away', () => {
   const t = texQuad();
   t.faces[0].cull = true;
   assert.equal(buildDrawList(CAM, [at(t, -5, Math.PI)], SCENE).length, 0);
+});
+
+test('a placement alpha rides onto every poly it produces', () => {
+  const mesh = {
+    vertices: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#c08060' }],
+  };
+  const scene = { viewport: VP, light: { dir: [0, 1, 0], ambient: 0.5 }, fog: null };
+  const cam = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 0 });
+  const listFor = (alpha) => buildDrawList(cam, [{ mesh, placement: { pos: [0, 0, -6], yaw: 0, scale: 1, alpha } }], scene);
+  assert.equal(listFor(0.4)[0].alpha, 0.4);
+  assert.equal(listFor(undefined)[0].alpha, 1, 'no alpha given stays opaque');
+  // Alpha is a paint property only: it must not move or recolour anything.
+  const ghost = listFor(0.4)[0], solid = listFor(undefined)[0];
+  assert.deepEqual(ghost.screen, solid.screen);
+  assert.equal(ghost.color, solid.color);
 });

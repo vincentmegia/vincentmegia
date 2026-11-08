@@ -185,7 +185,7 @@ const fogAmount = (fog, depth) => (fog ? Math.min(1, Math.max(0, (depth - fog.st
  * missing perspective divide invisible. A cell the near plane cuts is pushed
  * as a flat, clipped polygon in the face's colour instead, so it leaves no hole.
  */
-function pushTexturedFace(out, face, world, camera, viewport, fog, intensity) {
+function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha = 1) {
   const { image, uv, div = [1, 1] } = face.texture;
   const W = face.indices.map((i) => world[i]);
   const [nu, nv] = div;
@@ -198,7 +198,7 @@ function pushTexturedFace(out, face, world, camera, viewport, fog, intensity) {
         const poly = clipNear(clip);
         if (poly.length < 3) continue;
         const depth = poly.reduce((acc, c) => acc + c[3], 0) / poly.length;
-        out.push({ screen: poly.map(toScreen), color: shadeColor(face.color, intensity, fog, depth), depth, ground: false });
+        out.push({ screen: poly.map(toScreen), color: shadeColor(face.color, intensity, fog, depth), depth, ground: false, alpha });
         continue;
       }
       const cellUv = corners.map(([a, b]) => bilerp(uv, a, b));
@@ -215,6 +215,7 @@ function pushTexturedFace(out, face, world, camera, viewport, fog, intensity) {
           color: face.color,
           depth,
           ground: false,
+          alpha,
         });
       }
     }
@@ -233,6 +234,7 @@ export function buildDrawList(camera, placed, opts) {
   const ld = normalize(light.dir);
   const out = [];
   for (const { mesh, placement } of placed) {
+    const alpha = placement.alpha ?? 1;
     const world = mesh.vertices.map((v) => modelPoint(v, placement));
     const clip = world.map((w) => transformPoint(camera.viewProj, w));
     for (const face of mesh.faces) {
@@ -246,7 +248,7 @@ export function buildDrawList(camera, placed, opts) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
         const n = normalize(cross(sub(b, a), sub(c, a)));
         const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
-        pushTexturedFace(out, face, world, camera, viewport, fog, intensity);
+        pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha);
         continue;
       }
       // Clip against the near plane; a face entirely behind it yields nothing.
@@ -265,7 +267,7 @@ export function buildDrawList(camera, placed, opts) {
         (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
       ]);
       out.push({
-        screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground),
+        screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), alpha,
       });
     }
   }
@@ -285,6 +287,8 @@ export function drawScene(ctx, camera, placed, opts) {
       drawTexturedTriangle(ctx, poly);
       continue;
     }
+    const alpha = poly.alpha ?? 1;
+    if (alpha < 1) ctx.globalAlpha = alpha;
     ctx.beginPath();
     poly.screen.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
     ctx.closePath();
@@ -297,6 +301,7 @@ export function drawScene(ctx, camera, placed, opts) {
     ctx.strokeStyle = poly.color;
     ctx.lineWidth = 1;
     ctx.stroke();
+    if (alpha < 1) ctx.globalAlpha = 1;
   }
 }
 
@@ -337,7 +342,9 @@ function drawTexturedTriangle(ctx, p) {
   const sy = Math.max(0, Math.floor(Math.min(v0, v1, v2)) - 1);
   const sw = Math.min(p.image.width, Math.ceil(Math.max(u0, u1, u2)) + 1) - sx;
   const sh = Math.min(p.image.height, Math.ceil(Math.max(v0, v1, v2)) + 1) - sy;
+  const alpha = p.alpha ?? 1;
   ctx.save();
+  if (alpha < 1) ctx.globalAlpha = alpha;
   trianglePath(ctx, grown);
   ctx.clip();
   ctx.transform(a, b, c, d, e, f);
@@ -348,12 +355,12 @@ function drawTexturedTriangle(ctx, p) {
   ctx.save();
   trianglePath(ctx, p.screen);
   if (dark > 0) {
-    ctx.globalAlpha = dark;
+    ctx.globalAlpha = dark * alpha;
     ctx.fillStyle = '#000000';
     ctx.fill();
   }
   if (p.fog > 0) {
-    ctx.globalAlpha = p.fog;
+    ctx.globalAlpha = p.fog * alpha;
     ctx.fillStyle = p.fogColor;
     ctx.fill();
   }
