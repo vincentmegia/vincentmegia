@@ -9,7 +9,7 @@ import {
   STAIRS_DURATION,
   STAIRS_STEPS,
 } from './transitions.js';
-import { STAIR_RISE_PER_STEP, STAIR_RUN_PER_STEP } from './meshes/stairs.js';
+import { STAIR_RISE_PER_STEP, STAIR_RUN_PER_STEP, buildStairs } from './meshes/stairs.js';
 
 const POSE = { x: 0, y: 0, facing: 0 };
 const DT = 0.01;
@@ -160,4 +160,26 @@ test('stairs forward drift follows engine convention (sin f, -cos f)', () => {
   const e = transitionCamera(mid, { x: 0, y: 0, facing: Math.PI / 2 }).posOffset;
   assert.ok(e.x > 0);
   assert.ok(Math.abs(e.z) < 1e-9);
+});
+
+test('the climb from the e2e spot goes up the stairs mesh, never through a tread', () => {
+  // library-game.spec.js stands the player 60 px (1.5 units) south of the
+  // station, facing north (-z), the way the mesh's foot faces.
+  const m = buildStairs();
+  const treads = m.faces.filter((f) => f.part === 'tread').map((f) => {
+    const p = f.indices.map((i) => m.vertices[i]);
+    return { y: p[0][1], z0: Math.min(...p.map((q) => q[2])), z1: Math.max(...p.map((q) => q[2])) };
+  });
+  const start = 1.5;
+  const zFoot = Math.max(...m.vertices.map((v) => v[2]));
+  assert.ok(start > zFoot, 'the player starts outside the mesh, in front of its foot');
+  let onStairs = 0;
+  for (const s of [createTransition('stairs', 2), ...run(createTransition('stairs', 2))]) {
+    const o = transitionCamera(s, { x: 0, y: 0, facing: 0 }).posOffset;
+    const z = start + o.z;
+    const under = treads.filter((t) => z >= t.z0 && z <= t.z1);
+    for (const t of under) assert.ok(o.y >= t.y - 1e-9, `feet ${o.y} below tread ${t.y} at z=${z}`);
+    if (under.length) onStairs++;
+  }
+  assert.ok(onStairs > 50, 'the camera passes over the treads');
 });

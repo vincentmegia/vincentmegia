@@ -8,7 +8,12 @@
 
 Library Shift's First Person camera is a software-3D renderer that draws
 flat-shaded, painter-sorted polygons onto the existing 2D canvas (no WebGL,
-no dependencies). It replaced the older billboard-sprite view. Parent doc:
+no dependencies). Its objects are referenced to their Top-Down 2D art
+(`docs/skills/2d-to-3d/SKILL.md`): characters are built from the same design
+the 2D draws; the bookshelf, coffee machine and elevator wear their 2D
+drawer's own art as a texture; and the stairs (whose 2D is a plan view) are
+geometry in their drawer's own colours with a textured arrow badge. It
+replaced the older billboard-sprite view. Parent doc:
 `library-game.md`.
 
 ## Scope
@@ -18,8 +23,8 @@ books drawn as 3D meshes; head-bob/jump/tilt/sprint as camera effects; the
 animated elevator ride and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
-targeting (still `library/first-person.js`); textures, z-buffer, lighting
-beyond one directional light plus ambient; ambient staff in FP (not drawn);
+targeting (still `library/first-person.js`); textures other than a 2D
+drawer's own art; z-buffer, lighting beyond one directional light plus ambient; ambient staff in FP (not drawn);
 elevator door animation in the scene (see Known gaps).
 
 ---
@@ -35,7 +40,94 @@ call in `drawScene` is pure and DOM-free.
 | `room.js` | `buildRoom({width, depth, height, floorTint})`: floor, ceiling, four walls, wainscot, windows, light fixtures |
 | `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
-| `meshes/*.js` | One builder per object: `character.js` (also exports `box`), `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
+| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+
+### The character meshes
+
+A First Person patron is built from **the very same design object the
+top-down art draws** (`library/library-people.js`, Hospital Shift's
+`anime-people.js` format), not from a reduced palette, so a patron's hair,
+outfit, glasses, hat and age are the same in both cameras.
+
+| File | Role |
+|---|---|
+| `meshes/character.js` | `buildCharacter(design, opts)`: metrics + palette, body and head merged at the chin, then the one and only age scale |
+| `meshes/character-frame.js` | `FRAME` (the proportions, as heights above the floor), `ART`/`GROUND`/`artY` (the art's own coordinates and the lift onto the floor), `PX`, `CIRC`, `AGE_SCALE`, `KID_HEAD`, and `metricsFor(design)` |
+| `meshes/character-palette.js` | `paletteFor(design)` resolves every colour the mesh needs (skin/hair tones, top, inner, apron, tie, trim, bottom, skirt, legs, shoes, eyes, brow, lips); optional slots are `null`, never `undefined` |
+| `meshes/character-body.js` | `buildBody(design, palette, metrics)`: shoes, legs, lower garment, torso, sleeves, hands, neck — chin down |
+| `meshes/character-head.js` | `buildHead(design, palette, metrics, {angry})`: skull, ears, face, hair, facial hair and headwear — chin up |
+
+```js
+buildCharacter(design, { angry: true })   // angry is an OPTION, not design data
+```
+
+`opts.angry` scowls (Karen's outburst); it is deliberately not part of the
+design, since the design is shared with the 2D renderer. Nothing outside the
+mesh layer builds a palette: callers pass the design straight through.
+
+`buildCharacter` is **memoised on the design object's identity** (a `WeakMap`,
+one slot each for calm and angry). `buildFirstPersonScene` runs per frame and
+rebuilt every visible character every time — about 0.074 ms each, against
+effectively nothing for a cache hit. Identity, not `design.key`: the roster's
+designs are stable module-level objects, so identity hits every frame just as a
+key would, but a key *collides* — `{ ...design, outfit: other }` keeps the key
+while being a different character, and would be served the original's mesh.
+Keying on `design.key` fails seven tests in the suite for exactly that reason.
+The returned mesh is **shared, so treat it as read-only**; `buildDrawList` does,
+mapping each vertex into world space rather than moving it. A design built fresh
+on every call simply misses the cache, as before.
+`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?}`.
+
+Karen is the one character with no roster entry (`findLibraryDesign('karen')`
+is `null`), so `library-people.js` also exports `KAREN_DESIGN` — a design in
+the same shape, carrying the four colours her old first-person palette had so
+her 3D look is unchanged. `fpDesignFor` in `library-game.js` is the whole
+mapping: `'karen'` to `KAREN_DESIGN`, anything else to `findLibraryDesign`.
+
+#### Proportions
+
+Everything is measured off the 2D art (`patron.js`/`patron-head.js`) in its
+own pixels and divided by `UNIT_SCALE` (40) by `PX`, so a 3D patron is the
+same chibi — **3.36 heads tall** — the top-down view draws.
+
+**Art px are not heights.** `patron.js` draws a patron around a hip-height
+origin and the figure stands `GROUND` = 7.1 px *below* it: `legPoses({hipY:
+-19.6, thigh: 10.8, shin: 10.4})` puts the ankle at +1.6, `drawShoe` lays the
+sole to ankle-local +5.5, and `groundShadow`'s contact ellipse sits at +7.
+`artY(px) = (px + GROUND) * PX` is the one place art coordinates become scene
+units above the floor, and `ART` holds the landmarks in the art's own numbers
+so each can be checked against the 2D source; `character-body.js` and
+`character-head.js` both write their dimensions as art px and convert through
+it. (The frame was first measured as if the origin *were* the floor, which
+cost 7.1 px off every landmark and out of the legs alone: the figure came out
+3.03 heads tall with legs 29% of its height, against the art's 3.36 and 36%.)
+
+| Constant | Where | Value (2D px) |
+|---|---|---|
+| `GROUND` / `artY` / `ART` | `character-frame.js` | 7.1 px below patron.js's origin; `artY` lifts art px onto the floor; `ART` = `shoeTop` -2.1, `hem` 19.4, `shoulder` 43.4, `chin` 44.4, `eye` 53.8, `crown` 66.25 |
+| `FRAME` | `character-frame.js` | heights above the floor: `foot` 0, `shoeTop` 5.0, `hem` 26.5, `shoulder` 50.5, `chin` 51.5, `eye` 60.9, `crown` 73.35 |
+| head half-width | `metricsFor` | 9 (adult), 9.2 (elder), 9.4 (kid) either side of the centre line |
+| `halfTorso` / `halfShoulder` | `metricsFor` | 9.8 / 10.6, or 7.8 / 9.2 when `slim` (a skirt, or a kid) |
+| `depth` | `metricsFor` | 6.6, or 5.6 when `slim` |
+| `AGE_SCALE` | `character-frame.js` | kid 0.74, teen 0.95, elder 0.95, adult 1 |
+| `KID_HEAD` | `character-frame.js` | 1.26 (a kid's head alone, about `FRAME.chin`) |
+| `STOOP` / `DETAIL` | `character-head.js` | 0.05 units forward for an elder; 0.01 units proud for face detail |
+
+So an adult is 73.35 px tall on a 21.85 px head (3.357 heads), legs are
+26.5/73.35 = 36.1% of the height, and head ÷ shoulder stays 18/21.2 = 0.849 —
+the frame fix moves y only, never x or z. `FRAME.eye` at 60.9 px also lands
+within 1 px of `scene.js`'s `BASE_EYE` (60), so the player now meets a
+patron's eye line instead of looking 6 px over it; no camera constant moves.
+
+`CIRC = 1 / cos(pi/8)` is the one correction both halves share (the body
+imports it from the frame): `geom.js`'s `prism` puts flat faces on the axes,
+so an 8-sided ring of radius r is only `r*cos(pi/8)` wide. Ring radii are
+scaled up by `CIRC` so the silhouette a player sees is the width that was
+designed. `metricsFor` therefore returns the head prism's **radii**
+(`headRX`, `headRZ`), not half-widths, and every part of the head — skull,
+ears, face details, hair, hats — is placed as a multiple of them, so the whole
+head widens together.
 
 Wiring lives in `web/static/js/library-game.js`: `drawFirstPersonView`
 builds the scene and calls `drawScene(ctx, camera, placed, {viewport,
@@ -44,14 +136,68 @@ vignette, interact flash, crosshair, minimap). `fpCameraParams` maps the
 effect state to camera params. `first-person.js` is still the projection
 used for `findInteractTarget`; it does not draw.
 
+### The prop meshes
+
+A prop with a flat, readable front wears **its own Top-Down drawer's art**
+(`docs/skills/2d-to-3d/SKILL.md`; design:
+`docs/superpowers/specs/2026-11-07-library-fp-prop-art-design.md`): the
+bookshelf, the coffee machine and the elevator. The stairs' 2D (`drawStairs`)
+is a plan view, which can't be worn as a front, so the stairs are geometry
+built from that drawer's exports plus one textured part, the arrow badge. The
+five other stations are still plain boxes (see Known gaps).
+
+`library-game.js`'s `FP_ART` is one entry per kind whose mesh wears art,
+`{w, h, paint(ctx, station), stateKey?(station)}`: `fpArtFor` paints a canvas
+of `w × h` image px once per `${station.id}|${stateKey}` and hands it to the
+scene as `artFor`, so art that depends on game state (the coffee machine's
+tape) is painted again only when that state changes, and the scene rebuilds
+just that mesh.
+
+| Piece | Where | Role |
+|---|---|---|
+| `bookcaseLayout(st, rows = 2)` | `library/anime-furniture.js` | Where `drawBookcase` puts the case, sign, back panel and each shelf's plank; `drawBookcase` draws from it, the mesh maps onto it |
+| `drawBookcase(ctx, st, {color, sign, titles, rows?})`, `BOOKCASE_COLORS` | `library/anime-furniture.js` | The 2D drawer (Top-Down draws 2 rows) and its case/back/plank colours |
+| `BOOKSHELF_SIZE`, `BOOKSHELF_ART`, `ART_SCALE` | `meshes/bookshelf.js` | 1.0 × 2.0 × 0.35 units; the art box `{w: 124, h: 242, rows: 4}` (its case inset is exactly the mesh's 1:2); 3 image px per art px |
+| `paintBookshelfArt(ctx, station, drawOpts)` | `meshes/bookshelf.js` | Paints an opaque case-colour backing, then `drawBookcase` at `BOOKSHELF_ART` |
+| `buildBookshelf({art})` | `meshes/bookshelf.js` | Crown (with the sign), plinth and sides at the front plane, four spine rows recessed 0.07, four plank lips 0.01 proud; each front textured with exactly its layout region; 37 faces, all `cull` |
+| `bookcaseDrawOpts`, `FP_ART.bookshelf` | `library-game.js` | The one set of draw options Top-Down and FP share (so both show the same books), and the bookshelf's art entry |
+| `coffeeMachineLayout(st)`, `drawCoffeeMachine(ctx, st)`, `COFFEE_MACHINE_COLORS` | `library/anime-furniture.js` | Where the coffee machine's drawer (moved out of `library-game.js`) puts the hopper (a trapezoid), body, band, display, buttons, bay, group head, spouts, drip, cup, tray, grate and steam. Widths come from `st.w`; the top hangs from `-h/2` and the bay's contents stand on `h/2`, so a taller box only grows the bay. `ground` is the station tile, `hopperSolid` the glass over it |
+| `drawOutOfOrderTape(ctx)`, `OUT_OF_ORDER_TAPE_COLORS` | `library/anime-furniture.js` | The Coffee Machine Broken hazard tape, drawn by Top-Down's `drawCoffeeOutOfOrder` and painted into the FP art |
+| `COFFEE_MACHINE_SIZE`, `COFFEE_MACHINE_STAND`, `COFFEE_MACHINE_ART`, `ART_SCALE` | `meshes/coffee-machine.js` | A 0.4 × 0.5 × 0.4 machine on a 0.6 × 0.9 × 0.5 counter-height stand (so it reads at eye height); the art box `{w: 84, h: 94.5}` (body plus hopper exactly 0.4 : 0.5); 4 image px per art px |
+| `paintCoffeeMachineArt(ctx, station, {outOfOrder})` | `meshes/coffee-machine.js` | Opaque backing, then `drawCoffeeMachine`, then a 0.5 px band-coloured seam under the hopper (the renderer's 0.6 px seam grow would otherwise show the glass on the head's top edge), then the tape if out of order |
+| `buildCoffeeMachine({art})` | `meshes/coffee-machine.js` | A stand in the bookcase's wood (`BOOKCASE_COLORS`); head and jambs at the front plane, the bay's back recessed 0.07 with its walls and a tray floor, the group head and two spouts hanging in the bay, the drip tray's lip 0.03 proud, the hopper a trapezoid mapped corner for corner. 43 faces (9 textured), all `cull` |
+| `FP_ART['coffee-machine']` | `library-game.js` | `stateKey` is `'out'` on a Coffee Machine Broken day (`coffeeOutOfOrder()`, the one check Top-Down shares), so the taped canvas is painted once and the mesh rebuilds once |
+| `elevatorLayout(st, {height})`, `drawElevator(ctx, st, {t, height?, pulse?})`, `ELEVATOR_COLORS` | `hospital/anime-furniture.js` | Where Hospital Shift's elevator drawer (Library draws with it too) puts the indicator plate, label, frame, doors (with shines), call panel and button. `height` (default `st.w`) stretches only the vertical runs and `pulse` fixes the button's glow; Top-Down passes neither. `ELEVATOR_COLORS.tile` is the station tile both games draw it on (`elevator.test.js` pins it to both games' `STATION_COLORS.elevator`) |
+| `ELEVATOR_SIZE`, `ELEVATOR_ART`, `ELEVATOR_ART_SCALE` | `meshes/elevator.js` | The frame is 1.4 × 2.2 and the car 1.1 deep; the art box `{w: 84, h: 114}` makes the drawer's frame exactly 1.4 : 2.2; 3 image px per art px |
+| `paintElevatorArt(ctx, station)` | `meshes/elevator.js` | Opaque tile backing, then `animeTile`, then `drawElevator` at `ELEVATOR_ART` with `pulse: 1` (painted once, so it does not pulse in FP) |
+| `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, door panels 0.02 in front of it each wearing its own door region as it slides, and the car's ceiling and back wall seen through the doorway. 54 faces (12 textured), all `cull` |
+| `STAIRS_COLORS`, `STAIRS_RAIL`, `STAIRS_BADGE`, `stairStepColor(i, steps = 5)`, `stairsArrowDir(st)`, `drawStairsBadge(ctx, x, y, dir)` | `hospital/anime-furniture.js` | What `drawStairs` draws with: the step ramp (exact for 5 steps, spread over more), the edge/shadow/rail/badge colours, the rail's 5 px ink under 3 px wood, and the up/down badge |
+| `STAIRS_SIZE`, `STAIRS_BADGE_ART`, `BADGE_ART_SCALE` | `meshes/stairs.js` | 1.12 wide × 1.44 tall × 2.24 deep for 8 steps (rise 0.18, run 0.28, unchanged); the badge art box 24 × 24 at 8 image px per art px |
+| `paintStairsBadgeArt(ctx, station)` | `meshes/stairs.js` | Opaque step-colour backing, then `drawStairsBadge` pointing the station's way |
+| `buildStairs({steps?, art?})` | `meshes/stairs.js` | Centred on the station, foot facing +Z toward the approaching player, climbing toward −Z (the way `transitionCamera` moves). Treads in the ramp, risers under the 2D shadow, plum nosings, pastel stringers with plum tops, the two-tone rail on the left between two newels, and the badge sign at the foot on the right (textured, `unlit`; flat white without art). 85 faces, all `cull` |
+
+Textured fronts are `unlit` (the 2D art carries its own top-lit gradients);
+sides, tops and backs stay lit so each prop reads as solid. Without `art`
+(node tests) the same faces take the drawer's exported flat colours.
+`buildFirstPersonScene` asks `artFor(station)` for each same-floor station
+with its own mesh and memoises the built mesh per station object and art.
+
 ### Data shapes (JSDoc in `core.js`)
 
 * `Vec3` = `[x, y, z]`.
 * `Mesh` = `{vertices: Vec3[], faces: Face[]}`; `Face` = `{indices: number[],
-  color: string}` with color `#rgb`, `#rrggbb` or `rgb(r,g,b)`. Faces are
-  convex polygons (3+ indices), wound counter-clockwise seen from outside:
-  the normal comes from the first three vertices, and a face lit from behind
-  gets only the ambient term. There is no back-face culling.
+  color: string, unlit?: boolean, cull?: boolean, texture?: Texture}` with
+  color `#rgb`, `#rrggbb` or `rgb(r,g,b)`; `unlit` skips scene lighting (see
+  Rendering model). Faces are convex polygons (3+ indices), wound
+  counter-clockwise seen from outside: the normal comes from the first three
+  vertices, and a face lit from behind gets only the ambient term. Back-face
+  culling is **opt-in per face**: `cull` drops a face turned away from the
+  camera. Only meshes whose winding a test checks from both sides set it (the
+  bookshelf, coffee machine, elevator and stairs); the room shell and
+  characters don't.
+* `Texture` = `{image, uv, div?}` on a 4-index face: `image` any canvas image
+  source, `uv` one `[u, v]` in image px per index, `div` the `[nu, nv]` cells
+  (default `[1, 1]`). The mapped region must be opaque.
 * `Placement` = `{pos: Vec3, yaw, scale}`; `yaw` is radians about +Y,
   `scale` a number or `Vec3`. Order is scale, yaw, translate.
 * `Placed` = `{mesh, placement}`.
@@ -72,15 +218,64 @@ roughly metre units, then scaled into game pixels by `UNIT_SCALE`.
 plane** (Sutherland-Hodgman in clip space, keeping `z + w >= 0`; a face
 entirely behind it is dropped, one that straddles it is cut down to the part
 in front), computes flat intensity `ambient + max(0, n . lightDir)` from the
-*unclipped* world vertices, fogs toward `fog.color` between `fog.start` and
+*unclipped* world vertices (a face marked `unlit` takes intensity 1 instead),
+fogs toward `fog.color` between `fog.start` and
 `fog.end` by face depth, and sorts back to front (painter's algorithm, face
 depth = mean clip-space w of the clipped polygon's vertices).
+
+**Ground is its own layer.** A mean depth is wrong for a wide, near-horizontal
+face: the floor tile a patron *stands on* can have a nearer centroid than the
+patron, so a plain depth sort paints the floor over their legs and feet. (It
+did: a patron at interact range kept only the top quarter of their legs and
+never showed their shoes at all.) So every face a mesh marks `ground` — only
+`room.js`'s floor does — sorts as a layer before everything else, each layer
+still back to front within itself, which keeps the floor's own overlap and fog
+gradient. This is sound because the floor is the shell's lowest surface:
+everything in the room rests on it, so it can never *legitimately* occlude any
+of it, while the walls rise from its edges and the ceiling is above, so neither
+overlaps a floor tile on screen. `room.test.js` pins that exactly the floor
+carries the flag (a wall or the ceiling in that layer *would* occlude wrongly),
+`core.test.js` pins the layer order, and `scene.test.js` renders a patron at
+interact range with and without the floor behind them and requires every row of
+their legs to win a pixel.
+
+**Textured faces** are cut into `div` cells, bilinear in world and uv space,
+and each cell is emitted as two triangles with their own depth. A cell the
+near plane cuts is emitted as a flat clipped polygon in `face.color`, so it
+leaves no hole. `drawScene` maps the image onto each triangle through the
+affine transform from its uv triangle (canvas 2D has no perspective divide,
+which the small cells hide), clipped to the triangle grown by 0.6 px so
+cells meet without a seam, and sampling only that triangle's uv box. Darkening
+by `1 - intensity` and fog are then painted over the exact triangle as
+overlays, which is why the mapped region must be opaque.
 
 Clipping is what lets the camera stand inside the room: the shell's floor,
 ceiling and walls always straddle the near plane from in there. `drawScene`
 fills each polygon and then strokes it in the same color, which covers the
 antialiasing hairline that would otherwise show between two faces meeting on
 a shared edge (visible as a grid over the tiled shell).
+
+**`unlit` faces: one material, one rule — everything painted in a skin tone.**
+Every face `buildHead` emits is `unlit`, and so are the body's skin-toned
+parts: the hands, the neck and bare legs. Clothing keeps its flat design
+colours and stays lit. The rule is the material, not the mesh: `skinTones()`
+already bakes skin/shade/deep out of one hex exactly as the 2D paints them,
+and the scene light points down, so lighting a forward-facing skin surface
+again only greys it out. Fog still applies to an `unlit` face, so a distant
+patron still recedes into the haze.
+
+The earlier rule — the whole head `unlit`, no body face ever — split that
+material in half. The hands use `palette.skin.skin`, the *same hex* as the
+skull's upper bands, so one colour rendered `rgb(239,196,159)` on the face
+and `rgb(174,143,116)` on the hands: a 27% step across the wrist, and the
+same step from chin to neck. Checked by eye at first-person distance against
+the same patron in Top-Down, that read as a seam rather than as hands in
+shadow. The alternative — dropping `unlit` from the head's skin and leaving
+it only on `buildFace`'s detail quads — was rejected because it greys out the
+face, which is what `unlit` exists to prevent. Bare legs stay flat under
+`unlit` because the 2D paints a bare leg as one fill with a thin crease.
+`character-body.test.js` pins the rule: a body face is `unlit` if and only if
+its colour is one of that design's skin tones.
 
 **Every First Person frame starts from a clean canvas.** `render` in
 `library-game.js` calls `ctx.clearRect` and, in First Person, fills
@@ -96,11 +291,26 @@ leftover Top-Down art showed through.
 * **No z-buffer.** Sorting is per face, so large faces and interpenetrating
   or very close objects can mis-order. Keep objects as small boxes — and keep
   shell faces tiled (`room.js` emits every quad as a grid of at most
-  `TILE` = 120 units, so no face is large enough for its single mean depth to
-  sort it in front of the furniture standing on it).
+  `TILE` = 120 units, so no single face spans the frame and each carries its
+  own sort depth and fog). Tiling *narrows* a bad mean-depth sort but cannot
+  fix one — halving a tile halves the error and doubles the polygons — so the
+  floor's case is settled by the ground layer above, not by `TILE`. `TILE`
+  stays for the per-tile fog gradient and near-plane clipping.
 * **Coplanar-offset rule.** Faces that share a plane tie in the sort and
   z-fight. Sit details a small distance proud of their backing surface
   (`room.js` uses `PROUD = 0.1`; meshes use about 0.01 in unit space).
+* **Textures are affine per triangle.** Perspective is only approximated by
+  the `div` cells; a large textured face seen up close and edge-on will warp.
+  Each cell costs a clip and an image draw, so keep `div` small (the bookshelf
+  uses `[2, 1]` wide and `[1, 3]` tall; a floor with three shelves in view
+  ran at 60 fps in headless Chromium, as did each of the other props in view).
+  On a flat gradient (the elevator's tile) the cell-triangle seams can show
+  as faint diagonal hairlines at interact range; busy art hides them.
+* **Seam grow shows neighbouring art.** Each textured triangle is clipped to
+  itself grown by 0.6 px, so it samples a sliver of the canvas just outside
+  its region. Where a part's 2D neighbour is not its 3D neighbour (the coffee
+  machine's head under the hopper's glass), paint a seam fill there in the FP
+  art.
 * **Near-plane clipping is per face, not per scene.** A face is cut against
   the near plane only; there is no side/top clipping, so off-screen geometry
   is still rasterized by the canvas.
@@ -117,12 +327,17 @@ leftover Top-Down art showed through.
 | `FP_LIGHT` | `library-game.js` | `{dir: [0.35, 1, 0.25], ambient: 0.5}` |
 | `FP_FOG` / `FP_BACKDROP` | `library-game.js` | `{color: '#d8ccb0', start: 520, end: 1500}` / the same cream |
 | `TILE` | `room.js` | 120 (longest edge of one shell face) |
+| `ART_SCALE`, `RECESS`, `LIP` | `meshes/bookshelf.js` | 3 image px per art px; spine rows 0.07 behind the frame; plank lips 0.01 proud |
+| `ART_SCALE`, stand | `meshes/coffee-machine.js` | 4 image px per art px; a 0.9 stand; bay back 0.07 behind the front, tray lip 0.03 proud |
+| `ELEVATOR_ART_SCALE`, offsets | `meshes/elevator.js` | 3 image px per art px; frame 0.03 proud of the wall; doors 0.02 in front of the frame; indicator 0.02, call panel 0.03, button 0.005 proud |
+| `BADGE_ART_SCALE` | `meshes/stairs.js` | 8 image px per art px (a 192 px badge canvas); nosings 0.006 proud of the riser |
 | `FP_HEAD_BOB_AMP`, `FP_TILT_MAX` | `library-game.js` | 3.5 px, 0.035 rad (bob and roll) |
 
 Generic station boxes use `BOX_HEIGHT` 40 and default 60x40 (`s.w`/`s.h`
-override) in `scene.js`. Characters take a palette `{skin, hair, top,
-bottom, angry?}` (`fpPaletteFor` in `library-game.js` derives it from the
-patron design; Karen uses `FP_KAREN_PALETTE`).
+override) in `scene.js`. Characters take `{x, y, design, angry?, floor?}`
+(`fpDesignFor` in `library-game.js` looks the design up; Karen uses
+`KAREN_DESIGN`); their own proportion constants are in the table under
+**The character meshes**.
 
 ## Floor transitions
 
@@ -147,11 +362,18 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 
 ## How to add a new object mesh
 
+Follow `docs/skills/2d-to-3d/SKILL.md` first: it decides whether the object
+gets the 2D art as a texture (flat-fronted props) or measured geometry
+(characters), and lists what the tests must pin.
+
 1. Write `meshes/<name>.js` exporting `build<Name>(opts)` that returns a
-   `Mesh`. Compose it from `box(min, max, color)` (exported by
-   `character.js`), offsetting indices when merging boxes (see `merge` in
-   `bookshelf.js`). Model space: base at y=0, centered on x/z, about one
-   unit tall per metre, front facing +Z.
+   `Mesh`. Compose it from `meshes/geom.js`'s primitives — `box(min, max,
+   color)`, `prism(rings, sides, capTop, capBottom)`, `quad(points, color)`
+   — and `merge(target, part)`, which offsets the indices for you. Model
+   space: base at y=0, centered on x/z, about one unit tall per metre, front
+   facing +Z (or −Z, as the elevator does, toward the room from its south
+   edge: use `textureBack`). Check the front faces the way the player
+   actually approaches: the stairs used to face away from them.
 2. Map the station kind to it in `scene.js`: add the entry to `BUILDERS`
    (`meshForStationKind(kind)` falls back to `buildStationBox` for unknown
    kinds). Builders are placed with `scale: UNIT_SCALE`, so no-arg
@@ -165,10 +387,32 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 
 * `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
   `doorOpen`, but `buildFirstPersonScene` does not pass it, so only the
-  camera animates during the ride.
+  camera animates during the ride. Wiring it needs `doorOpen` in the
+  scene's mesh memo key, and a decision on what the doors do: today they
+  slide in front of the frame, so fully open they cover the call panel.
+* The front desk, return cart, fines counter, boss office and reading nook
+  are still plain station boxes; every other prop is referenced to its 2D.
+* The stairs climb (`transitions.js`, `STAIRS_STEPS` 10) is longer than the
+  8-step mesh, so the camera overshoots the top by about 0.56 units; the
+  2nd-Floor stairs also climb *up* on screen to go down.
+* FP props have no plum station outline (Top-Down's `drawStation` strokes it,
+  not the drawers), and the OUT OF ORDER label chip is Top-Down only (FP shows
+  the tape).
+* `ELEVATOR_COLORS.tile` is a copy of both games' `STATION_COLORS.elevator`,
+  held equal by a source-text test rather than imported.
 * In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
   Cart books are drawn as characters/props, as before.
-* The visual constants above are plausible but untuned.
+* The visual constants above are plausible but untuned; the character
+  proportions are the exception — they are measured off the 2D art.
+* The face budget (`character.test.js`, ceiling 340) now has less headroom:
+  the heaviest shipped design is 320 faces, up from 278, after the sleeve
+  gained three y bands per side and each eye gained a pupil and an
+  unconditional lash line. The ceiling still guards runaway growth, but a
+  future design stacking headwear would reach it sooner.
+* Nothing tests the head's attachments against the head's own silhouette:
+  ears, hats, earrings and headphones are placed off `headRX`/`headRZ` by
+  convention only, so one of them could be decoupled from the skull and the
+  suite would stay green.
 
 ## Testing Plan
 
@@ -177,7 +421,8 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   their modules. They need no DOM or canvas. Three of them guard what the
   renderer actually puts on screen, which face/vertex counts alone missed:
   `core.test.js` requires a near-plane-straddling face to be clipped (not
-  dropped) with its shading unchanged, `room.test.js` requires no shell face
+  dropped) with its shading unchanged (and a textured cell to fall back to a
+  flat poly there), `room.test.js` requires no shell face
   to span more than one `TILE`, and `scene.test.js` samples a grid of screen
   points from five poses inside the room and requires the shell to paint
   every one of them.
@@ -189,5 +434,19 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
   simulation frozen (`freeze(true)`), the loop keeps rendering the same
   scene, so sampled canvas pixels must be identical ~35 frames later. Before
   the clear they darkened frame by frame.
-* Visual tuning is manual: run `make dev` and look at `/library-game` in
-  First Person.
+* Visual tuning is manual: run `make dev` (on a port other than 8080, which
+  is a developer's own server) and look at `/library-game` in First Person
+  beside the same patrons in Top-Down. That comparison is what settled the
+  `unlit` set above; `character.test.js` covers the proportions it cannot.
+* Props referenced to 2D: `bookshelf.test.js`, `coffee-machine.test.js` and
+  `elevator.test.js` pin each textured front to its exact layout region
+  (the elevator's doors at `doorOpen` 0 and 1), the art's aspect, no
+  untextured face coplanar with a textured front, and culling from in front
+  and behind; `stairs.test.js` pins the step ramp to `stairStepColor`, the
+  foot facing +Z, the rail and badge, and culling; `transitions.test.js`
+  checks the climbing camera stays on or above the treads from the e2e
+  approach. `library/anime-furniture.test.js` and
+  `hospital/anime-furniture.test.js` pin `bookcaseLayout`,
+  `coffeeMachineLayout` and `elevatorLayout` to the Top-Down geometry.
+  When changing a drawer a mesh wears, diff its canvas call trace before and
+  after (the skill's step 2): Top-Down must stay byte-identical.

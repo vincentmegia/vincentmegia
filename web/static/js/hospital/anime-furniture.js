@@ -327,64 +327,157 @@ export function drawOperatingRoom(ctx, st, opts = {}) {
   ctx.fillText('OR', hw - 19, -hh + 14.5);
 }
 
-/** The Stairs: pastel steps with plum edges, a handrail and an arrow badge. */
-export function drawStairs(ctx, st) {
-  const half = st.w / 2;
-  const steps = 5;
-  const stepH = (half * 2 - 18) / steps;
-  for (let i = 0; i < steps; i++) {
-    const y = half - 9 - (i + 1) * stepH;
-    const inset = 9 + i * 2.6;
-    block(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, tint('#b9d4f2', 0.1 + i * 0.12), 1.1);
-    ctx.fillStyle = 'rgba(59,42,74,0.18)';
-    ctx.fillRect(-half + inset + 1, y + stepH - 3, half * 2 - inset * 2 - 2, 2);
-  }
-  // Handrail.
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 5;
+/**
+ * The Stairs' colours, shared with First Person's stairs mesh
+ * (library/three-d/meshes/stairs.js, docs/skills/2d-to-3d/SKILL.md): the step
+ * base the ramp tints, its plum edge line, the shadow line under each step,
+ * the handrail's ink core and its wood top, and the arrow badge.
+ */
+export const STAIRS_COLORS = {
+  step: '#b9d4f2',
+  edge: INK,
+  shadow: 'rgba(59,42,74,0.18)',
+  railInk: INK,
+  rail: '#e8b58a',
+  badge: '#ffffff',
+  arrow: ANIME.skyDeep,
+};
+
+/** The handrail's two line widths (px): the ink core, and the wood drawn over its middle. */
+export const STAIRS_RAIL = { ink: 5, wood: 3 };
+
+/** The arrow badge's layout (px): its center sits `inset` in from the stairs' top-right corner. */
+export const STAIRS_BADGE = { inset: 14, r: 9, line: 1.3, tip: 5.5, back: 3, halfBase: 5.5 };
+
+const STAIRS_STEPS_2D = 5;
+
+/**
+ * Step i's colour (0 = bottom) in a flight of `steps`: the base lightening
+ * from 0.1 to 0.58 up the flight. With 5 steps (Top-Down) that is exactly
+ * tint(base, 0.1 + i * 0.12); more steps spread the same ramp.
+ */
+export function stairStepColor(i, steps = STAIRS_STEPS_2D) {
+  const k = steps > 1 ? (i * (STAIRS_STEPS_2D - 1)) / (steps - 1) : 0;
+  return tint(STAIRS_COLORS.step, 0.1 + k * 0.12);
+}
+
+/** The badge's arrow direction in canvas y: -1 points up (to a higher floor), 1 down. */
+export function stairsArrowDir(st) {
+  return st.targetFloor > st.floor ? -1 : 1;
+}
+
+/** The arrow badge centered on (x, y): a white disc with plum line art and a sky-blue arrow. */
+export function drawStairsBadge(ctx, x, y, dir) {
+  const b = STAIRS_BADGE;
+  circle(ctx, x, y, b.r, STAIRS_COLORS.badge, b.line);
+  ctx.fillStyle = STAIRS_COLORS.arrow;
   ctx.beginPath();
-  ctx.moveTo(-half + 8, half - 11);
-  ctx.lineTo(-half + 19, -half + 11);
-  ctx.stroke();
-  ctx.strokeStyle = '#e8b58a';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.lineCap = 'butt';
-  // Arrow badge: up to the Supply Room, down to the ER.
-  const dir = st.targetFloor > st.floor ? -1 : 1;
-  circle(ctx, half - 14, -half + 14, 9, '#ffffff', 1.3);
-  ctx.fillStyle = ANIME.skyDeep;
-  ctx.beginPath();
-  const ay = -half + 14;
-  ctx.moveTo(half - 14, ay + dir * 5.5);
-  ctx.lineTo(half - 19.5, ay - dir * 3);
-  ctx.lineTo(half - 8.5, ay - dir * 3);
+  ctx.moveTo(x, y + dir * b.tip);
+  ctx.lineTo(x - b.halfBase, y - dir * b.back);
+  ctx.lineTo(x + b.halfBase, y - dir * b.back);
   ctx.closePath();
   ctx.fill();
 }
 
-/** The Elevator: lavender-silver doors, a floor indicator and a glowing call button. */
-export function drawElevator(ctx, st, opts = {}) {
+/** The Stairs: pastel steps with plum edges, a handrail and an arrow badge. */
+export function drawStairs(ctx, st) {
   const half = st.w / 2;
+  const steps = STAIRS_STEPS_2D;
+  const stepH = (half * 2 - 18) / steps;
+  for (let i = 0; i < steps; i++) {
+    const y = half - 9 - (i + 1) * stepH;
+    const inset = 9 + i * 2.6;
+    block(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, stairStepColor(i, steps), 1.1);
+    ctx.fillStyle = STAIRS_COLORS.shadow;
+    ctx.fillRect(-half + inset + 1, y + stepH - 3, half * 2 - inset * 2 - 2, 2);
+  }
+  // Handrail.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = STAIRS_COLORS.railInk;
+  ctx.lineWidth = STAIRS_RAIL.ink;
+  ctx.beginPath();
+  ctx.moveTo(-half + 8, half - 11);
+  ctx.lineTo(-half + 19, -half + 11);
+  ctx.stroke();
+  ctx.strokeStyle = STAIRS_COLORS.rail;
+  ctx.lineWidth = STAIRS_RAIL.wood;
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  // Arrow badge: up to the Supply Room, down to the ER.
+  drawStairsBadge(ctx, half - STAIRS_BADGE.inset, -half + STAIRS_BADGE.inset, stairsArrowDir(st));
+}
+
+/**
+ * drawElevator's own colours (Library Shift's First Person elevator falls back
+ * to them), plus `tile`: the station tile both games draw it on (their
+ * STATION_COLORS.elevator; elevator.test.js pins that they agree).
+ */
+export const ELEVATOR_COLORS = {
+  tile: '#d8b9f2',
+  indicator: '#3b2a4a',
+  text: ANIME.gold,
+  frame: '#ece6fa',
+  door: '#c9c0e6',
+  shine: 'rgba(255,255,255,0.5)',
+  panel: '#ece6fa',
+  button: ANIME.gold,
+};
+
+/** A layout rect: the drawer's {x, y, w, h} plus its corners for a mesh to map onto. */
+function elevatorRect(x, y, w, h) {
+  return { x, y, w, h, x0: x, y0: y, x1: x + w, y1: y + h };
+}
+
+/**
+ * Where drawElevator puts each part, in the station's centered px (y down):
+ * the floor indicator plate and its label's anchor, the frame, each door
+ * (with its `shine` highlight), the call panel and its button
+ * ({cx, cy, r} plus its bounding rect). `opts.height` is the drawing's height
+ * (default `st.w`, the square Top-Down box); only the vertical runs follow it,
+ * and the call panel stays on the centre line. Library Shift's First Person
+ * elevator maps its faces onto these rects (docs/skills/2d-to-3d/SKILL.md).
+ */
+export function elevatorLayout(st, opts = {}) {
+  const h = opts.height ?? st.w;
+  const top = -h / 2;
+  const r = 2.8;
+  return {
+    indicator: elevatorRect(-16, top + 5, 32, 12),
+    label: { x: 0, y: top + 11.5 },
+    frame: elevatorRect(-28, top + 20, 56, h - 26),
+    doors: [-25, 0.5].map((dx) => ({ ...elevatorRect(dx, top + 23, 24.5, h - 32), shine: elevatorRect(dx + 4, top + 26, 3, h - 38) })),
+    panel: elevatorRect(31, -8, 9, 18),
+    button: { cx: 35.5, cy: 1, r, ...elevatorRect(35.5 - r, 1 - r, 2 * r, 2 * r) },
+  };
+}
+
+/**
+ * The Elevator: lavender-silver doors, a floor indicator and a glowing call
+ * button, drawn from elevatorLayout. `opts.t` drives the button's pulse;
+ * `opts.pulse` (0..1) fixes it instead and `opts.height` draws it taller
+ * (both for First Person's art; Top-Down passes neither).
+ */
+export function drawElevator(ctx, st, opts = {}) {
+  const L = elevatorLayout(st, opts);
   const t = opts.t ?? 0;
-  flat(ctx, -16, -half + 5, 32, 12, 5, '#3b2a4a', 1.2);
-  ctx.fillStyle = ANIME.gold;
+  const C = ELEVATOR_COLORS;
+  flat(ctx, L.indicator.x, L.indicator.y, L.indicator.w, L.indicator.h, 5, C.indicator, 1.2);
+  ctx.fillStyle = C.text;
   ctx.font = 'bold 8px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`${st.targetFloor > st.floor ? '▲' : '▼'} ${st.targetFloor}`, 0, -half + 11.5);
-  block(ctx, -28, -half + 20, 56, half * 2 - 26, 5, '#ece6fa', 1.4);
-  for (const dx of [-25, 0.5]) {
-    block(ctx, dx, -half + 23, 24.5, half * 2 - 32, 3, '#c9c0e6', 1.1);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillRect(dx + 4, -half + 26, 3, half * 2 - 38);
+  ctx.fillText(`${st.targetFloor > st.floor ? '▲' : '▼'} ${st.targetFloor}`, L.label.x, L.label.y);
+  block(ctx, L.frame.x, L.frame.y, L.frame.w, L.frame.h, 5, C.frame, 1.4);
+  for (const d of L.doors) {
+    block(ctx, d.x, d.y, d.w, d.h, 3, C.door, 1.1);
+    ctx.fillStyle = C.shine;
+    ctx.fillRect(d.shine.x, d.shine.y, d.shine.w, d.shine.h);
   }
-  flat(ctx, 31, -8, 9, 18, 4, '#ece6fa', 1.1);
-  const pulse = 0.65 + 0.35 * Math.sin(t * 3);
+  flat(ctx, L.panel.x, L.panel.y, L.panel.w, L.panel.h, 4, C.panel, 1.1);
+  const pulse = opts.pulse ?? 0.65 + 0.35 * Math.sin(t * 3);
   ctx.save();
   ctx.globalAlpha = pulse;
-  circle(ctx, 35.5, 1, 2.8, ANIME.gold, 0.9);
+  circle(ctx, L.button.cx, L.button.cy, L.button.r, C.button, 0.9);
   ctx.restore();
 }
 

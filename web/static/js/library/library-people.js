@@ -566,3 +566,20 @@ export const LIBRARY_PATRON_DESIGN_KEYS = LIBRARY_PATRON_DESIGNS.map((d) => d.ke
 export function findLibraryDesign(key) {
   return LIBRARY_PATRON_DESIGNS.find((d) => d.key === key) ?? null;
 }
+
+/**
+ * Karen, the scripted troublemaker, as a design. She is deliberately NOT in
+ * `LIBRARY_PATRON_DESIGNS` (she never queues as a random patron, and
+ * `findLibraryDesign('karen')` returns null), but the first-person 3D view
+ * builds every character from a design, so she needs one. Her colours are the
+ * four the old `FP_KAREN_PALETTE` carried, so her 3D look is unchanged; the
+ * rest matches karen.js's 2D art (angled blonde bob with a swoop, sharp blue
+ * eyes with heavy lashes, red power blazer, black bottom, black heels).
+ * `angry` is not part of the design — it is `buildCharacter`'s option.
+ */
+export const KAREN_DESIGN = {
+  key: 'karen', label: 'Karen', age: 'adult', skin: '#f0c7a0',
+  hair: { color: '#caa24e', back: 'bob', fringe: 'side' },
+  eyes: { color: '#3a6a9a', style: 'sharp', lashes: true }, brows: 'thin', mouth: 'flat',
+  outfit: { kind: 'blazer', top: '#c0432f', bottom: '#3a3238', shoes: '#141018' },
+};

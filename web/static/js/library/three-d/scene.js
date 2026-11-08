@@ -30,7 +30,27 @@ export function meshForStationKind(kind) {
   return Object.prototype.hasOwnProperty.call(BUILDERS, kind) ? BUILDERS[kind] : buildStationBox;
 }
 
-export function buildFirstPersonScene({ player, floor, stations, characters, cameraParams, viewport }) {
+// Station object -> {art, mesh}. Builders are pure, so a station's mesh only
+// changes when its art does; the game keeps its station objects for the whole
+// run, so identity hits every frame.
+const stationMeshes = new WeakMap();
+
+function stationMesh(s, builder, artFor) {
+  const art = artFor ? artFor(s) ?? undefined : undefined;
+  const hit = stationMeshes.get(s);
+  if (hit && hit.art === art && hit.builder === builder) return hit.mesh;
+  const mesh = builder({ art });
+  stationMeshes.set(s, { art, builder, mesh });
+  return mesh;
+}
+
+/**
+ * @param {object} input
+ * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
+ *   a station's 2D art for its mesh to wear (docs/skills/2d-to-3d/SKILL.md);
+ *   asked only for stations on this floor that have their own mesh.
+ */
+export function buildFirstPersonScene({ player, floor, stations, characters, cameraParams, viewport, artFor }) {
   const placed = [];
   const room = buildRoom({ width: viewport.width, depth: viewport.height, height: ROOM_HEIGHT, floorTint: FLOOR_TINT });
   placed.push({ mesh: room, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
@@ -46,13 +66,16 @@ export function buildFirstPersonScene({ player, floor, stations, characters, cam
         placement: { pos: [s.x, 0, s.y], yaw: 0, scale: 1 },
       });
     } else {
-      placed.push({ mesh: builder(), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
+      placed.push({ mesh: stationMesh(s, builder, artFor), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
     }
   }
 
   for (const c of characters) {
     if (c.floor !== undefined && c.floor !== floor) continue;
-    placed.push({ mesh: buildCharacter(c.palette), placement: { pos: [c.x, 0, c.y], yaw: 0, scale: UNIT_SCALE } });
+    placed.push({
+      mesh: buildCharacter(c.design, { angry: Boolean(c.angry) }),
+      placement: { pos: [c.x, 0, c.y], yaw: 0, scale: UNIT_SCALE },
+    });
   }
 
   const camera = cameraFromPose(player, {

@@ -48,7 +48,10 @@ import {
   animeBackdrop, animeWindow, speechBubble, sakuraBranch,
 } from './hospital/anime-ui.js';
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
-import { drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook } from './library/anime-furniture.js';
+import {
+  drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook,
+  drawCoffeeMachine, drawOutOfOrderTape, COFFEE_MACHINE_COLORS,
+} from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
 import { drawDirectorSeo } from './library/director-seo.js';
 import { drawJiho } from './library/jiho.js';
@@ -61,7 +64,7 @@ import { drawStoryteller } from './library/storyteller.js';
 import { drawArchivist } from './library/archivist.js';
 import { drawKaren } from './library/karen.js';
 import { drawPatron } from './library/patron.js';
-import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS } from './library/library-people.js';
+import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import {
@@ -214,6 +217,10 @@ import {
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
+import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
+import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
+import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -840,7 +847,6 @@ export function init(canvas, elements) {
   // the per-frame vignette would compound into black, and Top-Down art would
   // sit under the scene. Matches FP_FOG.color so any far gap reads as haze.
   const FP_BACKDROP = FP_FOG.color;
-  const FP_KAREN_PALETTE = { skin: '#f0c7a0', hair: '#caa24e', top: '#c0432f', bottom: '#3a3238', angry: true };
   // Active elevator/stair floor transition (null when none). While set, FP
   // movement/turn/strafe/jump input is ignored and the camera is driven by
   // transitions.js; cleared when the transition reaches 'done' or FP is left.
@@ -2838,7 +2844,7 @@ export function init(canvas, elements) {
     'front-desk': '#ffe0c2',
     'return-cart': '#f2e6d0',
     'fines-counter': '#ffe4dc',
-    'coffee-machine': '#f5d3bd',
+    'coffee-machine': COFFEE_MACHINE_COLORS.ground,
     'reading-nook': '#f0e6ff',
     'boss-office': '#e6dcf5',
     bookshelf: '#fff0dc',
@@ -3075,84 +3081,73 @@ export function init(canvas, elements) {
   /** Korean genre names for the bookcase signs (the Korean-library theme). */
   const GENRE_SIGNS_KO = { mystery: '추리', romance: '로맨스', scifi: 'SF', kids: '어린이', reference: '참고' };
 
-  // The original coffee machine, kept as is — Hospital Shift kept this same
-  // art for its own machine.
-  function drawCoffeeMachineDetail(half) {
-    // Bean hopper on top: a clear trapezoid full of beans.
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.beginPath();
-    ctx.moveTo(-12, -half + 4);
-    ctx.lineTo(12, -half + 4);
-    ctx.lineTo(7, -half + 16);
-    ctx.lineTo(-7, -half + 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#6a4a30';
-    for (const [bx, by] of [[-6, -half + 9], [0, -half + 8], [6, -half + 9], [-3, -half + 12], [3, -half + 12], [0, -half + 14.5]]) {
-      ctx.beginPath();
-      ctx.ellipse(bx, by, 2.1, 1.4, 0.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Machine body (a slightly lighter top band for a metallic read).
-    drawRoundRect(ctx, -half + 9, -half + 16, half * 2 - 18, half * 2 - 24, 7, '#7a5a42');
-    drawRoundRect(ctx, -half + 9, -half + 16, half * 2 - 18, 10, [7, 7, 0, 0], '#8f6c50');
-    // Display + buttons.
-    drawRoundRect(ctx, -10, -half + 19, 20, 5, 1.5, '#9fe0a8');
-    for (const [bx, color] of [[-half + 17, '#e8b95a'], [half - 17, '#e06a5b']]) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(bx, -half + 21.5, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // Recessed brewing bay.
-    drawRoundRect(ctx, -half + 15, -half + 30, half * 2 - 30, half + 4, 5, '#4a3424');
-    // Group head + spouts.
-    drawRoundRect(ctx, -9, -half + 30, 18, 6, 2, '#b0a090');
-    ctx.fillStyle = '#b0a090';
-    ctx.fillRect(-5, -half + 35, 3, 5);
-    ctx.fillRect(2, -half + 35, 3, 5);
-    // A coffee drip.
-    ctx.fillStyle = '#c47f4e';
-    ctx.fillRect(-0.75, -half + 40, 1.5, 4);
-    // Cup with coffee + handle.
-    drawRoundRect(ctx, -8, half - 25, 16, 12, [1, 1, 4, 4], '#fdf8ee');
-    drawRoundRect(ctx, -6.5, half - 24, 13, 2.5, 1, '#6a4a30');
-    ctx.strokeStyle = '#fdf8ee';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(9, half - 19.5, 3.2, -Math.PI / 2, Math.PI / 2);
-    ctx.stroke();
-    // Drip tray grate.
-    drawRoundRect(ctx, -half + 13, half - 13, half * 2 - 26, 5, 2, '#b0a090');
-    ctx.fillStyle = 'rgba(58,42,42,0.4)';
-    for (let gx = -half + 17; gx < half - 15; gx += 5) ctx.fillRect(gx, half - 12, 1.5, 3);
-    // Steam wisps curling out of the bay.
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 1.5;
-    for (const dx of [-14, 14]) {
-      ctx.beginPath();
-      ctx.moveTo(dx, half - 26);
-      ctx.quadraticCurveTo(dx - 4, half - 32, dx, half - 38);
-      ctx.quadraticCurveTo(dx + 4, half - 43, dx, half - 48);
-      ctx.stroke();
-    }
+  /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
+  /** drawBookcase's options for a shelf: the same for Top-Down and First Person's art, so both views show the same books. */
+  function bookcaseDrawOpts(station) {
+    const genre = findGenre(station.genreId);
+    const ko = GENRE_SIGNS_KO[station.genreId];
+    return {
+      color: genre?.color ?? ANIME.coral,
+      sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
+      titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
+    };
   }
 
-  /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
-  const STATION_DETAIL_DRAWERS = {
-    bookshelf: (station) => {
-      const genre = findGenre(station.genreId);
-      const ko = GENRE_SIGNS_KO[station.genreId];
-      drawBookcase(ctx, station, {
-        color: genre?.color ?? ANIME.coral,
-        sign: ko ? `${ko} · ${genre?.name ?? ''}` : (genre?.name ?? ''),
-        titles: TITLE_POOLS[station.genreId] ?? [], // Korean on each spine, its English meaning beside it
-      });
+  // First Person art (docs/skills/2d-to-3d/SKILL.md): a station's own 2D
+  // drawer, painted into a canvas its 3D mesh wears. One entry per station
+  // kind whose mesh wears art: `w`/`h` are the canvas size in image px,
+  // `paint(ctx, station)` paints it, and the optional `stateKey(station)`
+  // names the state the art depends on (a new key paints a new canvas, and
+  // the scene rebuilds that one mesh).
+  const FP_ART = {
+    bookshelf: {
+      w: BOOKSHELF_ART.w * ART_SCALE,
+      h: BOOKSHELF_ART.h * ART_SCALE,
+      paint: (c, station) => paintBookshelfArt(c, station, bookcaseDrawOpts(station)),
     },
+    // Taped off on a Coffee Machine Broken day, as drawCoffeeOutOfOrder tapes Top-Down's.
+    'coffee-machine': {
+      w: COFFEE_MACHINE_ART.w * COFFEE_ART_SCALE,
+      h: COFFEE_MACHINE_ART.h * COFFEE_ART_SCALE,
+      paint: (c, station) => paintCoffeeMachineArt(c, station, { outOfOrder: coffeeOutOfOrder() }),
+      stateKey: () => (coffeeOutOfOrder() ? 'out' : ''),
+    },
+    // The indicator shows the station's own targetFloor, fixed per station id.
+    elevator: {
+      w: ELEVATOR_ART.w * ELEVATOR_ART_SCALE,
+      h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
+      paint: (c, station) => paintElevatorArt(c, station),
+    },
+    // The stairs' arrow badge (up or down: per station, and stations are keyed by id).
+    stairs: {
+      w: STAIRS_BADGE_ART.w * BADGE_ART_SCALE,
+      h: STAIRS_BADGE_ART.h * BADGE_ART_SCALE,
+      paint: (c, station) => paintStairsBadgeArt(c, station),
+    },
+  };
+  // `${station.id}|${stateKey}` -> canvas.
+  const fpArtCache = new Map();
+  function fpArtFor(station) {
+    const spec = FP_ART[station.kind];
+    if (!spec) return null;
+    const key = `${station.id}|${spec.stateKey ? spec.stateKey(station) : ''}`;
+    let art = fpArtCache.get(key);
+    if (!art) {
+      art = document.createElement('canvas');
+      art.width = spec.w;
+      art.height = spec.h;
+      spec.paint(art.getContext('2d'), station);
+      fpArtCache.set(key, art);
+    }
+    return art;
+  }
+
+  const STATION_DETAIL_DRAWERS = {
+    bookshelf: (station) => drawBookcase(ctx, station, bookcaseDrawOpts(station)),
     'return-cart': (station) => drawReturnCart(ctx, station),
     'front-desk': (station) => drawFrontDesk(ctx, station),
     'fines-counter': (station) => drawFinesRoom(ctx, station),
-    'coffee-machine': (station) => drawCoffeeMachineDetail(station.w / 2),
+    'coffee-machine': (station) => drawCoffeeMachine(ctx, station),
     'boss-office': (station) => drawBossDoor(ctx, station),
     'reading-nook': (station) => drawReadingNook(ctx, station),
     stairs: (station) => drawStairs(ctx, station),
@@ -3240,34 +3235,19 @@ export function init(canvas, elements) {
     drawLabelChip(ctx, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16, `Daily Challenge · ${daily.twist.name}`, 'bold 13px sans-serif', ANIME.coral, '#ffffff');
   }
 
+  /** Today's daily twist breaks the Coffee Machine (Coffee Machine Broken). */
+  function coffeeOutOfOrder() {
+    return Boolean(daily?.twist.effect.noCoffee);
+  }
+
   /** The Coffee Machine taped off with an "OUT OF ORDER" sign (the Coffee Machine Broken twist). */
   function drawCoffeeOutOfOrder() {
-    if (!daily?.twist.effect.noCoffee || currentFloor !== FLOOR_1) return;
+    if (!coffeeOutOfOrder() || currentFloor !== FLOOR_1) return;
     const coffee = stations.find((st) => st.kind === 'coffee-machine');
     if (!coffee) return;
     ctx.save();
     ctx.translate(coffee.x, coffee.y);
-    for (const [rot, dy] of [[-0.35, -6], [0.35, 8]]) {
-      ctx.save();
-      ctx.rotate(rot);
-      ctx.translate(0, dy);
-      ctx.beginPath();
-      ctx.rect(-52, -6, 104, 12);
-      ctx.fillStyle = '#ffd23a';
-      ctx.fill();
-      ctx.clip();
-      ctx.fillStyle = '#2a2226';
-      for (let x = -60; x < 60; x += 14) {
-        ctx.beginPath();
-        ctx.moveTo(x, 6);
-        ctx.lineTo(x + 7, -6);
-        ctx.lineTo(x + 13, -6);
-        ctx.lineTo(x + 6, 6);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-    }
+    drawOutOfOrderTape(ctx);
     ctx.restore();
     drawLabelChip(ctx, coffee.x, coffee.y - 50, 'OUT OF ORDER', 'bold 10px sans-serif', '#e06a5b', '#ffffff');
   }
@@ -5022,19 +5002,15 @@ export function init(canvas, elements) {
     };
   }
 
-  /** A 3D humanoid palette for a queued patron (or Karen), from their design. */
-  function fpPaletteFor(personalityKey, angry) {
-    if (personalityKey === 'karen') return FP_KAREN_PALETTE;
-    const d = findLibraryDesign(personalityKey);
-    if (!d) return { skin: '#efc49f', hair: '#2a2030', top: '#6a7a8a', bottom: '#3a3a48', angry: !!angry };
-    const o = d.outfit ?? {};
-    return {
-      skin: d.skin ?? '#efc49f',
-      hair: d.hair?.color ?? '#2a2030',
-      top: o.top ?? '#6a7a8a',
-      bottom: o.bottom ?? o.skirt ?? o.inner ?? '#3a3a48',
-      angry: !!angry,
-    };
+  /**
+   * The design the 3D humanoid is built from: the very same patron design
+   * Top-Down draws. Karen is not in the roster (`findLibraryDesign('karen')`
+   * is null), so she has her own `KAREN_DESIGN`. An unknown key gives null and
+   * `buildCharacter` falls back to its own defaults.
+   */
+  function fpDesignFor(personalityKey) {
+    if (personalityKey === 'karen') return KAREN_DESIGN;
+    return findLibraryDesign(personalityKey);
   }
 
   function drawFirstPersonView() {
@@ -5055,7 +5031,7 @@ export function init(canvas, elements) {
       for (const e of buildFirstPersonEntities()) {
         if (e.entityKind === 'frontDeskSlot' || e.entityKind === 'finesSlot') {
           const personality = personalityForSlot(e.ref, e.slotIndex ?? 0);
-          characters.push({ x: e.x, y: e.y, palette: fpPaletteFor(personality, e.ref.kind === 'karen') });
+          characters.push({ x: e.x, y: e.y, design: fpDesignFor(personality), angry: e.ref.kind === 'karen' });
         } else if (e.entityKind === 'returnCartBook') {
           books.push(e);
         }
@@ -5069,6 +5045,7 @@ export function init(canvas, elements) {
       characters,
       cameraParams: fpCameraParams(offY),
       viewport,
+      artFor: fpArtFor,
     });
     for (const e of books) {
       const genre = findGenre(e.ref.genreId);

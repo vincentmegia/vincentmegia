@@ -35,7 +35,8 @@ export function buildRoom({ width, depth, height, floorTint }) {
   ];
   // Emits the quad [p0, p1, p2, p3] as a grid of at most TILE-sized tiles,
   // keeping the winding (so every tile's normal matches the original face).
-  const quad = (pts, color) => {
+  // `extra` is merged into every tile's face (the floor marks itself `ground`).
+  const quad = (pts, color, extra) => {
     const [p0, p1, p2, p3] = pts;
     const nu = Math.max(1, Math.ceil(Math.max(dist(p0, p1), dist(p3, p2)) / TILE));
     const nv = Math.max(1, Math.ceil(Math.max(dist(p0, p3), dist(p1, p2)) / TILE));
@@ -46,12 +47,12 @@ export function buildRoom({ width, depth, height, floorTint }) {
         const v0 = iv / nv, v1 = (iv + 1) / nv;
         const base = vertices.length;
         vertices.push(at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1));
-        faces.push({ indices: [base, base + 1, base + 2, base + 3], color });
+        faces.push({ indices: [base, base + 1, base + 2, base + 3], color, ...extra });
       }
     }
   };
 
-  quad([[0, 0, 0], [width, 0, 0], [width, 0, depth], [0, 0, depth]], floorTint);
+  quad([[0, 0, 0], [width, 0, 0], [width, 0, depth], [0, 0, depth]], floorTint, { ground: true });
   quad([[0, height, 0], [0, height, depth], [width, height, depth], [width, height, 0]], CEILING);
 
   // Each wall: origin point, along-wall axis (unit), inward normal, length.
