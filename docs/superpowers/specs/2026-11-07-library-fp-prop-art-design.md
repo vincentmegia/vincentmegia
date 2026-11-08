@@ -1,7 +1,7 @@
 # Library Shift — First-Person Props Referenced to the 2D Art
 
 Date: 2026-11-07
-Status: Bookshelf implemented; coffee machine, stairs and elevator to follow
+Status: Bookshelf, coffee machine, elevator and stairs implemented
 
 ## Goal
 
@@ -46,6 +46,10 @@ textured a bookshelf with `drawBookcase`'s output:
    and a face turned away from the camera (the crown's top, above eye level)
    painted over the sign. Fixed by never emitting faces hidden behind the art
    and by an opt-in back-face `cull`.
+4. **The seam grow shows neighbouring art.** Each textured triangle is
+   clipped to itself grown by 0.6 px, so it samples just outside its region;
+   the coffee machine's head picked up the hopper's glass as a light line,
+   fixed by a seam fill in the FP art only.
 
 ## Design
 
@@ -118,10 +122,27 @@ textured a bookshelf with `drawBookcase`'s output:
 
 ## Follow-ups
 
-1. **Coffee machine**: move `drawCoffeeMachineDetail` out of
-   `library-game.js`'s closure into `library/anime-furniture.js` so the mesh
-   can paint it, with a layout function, on a counter-height stand.
-2. **Stairs and elevator**: they draw with Hospital Shift's
-   `hospital/anime-furniture.js`; give those drawers optional parameters and
-   layout exports that leave Hospital Shift's drawing byte-identical.
+1. **Coffee machine (done).** `drawCoffeeMachine` and `drawOutOfOrderTape`
+   moved into `library/anime-furniture.js` with `coffeeMachineLayout`
+   (Top-Down's call trace unchanged). A 0.4 × 0.5 × 0.4 machine on a 0.9 m
+   stand in the library's wood, textured per layout region with a recessed
+   bay, proud tray, hanging group head and spouts, and a trapezoid hopper.
+   The art carries the tape on Coffee Machine Broken days through `FP_ART`'s
+   `stateKey`. 60 fps in headless Chromium.
+2. **Elevator (done).** `elevatorLayout`, `ELEVATOR_COLORS` and optional
+   `height`/`pulse` on Hospital's `drawElevator`; both games' Top-Down
+   drawing byte-identical by call-trace diff. The mesh faces −Z (new geom
+   helpers `artBackUV`/`textureBack`), each door panel wears its own door
+   region as it slides, on a wall section in the station's tile colour.
+   **Stairs (done), by the geometry technique**, since `drawStairs` is a plan
+   view: steps in `stairStepColor`'s ramp with plum nosings, the two-tone
+   rail, and only the arrow badge textured. The mesh was also **turned to
+   face the player**: it used to start at the station centre and climb
+   toward +Z, away from the approach, so a player at the interact spot stood
+   inside it facing its solid back while the camera climbed the other way.
+   It is now centred on the station with its foot toward +Z, climbing toward
+   −Z as `transitionCamera` does.
 3. The five plain-box stations, if wanted later.
+4. Wire `doorOpen` into the scene (needs it in the mesh memo key, and a
+   choice of whether open doors retract behind the wall), and make the
+   stairs climb (`STAIRS_STEPS` 10) match the 8-step mesh.

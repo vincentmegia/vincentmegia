@@ -37,7 +37,8 @@ and lettering, which a colour table does not capture.
 | Object | Technique | Why |
 |---|---|---|
 | Characters (curved, seen from every side, posed) | **Geometry from the 2D's measurements**: proportions, full palette, baked tones | A texture can't wrap a curved, moving body; the measured silhouette is what reads |
-| Props with a flat, readable front (bookshelf, signs, machines, doors) | **The 2D art as a texture** on real 3D geometry | The look *is* the drawing (plum line art, gradients, lettering); only the drawer itself can reproduce it |
+| Props with a flat, readable front (bookshelf, coffee machine, elevator, signs, doors) | **The 2D art as a texture** on real 3D geometry | The look *is* the drawing (plum line art, gradients, lettering); only the drawer itself can reproduce it |
+| Props whose 2D is a plan view (stairs) | **Geometry in the drawer's exported colours**, with only the parts that are flat in 2D (the stairs' arrow badge) as textures | A plan view can't be worn as a front; its colours, line art and signs still can |
 
 Both keep real 3D depth. Neither is a billboard sprite.
 
@@ -45,9 +46,14 @@ Both keep real 3D depth. Neither is a billboard sprite.
 
 The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
 
-1. **Keep the real-world size.** Meshes stay roughly metre-scale units
-   (`UNIT_SCALE` 40). The 2D size of a station is a floor-plan footprint,
-   not a physical size.
+1. **Keep the real-world size, and face the player.** Meshes stay roughly
+   metre-scale units (`UNIT_SCALE` 40). The 2D size of a station is a
+   floor-plan footprint, not a physical size. Check which way the player
+   actually approaches and interacts (the e2e spot, `transitions.js`) before
+   dressing a front: the old stairs faced away from the player. A prop may
+   face −Z (the elevator, on the room's south edge); use `textureBack`.
+   Put a small prop at a height that reads from the 1.5 m eye (the coffee
+   machine stands on a counter).
 2. **Draw the 2D art at the mesh's own aspect.** Stretching the Top-Down
    drawing onto a different shape distorts it. Give the drawer an *optional*
    parameter whose default is today's 2D value (the bookcase's `opts.rows`,
@@ -74,6 +80,11 @@ The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
    at the front plane; shelf rows recessed by `RECESS`; plank lips standing
    proud by `LIP`). Each part's +Z face gets `texture: {image, uv, div}` with
    uv taken from that part's layout rectangle. Model y is up, art y is down.
+   Use `geom.js`'s `boxWithout`, `textureFront`/`artFrontUV` (and the −Z
+   `textureBack`/`artBackUV`); don't re-derive the corner order. Each
+   textured triangle samples 0.6 px past its region (the seam grow), so
+   where a part's 2D neighbour isn't its 3D neighbour, paint a seam fill
+   into the FP art there (the coffee machine's head under the hopper).
 6. **Textured fronts are `unlit`; everything else stays lit.** The 2D art
    already carries its own top-lit gradients. Lighting it again greys it out.
    Sides, tops and backs stay lit so the object still reads as solid.
@@ -85,7 +96,9 @@ The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
    every face, once a test renders the mesh from both sides.
 8. **Accept a fallback.** Without art (node tests, no canvas) the same faces
    render in the drawer's flat colours. The geometry is identical either way.
-9. **Wire it through the scene.** `buildFirstPersonScene({..., artFor})` asks
+9. **Wire it through the scene.** Add the kind to `FP_ART` in
+   `library-game.js` (`{w, h, paint, stateKey?}`; a `stateKey` repaints the
+   art when game state it shows changes). `buildFirstPersonScene({..., artFor})` asks
    `artFor(station)` for each station on the floor with its own mesh and
    passes `{art}` to the builder; meshes are memoised per station object and
    art, so a frame does not rebuild them.

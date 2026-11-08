@@ -83,9 +83,11 @@ HTMX + Tailwind + PostgreSQL.
   (pure core, meshes, room, scene, transitions; canvas-2D, no WebGL) draws the
   FP view with one parameterized 3D humanoid `buildCharacter` for all FP
   characters; Top-Down keeps the detailed 2D art. Changing a `three-d/` mesh
-  or the core affects only the FP camera, but the FP bookshelf wears
-  `drawBookcase`'s own art (via `bookcaseLayout`), so a bookcase art change
-  shows in both cameras. Doc: `library-first-person-3d.md`.
+  or the core affects only the FP camera, but the FP props wear their 2D
+  drawers' own art: `drawBookcase` and `drawCoffeeMachine` (library), and
+  Hospital Shift's `drawElevator`/`drawStairs` (via their layout/colour
+  exports). A change to any of those drawers shows in both cameras, and the
+  Hospital ones in both games. Doc: `library-first-person-3d.md`.
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):

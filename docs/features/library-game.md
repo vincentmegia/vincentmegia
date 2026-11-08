@@ -69,8 +69,11 @@ handling, in place of Kitchen Shift's cooking and serving.
   assembly), `transitions.js`, and per-object builders in `meshes/` (one
   parameterized `buildCharacter` humanoid for every FP character, built
   from the same patron design the top-down art draws, plus bookshelf,
-  coffee machine, stairs, elevator and generic station box).
-  Top-Down keeps its detailed 2D art. Interaction and targeting are
+  coffee machine, stairs, elevator and generic station box). The bookshelf,
+  coffee machine and elevator wear their own Top-Down drawer's art as a
+  texture, and the stairs are built from `drawStairs`' colours with its
+  arrow badge (`library-first-person-3d.md`). Top-Down keeps its detailed
+  2D art, unchanged. Interaction and targeting are
   unchanged: `first-person.js` still projects entities for
   `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
   HUD (crosshair, minimap, vignette, dust, interact flash) draws on top of
@@ -1333,7 +1336,12 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   the Return Cart, the Fines Counter as a small room like the ER's
   Operating Room ("벌금 · FINES"), the Boss's door ("관장 · BOSS") and the
   Reading Nook. Stairs and the Elevator are Hospital's own drawers; the
-  Coffee Machine keeps its original art, as Hospital's does. Return Cart
+  Coffee Machine keeps its original art, now `drawCoffeeMachine` in
+  `library/anime-furniture.js`, drawn from `coffeeMachineLayout` (Hospital
+  keeps its own verbatim copy, Kitchen a resized one), with the OUT OF ORDER
+  tape as `drawOutOfOrderTape` beside it. First Person's coffee machine,
+  elevator and stairs use these same drawers (tape included on a Coffee
+  Machine Broken day), so a change to that art shows in both cameras. Return Cart
   covers get line art and shadows. The bookcase's layout is
   exported as `bookcaseLayout` and `drawBookcase` takes an optional
   `rows` (Top-Down draws 2): First Person's bookshelf paints this same

@@ -1257,7 +1257,13 @@ area are unchanged; only the drawing moved to an anime game-UI style.
   note; a peach triage counter with a heart-ECG monitor, clipboard,
   service bell and pen cup; a glass-door med cabinet of capped bottles; an
   OR with a gold lamp ring, sheeted table, monitor, tray and "OR" sign;
-  outlined stairs and a lavender elevator with a pulsing call button; a pastel
+  outlined stairs and a lavender elevator with a pulsing call button (both
+  drawers are shared with Library Shift, whose First Person meshes use them:
+  `drawElevator` draws from `elevatorLayout` and `ELEVATOR_COLORS`, with
+  optional `height`/`pulse` that Hospital never passes; `drawStairs` draws
+  from `STAIRS_COLORS`, `STAIRS_RAIL`, `stairStepColor` and
+  `drawStairsBadge`; Hospital's drawing is byte-identical to before, by
+  call-trace diff, and a change to either shows in both games); a pastel
   supply cart with outlined bandage rolls. The Coffee Machine keeps its
   original Library Shift art (the user: "i want the old coffee machine
   design to be kept"), drawn by `hospital-game.js`'s
