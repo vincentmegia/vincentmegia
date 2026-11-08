@@ -9,6 +9,11 @@ import {
   drawFinesRoom,
   drawBossDoor,
   drawReadingNook,
+  coffeeMachineLayout,
+  drawCoffeeMachine,
+  drawOutOfOrderTape,
+  COFFEE_MACHINE_COLORS,
+  OUT_OF_ORDER_TAPE_COLORS,
 } from './anime-furniture.js';
 import { buildStations, stationExtents } from './floor-plan.js';
 import { GENRES } from './rules.js';
@@ -47,6 +52,7 @@ describe('library anime furniture', () => {
       ['fines-counter', (ctx, st) => drawFinesRoom(ctx, st)],
       ['boss-office', (ctx, st) => drawBossDoor(ctx, st)],
       ['reading-nook', (ctx, st) => drawReadingNook(ctx, st)],
+      ['coffee-machine', (ctx, st) => drawCoffeeMachine(ctx, st)],
     ];
     for (const [kind, draw] of drawers) {
       const ctx = fakeContext();
@@ -100,5 +106,76 @@ describe('library anime furniture', () => {
     };
     assert.equal(planks(undefined), 2);
     assert.equal(planks(4), 4);
+  });
+
+  /** Records [method, args] and ['set:prop', [value]] for every ctx touch. */
+  function recordingContext() {
+    const calls = [];
+    return {
+      calls,
+      ctx: new Proxy({}, {
+        get: (_, k) => (k === 'measureText' ? () => ({ width: 5 }) : (...a) => calls.push([k, a])),
+        set: (_, k, v) => { calls.push(['set:' + k, [v]]); return true; },
+      }),
+    };
+  }
+  const rectOf = (a) => ({ x0: a[0], y0: a[1], x1: a[0] + a[2], y1: a[1] + a[3] });
+
+  // The First Person coffee machine maps its faces onto these regions, so
+  // the layout must keep Top-Down's own numbers (the 84 px station).
+  test('coffeeMachineLayout keeps the Top-Down coffee machine geometry', () => {
+    const L = coffeeMachineLayout({ w: 84, h: 84 });
+    assert.deepEqual(L.hopper, { x0: -12, x1: 12, bx0: -7, bx1: 7, y0: -38, y1: -26 });
+    assert.deepEqual(L.body, { x0: -33, y0: -26, x1: 33, y1: 34 });
+    assert.deepEqual(L.band, { x0: -33, y0: -26, x1: 33, y1: -16 });
+    assert.deepEqual(L.display, { x0: -10, y0: -23, x1: 10, y1: -18 });
+    assert.deepEqual(L.buttons.map((b) => [b.x, b.y, b.r]), [[-25, -20.5, 2.6], [25, -20.5, 2.6]]);
+    assert.deepEqual(L.bay, { x0: -27, y0: -12, x1: 27, y1: 34 });
+    assert.deepEqual(L.groupHead, { x0: -9, y0: -12, x1: 9, y1: -6 });
+    assert.deepEqual(L.spouts, [{ x0: -5, y0: -7, x1: -2, y1: -2 }, { x0: 2, y0: -7, x1: 5, y1: -2 }]);
+    assert.deepEqual(L.cup, { x0: -8, y0: 17, x1: 8, y1: 29 });
+    assert.deepEqual(L.tray, { x0: -29, y0: 29, x1: 29, y1: 34 });
+    assert.deepEqual(L.steam[0], { x: -14, ys: [16, 10, 4, -1, -6] });
+  });
+
+  test('drawCoffeeMachine draws its parts from coffeeMachineLayout, also in a taller box', () => {
+    for (const st of [{ w: 84, h: 84 }, { w: 84, h: 94.5 }]) {
+      const L = coffeeMachineLayout(st);
+      const { ctx, calls } = recordingContext();
+      drawCoffeeMachine(ctx, st);
+      const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+      for (const part of ['body', 'band', 'display', 'bay', 'groupHead', 'cup', 'coffee', 'tray']) {
+        assert.ok(rounds.some((r) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(r[k] - L[part][k]) < 1e-9)), `${part} @ h=${st.h}`);
+      }
+      const rects = calls.filter(([k]) => k === 'fillRect').map(([, a]) => rectOf(a));
+      for (const s of L.spouts) assert.ok(rects.some((r) => r.x0 === s.x0 && r.y0 === s.y0 && r.x1 === s.x1 && r.y1 === s.y1));
+      // The hopper's trapezoid is the first path drawn.
+      const moves = calls.filter(([k]) => k === 'moveTo' || k === 'lineTo').slice(0, 4).map(([, a]) => a);
+      assert.deepEqual(moves, [[L.hopper.x0, L.hopper.y0], [L.hopper.x1, L.hopper.y0], [L.hopper.bx1, L.hopper.y1], [L.hopper.bx0, L.hopper.y1]]);
+      // Every colour comes from COFFEE_MACHINE_COLORS.
+      const palette = new Set(Object.values(COFFEE_MACHINE_COLORS).flat());
+      for (const [k, [v]] of calls) if (k === 'set:fillStyle' || k === 'set:strokeStyle') assert.ok(palette.has(v), v);
+    }
+  });
+
+  test('a taller box only makes the bay taller: the top hangs from the top, the cup and tray stand on the bottom', () => {
+    const a = coffeeMachineLayout({ w: 84, h: 84 });
+    const b = coffeeMachineLayout({ w: 84, h: 104 });
+    assert.equal(b.groupHead.y0 - b.body.y0, a.groupHead.y0 - a.body.y0);
+    assert.equal(b.body.y1 - b.cup.y1, a.body.y1 - a.cup.y1);
+    assert.equal(b.bay.y1 - b.bay.y0, a.bay.y1 - a.bay.y0 + 20);
+    assert.equal(b.body.x1 - b.body.x0, a.body.x1 - a.body.x0);
+  });
+
+  test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {
+    const { ctx, calls } = recordingContext();
+    drawOutOfOrderTape(ctx);
+    const rot = calls.filter(([k]) => k === 'rotate').map(([, a]) => a[0]);
+    assert.deepEqual(rot, [-0.35, 0.35]);
+    const fills = calls.filter(([k]) => k === 'set:fillStyle').map(([, a]) => a[0]);
+    assert.equal(fills.filter((c) => c === OUT_OF_ORDER_TAPE_COLORS.tape).length, 2);
+    assert.ok(fills.includes(OUT_OF_ORDER_TAPE_COLORS.stripe));
+    assert.equal(calls.filter(([k]) => k === 'clip').length, 2);
+    assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
   });
 });

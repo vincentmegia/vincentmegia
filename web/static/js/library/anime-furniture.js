@@ -218,6 +218,184 @@ export function drawBookcase(ctx, st, opts) {
   sparkle(ctx, hw - 10, -hh + 12, 3.5, '#ffffff');
 }
 
+/**
+ * The Coffee Machine's own colours. `ground` is its station tile, the colour
+ * Top-Down shows through the clear hopper (the game's STATION_COLORS uses it);
+ * `hopperSolid` is that glass composited over the ground, for First Person's
+ * untextured hopper faces.
+ */
+export const COFFEE_MACHINE_COLORS = {
+  ground: '#f5d3bd',
+  hopper: 'rgba(255,255,255,0.75)',
+  hopperSolid: tint('#f5d3bd', 0.75),
+  beans: '#6a4a30',
+  body: '#7a5a42',
+  band: '#8f6c50',
+  display: '#9fe0a8',
+  buttons: ['#e8b95a', '#e06a5b'],
+  bay: '#4a3424',
+  steel: '#b0a090',
+  drip: '#c47f4e',
+  cup: '#fdf8ee',
+  coffee: '#6a4a30',
+  grateSlot: 'rgba(58,42,42,0.4)',
+  steam: 'rgba(255,255,255,0.8)',
+};
+
+/**
+ * Where drawCoffeeMachine puts its parts, in the station's centered px:
+ * the hopper (a trapezoid: `x0`/`x1` across its top, `bx0`/`bx1` across its
+ * bottom), the body and its top band, the display and buttons, the recessed
+ * brewing bay with the group head, spouts and drip inside it, the cup, and
+ * the drip tray. Widths come from `st.w`; the top of the machine hangs from
+ * `-st.h / 2` and the bay's contents stand on `st.h / 2`, so a taller box
+ * (First Person's) only makes the bay taller. Top-Down's box is square
+ * (84 x 84). First Person's coffee-machine mesh maps its faces onto these
+ * same regions (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function coffeeMachineLayout(st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const body = { x0: -hw + 9, y0: -hh + 16, x1: hw - 9, y1: hh - 8 };
+  return {
+    hopper: { x0: -12, x1: 12, bx0: -7, bx1: 7, y0: -hh + 4, y1: -hh + 16 },
+    beans: [[-6, -hh + 9], [0, -hh + 8], [6, -hh + 9], [-3, -hh + 12], [3, -hh + 12], [0, -hh + 14.5]],
+    body,
+    band: { x0: body.x0, y0: body.y0, x1: body.x1, y1: -hh + 26 },
+    display: { x0: -10, y0: -hh + 19, x1: 10, y1: -hh + 24 },
+    buttons: [{ x: -hw + 17, y: -hh + 21.5, r: 2.6 }, { x: hw - 17, y: -hh + 21.5, r: 2.6 }],
+    bay: { x0: -hw + 15, y0: -hh + 30, x1: hw - 15, y1: hh - 8 },
+    groupHead: { x0: -9, y0: -hh + 30, x1: 9, y1: -hh + 36 },
+    spouts: [{ x0: -5, y0: -hh + 35, x1: -2, y1: -hh + 40 }, { x0: 2, y0: -hh + 35, x1: 5, y1: -hh + 40 }],
+    drip: { x0: -0.75, y0: -hh + 40, x1: 0.75, y1: -hh + 44 },
+    cup: { x0: -8, y0: hh - 25, x1: 8, y1: hh - 13 },
+    coffee: { x0: -6.5, y0: hh - 24, x1: 6.5, y1: hh - 21.5 },
+    handle: { x: 9, y: hh - 19.5, r: 3.2 },
+    tray: { x0: -hw + 13, y0: hh - 13, x1: hw - 13, y1: hh - 8 },
+    // The grate's slots: one every `step` px from x0 while x < x1.
+    grate: { x0: -hw + 17, x1: hw - 15, y: hh - 12, step: 5, w: 1.5, h: 3 },
+    // Steam wisps from the cup's rim up: start, control, mid, control, end y.
+    steam: [-14, 14].map((x) => ({ x, ys: [hh - 26, hh - 32, hh - 38, hh - 43, hh - 48] })),
+  };
+}
+
+/** A filled rounded rect, no outline (the coffee machine's own primitive). */
+function fillRound(ctx, r, radius, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, radius);
+  ctx.fill();
+}
+
+/**
+ * The Coffee Machine, front on: a clear bean hopper, a brown body with a
+ * lighter top band, a green display between two buttons, and a recessed
+ * brewing bay with the group head, a drip, a steaming cup and the drip
+ * tray's grate. Drawn from coffeeMachineLayout. This is the original
+ * machine, kept as it was; hospital-game.js keeps its own verbatim copy and
+ * cooking-game.js a resized one.
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function drawCoffeeMachine(ctx, st) {
+  const L = coffeeMachineLayout(st);
+  const C = COFFEE_MACHINE_COLORS;
+  // Bean hopper on top: a clear trapezoid full of beans.
+  const hp = L.hopper;
+  ctx.fillStyle = C.hopper;
+  ctx.beginPath();
+  ctx.moveTo(hp.x0, hp.y0);
+  ctx.lineTo(hp.x1, hp.y0);
+  ctx.lineTo(hp.bx1, hp.y1);
+  ctx.lineTo(hp.bx0, hp.y1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = C.beans;
+  for (const [bx, by] of L.beans) {
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 2.1, 1.4, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Machine body (a slightly lighter top band for a metallic read).
+  fillRound(ctx, L.body, 7, C.body);
+  fillRound(ctx, L.band, [7, 7, 0, 0], C.band);
+  // Display + buttons.
+  fillRound(ctx, L.display, 1.5, C.display);
+  L.buttons.forEach((b, i) => {
+    ctx.fillStyle = C.buttons[i];
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // Recessed brewing bay.
+  fillRound(ctx, L.bay, 5, C.bay);
+  // Group head + spouts.
+  fillRound(ctx, L.groupHead, 2, C.steel);
+  ctx.fillStyle = C.steel;
+  for (const s of L.spouts) ctx.fillRect(s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0);
+  // A coffee drip.
+  ctx.fillStyle = C.drip;
+  ctx.fillRect(L.drip.x0, L.drip.y0, L.drip.x1 - L.drip.x0, L.drip.y1 - L.drip.y0);
+  // Cup with coffee + handle.
+  fillRound(ctx, L.cup, [1, 1, 4, 4], C.cup);
+  fillRound(ctx, L.coffee, 1, C.coffee);
+  ctx.strokeStyle = C.cup;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(L.handle.x, L.handle.y, L.handle.r, -Math.PI / 2, Math.PI / 2);
+  ctx.stroke();
+  // Drip tray grate.
+  fillRound(ctx, L.tray, 2, C.steel);
+  const gr = L.grate;
+  ctx.fillStyle = C.grateSlot;
+  for (let gx = gr.x0; gx < gr.x1; gx += gr.step) ctx.fillRect(gx, gr.y, gr.w, gr.h);
+  // Steam wisps curling out of the bay.
+  ctx.strokeStyle = C.steam;
+  ctx.lineWidth = 1.5;
+  for (const { x: dx, ys } of L.steam) {
+    ctx.beginPath();
+    ctx.moveTo(dx, ys[0]);
+    ctx.quadraticCurveTo(dx - 4, ys[1], dx, ys[2]);
+    ctx.quadraticCurveTo(dx + 4, ys[3], dx, ys[4]);
+    ctx.stroke();
+  }
+}
+
+/** The OUT OF ORDER hazard tape's colours. */
+export const OUT_OF_ORDER_TAPE_COLORS = { tape: '#ffd23a', stripe: '#2a2226' };
+
+/**
+ * Two crossed strips of yellow-and-black hazard tape over the Coffee Machine
+ * (the Coffee Machine Broken daily twist), centered on the origin. Top-Down
+ * draws it over the station and First Person paints it into the machine's
+ * art.
+ */
+export function drawOutOfOrderTape(ctx) {
+  for (const [rot, dy] of [[-0.35, -6], [0.35, 8]]) {
+    ctx.save();
+    ctx.rotate(rot);
+    ctx.translate(0, dy);
+    ctx.beginPath();
+    ctx.rect(-52, -6, 104, 12);
+    ctx.fillStyle = OUT_OF_ORDER_TAPE_COLORS.tape;
+    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = OUT_OF_ORDER_TAPE_COLORS.stripe;
+    for (let x = -60; x < 60; x += 14) {
+      ctx.beginPath();
+      ctx.moveTo(x, 6);
+      ctx.lineTo(x + 7, -6);
+      ctx.lineTo(x + 13, -6);
+      ctx.lineTo(x + 6, 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 /** The Front Desk: a peach counter with a monitor of book covers, a stack of books, a bell and a plant. */
 export function drawFrontDesk(ctx, st) {
   const hw = st.w / 2;
