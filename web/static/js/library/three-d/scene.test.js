@@ -294,3 +294,21 @@ test('a station mesh is built once per art, then reused frame to frame', () => {
   const other = { width: 372, height: 726 };
   assert.notEqual(meshOf(frame(other)), first, 'new art: rebuilt');
 });
+
+test('the stairs wear their own badge art, centred on the station, foot toward +Z', () => {
+  const up = { id: 'stairs-1', kind: 'stairs', x: 880, y: 115, floor: 1, targetFloor: 2 };
+  const down = { id: 'stairs-2', kind: 'stairs', x: 880, y: 115, floor: 2, targetFloor: 1 };
+  const arts = new Map([[up, { width: 192, height: 192 }], [down, { width: 192, height: 192 }]]);
+  for (const st of [up, down]) {
+    const scene = buildFirstPersonScene({ ...input({ stations: [up, down], floor: st.floor }), artFor: (s) => arts.get(s) });
+    const stairs = scene.placed.filter((p) => p.mesh.faces.some((f) => f.part === 'tread'));
+    assert.equal(stairs.length, 1);
+    const [p] = stairs;
+    assert.deepEqual(p.placement, { pos: [880, 0, 115], yaw: 0, scale: UNIT_SCALE });
+    const badge = p.mesh.faces.filter((f) => f.texture);
+    assert.equal(badge.length, 1);
+    assert.equal(badge[0].texture.image, arts.get(st));
+    const zs = p.mesh.vertices.map((v) => v[2]);
+    assert.ok(Math.abs(Math.max(...zs) + Math.min(...zs)) < 1e-9, 'centred in z');
+  }
+});

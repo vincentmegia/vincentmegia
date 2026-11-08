@@ -220,6 +220,7 @@ import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
+import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
@@ -3116,6 +3117,12 @@ export function init(canvas, elements) {
       w: ELEVATOR_ART.w * ELEVATOR_ART_SCALE,
       h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
       paint: (c, station) => paintElevatorArt(c, station),
+    },
+    // The stairs' arrow badge (up or down: per station, and stations are keyed by id).
+    stairs: {
+      w: STAIRS_BADGE_ART.w * BADGE_ART_SCALE,
+      h: STAIRS_BADGE_ART.h * BADGE_ART_SCALE,
+      paint: (c, station) => paintStairsBadgeArt(c, station),
     },
   };
   // `${station.id}|${stateKey}` -> canvas.

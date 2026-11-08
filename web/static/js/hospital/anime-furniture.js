@@ -327,41 +327,84 @@ export function drawOperatingRoom(ctx, st, opts = {}) {
   ctx.fillText('OR', hw - 19, -hh + 14.5);
 }
 
+/**
+ * The Stairs' colours, shared with First Person's stairs mesh
+ * (library/three-d/meshes/stairs.js, docs/skills/2d-to-3d/SKILL.md): the step
+ * base the ramp tints, its plum edge line, the shadow line under each step,
+ * the handrail's ink core and its wood top, and the arrow badge.
+ */
+export const STAIRS_COLORS = {
+  step: '#b9d4f2',
+  edge: INK,
+  shadow: 'rgba(59,42,74,0.18)',
+  railInk: INK,
+  rail: '#e8b58a',
+  badge: '#ffffff',
+  arrow: ANIME.skyDeep,
+};
+
+/** The handrail's two line widths (px): the ink core, and the wood drawn over its middle. */
+export const STAIRS_RAIL = { ink: 5, wood: 3 };
+
+/** The arrow badge's layout (px): its center sits `inset` in from the stairs' top-right corner. */
+export const STAIRS_BADGE = { inset: 14, r: 9, line: 1.3, tip: 5.5, back: 3, halfBase: 5.5 };
+
+const STAIRS_STEPS_2D = 5;
+
+/**
+ * Step i's colour (0 = bottom) in a flight of `steps`: the base lightening
+ * from 0.1 to 0.58 up the flight. With 5 steps (Top-Down) that is exactly
+ * tint(base, 0.1 + i * 0.12); more steps spread the same ramp.
+ */
+export function stairStepColor(i, steps = STAIRS_STEPS_2D) {
+  const k = steps > 1 ? (i * (STAIRS_STEPS_2D - 1)) / (steps - 1) : 0;
+  return tint(STAIRS_COLORS.step, 0.1 + k * 0.12);
+}
+
+/** The badge's arrow direction in canvas y: -1 points up (to a higher floor), 1 down. */
+export function stairsArrowDir(st) {
+  return st.targetFloor > st.floor ? -1 : 1;
+}
+
+/** The arrow badge centered on (x, y): a white disc with plum line art and a sky-blue arrow. */
+export function drawStairsBadge(ctx, x, y, dir) {
+  const b = STAIRS_BADGE;
+  circle(ctx, x, y, b.r, STAIRS_COLORS.badge, b.line);
+  ctx.fillStyle = STAIRS_COLORS.arrow;
+  ctx.beginPath();
+  ctx.moveTo(x, y + dir * b.tip);
+  ctx.lineTo(x - b.halfBase, y - dir * b.back);
+  ctx.lineTo(x + b.halfBase, y - dir * b.back);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /** The Stairs: pastel steps with plum edges, a handrail and an arrow badge. */
 export function drawStairs(ctx, st) {
   const half = st.w / 2;
-  const steps = 5;
+  const steps = STAIRS_STEPS_2D;
   const stepH = (half * 2 - 18) / steps;
   for (let i = 0; i < steps; i++) {
     const y = half - 9 - (i + 1) * stepH;
     const inset = 9 + i * 2.6;
-    block(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, tint('#b9d4f2', 0.1 + i * 0.12), 1.1);
-    ctx.fillStyle = 'rgba(59,42,74,0.18)';
+    block(ctx, -half + inset, y, half * 2 - inset * 2, stepH, 2, stairStepColor(i, steps), 1.1);
+    ctx.fillStyle = STAIRS_COLORS.shadow;
     ctx.fillRect(-half + inset + 1, y + stepH - 3, half * 2 - inset * 2 - 2, 2);
   }
   // Handrail.
   ctx.lineCap = 'round';
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 5;
+  ctx.strokeStyle = STAIRS_COLORS.railInk;
+  ctx.lineWidth = STAIRS_RAIL.ink;
   ctx.beginPath();
   ctx.moveTo(-half + 8, half - 11);
   ctx.lineTo(-half + 19, -half + 11);
   ctx.stroke();
-  ctx.strokeStyle = '#e8b58a';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = STAIRS_COLORS.rail;
+  ctx.lineWidth = STAIRS_RAIL.wood;
   ctx.stroke();
   ctx.lineCap = 'butt';
   // Arrow badge: up to the Supply Room, down to the ER.
-  const dir = st.targetFloor > st.floor ? -1 : 1;
-  circle(ctx, half - 14, -half + 14, 9, '#ffffff', 1.3);
-  ctx.fillStyle = ANIME.skyDeep;
-  ctx.beginPath();
-  const ay = -half + 14;
-  ctx.moveTo(half - 14, ay + dir * 5.5);
-  ctx.lineTo(half - 19.5, ay - dir * 3);
-  ctx.lineTo(half - 8.5, ay - dir * 3);
-  ctx.closePath();
-  ctx.fill();
+  drawStairsBadge(ctx, half - STAIRS_BADGE.inset, -half + STAIRS_BADGE.inset, stairsArrowDir(st));
 }
 
 /**
