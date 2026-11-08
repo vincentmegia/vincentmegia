@@ -2,7 +2,8 @@
 
 ## Status
 
-`Shipped` (branch `fp-3d`)
+`Shipped` (branch `fp-3d`); Top-Down ↔ First Person parity is `Planned`
+(see Camera parity)
 
 ## Summary
 
@@ -24,8 +25,12 @@ animated elevator ride and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
 targeting (still `library/first-person.js`); textures other than a 2D
-drawer's own art; z-buffer, lighting beyond one directional light plus ambient; ambient staff in FP (not drawn);
-elevator door animation in the scene (see Known gaps).
+drawer's own art; z-buffer, lighting beyond one directional light plus ambient.
+
+**Required, not yet built:** full parity with Top-Down — every person,
+prop, decor item, label and interaction Top-Down has, in FP too (ambient
+staff included). See Camera parity for the requirements and work
+breakdown; elevator door animation is one of its items.
 
 ---
 
@@ -383,6 +388,138 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
    in range, bounds (base at y=0), and any colors that matter. Add a
    `scene.test.js` case if the mapping needs one.
 
+## Camera parity (Top-Down ↔ First Person)
+
+**Status: `Planned`.** The two cameras are two views of **one** game world.
+Today the game state is shared (`player.x/y`, `currentFloor`, `shiftState`,
+`ambient` all keep updating in either mode) but the First Person *scene*
+only receives a subset of it, so flipping to 3D loses people, props and
+information. This section is the requirement that closes that gap; each
+work item below removes a row from the audit table when it ships.
+
+### Requirements
+
+* **P1 — One inventory, two renderers.** Both cameras draw from the same
+  per-floor world inventory: a pure `worldInventory(floor, state)` returning
+  every station, person, prop, decor item and state flag Top-Down draws.
+  `render()`'s Top-Down branch and `drawFirstPersonView` both consume it;
+  neither builds its own list (today `drawFirstPersonView` hand-picks queue
+  slots and cart books, and `buildFirstPersonEntities` does the same).
+* **P2 — Nothing disappears on a flip.** Every inventory item has an FP
+  representation at the same `x`/`y`/floor, or is on the explicit
+  exemption list below. A node test fails when an inventory kind has
+  neither, so a new Top-Down object can't ship 2D-only by accident.
+* **P3 — Flipping is lossless.** Switching cameras never changes game
+  state: position, floor, shift clock, queues, carried book, open overlay,
+  staff positions and actions are identical before and after, in both
+  directions, any number of times. A ride/climb cut short by leaving FP
+  lands on whichever floor the transition had committed to.
+* **P4 — Same look, referenced to the 2D.** People are built from the design
+  their 2D renderer draws; props wear their 2D drawer's art or colours
+  (`docs/skills/2d-to-3d/SKILL.md`). State-dependent looks carry over: Boss's
+  Office locked/unlocked, Coffee Machine out of order, ghost patrons
+  translucent, Karen angry, Min-jun's current action.
+* **P5 — Same information.** What a Top-Down chip tells the player (station
+  names, staff names and help hints, patience bars, fine amounts, borrow
+  titles, "Check out!", "Karen!", recommend bubble, "+N waiting", messy
+  cart warning, OUT OF ORDER) is readable in FP — as world-anchored labels
+  projected with `projectPoint`, shown for the crosshair target and nearby
+  entities so the view doesn't drown in chips.
+* **P6 — Same interactions.** Everything clickable in Top-Down is
+  interactable in FP with the same result: stations, queue patrons, Return
+  Cart books, **and the helpful staff** (Shelver, Ji-ho, Min-jun), which
+  `buildFirstPersonEntities` doesn't list today.
+* **P7 — World effects live in the world.** Effects drawn at world
+  coordinates in Top-Down (hallucination shadow figures) are placed in the
+  3D scene in FP, not painted at their 2D canvas coordinates over the 3D
+  view. Screen-space HUD (bars, clock, daily chip, overlays) stays
+  screen-space in both.
+
+**Exempt (camera-specific by design):** Eun-mi herself (she is the FP
+camera; FP shows the crosshair instead), Top-Down's hover/target rings
+(FP's crosshair target highlight replaces them), FP's minimap, dust and
+vignette, and the Boss cutscene / minigame overlays (full-screen in both).
+
+### Audit (verified against the code, Nov 2026)
+
+| Top-Down draws | Where | In FP today |
+|---|---|---|
+| Every floor-plan station | `drawStation` | ✅ all present; bookshelf, coffee machine, elevator, stairs referenced to 2D |
+| Front Desk, Return Cart, Fines Counter, Boss's Office, Reading Nook | `STATION_DETAIL_DRAWERS` | ⚠️ plain brown boxes (`buildStationBox`) |
+| Boss's Office locked state (grey + padlock) | `drawStation` | ❌ |
+| Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; all face yaw 0 |
+| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ⚠️ drawn as a solid normal patron |
+| Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ❌ not passed to the scene; and none has a design object (bespoke 2D renderers in `STAFF_RENDERERS`, `jiho.js`, `minjun.js`) |
+| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ❌ |
+| Staff help interactions | Top-Down click | ❌ staff aren't FP entities |
+| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ⚠️ untextured 18×26×10 boxes |
+| Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ❌ |
+| Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ❌ one `FLOOR_TINT` for both floors |
+| Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ❌ |
+| Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
+| Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
+| Hallucination shadow figures | `drawHallucinations` | ❌ painted at 2D canvas coords over the 3D view |
+| Elevator doors | `drawElevator` | ⚠️ static; `doorOpen` not wired (see Known gaps) |
+| Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
+
+### Work breakdown
+
+Ordered so each step is independently shippable; sizes are rough
+(S < ½ day, M ≈ 1 day, L = several).
+
+1. **Inventory + parity test (M)** — P1, P2. Add pure
+   `library/world-inventory.js` (`worldInventory(floor, state)`), switch both
+   renderers and `buildFirstPersonEntities` to it, and add a node test that
+   every inventory kind maps to an FP builder or an exemption. Expose
+   `getWorldInventory()` on `window.__libraryGameTestHooks`. Lands red on
+   the kinds below and turns green as they ship (mark them `todo` in the
+   test, not skipped).
+2. **Lossless-flip e2e (S)** — P3. Playwright: snapshot inventory + state,
+   flip FP → Top-Down → FP several times (including mid-ride), assert equal.
+3. **Ambient staff in FP (L)** — P2, P4. Author a design object per staff
+   member referenced to their 2D renderer (Security, Janitor, Shelver,
+   Volunteer, Storyteller, Archivist on `staff-kit.js`; Ji-ho; Min-jun),
+   extending `buildCharacter` only where a design needs a part it lacks
+   (caps, mop/broom, book stacks). Pass `ambient` for the floor into the
+   scene with each walker's yaw from `a.dir`. Pin each mesh's proportions
+   and palette to its 2D like `character.test.js` does for patrons.
+4. **Character facing and state (S)** — P4. Queue patrons face their desk;
+   ghosts draw translucent (needs per-placement alpha in `drawScene`);
+   memoise character meshes per design so 8 more people don't rebuild
+   every frame.
+5. **Staff interactions in FP (S)** — P6. Add helpful staff to the FP
+   entity list; route interact to the same `staffHelp` / `askMinjunForHelp`
+   path Top-Down uses.
+6. **Remaining station meshes (L)** — P4. Front Desk, Return Cart, Fines
+   Counter, Boss's Office (locked/unlocked via `stateKey`), Reading Nook,
+   each referenced to its `STATION_DETAIL_DRAWERS` art via `FP_ART`.
+   One commit per prop, as the bookshelf/coffee/elevator/stairs did.
+7. **Return Cart books (S)** — P4. Book meshes in the genre colour wearing
+   `drawCoverTitle`'s cover as art, coin-hunt star included.
+8. **Decor meshes (M)** — P2, P4. Water cooler, plant, ladder, waiting
+   chairs from `drawDecor`'s art; `LIBRARY_DECOR` joins the inventory.
+9. **Room dressing per floor (M)** — P4. `buildRoom` takes a per-floor
+   palette (1F mint checker, 2F cream), floor decals for the guide stripes
+   and rugs, and back-wall art (sign, sakura, wall shelf, live wall clock)
+   as textured quads.
+10. **World-anchored labels (M)** — P5. Project label anchors with
+    `projectPoint`, depth-sort and distance-fade them, draw the same chip
+    text Top-Down uses (one shared label function per entity, so the two
+    can't drift).
+11. **Hallucinations in 3D (S)** — P7. Shadow figures as dark billboard
+    meshes at their world `x`/`y`; whispers stay screen-space.
+12. **Elevator doors (S)** — wire `doorOpen` (already in Known gaps).
+
+### Open questions
+
+* Facing on entering FP: keep "face the room centre" (today) or face the way
+  Eun-mi was last walking in Top-Down? The latter is more "same world";
+  the former always shows something useful.
+* Label density in FP (P5): crosshair target + everything within N px, or
+  all labels with distance fade?
+* Performance budget: ~8 more characters at up to 340 faces each on 1F —
+  set a frame-time target before step 3 and measure it.
+
 ## Known gaps
 
 * `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
@@ -391,7 +528,8 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
   scene's mesh memo key, and a decision on what the doors do: today they
   slide in front of the frame, so fully open they cover the call panel.
 * The front desk, return cart, fines counter, boss office and reading nook
-  are still plain station boxes; every other prop is referenced to its 2D.
+  are still plain station boxes; every other prop is referenced to its 2D
+  (Camera parity, step 6).
 * The stairs climb (`transitions.js`, `STAIRS_STEPS` 10) is longer than the
   8-step mesh, so the camera overshoots the top by about 0.56 units; the
   2nd-Floor stairs also climb *up* on screen to go down.
@@ -401,7 +539,8 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
 * `ELEVATOR_COLORS.tile` is a copy of both games' `STATION_COLORS.elevator`,
   held equal by a source-text test rather than imported.
 * In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
-  Cart books are drawn as characters/props, as before.
+  Cart books are drawn as characters/props: no ambient staff, decor, floor
+  or wall dressing, or labels. Closing that is the Camera parity section.
 * The visual constants above are plausible but untuned; the character
   proportions are the exception — they are measured off the 2D art.
 * The face budget (`character.test.js`, ceiling 340) now has less headroom:

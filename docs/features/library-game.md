@@ -86,8 +86,12 @@ handling, in place of Kitchen Shift's cooking and serving.
   with movement input frozen; the floor switches at the commit point, and
   Top-Down still switches instantly. Only the Front Desk / Fines Counter
   queues (1st Floor) and Return Cart books are drawn as characters/props;
-  the ambient staff are not drawn in FP, and the elevator door-open
-  animation isn't wired into the scene yet (the camera ride is).
+  the ambient staff, decor and labels are not drawn in FP yet, and the
+  elevator door-open animation isn't wired into the scene (the camera ride
+  is). **Requirement:** the two cameras are views of one world, so a flip
+  must never lose a person, prop, label or interaction — see "Camera
+  parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and
+  work breakdown.
 * A 30-shift month in three 10-shift tiers. The clock gets shorter and
   volumes grow with each tier. Progress is saved to `localStorage`.
 * Two floors on one canvas, switched with the Stairs, the Elevator or the
