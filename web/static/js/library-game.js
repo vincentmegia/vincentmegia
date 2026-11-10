@@ -217,6 +217,7 @@ import {
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { shadowFigureAlpha, shadowFigurePlacements } from './library/three-d/shadow-figures.js';
 import { worldInventory } from './library/world-inventory.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
@@ -1892,6 +1893,9 @@ export function init(canvas, elements) {
 
   const WHISPERS = ['shhh…', 'overdue…', "they're watching", 'you missed one', 'turn around', 'quiet…', 'it was due yesterday', 'who left the lights on?'];
   let halluc = { figures: [], whispers: [], ghosts: [], flicker: 0, scare: 0, ghostCounter: 0 };
+  // Test hooks: how each camera drew the shadow figures on the last frame.
+  let lastFrameTopDownShadowFigures = 0;
+  let lastFrameFpShadowFigures = [];
 
   function currentIntensity() {
     return shiftState && shiftState.phase === 'playing' ? hallucinationIntensity(shiftState.sanity) : 0;
@@ -1962,12 +1966,17 @@ export function init(canvas, elements) {
 
   function drawHallucinations() {
     const i = currentIntensity();
+    lastFrameTopDownShadowFigures = 0;
     if (i <= 0) return;
     const t = performance.now() / 1000;
 
-    for (const f of halluc.figures) {
-      const fade = Math.sin((f.age / f.life) * Math.PI);
-      drawShadowFigure(f.x, f.y, 0.55 * fade * (0.7 + 0.3 * Math.sin(t * 30)));
+    // The figures stand at world coordinates: First Person places them in its
+    // 3D scene (drawFirstPersonView), so only Top-Down paints them here (P7).
+    if (cameraMode !== 'first-person') {
+      for (const f of halluc.figures) {
+        drawShadowFigure(f.x, f.y, shadowFigureAlpha(f, t));
+        lastFrameTopDownShadowFigures++;
+      }
     }
 
     ctx.save();
@@ -5068,6 +5077,7 @@ export function init(canvas, elements) {
     const characters = [];
     const books = [];
     const decor = [];
+    const shadows = [];
     for (const item of inv) {
       if (item.kind === 'front-desk-patron' || item.kind === 'karen' || item.kind === 'fines-patron' || item.kind === 'ghost-patron') {
         const personality = personalityForSlot(item.ref, item.slotIndex ?? 0);
@@ -5092,6 +5102,8 @@ export function init(canvas, elements) {
         books.push(item);
       } else if (item.kind === 'decor') {
         decor.push(item);
+      } else if (item.kind === 'hallucination-figure') {
+        shadows.push(item);
       }
     }
     const viewport = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -5113,6 +5125,13 @@ export function init(canvas, elements) {
         placement: { pos: [e.x, 0, e.y], yaw: 0, scale: 1 },
       });
     }
+    // Hallucination shadow figures stand in the room (P7), facing the camera;
+    // updateHallucinations still owns where they are and how long they last.
+    const figures = currentIntensity() > 0
+      ? shadowFigurePlacements(shadows, { x: player.x + offX, y: player.y + offZ }, performance.now() / 1000)
+      : [];
+    placed.push(...figures);
+    lastFrameFpShadowFigures = figures.map((p) => ({ x: p.placement.pos[0], y: p.placement.pos[2], yaw: p.placement.yaw, alpha: p.placement.alpha }));
     drawScene(ctx, camera, placed, { viewport, light: FP_LIGHT, fog: FP_FOG });
     drawFpDust();
     // Vignette (screen-space, like the rest of the HUD)
@@ -5480,6 +5499,14 @@ export function init(canvas, elements) {
       getGardPops: () => gardPops.map((pop) => ({ ...pop })),
       getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.map((g) => ({ ...g })), figures: halluc.figures.length, whispers: halluc.whispers.length }),
       spawnGhostPatronNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
+      /** Adds a shadow figure at (x, y), mid-life (fully faded in) for about a minute. */
+      spawnShadowFigureNow(x, y) { halluc.figures.push({ x, y, age: 30, life: 60 }); },
+      /** The live figures, how many Top-Down painted as 2D last frame, and First Person's scene placements for them. */
+      getShadowFigures: () => ({
+        figures: halluc.figures.map((f) => ({ ...f })),
+        topDownDrawn: lastFrameTopDownShadowFigures,
+        fpPlaced: cameraMode === 'first-person' ? lastFrameFpShadowFigures.map((p) => ({ ...p })) : [],
+      }),
       setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
       /** Stops (true) or resumes (false) the simulation; input handlers still run, so a press/release while frozen acts on exactly the values a test set. */
       freeze(on) { testFrozen = Boolean(on); },

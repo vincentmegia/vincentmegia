@@ -141,13 +141,13 @@ const FP_BUILDER_KINDS = new Set([
   'ghost-patron',       // buildCharacter at placement.alpha
   'ambient-staff',      // buildCharacter via findStaffDesign
   'decor',              // DECOR_BUILDERS in meshes/decor.js
+  'hallucination-figure', // buildShadowFigure billboard via three-d/shadow-figures.js
 ]);
 
 // Kinds where the FP builder is planned but not yet shipped — the test
 // marks these as TODO so CI stays green while each ships in its own step.
 const FP_TODO_KINDS = new Set([
   'return-cart-book',      // Step 7: genre-colour book mesh
-  'hallucination-figure',  // Step 11: dark billboard mesh
 ]);
 
 test('parity: every inventory kind has an FP builder or is exempt', () => {

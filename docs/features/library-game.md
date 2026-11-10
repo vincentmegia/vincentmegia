@@ -499,7 +499,10 @@ Look values up there rather than relying on this doc.
     (`READING_CHOSEN_SANITY_RESTORE`). The book then goes onto the Return
     Cart.
   * **Below 25 Sanity**, hallucinations start (`hallucinationIntensity`):
-    * Scare visuals.
+    * Scare visuals. Shadow figures stand on the floor; in First Person
+      they are dark silhouettes standing in the room, always facing you.
+      The vignette, whispers and jump scare are screen effects in both
+      cameras.
     * Shaky hands: the skill-check zone shrinks to as little as 50% and
       the sweep runs up to 1.6× faster.
     * Carried books can slip back onto the cart.

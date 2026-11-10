@@ -465,7 +465,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ❌ |
 | Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
 | Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
-| Hallucination shadow figures | `drawHallucinations` | ❌ painted at 2D canvas coords over the 3D view |
+| Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
 | Elevator doors | `drawElevator` | ⚠️ static; `doorOpen` not wired (see Known gaps) |
 | Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
 
@@ -517,8 +517,23 @@ Ordered so each step is independently shippable; sizes are rough
     `projectPoint`, depth-sort and distance-fade them, draw the same chip
     text Top-Down uses (one shared label function per entity, so the two
     can't drift).
-11. **Hallucinations in 3D (S)** — P7. Shadow figures as dark billboard
-    meshes at their world `x`/`y`; whispers stay screen-space.
+11. ✅ **Hallucinations in 3D (S)** — P7. `three-d/shadow-figures.js`
+    turns the inventory's `hallucination-figure` items (still created, aged
+    and expired only by `updateHallucinations`) into placements of one
+    shared flat silhouette, `meshes/shadow-figure.js`'s `buildShadowFigure`:
+    `drawShadowFigure`'s head circle, sampled body curves and red eyes in
+    its own colours, 75 px tall at `UNIT_SCALE` (an adult is 73), all faces
+    `unlit` and unculled. `billboardYaw` turns its front to the camera each
+    frame; `shadowFigureAlpha` is the one fade × flicker formula both
+    cameras use, carried in `placement.alpha`, so the figures sort, occlude
+    and fog with the rest of the scene. `drawHallucinations` paints the 2D
+    figures only in Top-Down. Decision: the vignette, whispers, light
+    flicker and the jump scare's giant figure rising from the bottom edge
+    are screen-space effects (they aren't at a floor position) and stay as
+    they are in both cameras. Hooks: `spawnShadowFigureNow(x, y)`,
+    `getShadowFigures()` (`{figures, topDownDrawn, fpPlaced}`); tests:
+    `shadow-figures.test.js`, e2e "shadow figures stand in the First Person
+    scene…".
 12. **Elevator doors (S)** — wire `doorOpen` (already in Known gaps).
 
 ### Open questions
