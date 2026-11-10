@@ -84,9 +84,13 @@ handling, in place of Kitchen Shift's cooking and serving.
   (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
   with movement input frozen; the floor switches at the commit point, and
-  Top-Down still switches instantly. Only the Front Desk / Fines Counter
-  queues (1st Floor) and Return Cart books are drawn as characters/props;
-  the ambient staff, decor and labels are not drawn in FP yet, and the
+  Top-Down still switches instantly. The queues, Return Cart books,
+  ambient staff and decor are drawn in FP, and the chips Top-Down shows
+  (station names and countdowns, patron chips and patience bars, staff
+  names and help hints, "+N waiting", "+N more", the messy-cart warning,
+  OUT OF ORDER) float over their entities as world-anchored labels: every
+  label within 520 px, fading with distance and hidden behind a station,
+  the crosshair target's at full opacity; patience bars within 300 px. The
   elevator door-open animation isn't wired into the scene (the camera ride
   is). **Requirement:** the two cameras are views of one world, so a flip
   must never lose a person, prop, label or interaction — see "Camera

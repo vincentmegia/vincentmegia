@@ -1525,6 +1525,46 @@ test.describe('First Person Mode', () => {
 		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
 	});
 
+	// Camera parity P5 (docs/features/library-first-person-3d.md): what a
+	// Top-Down chip says is shown in First Person as world-anchored labels.
+	test('First Person shows world-anchored labels: the Front Desk name and a queued patron\'s chip, on screen', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBorrowNow());
+		const [slot] = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots());
+		expect(slot.kind).toBe('borrow');
+
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels())).toEqual([]); // Top-Down: none
+		await page.locator('#library-camera-button').click();
+		const desk = await getStation(page, 'front-desk');
+		await page.evaluate(({ x, y }) => {
+			const hooks = window.__libraryGameTestHooks;
+			hooks.setPlayerPosition(x - 90, y + 330); // south of the queue, off its axis...
+			hooks.setPlayerFacing(0.2); // ...facing north toward the desk.
+		}, desk);
+
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels())).map((l) => l.id).sort())
+			.toEqual(expect.arrayContaining(['front-desk', `fd-${slot.id}`]));
+		const labels = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels());
+		const deskLabel = labels.find((l) => l.id === 'front-desk');
+		const patronLabel = labels.find((l) => l.id === `fd-${slot.id}`);
+		expect(deskLabel.lines.map((l) => l.text)).toEqual(['Front Desk']);
+		// The patron's chip is their book's Korean title, as in Top-Down, with
+		// the patience bar this close.
+		expect(patronLabel.lines[0].type).toBe('chip');
+		expect(patronLabel.lines[0].text.length).toBeGreaterThan(0);
+		expect(patronLabel.lines.some((l) => l.type === 'bar')).toBe(true);
+		for (const l of [deskLabel, patronLabel]) {
+			expect(l.rect.x).toBeGreaterThanOrEqual(0);
+			expect(l.rect.y).toBeGreaterThanOrEqual(0);
+			expect(l.rect.x + l.rect.w).toBeLessThanOrEqual(960);
+			expect(l.rect.y + l.rect.h).toBeLessThanOrEqual(600);
+			expect(l.alpha).toBeGreaterThan(0);
+		}
+		// Above the patron's head means above eye height: the upper half of the view.
+		expect(patronLabel.y).toBeLessThan(300);
+	});
+
 	test('interacting with Stairs in First Person (via the on-screen Interact button) switches floors and resets to a sensible facing, same as Top-Down', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
