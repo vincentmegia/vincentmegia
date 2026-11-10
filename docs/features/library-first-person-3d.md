@@ -467,6 +467,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
 | Hallucination shadow figures | `drawHallucinations` | ❌ painted at 2D canvas coords over the 3D view |
 | Elevator doors | `drawElevator` | ⚠️ static; `doorOpen` not wired (see Known gaps) |
+| Game state across a flip (P3) | `setCameraMode` | ✅ unchanged, mid-ride included (lossless-flip e2e, step 2) |
 | Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
 
 ### Work breakdown
@@ -479,8 +480,22 @@ Ordered so each step is independently shippable; sizes are rough
    `buildFirstPersonEntities` rewired to it, 14-test
    `world-inventory.test.js` with `FP_TODO_KINDS` that shrink as steps ship.
    `getWorldInventory()` exposed on `window.__libraryGameTestHooks`.
-2. **Lossless-flip e2e (S)** — P3. Playwright: snapshot inventory + state,
-   flip FP → Top-Down → FP several times (including mid-ride), assert equal.
+2. ✅ **Lossless-flip e2e (S)** — P3. `e2e/library-game.spec.js`, "First
+   Person Mode › lossless camera flips (P3)": with the simulation frozen it
+   snapshots both floors' `getWorldInventory`, `getShiftState` (carried
+   book/fine included), position, floor, walk flag, queue/cart slots,
+   overlay, active transition, scheduled events and hallucinations, flips
+   with the real camera button three round trips, and asserts every
+   snapshot deep-equal. Cases: a busy 1st Floor (cart books, one carried,
+   borrows, a fine, a ghost patron), the 2nd Floor with that 1st Floor
+   still queued, and leaving FP mid-transition (elevator in doors-close,
+   rise and doors-open; stairs mid-climb). Facing is excluded on purpose
+   (open question below). **Pinned behaviour:** leaving FP cancels an
+   in-flight ride/climb outright (`setCameraMode` sets `fpTransition =
+   null`, no forced completion), so the player stays on the floor already
+   committed — the destination only once the elevator reached doors-open,
+   the start floor for any unfinished climb — and re-entering FP does not
+   resume it.
 3. **~~Ambient staff in FP (L)~~** ✅ — P2, P4. `LIBRARY_STAFF_DESIGNS` in
    `library-people.js` (8 designs matching the 2D renderers' palettes),
    `findStaffDesign(key)`, wired into `drawFirstPersonView` via the world
@@ -533,6 +548,13 @@ Ordered so each step is independently shippable; sizes are rough
 
 ## Known gaps
 
+* Entering FP mid-walk stops the Top-Down click-to-move (`setCameraMode`
+  clears `moveTarget` on purpose) but leaves the walk's queued
+  `pendingFrontDeskAction` / `pendingCartPickupId` set, so it fires on the
+  next arrival at that station instead of being dropped with the walk
+  (re-clicking a plain station mid-walk in Top-Down leaves it set the same
+  way). The lossless-flip e2e runs frozen with no walk in flight, so it
+  doesn't cover this.
 * `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
   `doorOpen`, but `buildFirstPersonScene` does not pass it, so only the
   camera animates during the ride. Wiring it needs `doorOpen` in the

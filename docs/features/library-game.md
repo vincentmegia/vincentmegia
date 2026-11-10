@@ -84,7 +84,8 @@ handling, in place of Kitchen Shift's cooking and serving.
   (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
   with movement input frozen; the floor switches at the commit point, and
-  Top-Down still switches instantly. Only the Front Desk / Fines Counter
+  Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
+  it on whichever floor it had committed to. Only the Front Desk / Fines Counter
   queues (1st Floor) and Return Cart books are drawn as characters/props;
   the ambient staff, decor and labels are not drawn in FP yet, and the
   elevator door-open animation isn't wired into the scene (the camera ride

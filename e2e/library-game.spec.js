@@ -1571,6 +1571,172 @@ test.describe('First Person Mode', () => {
 		await walkToStation(page, 'coffee-machine');
 		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
 	});
+
+	// Camera parity P3 (docs/features/library-first-person-3d.md): flipping
+	// cameras never changes game state. With the simulation frozen nothing
+	// moves on its own, so every snapshot taken around a flip must be
+	// deep-equal to the one before it. Facing is deliberately NOT in the
+	// snapshot: `setCameraMode('first-person')` resets it toward the room
+	// centre on every flip, the doc's open question "Facing on entering FP"
+	// (unresolved; Top-Down never reads facing).
+	test.describe('lossless camera flips (P3)', () => {
+		/** Everything a flip must preserve, as plain JSON (facing excluded, see above). */
+		const flipSnapshot = (page) => page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const shift = h.getShiftState();
+			return JSON.parse(JSON.stringify({
+				floor: h.getCurrentFloor(),
+				position: h.getPlayerPosition(),
+				walking: h.isPlayerMoving(),
+				shift,
+				carried: { book: shift.carriedBook, fine: shift.carriedFine },
+				inventory: { 1: h.getWorldInventory(1), 2: h.getWorldInventory(2) },
+				frontDesk: h.getFrontDeskSlots(),
+				finesCounter: h.getFinesCounterSlots(),
+				returnCart: h.getReturnCartSlots(),
+				overlay: h.getOverlay(),
+				transition: h.getActiveTransition(),
+				scheduled: h.getScheduledEvents(),
+				hallucinations: h.getHallucinations(),
+			}));
+		});
+
+		/** Flips with the real camera button; returns the mode it landed in. */
+		const flip = async (page) => {
+			await page.locator('#library-camera-button').click();
+			return page.evaluate(() => window.__libraryGameTestHooks.getCameraMode());
+		};
+
+		/** A busy 1st Floor: three returns on the cart, one picked up and carried, two borrows and a fine in line. */
+		async function busyFloorOne(page) {
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.spawnBookNow(false);
+				h.spawnBookNow(true);
+				h.spawnBookNow(false);
+			});
+			const book = (await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots()))[0];
+			await clickQueueItem(page, book);
+			await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(book.id);
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.spawnBorrowNow();
+				h.spawnBorrowNow();
+				h.spawnFineNow(30);
+			});
+		}
+
+		/** Freezes, then adds a ghost patron in the same frame: at full Sanity the next live frame's `updateHallucinations` would clear it. */
+		const freezeWithGhost = (page) => page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.spawnGhostPatronNow();
+			h.setCameraMode('first-person');
+		});
+
+		/** Starts in First Person, then flips FP → Top-Down → FP `rounds` times, asserting each side matches the frozen baseline. */
+		async function assertLosslessFlips(page, rounds = 3) {
+			const baseline = await flipSnapshot(page);
+			for (let i = 0; i < rounds; i++) {
+				expect(await flip(page)).toBe('top-down');
+				expect(await flipSnapshot(page)).toEqual(baseline);
+				expect(await flip(page)).toBe('first-person');
+				expect(await flipSnapshot(page)).toEqual(baseline);
+			}
+			return baseline;
+		}
+
+		test('flipping cameras is lossless on a busy 1st Floor (queues, cart books, carried book)', async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await busyFloorOne(page);
+			await freezeWithGhost(page);
+
+			const baseline = await assertLosslessFlips(page);
+			// The baseline really is a busy floor, so equality means something.
+			expect(baseline.floor).toBe(1);
+			expect(baseline.carried.book).not.toBeNull();
+			expect(baseline.returnCart.length).toBe(2);
+			expect(baseline.frontDesk.length).toBeGreaterThanOrEqual(2); // borrow patron(s) + the ghost
+			expect(baseline.finesCounter.length).toBe(1);
+			const kinds = new Set(baseline.inventory[1].map((item) => item.kind));
+			for (const k of ['station', 'return-cart-book', 'front-desk-patron', 'ghost-patron', 'fines-patron', 'ambient-staff']) {
+				expect(kinds, `1st Floor inventory has a ${k}`).toContain(k);
+			}
+		});
+
+		test('flipping cameras is lossless on the 2nd Floor, with the 1st Floor queues still waiting downstairs', async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await busyFloorOne(page);
+			await page.locator('#library-floor-button').click();
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+			await freezeWithGhost(page);
+
+			const baseline = await assertLosslessFlips(page);
+			expect(baseline.floor).toBe(2);
+			expect(baseline.carried.book).not.toBeNull();
+			expect(baseline.returnCart.length).toBe(2);
+			expect(baseline.inventory[2].some((item) => item.kind === 'ambient-staff')).toBe(true);
+		});
+
+		// What leaving First Person does to an in-flight ride/climb
+		// (`setCameraMode`'s Top-Down branch): it cancels the transition
+		// outright — no forced completion — so the player stays on whichever
+		// floor the transition had already committed to (P3's rule). The
+		// elevator commits on entering 'doors-open' (t ≥ 1.4 s); the stairs
+		// only at the very end of the climb, so a climb cut short always lands
+		// back on the floor it started from. Nothing else changes, and going
+		// back to First Person does not restart the transition.
+		for (const { kind, seconds, phase, committedFloor } of [
+			{ kind: 'elevator', seconds: 0.3, phase: 'doors-close', committedFloor: 1 },
+			{ kind: 'elevator', seconds: 1.0, phase: 'rise', committedFloor: 1 },
+			{ kind: 'elevator', seconds: 1.6, phase: 'doors-open', committedFloor: 2 },
+			{ kind: 'stairs', seconds: 0.75, phase: 'travel', committedFloor: 1 },
+		]) {
+			test(`leaving First Person ${seconds}s into the ${kind} (${phase}) cancels it on the committed floor and changes nothing else`, async ({ page }) => {
+				await page.goto('/library-game');
+				await startShift(page);
+				await busyFloorOne(page);
+				await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('first-person'));
+
+				// Face the station from 90 units out (as the transition test in
+				// 'floor switching' does) and let the live scene acquire it.
+				const station = await getStation(page, kind);
+				await page.evaluate(({ sx, sy }) => {
+					const h = window.__libraryGameTestHooks;
+					const dx = 480 - sx;
+					const dy = 300 - sy;
+					const len = Math.hypot(dx, dy);
+					h.setPlayerPosition(sx + (dx / len) * 90, sy + (dy / len) * 90);
+					h.setPlayerFacing(Math.atan2(-dx, dy));
+				}, { sx: station.x, sy: station.y });
+				await page.waitForFunction((k) => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.ref?.kind === k, kind);
+
+				// Frozen from here: start the ride/climb through the real interact
+				// path, then advance it exactly `seconds` in 1/60 s frames.
+				await page.evaluate((s) => {
+					const h = window.__libraryGameTestHooks;
+					h.freeze(true);
+					h.attemptInteractNow();
+					for (let i = 0; i < Math.round(s * 60); i++) h.step(1 / 60);
+				}, seconds);
+				const mid = await flipSnapshot(page);
+				expect(mid.transition).toMatchObject({ kind, phase, targetFloor: 2 });
+				expect(mid.floor).toBe(committedFloor);
+
+				const expected = { ...mid, transition: null };
+				expect(await flip(page)).toBe('top-down');
+				expect(await flipSnapshot(page)).toEqual(expected);
+				for (let i = 0; i < 2; i++) {
+					expect(await flip(page)).toBe('first-person');
+					expect(await flipSnapshot(page)).toEqual(expected);
+					expect(await flip(page)).toBe('top-down');
+					expect(await flipSnapshot(page)).toEqual(expected);
+				}
+			});
+		}
+	});
 });
 
 // Regression test for the same class of bug documented in cooking-game.js's
