@@ -220,11 +220,11 @@ import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { worldInventory } from './library/world-inventory.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
-import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
+import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, elevatorRiderPose, isInElevatorCar } from './library/three-d/meshes/elevator.js';
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
 import { buildStationBox } from './library/three-d/meshes/station-box.js';
-import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
+import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
 // localStorage progress (doc's Data Model: "in-progress shift state, Gard,
@@ -853,6 +853,9 @@ export function init(canvas, elements) {
   // movement/turn/strafe/jump input is ignored and the camera is driven by
   // transitions.js; cleared when the transition reaches 'done' or FP is left.
   let fpTransition = null;
+  // The elevator a FP ride just arrived in, {id, open}: its doors stay open
+  // while the player is still in the car, then close (stepHeldDoors).
+  let fpHeldDoors = null;
   const FP_DUST_COUNT = 24;
   let fpDust = [];
   function initFpDust() {
@@ -1181,6 +1184,7 @@ export function init(canvas, elements) {
       fpTiltAngle = 0;
       fpInteractFlash = 0;
       fpTransition = null; // cancel any in-flight ride/climb and clear the input block
+      fpHeldDoors = null;
       fpScene = { projected: [], interactTarget: null };
       if (fpPointerLocked) document.exitPointerLock?.();
     }
@@ -1312,12 +1316,40 @@ export function init(canvas, elements) {
   function commitFpTransition() {
     if (!fpTransition) return;
     const cam = transitionCamera(fpTransition, { x: player.x, y: player.y, facing: playerFacing });
-    if (cam.floorSwitched) switchFloor(fpTransition.targetFloor);
-    if (fpTransition.phase === 'done') fpTransition = null;
+    const car = fpTransition.kind === 'elevator' ? stations.find((s) => s.kind === 'elevator' && s.floor === fpTransition.targetFloor) : null;
+    if (cam.floorSwitched) {
+      switchFloor(fpTransition.targetFloor);
+      // An elevator rider arrives in the new floor's car, facing out, so the
+      // doors-open phase opens the doors in front of them.
+      if (car) {
+        const pose = elevatorRiderPose(car, UNIT_SCALE);
+        player.x = pose.x;
+        player.y = pose.y;
+        playerFacing = pose.facing;
+      }
+    }
+    if (fpTransition.phase === 'done') {
+      if (car) fpHeldDoors = { id: car.id, open: 1 };
+      fpTransition = null;
+    }
+  }
+
+  /** How far open a station's elevator doors are in FP: the ride's own doorOpen, or the held doors after it. */
+  function fpElevatorDoorOpen(station) {
+    if (fpTransition) {
+      return fpTransition.kind === 'elevator' && station.floor === currentFloor ? transitionCamera(fpTransition).doorOpen : 0;
+    }
+    return fpHeldDoors && fpHeldDoors.id === station.id ? fpHeldDoors.open : 0;
   }
 
   /** Per-frame transition advance: step the state machine, then commit once. */
   function updateFpTransition(deltaSeconds) {
+    if (!fpTransition && fpHeldDoors) {
+      const car = stations.find((s) => s.id === fpHeldDoors.id);
+      const inside = cameraMode === 'first-person' && car && car.floor === currentFloor && isInElevatorCar(car, player, UNIT_SCALE);
+      fpHeldDoors.open = stepHeldDoors(fpHeldDoors.open, inside, deltaSeconds);
+      if (fpHeldDoors.open <= 0) fpHeldDoors = null;
+    }
     if (!fpTransition) return;
     fpTransition = updateTransition(fpTransition, deltaSeconds);
     commitFpTransition();
@@ -3178,6 +3210,7 @@ export function init(canvas, elements) {
         && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
       return { locked: Boolean(locked) };
     }
+    if (station.kind === 'elevator') return elevatorDoorOpts(fpElevatorDoorOpen(station));
     return undefined;
   }
 
@@ -5432,6 +5465,11 @@ export function init(canvas, elements) {
       // force it to complete (commits the floor switch now and clears it), so
       // specs never block on the ~1.5-2s animation.
       getActiveTransition: () => (fpTransition ? { kind: fpTransition.kind, phase: fpTransition.phase, targetFloor: fpTransition.targetFloor } : null),
+      // The doorOpen this floor's elevator mesh is built with (0 shut .. 1).
+      getElevatorDoorOpen: () => {
+        const car = stations.find((s) => s.kind === 'elevator' && s.floor === currentFloor);
+        return car ? (elevatorDoorOpts(fpElevatorDoorOpen(car))?.doorOpen ?? 0) : 0;
+      },
       forceCompleteTransition: () => {
         if (!fpTransition) return;
         fpTransition = forceComplete(fpTransition);
