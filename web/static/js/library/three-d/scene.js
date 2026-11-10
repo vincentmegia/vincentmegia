@@ -9,7 +9,8 @@ import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
 import { buildElevator } from './meshes/elevator.js';
 import { buildFrontDesk } from './meshes/front-desk.js';
-import { buildReturnCart } from './meshes/return-cart.js';
+import { buildReturnCart, RETURN_CART_BOOK_SLOTS } from './meshes/return-cart.js';
+import { buildBook } from './meshes/book.js';
 import { buildFinesCounter } from './meshes/fines-counter.js';
 import { buildBossOffice } from './meshes/boss-office.js';
 import { buildReadingNook } from './meshes/reading-nook.js';
@@ -71,6 +72,22 @@ function decorMesh(builder) {
   return mesh;
 }
 
+// `${id}|${title}|${coin}|${color}` -> {art, mesh}. Books come and go over a
+// shift, so the memo is cleared once it holds more books than a cart shows
+// several times over.
+const bookMeshes = new Map();
+const BOOK_MEMO_LIMIT = 64;
+
+function bookMesh(book, art) {
+  const key = `${book.id}|${book.title ?? ''}|${book.isCoinHunt ? 1 : 0}|${book.color}`;
+  const hit = bookMeshes.get(key);
+  if (hit && hit.art === art) return hit.mesh;
+  if (bookMeshes.size >= BOOK_MEMO_LIMIT) bookMeshes.clear();
+  const mesh = buildBook({ art, color: book.color, isCoinHunt: Boolean(book.isCoinHunt) });
+  bookMeshes.set(key, { art, mesh });
+  return mesh;
+}
+
 /**
  * @param {object} input
  * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
@@ -81,8 +98,13 @@ function decorMesh(builder) {
  *   `{locked}`); they take part in the mesh memo's key.
  * @param {{decorKind: string, x: number, y: number, floor?: number}[]} [input.decor]
  *   decor props from the world inventory; a kind with no mesh is skipped.
+ * @param {{id: string, title?: string, color: string, isCoinHunt?: boolean}[]} [input.cartBooks]
+ *   the Return Cart's books in Top-Down slot order; the first
+ *   RETURN_CART_BOOK_SLOTS.length stand on this floor's cart's top tray.
+ * @param {(book: object) => (CanvasImageSource | null | undefined)} [input.bookArtFor]
+ *   a cart book's painted cover (meshes/book.js's paintReturnCartBookArt).
  */
-export function buildFirstPersonScene({ player, floor, stations, characters, decor, cameraParams, viewport, artFor, optsFor }) {
+export function buildFirstPersonScene({ player, floor, stations, characters, decor, cartBooks, bookArtFor, cameraParams, viewport, artFor, optsFor }) {
   const placed = [];
   const room = buildRoom({ width: viewport.width, depth: viewport.height, height: ROOM_HEIGHT, floorTint: FLOOR_TINT });
   placed.push({ mesh: room, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
@@ -100,6 +122,18 @@ export function buildFirstPersonScene({ player, floor, stations, characters, dec
     } else {
       placed.push({ mesh: stationMesh(s, builder, artFor, optsFor), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
     }
+  }
+
+  const cart = cartBooks?.length ? stations.find((s) => s.kind === 'return-cart' && s.floor === floor) : null;
+  if (cart) {
+    cartBooks.slice(0, RETURN_CART_BOOK_SLOTS.length).forEach((book, i) => {
+      const [bx, by, bz] = RETURN_CART_BOOK_SLOTS[i];
+      const art = bookArtFor ? bookArtFor(book) ?? undefined : undefined;
+      placed.push({
+        mesh: bookMesh(book, art),
+        placement: { pos: [cart.x + bx * UNIT_SCALE, by * UNIT_SCALE, cart.y + bz * UNIT_SCALE], yaw: 0, scale: UNIT_SCALE },
+      });
+    });
   }
 
   for (const d of decor ?? []) {

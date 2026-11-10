@@ -201,6 +201,7 @@ import {
 } from './library/floor-plan.js';
 import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
+import { drawCoverTitle, drawReturnCartCover } from './library/book-cover.js';
 import { blurbForTitle, REVIEW_QUOTES } from './library/book-blurbs.js';
 import {
   normalizeAngle,
@@ -224,7 +225,7 @@ import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCAL
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, elevatorRiderPose, isInElevatorCar } from './library/three-d/meshes/elevator.js';
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
-import { buildStationBox } from './library/three-d/meshes/station-box.js';
+import { paintReturnCartBookArt, BOOK_ART, BOOK_ART_SCALE } from './library/three-d/meshes/book.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
@@ -521,79 +522,6 @@ const SCENE_X = [120, 840];
 const SCENE_Y = [205, 445];
 
 /** Scatters `count` points inside the scene bounds with a minimum separation, retrying on overlap (bounded attempts, falls back to whatever fits). */
-/**
- * Greedy word-wraps `title` into at most `maxLines` lines no wider than
- * `maxWidth`, stepping the font size down from `maxFont` to `minFont`
- * until it fits. Returns the font size + lines; if even `minFont` can't
- * fit, returns that size's best effort (callers clip to the book's rect).
- */
-function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont, bold = true) {
-  const words = title.split(' ');
-  let best = null;
-  for (let size = maxFont; size >= minFont; size -= 0.5) {
-    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
-    const lines = [];
-    let fits = true;
-    for (const word of words) {
-      if (ctx.measureText(word).width > maxWidth) fits = false;
-      const candidate = lines.length ? `${lines[lines.length - 1]} ${word}` : word;
-      if (lines.length && ctx.measureText(candidate).width <= maxWidth) lines[lines.length - 1] = candidate;
-      else lines.push(word);
-    }
-    if (lines.length > maxLines) fits = false;
-    best = { size, lines: lines.slice(0, maxLines) };
-    if (fits) return best;
-  }
-  return best;
-}
-
-/** Cream text on dark covers, dark text on light ones. */
-function titleInkFor(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
-  return lum > 170 ? '#3a2a2a' : '#fdf8ee';
-}
-
-/**
- * Draws a book's full title centered on its front cover, wrapped and
- * shrunk to fit, clipped to the cover rect so it can never bleed into a
- * neighboring book (v1.4's original overflow bug).
- */
-/**
- * A book's title on its cover: the Korean title large, its English
- * translation smaller underneath (library/book-titles.js); a title without
- * a translation fills the cover on its own.
- */
-function drawCoverTitle(ctx, title, x, y, w, h, coverColor, opts = {}) {
-  const pad = opts.pad ?? 2;
-  const maxFont = opts.maxFont ?? 8;
-  const minFont = opts.minFont ?? 5;
-  const { ko, en } = splitTitle(title);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.fillStyle = titleInkFor(coverColor);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const block = (text, top, height, bold, maxLines, hi, lo) => {
-    const { size, lines } = fitTitleLines(ctx, text, w - pad * 2, maxLines, hi, lo, bold);
-    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
-    const lineH = size * 1.15;
-    const first = top + height / 2 - ((lines.length - 1) * lineH) / 2;
-    lines.forEach((line, i) => ctx.fillText(line, x + w / 2, first + i * lineH));
-  };
-  if (en) {
-    const split = h * 0.56;
-    block(ko, y, split, true, 2, maxFont, minFont);
-    ctx.globalAlpha = 0.85;
-    block(en, y + split - 1, h - split, false, 2, Math.max(4, maxFont * 0.72), 4);
-  } else {
-    block(ko, y, h, true, opts.maxLines ?? 4, maxFont, minFont);
-  }
-  ctx.restore();
-}
-
 function scatterPoints(count, random, minDist = 70) {
   const points = [];
   for (let i = 0; i < count; i++) {
@@ -3228,6 +3156,24 @@ export function init(canvas, elements) {
     return art;
   }
 
+  // A Return Cart book's cover (drawReturnCartCover, the one Top-Down draws),
+  // painted once per book, title and Coin Hunt flag. Books come and go, so
+  // the cache is cleared once it outgrows a few cartloads.
+  const fpBookArtCache = new Map();
+  function fpBookArtFor(book) {
+    const key = `${book.id}|${book.title ?? ''}|${book.isCoinHunt ? 1 : 0}|${book.color}`;
+    let art = fpBookArtCache.get(key);
+    if (!art) {
+      if (fpBookArtCache.size >= 64) fpBookArtCache.clear();
+      art = document.createElement('canvas');
+      art.width = BOOK_ART.w * BOOK_ART_SCALE;
+      art.height = BOOK_ART.h * BOOK_ART_SCALE;
+      paintReturnCartBookArt(art.getContext('2d'), book);
+      fpBookArtCache.set(key, art);
+    }
+    return art;
+  }
+
   function fpOptsFor(station) {
     if (station.kind === 'boss-office') {
       const locked = shiftState
@@ -3354,21 +3300,7 @@ export function init(canvas, elements) {
       const genre = findGenre(book.genreId);
       const color = genre ? genre.color : '#8a6a4a';
       const { x: coverX, y: coverY, w: coverW, h: coverH } = returnCartCoverRect(book);
-      // Anime book cover: a soft drop shadow, plum line art, a spine band and a shine.
-      drawRoundRect(ctx, coverX + 1.5, coverY + 2.5, coverW, coverH, 3, 'rgba(59,42,74,0.2)');
-      drawRoundRect(ctx, coverX, coverY, coverW, coverH, 3, color);
-      ctx.fillStyle = 'rgba(255,251,246,0.5)';
-      ctx.fillRect(coverX + 1, coverY + 1, 3, coverH - 2);
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.roundRect(coverX, coverY, coverW, coverH, 3);
-      ctx.stroke();
-      // Full title on the front cover (user: "add the title names on each
-      // books") — wrapped and shrunk to fit rather than v1.4's first-four-
-      // words-then-crop, which cut titles off at the cover's edges.
-      if (book.title) drawCoverTitle(ctx, book.title, coverX + 3, coverY, coverW - 3, coverH, color, { maxFont: 7.5, minFont: 5 });
-      if (book.isCoinHunt) animeStar(ctx, coverX + coverW - 2, coverY + 1, 6, 2.6, 1);
+      drawReturnCartCover(ctx, coverX, coverY, coverW, coverH, color, book.title, book.isCoinHunt);
     }
     const cart = stations.find((s) => s.kind === 'return-cart');
     if (shiftState && shiftState.returnCart.length > 5) {
@@ -5154,7 +5086,9 @@ export function init(canvas, elements) {
         const design = findStaffDesign(item.staffKey);
         if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design });
       } else if (item.kind === 'return-cart-book') {
-        books.push(item);
+        // Coloured as drawReturnCartBooks colours its cover.
+        const genre = findGenre(item.ref.genreId);
+        books.push({ id: item.ref.id, title: item.ref.title, isCoinHunt: Boolean(item.ref.isCoinHunt), color: genre ? genre.color : '#8a6a4a' });
       } else if (item.kind === 'decor') {
         decor.push(item);
       } else if (item.kind === 'hallucination-figure') {
@@ -5168,18 +5102,13 @@ export function init(canvas, elements) {
       stations,
       characters,
       decor,
+      cartBooks: books,
+      bookArtFor: fpBookArtFor,
       cameraParams: fpCameraParams(offY),
       viewport,
       artFor: fpArtFor,
       optsFor: fpOptsFor,
     });
-    for (const e of books) {
-      const genre = findGenre(e.ref.genreId);
-      placed.push({
-        mesh: buildStationBox({ width: 18, depth: 10, height: 26, color: genre ? genre.color : '#8a6a4a' }),
-        placement: { pos: [e.x, 0, e.y], yaw: 0, scale: 1 },
-      });
-    }
     // Hallucination shadow figures stand in the room (P7), facing the camera;
     // updateHallucinations still owns where they are and how long they last.
     const figures = currentIntensity() > 0

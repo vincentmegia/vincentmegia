@@ -85,10 +85,12 @@ handling, in place of Kitchen Shift's cooking and serving.
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
   with movement input frozen; the floor switches at the commit point, and
   Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
-  it on whichever floor it had committed to. Only the Front Desk / Fines Counter
-  queues (1st Floor) and Return Cart books are drawn as characters/props;
-  the ambient staff, decor and labels are not drawn in FP yet. An FP
-  elevator ride lands Eun-mi in the new floor's car facing out, its doors
+  it on whichever floor it had committed to. The FP scene draws the queues,
+  the ambient staff, decor, hallucination shadow figures, world-anchored
+  labels and the Return Cart books (standing on the cart's top tray wearing
+  their Top-Down cover: genre colour, title and Coin Hunt star); what is
+  still missing is listed under Known gaps in `library-first-person-3d.md`.
+  An elevator ride lands Eun-mi in the new floor's car facing out, its doors
   open in front of her, and they close once she steps out. **Requirement:** the two cameras are views of one world, so a flip
   must never lose a person, prop, label or interaction — see "Camera
   parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and

@@ -408,3 +408,33 @@ test('a decor kind with no mesh yet is skipped, not drawn as a box', () => {
   const { placed } = buildFirstPersonScene({ ...input({ characters: [] }), decor });
   assert.equal(placed.length, bare);
 });
+
+test('Return Cart books stand on this floor\'s cart top tray, in slot order, at most five, memoised', async () => {
+  const { RETURN_CART_BOOK_SLOTS } = await import('./meshes/return-cart.js');
+  const { BOOK_SIZE } = await import('./meshes/book.js');
+  const cart = { kind: 'return-cart', x: 300, y: 115, floor: 1 };
+  const books = Array.from({ length: 7 }, (_, i) => ({ id: `b${i}`, title: `T${i}`, color: '#8fd3ff', isCoinHunt: i === 1 }));
+  const art = { width: 160, height: 208 };
+  const asked = [];
+  const run = (over) => buildFirstPersonScene(input({ stations: [cart], characters: [], cartBooks: books, bookArtFor: (b) => { asked.push(b.id); return art; }, ...over }));
+  const { placed } = run();
+  // room + cart + 5 books
+  assert.equal(placed.length, 7);
+  const bookPlaced = placed.slice(2);
+  bookPlaced.forEach((p, i) => {
+    const [bx, by, bz] = RETURN_CART_BOOK_SLOTS[i];
+    assert.deepEqual(p.placement.pos, [cart.x + bx * UNIT_SCALE, by * UNIT_SCALE, cart.y + bz * UNIT_SCALE]);
+    assert.equal(p.placement.scale, UNIT_SCALE);
+    const ys = p.mesh.vertices.map((v) => v[1]);
+    assert.ok(Math.abs(Math.max(...ys) - BOOK_SIZE.height) < 1e-9 || i === 1, 'a plain book is its own height');
+    assert.equal(p.mesh.faces[0].texture.image, art);
+  });
+  assert.deepEqual(asked, ['b0', 'b1', 'b2', 'b3', 'b4']);
+  assert.ok(bookPlaced[1].mesh.faces.length > bookPlaced[0].mesh.faces.length, 'the Coin Hunt book carries its star');
+  // Memoised per book: the same book and art reuse the mesh next frame.
+  const again = run().placed.slice(2);
+  again.forEach((p, i) => assert.equal(p.mesh, bookPlaced[i].mesh));
+  // Another floor's cart shows none; no books, none.
+  assert.equal(run({ floor: 2 }).placed.length, 1);
+  assert.equal(run({ cartBooks: [] }).placed.length, 2);
+});

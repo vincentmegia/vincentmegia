@@ -46,7 +46,7 @@ call in `drawScene` is pure and DOM-free.
 | `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
 | `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
-| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js`, `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
+| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
 
 ### The character meshes
 
@@ -182,6 +182,13 @@ just that mesh.
 | `STAIRS_SIZE`, `STAIRS_BADGE_ART`, `BADGE_ART_SCALE` | `meshes/stairs.js` | 1.12 wide × 1.44 tall × 2.24 deep for 8 steps (rise 0.18, run 0.28, unchanged); the badge art box 24 × 24 at 8 image px per art px |
 | `paintStairsBadgeArt(ctx, station)` | `meshes/stairs.js` | Opaque step-colour backing, then `drawStairsBadge` pointing the station's way |
 | `buildStairs({steps?, art?})` | `meshes/stairs.js` | Centred on the station, foot facing +Z toward the approaching player, climbing toward −Z (the way `transitionCamera` moves). Treads in the ramp, risers under the 2D shadow, plum nosings, pastel stringers with plum tops, the two-tone rail on the left between two newels, and the badge sign at the foot on the right (textured, `unlit`; flat white without art). 85 faces, all `cull` |
+
+| `drawReturnCartCover(ctx, x, y, w, h, color, title, isCoinHunt, {shadow?})`, `drawCoverTitle`, `fitTitleLines`, `titleInkFor`, `returnCartStar`, `RETURN_CART_COVER` | `library/book-cover.js` | Top-Down's Return Cart cover (moved out of `library-game.js` with its title helpers; Top-Down's call trace is unchanged): drop shadow, genre colour, spine shine, plum line art, the fitted title in ink chosen by cover brightness, and the Coin Hunt star centred on the cover's top-right corner, overhanging it. `shadow: false` drops the shadow for FP |
+| `BOOK_SIZE`, `BOOK_ART`, `BOOK_ART_SCALE`, `BOOK_PAGES` | `meshes/book.js` | A 0.25 × 0.333 × 0.06 book (the 2D cover's 30 : 40); the art box `{w: 40, h: 52}` is the cover plus room for the star's overhang; 4 image px per art px; fore-edge and top in `ANIME.paper` |
+| `paintReturnCartBookArt(ctx, {title, color, isCoinHunt})` | `meshes/book.js` | Opaque ink backing, the cover rect in the genre colour (the 2D's rounded corners would show the backing), then `drawReturnCartCover` without its shadow |
+| `buildBook({art, color, isCoinHunt})`, `starOverhang()` | `meshes/book.js` | A box without its bottom, cover (+Z, textured, `unlit`) and spine (−X) and back in the genre colour. On a Coin Hunt book the star's part *outside* the cover (its five kites, grown by the outline, clipped to the right of and above the cover) is extra faces in the cover's plane wearing the same canvas; inside the cover the star is already in the cover's pixels. Nothing overlaps the cover, so the painter's sort never has to pick. 5 faces, 11 with the star (the test budget is 24); all `cull`; flat genre colour / gold without art |
+| `RETURN_CART_BOOK_SLOTS` | `meshes/return-cart.js` | The five Top-Down slots (`returnCartSlots`) as base points on the cart's top tray, left to right seen from the cart's front, 0.29 apart inside the posts. The cart's own decorative books moved to the lower tray (the 2D cart has books on both) |
+| `cartBooks`, `bookArtFor`; `fpBookArtFor` | `scene.js`; `library-game.js` | `drawFirstPersonView` passes the inventory's `return-cart-book` items as `{id, title, color, isCoinHunt}` (colour as `drawReturnCartBooks` picks it); the scene stands the first five on this floor's cart, each mesh memoised on `id|title|coin|colour` and art. `fpBookArtFor` paints one canvas per the same key. Both caches clear at 64 entries, since books come and go |
 
 Textured fronts are `unlit` (the 2D art carries its own top-lit gradients);
 sides, tops and backs stay lit so each prop reads as solid. Without `art`
@@ -475,7 +482,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
 | Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ⚠️ crosshair target only: its name chip and `ambientHint` chip under the crosshair, and the same text in `#library-interact-hint` (world-anchored chips for the rest are Step 10) |
 | Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
-| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ⚠️ untextured 18×26×10 boxes |
+| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included ("+N more" chip ❌, Step 10) |
 | Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
 | Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ❌ one `FLOOR_TINT` for both floors |
 | Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ❌ |
@@ -547,8 +554,13 @@ Ordered so each step is independently shippable; sizes are rough
    Nook: geometry-technique meshes in `meshes/` matching the 2D drawers'
    colours; `scene.js` BUILDERS map wired; boss locked state via `optsFor`
    callback.
-7. **Return Cart books (S)** — P4. Book meshes in the genre colour wearing
-   `drawCoverTitle`'s cover as art, coin-hunt star included.
+7. ✅ **Return Cart books (S)** — P4. `meshes/book.js`: book meshes in the
+   genre colour wearing Top-Down's cover (`drawReturnCartCover`, moved with
+   `drawCoverTitle` into `library/book-cover.js`) as art, Coin Hunt star
+   included, standing on the cart's top tray in slot order (up to five).
+   **Decision:** in Top-Down the covers are laid out in a row just below the
+   cart; in FP they stand *on* the cart, and the interaction anchors stay at
+   the Top-Down slot points (see Known gaps).
 8. ✅ **Decor meshes (M)** — P2, P4. `meshes/decor.js`: water cooler,
    plant, ladder and waiting chairs as geometry in `drawDecor`'s own
    colours (its drawers are 3/4 sprites, not plan views, so there is no
@@ -563,7 +575,6 @@ Ordered so each step is independently shippable; sizes are rough
     `projectPoint`, depth-sort and distance-fade them, draw the same chip
     text Top-Down uses (one shared label function per entity, so the two
     can't drift).
-<<<<<<< HEAD
 11. ✅ **Hallucinations in 3D (S)** — P7. `three-d/shadow-figures.js`
     turns the inventory's `hallucination-figure` items (still created, aged
     and expired only by `updateHallucinations`) into placements of one
@@ -601,7 +612,6 @@ Ordered so each step is independently shippable; sizes are rough
 
 ## Known gaps
 
-<<<<<<< HEAD
 * Entering FP mid-walk stops the Top-Down click-to-move (`setCameraMode`
   clears `moveTarget` on purpose) but leaves the walk's queued
   `pendingFrontDeskAction` / `pendingCartPickupId` set, so it fires on the
@@ -614,9 +624,11 @@ Ordered so each step is independently shippable; sizes are rough
   elevator lands them at the floor's entry point. The doors only open on
   arrival: doors-close keeps them shut (they are already shut on approach),
   so the departure has no closing animation.
-* The front desk, return cart, fines counter, boss office and reading nook
-  are still plain station boxes; every other prop is referenced to its 2D
-  (Camera parity, step 6).
+* Return Cart books stand on the cart's top tray in FP, but their FP
+  interaction entities (`buildFirstPersonEntities`) are still anchored at the
+  Top-Down slot points, about 2 units in front of the cart. Aiming at the cart
+  from a step or two away targets a book, as before; from right against the
+  cart the crosshair names the cart itself (both pick up a book).
 * The stairs climb (`transitions.js`, `STAIRS_STEPS` 10) is longer than the
   8-step mesh, so the camera overshoots the top by about 0.56 units; the
   2nd-Floor stairs also climb *up* on screen to go down.
