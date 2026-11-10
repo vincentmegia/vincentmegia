@@ -457,8 +457,8 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
 | Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha` ("???" chip ❌, Step 10) |
 | Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
-| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ❌ |
-| Staff help interactions | Top-Down click | ❌ staff aren't FP entities |
+| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ⚠️ crosshair target only: its name chip and `ambientHint` chip under the crosshair, and the same text in `#library-interact-hint` (world-anchored chips for the rest are Step 10) |
+| Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
 | Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ⚠️ untextured 18×26×10 boxes |
 | Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
 | Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ❌ one `FLOOR_TINT` for both floors |
@@ -493,9 +493,24 @@ Ordered so each step is independently shippable; sizes are rough
    so ghost patrons shimmer and drift as `drawFrontDeskSlots` paints them.
    Character meshes were already memoised on design identity
    (`meshes/character.js`'s `CACHE`).
-5. **Staff interactions in FP (S)** — P6. Add helpful staff to the FP
-   entity list; route interact to the same `staffHelp` / `askMinjunForHelp`
-   path Top-Down uses.
+5. ✅ **Staff interactions in FP (S)** — P6. `buildFirstPersonEntities`
+   flags each `ambientStaff` entity `interactable: isHelpfulStaff(key)` (a
+   `STAFF_HELP_TEXT` entry, or Min-jun; the same test `staffAtPoint` uses),
+   and `findInteractTarget` skips `interactable: false` entities, so a
+   future set-dressing walker can't hide a station behind it. Interact
+   (Enter/Space, the Interact button, a pointer-locked canvas click) on a
+   staff target calls
+   `askStaffForHelp(key)`, the function Top-Down's click-then-walk ends in,
+   so the rules (`staffHelpBlocker`/`staffHelp`/`askMinjunForHelp`) and
+   toasts are shared. Decision: where Top-Down walks Eun-mi over, FP needs
+   her within `DEFAULT_INTERACT_MAX_DISTANCE` (150 px), the gate stations
+   already use; the staff member doesn't stop and wait, since she's already
+   beside them. The crosshair shows the target's name as Top-Down's name
+   chip, with the `ambientHint` chip ("click: tidy up" / "busy Ns") under
+   it; `labelForFPTarget` puts `<name> — <hint>` in `#library-interact-hint`
+   (which is hidden in fullscreen, hence the canvas chips). The hint keeps
+   Top-Down's "click:" wording. Covered by `first-person.test.js` and two
+   e2e tests (Janitor +Mood then busy, out-of-range; Volunteer on 2F).
 6. ✅ **Remaining station meshes (L)** — P4. Front Desk, Return Cart,
    Fines Counter, Boss's Office (locked/unlocked via `optsFor`), Reading
    Nook: geometry-technique meshes in `meshes/` matching the 2D drawers'

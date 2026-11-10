@@ -474,8 +474,11 @@ Look values up there rather than relying on this doc.
   | Storyteller (`libStoryteller`) | 2nd | +15 s to every waiting patron's timer and the searcher's patience | 75 s |
   | Kang Min-jun (`minjun`) | 2nd | Shelves the book Eun-mi is carrying (`minjunShelveCarriedBook`) | 60 s (`MINJUN_HELP_COOLDOWN_SECONDS`) |
 
-  Staff help is not available in First Person Mode, where a canvas click
-  is the interact action.
+  In First Person Mode, aim the crosshair at a staff member within
+  interact range (the same range as stations) and interact (Enter/Space,
+  the Interact button, or a click once the mouse is captured): the same
+  help runs, with the same toasts and cooldowns, without the walk over. The crosshair shows their name chip
+  and the same "click: …" / "busy Ns" hint as Top-Down.
 * **Library Mood** (0–100):
   * Starts each shift at 100.
   * −25 per mistake. Also drained by Karen and a messy cart.
