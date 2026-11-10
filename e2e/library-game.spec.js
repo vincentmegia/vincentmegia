@@ -1558,6 +1558,63 @@ test.describe('First Person Mode', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing())).toBeCloseTo(0, 5);
 	});
 
+	/** Freezes the staff and stands Eun-mi `distance` px west of `key`, facing east at them. */
+	async function aimAtStaff(page, key, distance = 90) {
+		await page.evaluate(({ k, d }) => {
+			const h = window.__libraryGameTestHooks;
+			h.freezeStaff(true);
+			const s = k === 'minjun' ? h.getMinjun() : h.getStaff(k);
+			h.setPlayerPosition(s.x - d, s.y);
+			h.setPlayerFacing(Math.PI / 2);
+		}, { k: key, d: distance });
+	}
+
+	test('asking the Janitor for help in First Person tidies up for +Mood, same as Top-Down, then he is busy', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
+		await page.locator('#library-camera-button').click();
+
+		// Out of interact range he isn't a target, as with stations.
+		await aimAtStaff(page, 'libJanitor', 220);
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey ?? null)).toBe(null);
+
+		await aimAtStaff(page, 'libJanitor');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey)).toBe('libJanitor');
+		// The tooltip names him and carries Top-Down's name-chip hint.
+		await expect(page.locator('#library-interact-hint')).toHaveText('Janitor · 미화원 — click: tidy up');
+
+		await page.keyboard.press('Enter');
+		await expect(page.locator('#library-toast')).toContainText('Janitor tidies up');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.libraryMood).toBeGreaterThan(60);
+		expect(state.staffCooldowns.libJanitor).toBeGreaterThan(0);
+		expect(state.staffHelps).toBe(1);
+		await expect(page.locator('#library-interact-hint')).toContainText(/Janitor · 미화원 — busy \d+s/);
+
+		// Asking again while he's on cooldown only says so.
+		await page.locator('#library-fp-interact-button').click();
+		await expect(page.locator('#library-toast')).toContainText("They're still busy");
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().staffHelps)).toBe(1);
+	});
+
+	test('the Volunteer upstairs brings you a coffee in First Person (via the Interact button), same as Top-Down', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().sanity = 40; });
+		await page.locator('#library-floor-button').click();
+		await page.locator('#library-camera-button').click();
+		await aimAtStaff(page, 'volunteer');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey)).toBe('volunteer');
+
+		await page.locator('#library-fp-interact-button').click();
+		await expect(page.locator('#library-toast')).toContainText('brings you a coffee');
+		const after = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		// +30, less whatever the passive drain took since.
+		expect(after.sanity).toBeGreaterThan(60);
+		expect(after.staffHelps).toBe(1);
+	});
+
 	test('toggling back to Top-Down after First Person still supports normal click-to-move', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

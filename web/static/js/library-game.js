@@ -730,10 +730,15 @@ export function init(canvas, elements) {
     return blocker === null ? `click: ${text.verb}` : null;
   }
 
+  /** Whether a staff member can be asked for help (clicked in Top-Down, interacted with in First Person). */
+  function isHelpfulStaff(key) {
+    return key === 'minjun' || Boolean(STAFF_HELP_TEXT[key]);
+  }
+
   /** The staff member on the current floor whose drawn figure (x, y) is on, if any. */
   function staffAtPoint(x, y) {
     for (const a of ambient) {
-      if (a.floor !== currentFloor || (a.key !== 'minjun' && !STAFF_HELP_TEXT[a.key])) continue;
+      if (a.floor !== currentFloor || !isHelpfulStaff(a.key)) continue;
       const k = a.scale ?? LIBRARY_PERSON_SCALE;
       // Min-jun's renderer units (tote and books included) vs. the anime people's.
       const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k]
@@ -993,6 +998,11 @@ export function init(canvas, elements) {
     if (target.entityKind === 'frontDeskSlot') return labelForStation(stations.find((s) => s.kind === 'front-desk'));
     if (target.entityKind === 'finesSlot') return labelForStation(stations.find((s) => s.kind === 'fines-counter'));
     if (target.entityKind === 'returnCartBook') return labelForStation(stations.find((s) => s.kind === 'return-cart'));
+    if (target.entityKind === 'ambientStaff') {
+      // Top-Down's name chip and the help/busy line under it (`ambientHint`).
+      const hint = ambientHint(target.ref);
+      return hint ? `${target.ref.name} — ${hint}` : target.ref.name;
+    }
     return '';
   }
 
@@ -1221,7 +1231,7 @@ export function init(canvas, elements) {
           entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref });
           break;
         case 'ambient-staff':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey) });
           break;
       }
     }
@@ -1359,6 +1369,11 @@ export function init(canvas, elements) {
       }
     } else if (target.entityKind === 'station') {
       handleArrival(target.ref);
+    } else if (target.entityKind === 'ambientStaff') {
+      // Top-Down walks Eun-mi over first; here being the interact target
+      // (within DEFAULT_INTERACT_MAX_DISTANCE) already means she's beside them.
+      waitingAtBossOffice = false;
+      askStaffForHelp(target.staffKey);
     }
   }
 
@@ -4953,11 +4968,14 @@ export function init(canvas, elements) {
     if (hasTarget) {
       const label = target.entityKind === 'station'
         ? (target.ref.label || target.ref.kind)
-        : target.entityKind === 'returnCartBook' ? 'Book' : 'Patron';
+        : target.entityKind === 'returnCartBook' ? 'Book'
+          : target.entityKind === 'ambientStaff' ? target.ref.name : 'Patron';
       ctx.fillStyle = 'rgba(224,168,58,0.9)';
       ctx.font = 'bold 12px "Caprasimo", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(label, cx, cy + armLength + 16);
+      // A staff member's name wears Top-Down's name chip (`drawAmbient`), readable over a face.
+      if (target.entityKind === 'ambientStaff') drawLabelChip(ctx, cx, cy + armLength + 11, label, 'bold 11px sans-serif');
+      else ctx.fillText(label, cx, cy + armLength + 16);
       // Distance bar
       const maxD = 150;
       const pct = Math.max(0, 1 - target.distance / maxD);
@@ -4969,6 +4987,10 @@ export function init(canvas, elements) {
       ctx.fillRect(barX, barY, barW, barH);
       ctx.fillStyle = `rgba(224,168,58,${0.5 + pct * 0.4})`;
       ctx.fillRect(barX, barY, barW * pct, barH);
+      // A staff target's help/busy line, as the chip under its Top-Down name
+      // (`drawAmbient`): the DOM hint above the canvas is hidden in fullscreen.
+      const hint = target.entityKind === 'ambientStaff' ? ambientHint(target.ref) : null;
+      if (hint) drawLabelChip(ctx, cx, barY + 16, hint, 'bold 11px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
     }
     // Sprint indicator
     if (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight)) {

@@ -278,6 +278,15 @@ describe('findInteractTarget', () => {
     ];
     assert.equal(findInteractTarget(projected).id, 'near');
   });
+
+  test('skips an entity flagged interactable: false, so the one behind it is targeted', () => {
+    const projected = [
+      { id: 'set-dressing', angleOffset: 0, distance: 40, interactable: false },
+      { id: 'staff', angleOffset: 0.01, distance: 90, interactable: true },
+    ];
+    assert.equal(findInteractTarget(projected).id, 'staff');
+    assert.equal(findInteractTarget([projected[0]]), null);
+  });
 });
 
 describe('turnFacing', () => {

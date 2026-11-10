@@ -219,13 +219,16 @@ export function projectScene(player, entities, opts = {}) {
  * `maxAngleDegrees`) and close enough in distance (`maxDistance`) to count
  * as "looked at" — the thing the interact prompt/crosshair should target.
  * `null` if nothing qualifies. Ties (equal distance) keep whichever the
- * input list visited first, same as a plain linear-scan minimum.
+ * input list visited first, same as a plain linear-scan minimum. An entity
+ * flagged `interactable: false` is drawn but never targeted (and so never
+ * hides a target behind it), like a Top-Down figure with no click box.
  */
 export function findInteractTarget(projectedEntities, opts = {}) {
   const maxAngleRadians = ((opts.maxAngleDegrees ?? DEFAULT_INTERACT_MAX_ANGLE_DEGREES) * Math.PI) / 180;
   const maxDistance = opts.maxDistance ?? DEFAULT_INTERACT_MAX_DISTANCE;
   let best = null;
   for (const entity of projectedEntities) {
+    if (entity.interactable === false) continue;
     if (Math.abs(entity.angleOffset) > maxAngleRadians) continue;
     if (entity.distance > maxDistance) continue;
     if (!best || entity.distance < best.distance) best = entity;
