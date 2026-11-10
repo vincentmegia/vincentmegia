@@ -90,12 +90,18 @@ handling, in place of Kitchen Shift's cooking and serving.
   with movement input frozen; the floor switches at the commit point, and
   Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
   it on whichever floor it had committed to. The FP scene draws the queues,
-  the ambient staff, decor, hallucination shadow figures, world-anchored
-  labels and the Return Cart books (standing on the cart's top tray wearing
-  their Top-Down cover: genre colour, title and Coin Hunt star); what is
-  still missing is listed under Known gaps in `library-first-person-3d.md`.
-  An elevator ride lands Eun-mi in the new floor's car facing out, its doors
-  open in front of her, and they close once she steps out. **Requirement:** the two cameras are views of one world, so a flip
+  the ambient staff, decor, the per-floor floor and back wall, hallucination
+  shadow figures and the Return Cart books (standing on the cart's top tray
+  wearing their Top-Down cover: genre colour, title and Coin Hunt star), and
+  the chips Top-Down shows (station names and countdowns, patron chips and
+  patience bars, staff names and help hints, "+N waiting", "+N more", the
+  messy-cart warning, OUT OF ORDER) float over their entities as
+  world-anchored labels: every label within 520 px, fading with distance and
+  hidden behind a station, the crosshair target's at full opacity; patience
+  bars within 300 px. What is still missing is listed under Known gaps in
+  `library-first-person-3d.md`. An elevator ride lands Eun-mi in the new
+  floor's car facing out, its doors open in front of her, and they close
+  once she steps out. **Requirement:** the two cameras are views of one world, so a flip
   must never lose a person, prop, label or interaction — see "Camera
   parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and
   work breakdown.

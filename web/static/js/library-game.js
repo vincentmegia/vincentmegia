@@ -231,6 +231,8 @@ import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, e
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
 import { paintReturnCartBookArt, BOOK_ART, BOOK_ART_SCALE } from './library/three-d/meshes/book.js';
+import { buildCharacter } from './library/three-d/meshes/character.js';
+import { layoutLabels, characterAnchorHeight, stationAnchorHeight, stationOccluder } from './library/three-d/labels.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
@@ -358,6 +360,20 @@ const LABEL_TEXT_COLOR = ANIME.ink;
 /** A name/label chip — Hospital Shift's anime nameplate (hospital/anime-ui.js's animeChip). */
 function drawLabelChip(ctx, x, y, text, font, fill = null, ink = LABEL_TEXT_COLOR) {
   animeChip(ctx, x, y, text, font, fill, ink);
+}
+
+/**
+ * A chip model `{text, font, fill?, ink?, maxWidth?}` — what the shared label
+ * functions (labelForStation, queueSlotChips, staffChips, …) return so
+ * Top-Down and First Person draw the same text (camera parity P5).
+ * `maxWidth` truncates the text to fit, as the front-desk slots need.
+ */
+function chipText(ctx, chip) {
+  return chip.maxWidth ? truncateForChip(ctx, chip.text, chip.maxWidth, chip.font) : chip.text;
+}
+
+function drawChip(ctx, chip, x, y) {
+  drawLabelChip(ctx, x, y, chipText(ctx, chip), chip.font, chip.fill ?? null, chip.ink ?? LABEL_TEXT_COLOR);
 }
 
 /** Truncates `text` (adding "…") to fit within `maxWidth` at `font`, measured via the same canvas context text will render in — used wherever a label chip's width must stay bounded (e.g. front-desk slots sitting only SLOT_PITCH apart) rather than auto-sizing to a title of arbitrary length. */
@@ -669,6 +685,14 @@ export function init(canvas, elements) {
     return key === 'minjun' || Boolean(STAFF_HELP_TEXT[key]);
   }
 
+  /** A staff member's chips, top to bottom: their name, then the help hint if any (both cameras draw these). */
+  function staffChips(a) {
+    const chips = [{ text: a.name, font: '9px sans-serif' }];
+    const hint = ambientHint(a);
+    if (hint) chips.push(hint.startsWith('busy') ? { text: hint, font: 'bold 8px sans-serif' } : { text: hint, font: 'bold 8px sans-serif', fill: '#2f9a78', ink: '#ffffff' });
+    return chips;
+  }
+
   /** The staff member on the current floor whose drawn figure (x, y) is on, if any. */
   function staffAtPoint(x, y) {
     for (const a of ambient) {
@@ -739,9 +763,9 @@ export function init(canvas, elements) {
       applyWalk(ctx, a.key, t, a.dir, walking);
       drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT, t });
       ctx.restore();
-      drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
-      const hint = ambientHint(a);
-      if (hint) drawLabelChip(ctx, a.x, a.y + 34, hint, 'bold 8px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
+      const [nameChip, hintChip] = staffChips(a);
+      drawChip(ctx, nameChip, a.x, a.y + 20);
+      if (hintChip) drawChip(ctx, hintChip, a.x, a.y + 34);
     }
   }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -1404,7 +1428,12 @@ export function init(canvas, elements) {
     const f = Math.max(0, Math.min(1, fraction));
     const y = slot.y + 30;
     drawRoundRect(ctx, slot.x - 18, y, 36, 5, 2.5, 'rgba(58,42,42,0.25)');
-    drawRoundRect(ctx, slot.x - 18, y, 36 * f, 5, 2.5, f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b'));
+    drawRoundRect(ctx, slot.x - 18, y, 36 * f, 5, 2.5, patienceColor(f));
+  }
+
+  /** A patience bar's fill colour at `f` (0..1), green -> amber -> red; both cameras. */
+  function patienceColor(f) {
+    return f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b');
   }
 
   function isPointOnQueuedPatron(slot, x, y) {
@@ -3187,6 +3216,11 @@ export function init(canvas, elements) {
     return Boolean(daily?.twist.effect.noCoffee);
   }
 
+  /** The Coffee Machine's "OUT OF ORDER" chip on a Coffee Machine Broken day, else null (both cameras). */
+  function coffeeOutOfOrderChip() {
+    return coffeeOutOfOrder() ? { text: 'OUT OF ORDER', font: 'bold 10px sans-serif', fill: '#e06a5b', ink: '#ffffff' } : null;
+  }
+
   /** The Coffee Machine taped off with an "OUT OF ORDER" sign (the Coffee Machine Broken twist). */
   function drawCoffeeOutOfOrder() {
     if (!coffeeOutOfOrder() || currentFloor !== FLOOR_1) return;
@@ -3196,7 +3230,29 @@ export function init(canvas, elements) {
     ctx.translate(coffee.x, coffee.y);
     drawOutOfOrderTape(ctx);
     ctx.restore();
-    drawLabelChip(ctx, coffee.x, coffee.y - 50, 'OUT OF ORDER', 'bold 10px sans-serif', '#e06a5b', '#ffffff');
+    drawChip(ctx, coffeeOutOfOrderChip(), coffee.x, coffee.y - 50);
+  }
+
+  /**
+   * The Return Cart's chips (both cameras): "+N more" past the five covers
+   * shown, then the pulsing messy-cart warning. `dy` is Top-Down's offset
+   * below the cart's centre.
+   */
+  function returnCartChips() {
+    const chips = [];
+    if (shiftState && shiftState.returnCart.length > 5) {
+      chips.push({ text: `+${shiftState.returnCart.length - 5} more`, font: 'bold 10px sans-serif', dy: 78 });
+    }
+    // v2.18: a messy cart drains Mood — say so, pulsing red.
+    if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
+      chips.push({ text: 'Messy cart! Mood dropping', font: 'bold 10px sans-serif', fill: ANIME.coralDeep, ink: '#ffffff', pulse: true, dy: 100 }); // below the covers and the "+N more" chip
+    }
+    return chips;
+  }
+
+  /** The messy-cart chip's pulse, as both cameras paint it. */
+  function chipPulse() {
+    return 0.85 + 0.15 * Math.sin(performance.now() / 200);
   }
 
   function drawReturnCartBooks() {
@@ -3208,16 +3264,14 @@ export function init(canvas, elements) {
       drawReturnCartCover(ctx, coverX, coverY, coverW, coverH, color, book.title, book.isCoinHunt);
     }
     const cart = stations.find((s) => s.kind === 'return-cart');
-    if (shiftState && shiftState.returnCart.length > 5) {
-      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 78, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
-    }
-    // v2.18: a messy cart drains Mood — say so, pulsing red.
-    if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 200);
+    for (const chip of returnCartChips()) {
+      if (!chip.pulse) {
+        drawChip(ctx, chip, cart.x, cart.y + cart.size / 2 + chip.dy);
+        continue;
+      }
       ctx.save();
-      ctx.globalAlpha = pulse;
-      const warnY = cart.y + cart.size / 2 + 100; // below the covers and the "+N more" chip
-      drawLabelChip(ctx, cart.x, warnY, 'Messy cart! Mood dropping', 'bold 10px sans-serif', ANIME.coralDeep, '#ffffff');
+      ctx.globalAlpha = chipPulse();
+      drawChip(ctx, chip, cart.x, cart.y + cart.size / 2 + chip.dy);
       ctx.restore();
     }
   }
@@ -3230,20 +3284,78 @@ export function init(canvas, elements) {
     return SLOT_PERSONALITY_CACHE.get(slot.id);
   }
 
+  /**
+   * What a queued patron's chips say, for both cameras (P5): `chip` (the
+   * one under them, or null), `sub` (the English title line under a borrow
+   * chip, or null) and `patience` (their bar's 0..1 fill, null for no bar).
+   */
+  function queueSlotChips(slot) {
+    const none = { chip: null, sub: null, patience: null };
+    switch (slot.kind) {
+      case 'ghost': return { ...none, chip: { text: '???', font: 'bold 9px sans-serif' } };
+      case 'fine': return { ...none, chip: { text: `${slot.amountGard}g`, font: 'bold 9px sans-serif' }, patience: slot.waitFraction };
+      case 'borrow-active': {
+        const searching = slot.stage === 'searching';
+        return { ...none, chip: { text: searching ? 'Waiting' : 'Check out!', font: 'bold 9px sans-serif' }, patience: searching ? slot.patienceFraction : null };
+      }
+      case 'borrow': {
+        const title = bookCatalog.get(slot.bookId)?.title;
+        if (!title) return { ...none, patience: slot.waitFraction };
+        // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
+        // title's label chip (drawLabelChip auto-sizes to text width, no
+        // wrapping) can run wider than that and spill into the
+        // neighboring slot's own chip, same class of overflow bug as the
+        // Return Cart covers above. Truncated to a short, single-word-ish
+        // snippet that reliably stays inside one slot's width instead.
+        // The Korean title on the chip, its English meaning just below
+        // (under the patience bar), both cut to the slot's SLOT_PITCH.
+        const { ko, en } = splitTitle(title);
+        return {
+          chip: { text: ko, font: 'bold 9px sans-serif', maxWidth: SLOT_PITCH - 6 },
+          sub: en ? { text: en, font: 'bold 7.5px sans-serif', maxWidth: SLOT_PITCH - 2 } : null,
+          patience: slot.waitFraction,
+        };
+      }
+      case 'karen': return { ...none, chip: { text: 'Karen!', font: 'bold 10px sans-serif' } };
+      case 'recommend': {
+        const regular = slot.patronKey === RECOMMEND_REGULAR_PATRON;
+        return { ...none, chip: { text: regular ? '단골 ★' : '추천?', font: 'bold 10px sans-serif', fill: regular ? ANIME.lavenderDeep : ANIME.pink, ink: '#ffffff' }, patience: slot.waitFraction };
+      }
+      default: return none;
+    }
+  }
+
+  /**
+   * The "+N waiting" chip beside a Front Desk / Fines Counter line longer
+   * than it shows, with where it stands (`x`, and `y` the line's own y; Top-Down
+   * draws it 20 px lower, under the patrons), or null. Both cameras.
+   */
+  function queueOverflowChip(stationKind) {
+    const fines = stationKind === 'fines-counter';
+    const total = (fines ? shiftState?.finesQueue.length : shiftState?.borrowQueue.length) || 0;
+    if (total <= SLOT_VISIBLE_MAX) return null;
+    const station = stations.find((s) => s.kind === stationKind);
+    // Beside the line rather than under it: the Elevator sits below the
+    // Fines Counter, a bookcase below the Front Desk.
+    return {
+      text: `+${total - SLOT_VISIBLE_MAX} waiting`,
+      font: 'bold 10px sans-serif',
+      x: station.x + SLOT_PITCH * 2 + (fines ? 4 : 6),
+      y: station.y + stationExtents(station).hh + QUEUE_SLOT_OFFSET_Y,
+    };
+  }
+
   function drawFinesCounterSlots() {
     if (currentFloor !== FLOOR_1) return;
     finesCounterSlots().forEach((slot, i) => {
       drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personalityForSlot(slot, i), scale: LIBRARY_PERSON_SCALE });
       drawStar(ctx, slot.x + 24, slot.y - PERSON_HEIGHT + 14, 6, 2.5, '#f2d98a'); // beside the head, clear of the counter's name chip
-      drawPatienceBar(slot, slot.waitFraction);
-      drawLabelChip(ctx, slot.x, slot.y + 20, `${slot.amountGard}g`, 'bold 9px sans-serif');
+      const { chip, patience } = queueSlotChips(slot);
+      drawPatienceBar(slot, patience);
+      drawChip(ctx, chip, slot.x, slot.y + 20);
     });
-    const waiting = shiftState?.finesQueue.length || 0;
-    if (waiting > SLOT_VISIBLE_MAX) {
-      const counter = stations.find((s) => s.kind === 'fines-counter');
-      // Beside the line rather than under it: the Elevator sits below.
-      drawLabelChip(ctx, counter.x + SLOT_PITCH * 2 + 4, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
-    }
+    const overflow = queueOverflowChip('fines-counter');
+    if (overflow) drawChip(ctx, overflow, overflow.x, overflow.y + 20);
   }
 
   function drawFrontDeskSlots() {
@@ -3251,62 +3363,34 @@ export function init(canvas, elements) {
     const slots = frontDeskSlots();
     slots.forEach((slot, i) => {
       const personality = personalityForSlot(slot, i);
+      const { chip, sub, patience } = queueSlotChips(slot);
       if (slot.kind === 'ghost') {
         ctx.save();
         ctx.globalAlpha = 0.35 + 0.2 * Math.sin(performance.now() / 90);
         drawLibraryPerson(ctx, slot.x + Math.sin(performance.now() / 140) * 2, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE });
         ctx.restore();
-        drawLabelChip(ctx, slot.x, slot.y + 20, '???', 'bold 9px sans-serif');
+        drawChip(ctx, chip, slot.x, slot.y + 20);
         return;
       }
       drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE, angryTint: slot.kind === 'karen' });
-      if (slot.kind === 'borrow-active') {
-        if (slot.stage === 'searching') {
-          // Patience bar over their head, green -> amber -> red.
-          drawPatienceBar(slot, slot.patienceFraction);
-          drawLabelChip(ctx, slot.x, slot.y + 20, 'Waiting', 'bold 9px sans-serif');
-        } else {
-          drawLabelChip(ctx, slot.x, slot.y + 20, 'Check out!', 'bold 9px sans-serif');
-        }
-      } else if (slot.kind === 'borrow') {
-        drawPatienceBar(slot, slot.waitFraction);
+      // Patience bar under the chip, green -> amber -> red.
+      drawPatienceBar(slot, patience);
+      if (slot.kind === 'borrow') {
         const entry = bookCatalog.get(slot.bookId);
         const genre = entry ? findGenre(entry.genreId) : null;
         drawRoundRect(ctx, slot.x + 20, slot.y - PERSON_HEIGHT + 4, 10, 14, 1, genre ? genre.color : '#8a6a4a'); // beside the head
-        // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
-        // title's label chip (drawLabelChip auto-sizes to text width, no
-        // wrapping) can run wider than that and spill into the
-        // neighboring slot's own chip, same class of overflow bug as the
-        // Return Cart covers above. Truncated to a short, single-word-ish
-        // snippet that reliably stays inside one slot's width instead.
-        if (entry?.title) {
-          // The Korean title on the chip, its English meaning just below
-          // (under the patience bar), both cut to the slot's SLOT_PITCH.
-          const { ko, en } = splitTitle(entry.title);
-          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, SLOT_PITCH - 6, 'bold 9px sans-serif'), 'bold 9px sans-serif');
-          if (en) {
-            ctx.font = 'bold 7.5px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            outlinedText(ctx, truncateForChip(ctx, en, SLOT_PITCH - 2, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
-          }
-        }
-      } else if (slot.kind === 'karen') {
-        drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
-      } else if (slot.kind === 'recommend') {
-        drawPatienceBar(slot, slot.waitFraction);
-        const regular = slot.patronKey === RECOMMEND_REGULAR_PATRON;
-        drawLabelChip(ctx, slot.x, slot.y + 20, regular ? '단골 ★' : '추천?', 'bold 10px sans-serif', regular ? ANIME.lavenderDeep : ANIME.pink, '#ffffff');
-        drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
       }
+      if (chip) drawChip(ctx, chip, slot.x, slot.y + 20);
+      if (sub) {
+        ctx.font = sub.font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        outlinedText(ctx, chipText(ctx, sub), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
+      }
+      if (slot.kind === 'recommend') drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
     });
-    const total = shiftState?.borrowQueue.length || 0;
-    const shown = Math.min(total, SLOT_VISIBLE_MAX);
-    if (total > shown) {
-      const desk = stations.find((s) => s.kind === 'front-desk');
-      // Beside the line, clear of the bookcase below it.
-      drawLabelChip(ctx, desk.x + SLOT_PITCH * 2 + 6, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${total - shown} waiting`, 'bold 10px sans-serif');
-    }
+    const overflow = queueOverflowChip('front-desk');
+    if (overflow) drawChip(ctx, overflow, overflow.x, overflow.y + 20);
   }
 
   /** A little speech bubble with a book and a "?" beside a patron who wants a recommendation. */
@@ -4953,6 +5037,90 @@ export function init(canvas, elements) {
     return findLibraryDesign(personalityKey);
   }
 
+  // -- First Person world-anchored labels (camera parity P5) ----------------
+  // Each entity's chips come from the same function Top-Down's chips use
+  // (labelForStation, queueSlotChips, staffChips, returnCartChips,
+  // coffeeOutOfOrderChip, queueOverflowChip); library/three-d/labels.js
+  // projects, fades and declutters them.
+
+  /** This frame's laid-out labels (window.__libraryGameTestHooks.getFirstPersonLabels). */
+  let fpLabels = [];
+
+  function measureChipText(text, font) {
+    ctx.save();
+    ctx.font = font;
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+    return w;
+  }
+
+  const chipLine = (chip) => ({ type: 'chip', text: chipText(ctx, chip), font: chip.font, fill: chip.fill ?? null, ink: chip.ink ?? LABEL_TEXT_COLOR, pulse: Boolean(chip.pulse) });
+
+  /** The crosshair target's label stack id: a Return Cart book reads as its cart, as the hover hint does. */
+  function fpLabelTargetId() {
+    const target = fpScene.interactTarget;
+    if (!target) return null;
+    if (target.entityKind === 'returnCartBook') return stations.find((s) => s.kind === 'return-cart')?.id ?? null;
+    return target.id;
+  }
+
+  /** One label stack per labelled entity in the world inventory, lines top to bottom. */
+  function fpLabelStacks(inv) {
+    const stacks = [];
+    for (const item of inv) {
+      if (item.kind === 'station') {
+        const lines = [];
+        if (item.stationKind === 'coffee-machine' && coffeeOutOfOrderChip()) lines.push(chipLine(coffeeOutOfOrderChip()));
+        if (item.stationKind === 'return-cart') returnCartChips().forEach((c) => lines.push(chipLine(c)));
+        const text = labelForStation(item.ref);
+        if (text) lines.push(chipLine({ text, font: 'bold 11px sans-serif' }));
+        if (lines.length) stacks.push({ id: item.id, x: item.x, y: item.y, height: stationAnchorHeight(item.stationKind), lines });
+      } else if (item.kind === 'front-desk-patron' || item.kind === 'karen' || item.kind === 'ghost-patron' || item.kind === 'fines-patron') {
+        const { chip, sub, patience } = queueSlotChips(item.ref);
+        const lines = [];
+        if (chip) lines.push(chipLine(chip));
+        if (sub) lines.push({ type: 'sub', text: chipText(ctx, sub), font: sub.font });
+        if (patience != null) lines.push({ type: 'bar', fraction: Math.max(0, Math.min(1, patience)) });
+        const design = fpDesignFor(personalityForSlot(item.ref, item.slotIndex ?? 0));
+        if (lines.length) stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(buildCharacter(design, { angry: item.kind === 'karen' })), lines });
+      } else if (item.kind === 'ambient-staff') {
+        const design = findStaffDesign(item.staffKey);
+        stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(design ? buildCharacter(design) : null), lines: staffChips(item.ref).map(chipLine) });
+      }
+    }
+    if (currentFloor === FLOOR_1) {
+      for (const kind of ['front-desk', 'fines-counter']) {
+        const overflow = queueOverflowChip(kind);
+        if (overflow) stacks.push({ id: `${kind}-waiting`, x: overflow.x, y: overflow.y, height: characterAnchorHeight(null), lines: [chipLine(overflow)] });
+      }
+    }
+    return stacks;
+  }
+
+  function drawFpLabels(labels) {
+    for (const label of labels) {
+      for (const line of label.lines) {
+        ctx.save();
+        ctx.globalAlpha = label.alpha * (line.pulse ? chipPulse() : 1);
+        if (line.type === 'bar') {
+          const f = line.fraction;
+          const x = line.cx - line.w / 2;
+          const y = line.cy - line.h / 2;
+          drawRoundRect(ctx, x, y, line.w, line.h, 2.5, 'rgba(58,42,42,0.25)');
+          drawRoundRect(ctx, x, y, line.w * f, line.h, 2.5, patienceColor(f));
+        } else if (line.type === 'sub') {
+          ctx.font = line.font;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          outlinedText(ctx, line.text, line.cx, line.cy, ANIME.ink, '#ffffff', 2.4);
+        } else {
+          drawLabelChip(ctx, line.cx, line.cy, line.text, line.font, line.fill, line.ink);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
   function drawFirstPersonView() {
     // The bob/jump/tilt/sprint effects now move into the 3D camera (vs. the
     // old canvas transforms); a running transition adds its own camera offset.
@@ -5038,6 +5206,8 @@ export function init(canvas, elements) {
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.restore();
     }
+    fpLabels = layoutLabels(fpLabelStacks(inv), { camera, viewport, measure: measureChipText, targetId: fpLabelTargetId(), occluders: stationsOnFloor(stations, currentFloor).map(stationOccluder) });
+    drawFpLabels(fpLabels);
     drawFirstPersonCrosshair();
     drawFpMinimap();
     // Pointer lock hint
@@ -5337,6 +5507,8 @@ export function init(canvas, elements) {
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),
+      /** This frame's First Person world-anchored labels, in draw order: `{id, x, y, alpha, target, rect, lines}` (screen px). */
+      getFirstPersonLabels: () => (cameraMode === 'first-person' ? JSON.parse(JSON.stringify(fpLabels)) : []),
       attemptInteractNow: () => attemptInteract(),
       // Elevator/stair transition hooks: inspect the active ride/climb and
       // force it to complete (commits the floor switch now and clears it), so

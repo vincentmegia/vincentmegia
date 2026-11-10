@@ -46,6 +46,7 @@ call in `drawScene` is pure and DOM-free.
 | `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame and memoises the room per floor; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR` constants |
 | `../floor-dressing.js` | Shared with Top-Down's `drawFloor`: `FLOOR_TILE`, `WALL_BAND_HEIGHT`, `FLOOR_TILES`, `GUIDE_STRIPES`, `LIBRARY_SIGNS`, `BACK_WALL`, `WALL_ART`, `floorRug`; the painters (`drawBackWall`, `drawLibrarySign`, `drawWallBookShelf`, `drawWallSakura`, `drawWallClock`, `drawStitchedRug`, `drawGuideStripe`); for FP, `tileColor`, `floorDecals`, `roomArtRect`, `paintRoomArt`, `ROOM_ART_SCALE` |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
+| `labels.js` | World-anchored label chips (P5): anchor heights from the drawn meshes, distance fade, occlusion by stations, HUD avoidance, declutter and draw order — `layoutLabels`; see "World-anchored labels" |
 | `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
 | `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
 
@@ -138,7 +139,7 @@ head widens together.
 Wiring lives in `web/static/js/library-game.js`: `drawFirstPersonView`
 builds the scene and calls `drawScene(ctx, camera, placed, {viewport,
 light: FP_LIGHT, fog: FP_FOG})`, then draws the 2D HUD on top (dust,
-vignette, interact flash, crosshair, minimap). `fpCameraParams` maps the
+vignette, interact flash, world-anchored labels, crosshair, minimap). `fpCameraParams` maps the
 effect state to camera params. `first-person.js` is still the projection
 used for `findInteractTarget`; it does not draw.
 
@@ -518,16 +519,16 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Front Desk, Return Cart, Fines Counter, Boss's Office, Reading Nook | `STATION_DETAIL_DRAWERS` | ✅ geometry meshes in `meshes/{front-desk,return-cart,fines-counter,boss-office,reading-nook}.js` |
 | Boss's Office locked state (grey + padlock) | `drawStation` | ✅ `optsFor` passes `{locked}` to `buildBossOffice`; grey door + lock badge |
 | Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
-| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha` ("???" chip ❌, Step 10) |
+| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha`; "???" chip as a world label |
 | Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
-| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ⚠️ crosshair target only: its name chip and `ambientHint` chip under the crosshair, and the same text in `#library-interact-hint` (world-anchored chips for the rest are Step 10) |
+| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ✅ world labels from `staffChips`; the crosshair target's chips also sit under the crosshair and in `#library-interact-hint` |
 | Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
-| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included ("+N more" chip ❌, Step 10) |
+| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included; "+N more" as a world label |
 | Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
 | Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ✅ per-floor checker, stripes and rugs from `floor-dressing.js` (sunbeams, tile sheen and grid lines ❌, see Known gaps) |
 | Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ✅ textured boxes cut into the back wall at Top-Down's x; the clock shows the live time |
-| Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
-| Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
+| Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape, and the chip as a world label (`coffeeOutOfOrderChip`) |
+| Queue/station label chips, patience bars, "+N waiting", "+N more", messy cart, Boss's Office countdown | slot drawers, `drawStation` | ✅ world labels from the same functions (`labelForStation`, `queueSlotChips`, `queueOverflowChip`, `returnCartChips`) |
 | Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
 | Elevator doors | `drawElevator` | ✅ the ridden car's doors open during the ride (the rider stands in it) and close behind them; shut otherwise. Top-Down draws them shut and switches floors instantly |
 | Game state across a flip (P3) | `setCameraMode` | ✅ unchanged, mid-ride included (lossless-flip e2e, step 2) |
@@ -618,10 +619,13 @@ Ordered so each step is independently shippable; sizes are rough
    facing the back wall from (480, 420): 1F 32.7 → 31 fps, 2F 24.7 →
    22–25 fps (unthrottled both stay at the 60 fps cap), after adding
    off-screen culling to `drawScene`.
-10. **World-anchored labels (M)** — P5. Project label anchors with
-    `projectPoint`, depth-sort and distance-fade them, draw the same chip
-    text Top-Down uses (one shared label function per entity, so the two
-    can't drift).
+10. ✅ **World-anchored labels (M)** — P5. `three-d/labels.js`'s
+    `layoutLabels` projects each entity's label stack with `projectPoint`
+    and the frame's camera, fades, occludes, declutters and depth-sorts it;
+    `drawFpLabels` draws the chips with `drawLabelChip`. The text comes from
+    one shared function per entity that Top-Down's drawers now call too
+    (see "World-anchored labels"). `getFirstPersonLabels()` on
+    `window.__libraryGameTestHooks` exposes the laid-out model.
 11. ✅ **Hallucinations in 3D (S)** — P7. `three-d/shadow-figures.js`
     turns the inventory's `hallucination-figure` items (still created, aged
     and expired only by `updateHallucinations`) into placements of one
@@ -652,10 +656,57 @@ Ordered so each step is independently shippable; sizes are rough
 * Facing on entering FP: keep "face the room centre" (today) or face the way
   Eun-mi was last walking in Top-Down? The latter is more "same world";
   the former always shows something useful.
-* Label density in FP (P5): crosshair target + everything within N px, or
-  all labels with distance fade?
+* ~~Label density in FP (P5)~~ **Resolved:** all labels within a world
+  distance cutoff, faded by distance, with the crosshair target at full
+  opacity on top. `LABEL_RANGE` 520 px (about half the room), opaque up to
+  `LABEL_FADE_START` 200 px and fading to `LABEL_MIN_ALPHA` 0.3 at the
+  cutoff; patience bars only within `BAR_RANGE` 300 px. The target ignores
+  the cutoff, the bar range and occlusion. "Crosshair target + within N px"
+  was rejected because station names are what you navigate by from across
+  the room.
 * Performance budget: ~8 more characters at up to 340 faces each on 1F —
   set a frame-time target before step 3 and measure it.
+
+### World-anchored labels
+
+Each entity's chips come from **one content function that both cameras
+call**, so the two can't drift; Top-Down's drawers were refactored onto them
+with their canvas output unchanged (a seeded canvas call trace of a busy
+Top-Down frame matched the old one apart from time-driven bobbing).
+
+| Entity | Content function (`library-game.js`) | FP stack, top to bottom |
+|---|---|---|
+| Station | `labelForStation` (incl. Reading Nook cooldown, Boss's Office locked / closing-wait countdown) | name; above it `coffeeOutOfOrderChip` on the Coffee Machine and `returnCartChips` ("+N more", pulsing messy cart) on the Return Cart |
+| Front Desk / Fines patron, Karen, ghost | `queueSlotChips(slot)` → `{chip, sub, patience}` | chip ("Waiting", "Check out!", Korean title, "Karen!", "단골 ★"/"추천?", "???", "Ng"), the English title line, the patience bar (colour from `patienceColor`) |
+| Ambient staff | `staffChips(a)` (name, then `ambientHint`) | name, help hint |
+| A queue longer than it shows | `queueOverflowChip(kind)` | "+N waiting", at the line's end |
+
+Chip models are `{text, font, fill?, ink?, maxWidth?}`; `chipText` applies
+`truncateForChip` for `maxWidth` and `drawChip` draws one with
+`drawLabelChip`. In FP, `fpLabelStacks(inventory)` turns the world
+inventory into stacks, `layoutLabels` (pure, in `three-d/labels.js`) lays
+them out, and `drawFpLabels` paints them after the vignette and before the
+crosshair and minimap.
+
+`layoutLabels(stacks, {camera, viewport, measure, targetId, hud, occluders})`:
+
+* **Anchor:** a stack's bottom edge sits `ANCHOR_GAP` (8 px) above its
+  entity's top, read from the very mesh FP draws: `stationTop(kind)` (mesh
+  bounds × `UNIT_SCALE`, 40 for a plain box) or `characterAnchorHeight(mesh)`
+  (the character mesh's crown, so a kid's label is lower). It is projected
+  with `projectPoint` and the camera `drawScene` used that frame; behind
+  the camera, or with any part of the stack off-screen, it is skipped.
+* **Range and fade:** see the resolved open question above.
+* **Occlusion:** a label whose sight line passes through another station's
+  box below that station's top (`isOccluded`, a floor-plane slab test plus
+  the line's height) is hidden, as its entity is.
+* **HUD:** a stack overlapping one of `fpHudRects` (top-left gauges,
+  minimap, crosshair and its tooltip, bottom-centre hint) first moves up
+  clear of it; if that pushes it off-screen or into another HUD rect, it is
+  dropped.
+* **Declutter and order:** the target, then nearer stacks first, keep their
+  place; a stack overlapping one already kept (2 px pad) is dropped. The
+  survivors draw far to near, the target last.
 
 ## Known gaps
 
@@ -680,11 +731,17 @@ Ordered so each step is independently shippable; sizes are rough
   8-step mesh, so the camera overshoots the top by about 0.56 units; the
   2nd-Floor stairs also climb *up* on screen to go down.
 * FP props have no plum station outline (Top-Down's `drawStation` strokes it,
-  not the drawers), and the OUT OF ORDER label chip is Top-Down only (FP shows
-  the tape).
+  not the drawers).
+* World labels are hidden only by *stations* (`stationOccluder` boxes):
+  a person or decor prop between the camera and a label does not hide it,
+  and labels always paint over the 3D frame (no z-buffer). Labels are a
+  fixed screen size at every distance; the alpha fade is the only depth cue.
+  A label partly off-screen is skipped rather than clamped to the edge.
+* Top-Down's non-chip queue art has no FP counterpart: the recommend
+  speech bubble (its "추천?"/"단골 ★" chip carries the same information),
+  the genre swatch beside a borrower's head and the fines star.
 * `ELEVATOR_COLORS.tile` is a copy of both games' `STATION_COLORS.elevator`,
   held equal by a source-text test rather than imported.
-* In FP, labels are still missing (Camera parity, step 10).
 * The FP floor has no sunbeams, tile sheen or faint grid lines (they are
   lighting/gloss effects painted in plan space), and Top-Down's back-wall
   band covers the floor's first 58 px where FP has floor up to the wall.
@@ -714,6 +771,12 @@ Ordered so each step is independently shippable; sizes are rough
   to span more than one `TILE`, and `scene.test.js` samples a grid of screen
   points from five poses inside the room and requires the shell to paint
   every one of them.
+* `labels.test.js` pins the anchor heights to the meshes, the fade curve,
+  culling (behind, out of range, off-screen), the bar range, occlusion,
+  HUD avoidance and the declutter's priority and draw order. Playwright's
+  "First Person shows world-anchored labels" checks, facing the Front Desk
+  with a queued patron, that `getFirstPersonLabels()` holds the Front Desk
+  label and the patron's chip (with its patience bar) on screen.
 * Playwright (`e2e/library-game.spec.js`): First Person tests for the
   Stairs and Elevator check that interacting starts an animated transition
   (via `getActiveTransition`) and that completing it (via
