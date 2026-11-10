@@ -199,12 +199,12 @@ test('faces without the flag are unchanged', () => {
     {
       screen: [[314.69737707341363, 207.3865645358996], [474.9046792531569, 218.67565802822145],
         [408.97789672559924, 236.8750900293754], [281.4802270285438, 230.27829000410242]],
-      color: 'rgb(110,176,240)', depth: 6.921060994002885, ground: false, alpha: 1,
+      color: 'rgb(110,176,240)', depth: 6.921060994002885, ground: false, decal: false, alpha: 1,
     },
     {
       screen: [[314.69737707341363, 392.6134354641004], [474.9046792531569, 381.32434197177855],
         [474.9046792531569, 218.67565802822145], [314.69737707341363, 207.3865645358996]],
-      color: 'rgb(177,132,107)', depth: 6, ground: false, alpha: 1,
+      color: 'rgb(177,132,107)', depth: 6, ground: false, decal: false, alpha: 1,
     },
   ]);
 });
@@ -247,6 +247,32 @@ test('ground polys are painted before everything that stands on them', () => {
   // fog gradient and overlaps stay right.
   const groundDepths = list.filter((p) => p.ground).map((p) => p.depth);
   assert.deepEqual(groundDepths, [...groundDepths].sort((a, b) => b - a), 'ground not far-to-near');
+});
+
+// A decal (a rug, a guide stripe) lies ON the floor tiles, coplanar with them,
+// so within the ground a mean-depth sort could still put a nearer tile over a
+// farther rug. Decals are the ground's second pass: after every tile, textured
+// or not, and before anything standing on the floor.
+test('decal ground polys are painted after every floor tile and before standing polys', () => {
+  const cam = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 60, near: 1, far: 2000 });
+  const flat = (m) => ({ mesh: m, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
+  const plane = (z0, z1, extra) => ({
+    vertices: [[-60, 0, z0], [-60, 0, z1], [60, 0, z1], [60, 0, z0]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#e6f6f0', ground: true, ...extra }],
+  });
+  // A rug far away (z -400) and a tile near (z -60): the rug is the farther
+  // poly, so mean depth alone would paint it first and the tiles over it.
+  const rug = plane(-420, -380, { decal: 'rug', texture: { image: { width: 8, height: 8 }, uv: [[0, 0], [0, 8], [8, 8], [8, 0]] } });
+  const stripe = plane(-300, -296, { decal: 'stripe' });
+  const tiles = [plane(-120, 0), plane(-440, -360)];
+  const post = { vertices: [[-2, 0, -200], [2, 0, -200], [2, 40, -200], [-2, 40, -200]], faces: [{ indices: [0, 1, 2, 3], color: '#334455' }] };
+  const list = buildDrawList(cam, [flat(rug), flat(stripe), ...tiles.map(flat), flat(post)], SCENE);
+  const rank = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
+  assert.ok(list.some((p) => p.decal && p.image), 'the textured rug keeps its ground/decal flags');
+  assert.ok(list.some((p) => p.decal && !p.image), 'the flat stripe is a decal');
+  for (let i = 1; i < list.length; i++) {
+    assert.ok(rank(list[i - 1]) <= rank(list[i]), `layer order broken at ${i}: ${rank(list[i - 1])} then ${rank(list[i])}`);
+  }
 });
 
 // ---- textured faces (docs/skills/2d-to-3d/SKILL.md) ----
@@ -356,4 +382,21 @@ test('a placement alpha rides onto every poly it produces', () => {
   const ghost = listFor(0.4)[0], solid = listFor(undefined)[0];
   assert.deepEqual(ghost.screen, solid.screen);
   assert.equal(ghost.color, solid.color);
+});
+
+// Only the near plane is clipped, so a face beside the frame used to reach the
+// canvas anyway (the 2D checker floor made that ~400 wasted fills a frame).
+// drawScene passes `cullOffscreen`; a bare buildDrawList keeps every face.
+test('cullOffscreen drops faces wholly outside the viewport, flat or textured', () => {
+  const beside = (m) => ({ mesh: m, placement: { pos: [40, 0, -5], yaw: 0, scale: 1 } });
+  const tex = texQuad();
+  for (const m of [quad(), tex]) {
+    assert.ok(buildDrawList(CAM, [beside(m)], SCENE).length > 0, 'kept without the flag');
+    assert.equal(buildDrawList(CAM, [beside(m)], { ...SCENE, cullOffscreen: true }).length, 0, 'dropped with it');
+    assert.deepEqual(
+      buildDrawList(CAM, [at(m, -5)], { ...SCENE, cullOffscreen: true }),
+      buildDrawList(CAM, [at(m, -5)], SCENE),
+      'an on-screen face is untouched',
+    );
+  }
 });

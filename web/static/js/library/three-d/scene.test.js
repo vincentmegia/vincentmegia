@@ -167,10 +167,14 @@ test('the draw list stays sorted back to front within each layer', () => {
   );
   const list = buildDrawList(camera, placed, { viewport, light: LIGHT });
   assert.ok(list.length > 0);
+  // Three layers: floor tiles, then the floor's decals (stripes, rugs), then
+  // everything standing on the floor.
+  const rank = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
+  for (let i = 1; i < list.length; i++) assert.ok(rank(list[i - 1]) <= rank(list[i]), 'each layer is one contiguous run, in order');
   const split = list.findIndex((p) => !p.ground);
   assert.ok(split > 0, 'the floor is drawn, and before everything standing on it');
-  assert.ok(list.slice(split).every((p) => !p.ground), 'ground is one contiguous layer');
-  for (const layer of [list.slice(0, split), list.slice(split)]) {
+  assert.ok(list.some((p) => p.decal), 'the rug under the coffee machine is drawn');
+  for (const layer of [0, 1, 2].map((r) => list.filter((p) => rank(p) === r))) {
     for (let i = 1; i < layer.length; i++) {
       assert.ok(layer[i - 1].depth >= layer[i].depth, 'each layer must stay sorted back to front');
     }

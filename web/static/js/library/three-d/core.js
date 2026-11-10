@@ -178,6 +178,23 @@ const lerp3 = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
 const bilerp = (q, u, v) => lerp3(lerp3(q[0], q[1], u), lerp3(q[3], q[2], u), v);
 const fogAmount = (fog, depth) => (fog ? Math.min(1, Math.max(0, (depth - fog.start) / (fog.end - fog.start))) : 0);
 
+// True when a screen polygon lies wholly off one side of the viewport. Only the
+// near plane is clipped, so without this every face beside or above the frame
+// would still be filled (and stroked) by the canvas for nothing.
+// drawScene asks for it (`opts.cullOffscreen`); a bare buildDrawList keeps
+// every face in front of the near plane.
+function offscreen(screen, viewport) {
+  if (!viewport) return false;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of screen) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return maxX < 0 || minX > viewport.width || maxY < 0 || minY > viewport.height;
+}
+
 /**
  * Cuts a textured quad into div[0] x div[1] cells (bilinear in world space and
  * in uv) and pushes each cell as two textured triangles. Canvas 2D can only
@@ -185,7 +202,7 @@ const fogAmount = (fog, depth) => (fog ? Math.min(1, Math.max(0, (depth - fog.st
  * missing perspective divide invisible. A cell the near plane cuts is pushed
  * as a flat, clipped polygon in the face's colour instead, so it leaves no hole.
  */
-function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha = 1) {
+function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha = 1, cullView = null) {
   const { image, uv, div = [1, 1] } = face.texture;
   const W = face.indices.map((i) => world[i]);
   const [nu, nv] = div;
@@ -198,11 +215,14 @@ function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, al
         const poly = clipNear(clip);
         if (poly.length < 3) continue;
         const depth = poly.reduce((acc, c) => acc + c[3], 0) / poly.length;
-        out.push({ screen: poly.map(toScreen), color: shadeColor(face.color, intensity, fog, depth), depth, ground: false, alpha });
+        const flatScreen = poly.map(toScreen);
+        if (offscreen(flatScreen, cullView)) continue;
+        out.push({ screen: flatScreen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), decal: Boolean(face.decal), alpha });
         continue;
       }
       const cellUv = corners.map(([a, b]) => bilerp(uv, a, b));
       const screen = clip.map(toScreen);
+      if (offscreen(screen, cullView)) continue;
       for (const tri of [[0, 1, 2], [0, 2, 3]]) {
         const depth = tri.reduce((acc, i) => acc + clip[i][3], 0) / 3;
         out.push({
@@ -214,7 +234,8 @@ function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, al
           fogColor: fog?.color,
           color: face.color,
           depth,
-          ground: false,
+          ground: Boolean(face.ground),
+          decal: Boolean(face.decal),
           alpha,
         });
       }
@@ -231,6 +252,7 @@ function modelPoint(p, pl) {
 
 export function buildDrawList(camera, placed, opts) {
   const { viewport, light, fog } = opts;
+  const cullView = opts.cullOffscreen ? viewport : null;
   const ld = normalize(light.dir);
   const out = [];
   for (const { mesh, placement } of placed) {
@@ -248,7 +270,7 @@ export function buildDrawList(camera, placed, opts) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
         const n = normalize(cross(sub(b, a), sub(c, a)));
         const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
-        pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha);
+        pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha, cullView);
         continue;
       }
       // Clip against the near plane; a face entirely behind it yields nothing.
@@ -266,8 +288,9 @@ export function buildDrawList(camera, placed, opts) {
         (cx / cw * 0.5 + 0.5) * viewport.width,
         (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
       ]);
+      if (offscreen(screen, cullView)) continue;
       out.push({
-        screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), alpha,
+        screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), decal: Boolean(face.decal), alpha,
       });
     }
   }
@@ -277,12 +300,15 @@ export function buildDrawList(camera, placed, opts) {
   // wide, and sorting them by mean depth puts the tile underfoot in front of a
   // patron two metres away, painting out their feet and lower legs. Ordering by
   // (ground, depth) is still a total order, so the sort stays stable and the
-  // floor keeps its own back-to-front overlap and fog gradient.
-  return out.sort((p, q) => (p.ground === q.ground ? q.depth - p.depth : (p.ground ? -1 : 1)));
+  // floor keeps its own back-to-front overlap and fog gradient. Ground faces
+  // that are also `decal` (the floor's stripes and rugs) are a second ground
+  // pass, over every tile: they lie on the tiles, so no tile may cover them.
+  const layer = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
+  return out.sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth);
 }
 
 export function drawScene(ctx, camera, placed, opts) {
-  for (const poly of buildDrawList(camera, placed, opts)) {
+  for (const poly of buildDrawList(camera, placed, { ...opts, cullOffscreen: true })) {
     if (poly.image) {
       drawTexturedTriangle(ctx, poly);
       continue;

@@ -15,12 +15,12 @@ import { buildFinesCounter } from './meshes/fines-counter.js';
 import { buildBossOffice } from './meshes/boss-office.js';
 import { buildReadingNook } from './meshes/reading-nook.js';
 import { meshForDecorKind } from './meshes/decor.js';
+import { FLOOR_TILE, tileColor, floorDecals, WALL_ART_IDS, roomArtRect } from '../floor-dressing.js';
 
 export const ROOM_HEIGHT = 300;
 export const BASE_EYE = 60;
 export const NEAR = 1;
 export const FAR = 2000;
-export const FLOOR_TINT = '#b08f5e';
 // Unit-sized meshes (~1 = one metre) are scaled into game pixels.
 export const UNIT_SCALE = 40;
 const BOX_HEIGHT = 40;
@@ -88,6 +88,38 @@ function bookMesh(book, art) {
   return mesh;
 }
 
+// The room shell for one floor: Top-Down's checker, decals and back-wall art
+// (library/floor-dressing.js). Rebuilt only when the floor, the room size, the
+// decals or an art canvas's identity changes; a canvas repainted in place
+// (the wall clock) needs no rebuild, since textures are read at draw time.
+let roomMemo = null;
+
+function roomMesh(floor, stations, viewport, roomArtFor) {
+  const decals = floorDecals(floor, stations);
+  const wallArt = WALL_ART_IDS.map((id) => ({ id, ...roomArtRect(floor, id, stations) }));
+  const asked = new Map(); // id -> image, once per id (the stripes share one)
+  const ask = (id) => {
+    if (!asked.has(id)) asked.set(id, roomArtFor ? roomArtFor(id) ?? null : null);
+    return asked.get(id);
+  };
+  const images = [...decals.map((d) => d.id), ...WALL_ART_IDS].map(ask);
+  const key = `${floor}|${viewport.width}x${viewport.height}|${JSON.stringify(decals)}`;
+  if (roomMemo && roomMemo.key === key && roomMemo.images.every((im, i) => im === images[i])) return roomMemo.mesh;
+  decals.forEach((d, i) => { if (images[i]) d.image = images[i]; });
+  wallArt.forEach((a, i) => { const im = images[decals.length + i]; if (im) a.image = im; });
+  const mesh = buildRoom({
+    width: viewport.width,
+    depth: viewport.height,
+    height: ROOM_HEIGHT,
+    tileSize: FLOOR_TILE,
+    tileColor: (col, row) => tileColor(floor, col, row),
+    decals,
+    wallArt,
+  });
+  roomMemo = { key, images, mesh };
+  return mesh;
+}
+
 /**
  * @param {object} input
  * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
@@ -103,10 +135,14 @@ function bookMesh(book, art) {
  *   RETURN_CART_BOOK_SLOTS.length stand on this floor's cart's top tray.
  * @param {(book: object) => (CanvasImageSource | null | undefined)} [input.bookArtFor]
  *   a cart book's painted cover (meshes/book.js's paintReturnCartBookArt).
+ * @param {(id: string) => (CanvasImageSource | null | undefined)} [input.roomArtFor]
+ *   the room art canvas for 'rug' or a WALL_ART id ('clock', 'shelf',
+ *   'sakura', 'sign'), painted by floor-dressing.js's paintRoomArt for this
+ *   floor; without one that piece is a flat face.
  */
-export function buildFirstPersonScene({ player, floor, stations, characters, decor, cartBooks, bookArtFor, cameraParams, viewport, artFor, optsFor }) {
+export function buildFirstPersonScene({ player, floor, stations, characters, decor, cartBooks, bookArtFor, cameraParams, viewport, artFor, optsFor, roomArtFor }) {
   const placed = [];
-  const room = buildRoom({ width: viewport.width, depth: viewport.height, height: ROOM_HEIGHT, floorTint: FLOOR_TINT });
+  const room = roomMesh(floor, stations, viewport, roomArtFor);
   placed.push({ mesh: room, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
 
   for (const s of stations) {

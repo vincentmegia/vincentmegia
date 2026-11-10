@@ -42,8 +42,9 @@ call in `drawScene` is pure and DOM-free.
 | File | Role |
 |---|---|
 | `core.js` | Column-major `Mat4` math, `cameraFromPose`, `projectPoint`, `shadeColor`, `buildDrawList`, `drawScene` |
-| `room.js` | `buildRoom({width, depth, height, floorTint})`: floor, ceiling, four walls, wainscot, windows, light fixtures |
-| `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
+| `room.js` | `buildRoom({width, depth, height, tileSize, tileColor, decals, wallArt})`: the checker floor, floor decals, ceiling, four walls (the back one with its art), wainscot, rail, windows, light fixtures; `WALL_ART_TOP` |
+| `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame and memoises the room per floor; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR` constants |
+| `../floor-dressing.js` | Shared with Top-Down's `drawFloor`: `FLOOR_TILE`, `WALL_BAND_HEIGHT`, `FLOOR_TILES`, `GUIDE_STRIPES`, `LIBRARY_SIGNS`, `BACK_WALL`, `WALL_ART`, `floorRug`; the painters (`drawBackWall`, `drawLibrarySign`, `drawWallBookShelf`, `drawWallSakura`, `drawWallClock`, `drawStitchedRug`, `drawGuideStripe`); for FP, `tileColor`, `floorDecals`, `roomArtRect`, `paintRoomArt`, `ROOM_ART_SCALE` |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
 | `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
 | `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
@@ -200,6 +201,35 @@ station's kind needs (the Boss's Office's `{locked}`, the elevator's
 per station object, art, builder and those options serialised, so a station
 whose state flips rebuilds and one that holds still does not.
 
+### The room dressing (per floor)
+
+The room is Top-Down's own floor and back wall (`drawFloor`), built from
+`library/floor-dressing.js`, which `drawFloor` paints from too (it holds the
+constants and the painters moved out of `library-game.js` verbatim, so
+Top-Down's pixels are unchanged; outside the clock, whose time moved, the
+wall band diffs to zero pixels before/after).
+
+| Piece | First Person |
+|---|---|
+| Checker tiles | One ground face per 40 px `FLOOR_TILE` (24 × 15), coloured `tileColor(floor, col, row)`: `FLOOR_TILES[floor].dark` on even (row + col), otherwise `drawAnimeTiles`' gradient (`tint(light, 0.3)` under the wall band down to `light`) sampled at the row's centre. 1st Floor mint, 2nd Floor cream. Wound to face up, so the floor takes full light (it used to face down and render at the ambient 0.5) |
+| Guide stripes (1F) | `floorDecals` cuts each `GUIDE_STRIPES` stripe at the tile grid (and at the rug's edges); each piece is a flat face in the stripe's rgba composited over its own tile (`blendOver`), so it reads as Top-Down's translucent stripe. The part under the rug is the rug art's |
+| Rugs (1F Coffee Machine, 2F Reading Nook) | `floorRug` (drawFloor's placement); one decal face wearing `paintRoomArt(…, 'rug')`: the tiles, stripes and `drawStitchedRug` of exactly that box at `ROOM_ART_SCALE` 4 |
+| Back wall (z = 0) | `BACK_WALL`'s colours on every wall: cream wall, blush wainscot, pink rail with the plum trim under it, plum baseboard. The back wall is `unlit` (it *is* Top-Down's band, and its art needs no darkening overlay); the other walls stay lit |
+| Sign, sakura, wall shelf, wall clock | `WALL_ART` boxes (band px) cut out of the back wall and filled with `paintRoomArt`'s canvas of the same painter, at the same x, band y mapped to height `WALL_ART_TOP − y` (1:1, so above the rail at 135) |
+
+Decals are a **second ground pass**: their faces carry `ground` and `decal`,
+and `buildDrawList` sorts floor tiles, then decals, then everything else, so a
+nearer tile can never cover a farther rug. Wall art is coplanar with the wall
+but never overlaps a wall face (the wall is emitted around the boxes).
+
+`library-game.js`'s `fpRoomArtFor(id)` hands the scene one canvas per floor
+and piece, painted once; the clock's is repainted in place only when its
+label (the HUD's `inGameTimeLabel` minute) changes, the `FP_ART` stateKey
+pattern. Textures are read at draw time, so the repaint needs no mesh
+rebuild; the scene rebuilds the room only when the floor, the decals or an
+art canvas's identity changes. `getFpRoomArt()` on the test hooks lists each
+canvas's key, stateKey and paint count.
+
 ### Data shapes (JSDoc in `core.js`)
 
 * `Vec3` = `[x, y, z]`.
@@ -245,6 +275,13 @@ fogs toward `fog.color` between `fog.start` and
 `fog.end` by face depth, and sorts back to front (painter's algorithm, face
 depth = mean clip-space w of the clipped polygon's vertices).
 
+**Off-screen faces are dropped.** Only the near plane is clipped, so
+`drawScene` passes `cullOffscreen` and `buildDrawList` drops any face (flat,
+textured cell or near-clipped fallback) whose screen polygon lies wholly off
+one side of the viewport; the 2D checker floor's 360 tiles made that matter
+(705 polys a frame down to 280 at the harness pose). A bare `buildDrawList`
+call keeps them, as the tests expect.
+
 **Ground is its own layer.** A mean depth is wrong for a wide, near-horizontal
 face: the floor tile a patron *stands on* can have a nearer centroid than the
 patron, so a plain depth sort paints the floor over their legs and feet. (It
@@ -252,7 +289,8 @@ did: a patron at interact range kept only the top quarter of their legs and
 never showed their shoes at all.) So every face a mesh marks `ground` — only
 `room.js`'s floor does — sorts as a layer before everything else, each layer
 still back to front within itself, which keeps the floor's own overlap and fog
-gradient. This is sound because the floor is the shell's lowest surface:
+gradient. Within the ground, faces also marked `decal` (stripes, rugs) are a
+second pass after every tile. This is sound because the floor is the shell's lowest surface:
 everything in the room rests on it, so it can never *legitimately* occlude any
 of it, while the walls rise from its edges and the ceiling is above, so neither
 overlaps a floor tile on screen. `room.test.js` pins that exactly the floor
@@ -344,7 +382,9 @@ leftover Top-Down art showed through.
 | `UNIT_SCALE` | `scene.js` | 40 (unit mesh to game px) |
 | `BASE_EYE` | `scene.js` | 60 (eye height, game px) |
 | `ROOM_HEIGHT`, `NEAR`, `FAR` | `scene.js` | 300, 1, 2000 |
-| `FLOOR_TINT` | `scene.js` | `#b08f5e` |
+| `FLOOR_TILE`, `FLOOR_TILES`, `BACK_WALL` | `library/floor-dressing.js` | 40 px; 1F `#e6f6f0`/`#d8efe7`, 2F `#f6efe4`/`#efe5d6`; `#fffaf3`/`#fdeef3`/`#ffd1e3`/plum |
+| `WALL_ART_TOP` | `room.js` | 200 (wall height of the band's top; art at band y sits at 200 − y) |
+| `ROOM_ART_SCALE` | `library/floor-dressing.js` | 4 image px per game px (rug and wall-art canvases) |
 | `FP_BASE_VFOV_DEGREES` / `FP_SPRINT_VFOV_EXTRA` | `library-game.js` | 60 / +6 |
 | `FP_LIGHT` | `library-game.js` | `{dir: [0.35, 1, 0.25], ambient: 0.5}` |
 | `FP_FOG` / `FP_BACKDROP` | `library-game.js` | `{color: '#d8ccb0', start: 520, end: 1500}` / the same cream |
@@ -484,8 +524,8 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
 | Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included ("+N more" chip ❌, Step 10) |
 | Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
-| Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ❌ one `FLOOR_TINT` for both floors |
-| Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ❌ |
+| Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ✅ per-floor checker, stripes and rugs from `floor-dressing.js` (sunbeams, tile sheen and grid lines ❌, see Known gaps) |
+| Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ✅ textured boxes cut into the back wall at Top-Down's x; the clock shows the live time |
 | Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
 | Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
 | Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
@@ -567,10 +607,17 @@ Ordered so each step is independently shippable; sizes are rough
    front texture to wear). `buildFirstPersonScene` takes a `decor` list
    and memoises one shared mesh per kind. `meshes/decor.test.js` pins the
    kinds Library places, their standing heights and those colours.
-9. **Room dressing per floor (M)** — P4. `buildRoom` takes a per-floor
-   palette (1F mint checker, 2F cream), floor decals for the guide stripes
-   and rugs, and back-wall art (sign, sakura, wall shelf, live wall clock)
-   as textured quads.
+9. ✅ **Room dressing per floor (M)** — P4. `library/floor-dressing.js`
+   holds `drawFloor`'s palettes, placements and wall painters for both
+   cameras; `buildRoom` takes the 40 px checker (`tileColor`), floor decals
+   (stripes as flat composited pieces, rugs textured) and back-wall art
+   (sign, sakura, wall shelf, live wall clock) as textured boxes; see The
+   room dressing. `room.test.js` and `floor-dressing.test.js` pin the
+   palette, decal and art placement, and FP's art to Top-Down's own
+   painter calls. Measured in headless Chromium at 6× CPU throttle,
+   facing the back wall from (480, 420): 1F 32.7 → 31 fps, 2F 24.7 →
+   22–25 fps (unthrottled both stay at the 60 fps cap), after adding
+   off-screen culling to `drawScene`.
 10. **World-anchored labels (M)** — P5. Project label anchors with
     `projectPoint`, depth-sort and distance-fade them, draw the same chip
     text Top-Down uses (one shared label function per entity, so the two
@@ -637,9 +684,12 @@ Ordered so each step is independently shippable; sizes are rough
   the tape).
 * `ELEVATOR_COLORS.tile` is a copy of both games' `STATION_COLORS.elevator`,
   held equal by a source-text test rather than imported.
-* In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
-  Cart books are drawn as characters/props: no ambient staff, decor, floor
-  or wall dressing, or labels. Closing that is the Camera parity section.
+* In FP, labels are still missing (Camera parity, step 10).
+* The FP floor has no sunbeams, tile sheen or faint grid lines (they are
+  lighting/gloss effects painted in plan space), and Top-Down's back-wall
+  band covers the floor's first 58 px where FP has floor up to the wall.
+  The side and front walls take `BACK_WALL`'s colours by choice (Top-Down
+  never shows them).
 * The visual constants above are plausible but untuned; the character
   proportions are the exception — they are measured off the 2D art.
 * The face budget (`character.test.js`, ceiling 340) now has less headroom:
