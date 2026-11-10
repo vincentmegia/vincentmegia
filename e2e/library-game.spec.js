@@ -1151,6 +1151,48 @@ test.describe('hallucinations', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().some((s) => s.kind === 'ghost'))).toBe(false);
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity)).toBeLessThan(16);
 	});
+
+	test('shadow figures stand in the First Person scene at their world x/y, not as 2D overlays', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.pauseScheduledEvents(true);
+			h.getShiftState().sanity = 0;
+		});
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getHallucinations())).intensity).toBe(1);
+		// Freeze so no natural figures spawn or age out; frames still draw.
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.getShiftState().sanity = 0;
+			h.spawnShadowFigureNow(470, 380);
+			h.spawnShadowFigureNow(620, 200);
+		});
+		const figures = (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).figures;
+		expect(figures.length).toBeGreaterThanOrEqual(2);
+
+		// Top-Down paints every figure as 2D, as before.
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).topDownDrawn).toBe(figures.length);
+
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.setCameraMode('first-person');
+			h.setPlayerPosition(480, 520);
+		});
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).fpPlaced.length).toBe(figures.length);
+		const fp = await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures());
+		expect(fp.topDownDrawn).toBe(0);
+		for (const f of figures) {
+			const placed = fp.fpPlaced.find((p) => p.x === f.x && p.y === f.y);
+			expect(placed, `figure at ${f.x},${f.y} is in the FP scene`).toBeTruthy();
+			expect(placed.alpha).toBeGreaterThan(0);
+			// Billboard: turned toward the camera at (480, 520).
+			const facing = [Math.sin(placed.yaw), Math.cos(placed.yaw)];
+			const to = [480 - f.x, 520 - f.y];
+			expect((facing[0] * to[0] + facing[1] * to[1]) / Math.hypot(...to)).toBeGreaterThan(0.999);
+		}
+	});
 });
 
 test.describe('zero Mood', () => {
