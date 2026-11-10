@@ -87,9 +87,9 @@ handling, in place of Kitchen Shift's cooking and serving.
   Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
   it on whichever floor it had committed to. Only the Front Desk / Fines Counter
   queues (1st Floor) and Return Cart books are drawn as characters/props;
-  the ambient staff, decor and labels are not drawn in FP yet, and the
-  elevator door-open animation isn't wired into the scene (the camera ride
-  is). **Requirement:** the two cameras are views of one world, so a flip
+  the ambient staff, decor and labels are not drawn in FP yet. An FP
+  elevator ride lands Eun-mi in the new floor's car facing out, its doors
+  open in front of her, and they close once she steps out. **Requirement:** the two cameras are views of one world, so a flip
   must never lose a person, prop, label or interaction — see "Camera
   parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and
   work breakdown.

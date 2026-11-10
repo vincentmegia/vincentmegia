@@ -432,6 +432,46 @@ test.describe('floor switching', () => {
 		});
 	}
 
+	test('First Person: the elevator ride lands the player in the car, its doors open in front of them, and close once they step out', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('first-person'));
+		const station = await getStation(page, 'elevator');
+		// Frozen, so step() alone advances the ride and each frame is exact.
+		await page.evaluate(({ x, y }) => {
+			const hooks = window.__libraryGameTestHooks;
+			hooks.freeze(true);
+			hooks.setPlayerPosition(x, y - 90);
+			hooks.setPlayerFacing(Math.PI);
+			hooks.step(0.01); // refreshes the crosshair target
+		}, station);
+		const stepFor = (seconds) => page.evaluate((s) => {
+			for (let i = 0; i < Math.round(s * 100); i++) window.__libraryGameTestHooks.step(0.01);
+		}, seconds);
+		const doorOpen = () => page.evaluate(() => window.__libraryGameTestHooks.getElevatorDoorOpen());
+		expect(await doorOpen()).toBe(0); // shut on approach
+		await page.evaluate(() => window.__libraryGameTestHooks.attemptInteractNow());
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition())).toMatchObject({ kind: 'elevator' });
+
+		await stepFor(1.0); // doors-close + part of the rise: still shut
+		expect(await doorOpen()).toBe(0);
+		await stepFor(0.7); // 0.3 s into doors-open, on the 2nd Floor, inside the car
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		expect(await doorOpen()).toBe(0.5);
+		const pos = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
+		expect(pos.x).toBeCloseTo(station.x, 5);
+		expect(pos.y).toBeGreaterThan(station.y);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing())).toBe(0);
+
+		await page.evaluate(() => window.__libraryGameTestHooks.forceCompleteTransition());
+		await stepFor(1.0); // the doors stay open while the player is in the car
+		expect(await doorOpen()).toBe(1);
+		await page.evaluate(({ x, y }) => window.__libraryGameTestHooks.setPlayerPosition(x, y - 90), station);
+		await stepFor(1.0);
+		expect(await doorOpen()).toBe(0);
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
+	});
+
 	test('floor switching still works during closing-wait (a 2nd-Floor trip must not strand the player away from the 1st-Floor-only Boss\'s Office)', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

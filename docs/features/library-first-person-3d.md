@@ -21,7 +21,7 @@ replaced the older billboard-sprite view. Parent doc:
 
 **In scope:** the room shell, stations, queue characters and Return Cart
 books drawn as 3D meshes; head-bob/jump/tilt/sprint as camera effects; the
-animated elevator ride and stair climb in First Person.
+animated elevator ride (with its doors) and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
 targeting (still `library/first-person.js`); textures other than a 2D
@@ -30,7 +30,7 @@ drawer's own art; z-buffer, lighting beyond one directional light plus ambient.
 **Required, not yet built:** full parity with Top-Down — every person,
 prop, decor item, label and interaction Top-Down has, in FP too (ambient
 staff included). See Camera parity for the requirements and work
-breakdown; elevator door animation is one of its items.
+breakdown.
 
 ---
 
@@ -175,7 +175,9 @@ just that mesh.
 | `elevatorLayout(st, {height})`, `drawElevator(ctx, st, {t, height?, pulse?})`, `ELEVATOR_COLORS` | `hospital/anime-furniture.js` | Where Hospital Shift's elevator drawer (Library draws with it too) puts the indicator plate, label, frame, doors (with shines), call panel and button. `height` (default `st.w`) stretches only the vertical runs and `pulse` fixes the button's glow; Top-Down passes neither. `ELEVATOR_COLORS.tile` is the station tile both games draw it on (`elevator.test.js` pins it to both games' `STATION_COLORS.elevator`) |
 | `ELEVATOR_SIZE`, `ELEVATOR_ART`, `ELEVATOR_ART_SCALE` | `meshes/elevator.js` | The frame is 1.4 × 2.2 and the car 1.1 deep; the art box `{w: 84, h: 114}` makes the drawer's frame exactly 1.4 : 2.2; 3 image px per art px |
 | `paintElevatorArt(ctx, station)` | `meshes/elevator.js` | Opaque tile backing, then `animeTile`, then `drawElevator` at `ELEVATOR_ART` with `pulse: 1` (painted once, so it does not pulse in FP) |
-| `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, door panels 0.02 in front of it each wearing its own door region as it slides, and the car's ceiling and back wall seen through the doorway. 54 faces (12 textured), all `cull` |
+| `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, the door panels recessed 0.015 behind the frame's face, and the car (ceiling, back wall, and the frame's back seen from inside). Opening, each door slides away behind its post, clipped to the doorway: what is left shows the inner part of its own door region (uv follows the visible part), so the doors never leave the doorway or cover the indicator or call panel; fully open they are gone. The door backs (and, shut, a strip over the 2D seam) face into the car. 56 faces shut, 49 fully open (12 / 10 textured), all `cull` |
+| `elevatorDoorOpts(open)`, `ELEVATOR_DOOR_STEPS` | `meshes/elevator.js` | The `optsFor` value for a door opening: `{doorOpen}` quantised to 1/16, or `undefined` when shut so a closed elevator keeps the memo entry it has on approach. A ride rebuilds the ridden car's mesh at most 16 times opening (`scene.test.js` counts it over a simulated ride) instead of every frame |
+| `elevatorRiderPose(station, unitScale)`, `isInElevatorCar(station, pos, unitScale)`, `ELEVATOR_CAR_STAND_Z` | `meshes/elevator.js` | Where an FP rider stands (0.85 back in the car, facing out: facing 0) and whether a game-px point is in the car or its doorway (where held doors stay open) |
 | `STAIRS_COLORS`, `STAIRS_RAIL`, `STAIRS_BADGE`, `stairStepColor(i, steps = 5)`, `stairsArrowDir(st)`, `drawStairsBadge(ctx, x, y, dir)` | `hospital/anime-furniture.js` | What `drawStairs` draws with: the step ramp (exact for 5 steps, spread over more), the edge/shadow/rail/badge colours, the rail's 5 px ink under 3 px wood, and the up/down badge |
 | `STAIRS_SIZE`, `STAIRS_BADGE_ART`, `BADGE_ART_SCALE` | `meshes/stairs.js` | 1.12 wide × 1.44 tall × 2.24 deep for 8 steps (rise 0.18, run 0.28, unchanged); the badge art box 24 × 24 at 8 image px per art px |
 | `paintStairsBadgeArt(ctx, station)` | `meshes/stairs.js` | Opaque step-colour backing, then `drawStairsBadge` pointing the station's way |
@@ -186,7 +188,8 @@ sides, tops and backs stay lit so each prop reads as solid. Without `art`
 (node tests) the same faces take the drawer's exported flat colours.
 `buildFirstPersonScene` asks `artFor(station)` for each same-floor station
 with its own mesh, and `optsFor(station)` for any extra build options that
-station's kind needs (the Boss's Office's `{locked}`). The mesh is memoised
+station's kind needs (the Boss's Office's `{locked}`, the elevator's
+`{doorOpen}` from `elevatorDoorOpts`). The mesh is memoised
 per station object, art, builder and those options serialised, so a station
 whose state flips rebuilds and one that holds still does not.
 
@@ -341,7 +344,7 @@ leftover Top-Down art showed through.
 | `TILE` | `room.js` | 120 (longest edge of one shell face) |
 | `ART_SCALE`, `RECESS`, `LIP` | `meshes/bookshelf.js` | 3 image px per art px; spine rows 0.07 behind the frame; plank lips 0.01 proud |
 | `ART_SCALE`, stand | `meshes/coffee-machine.js` | 4 image px per art px; a 0.9 stand; bay back 0.07 behind the front, tray lip 0.03 proud |
-| `ELEVATOR_ART_SCALE`, offsets | `meshes/elevator.js` | 3 image px per art px; frame 0.03 proud of the wall; doors 0.02 in front of the frame; indicator 0.02, call panel 0.03, button 0.005 proud |
+| `ELEVATOR_ART_SCALE`, offsets | `meshes/elevator.js` | 3 image px per art px; frame 0.03 proud of the wall; doors 0.015 behind the frame's face (0.01 thick); indicator 0.02, call panel 0.03, button 0.005 proud; a rider stands 0.85 into the car |
 | `BADGE_ART_SCALE` | `meshes/stairs.js` | 8 image px per art px (a 192 px badge canvas); nosings 0.006 proud of the riser |
 | `FP_HEAD_BOB_AMP`, `FP_TILT_MAX` | `library-game.js` | 3.5 px, 0.035 rad (bob and roll) |
 
@@ -371,6 +374,19 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 `done` (committing the floor if not yet done); the test hooks
 `getActiveTransition` and `forceCompleteTransition` on
 `window.__libraryGameTestHooks` expose this to Playwright.
+
+**Elevator doors.** At the commit point an FP elevator ride also puts the
+player in the new floor's car (`elevatorRiderPose`: 0.85 back from the
+doorway, facing out), so the doors-open phase opens the doors in front of
+them; the stairs still land at the floor's entry point, as Top-Down's
+instant switch does for both. The ridden car alone gets the ride's
+`doorOpen` (`fpOptsFor` → `fpElevatorDoorOpen` in `library-game.js`); it is
+0 through doors-close and the rise, so the doors stay shut on approach and
+while waiting, as before. After the ride `fpHeldDoors` keeps them open while
+the player is in the car or its doorway (`isInElevatorCar`), then
+`stepHeldDoors` (`transitions.js`) closes them at the ride's door speed
+(0.6 s); leaving FP drops the hold. The `getElevatorDoorOpen()` test hook
+returns the `doorOpen` this floor's elevator mesh is built with.
 
 ## How to add a new object mesh
 
@@ -466,7 +482,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape (label chip ❌) |
 | Queue/station label chips, patience bars, "+N waiting", messy cart | slot drawers | ❌ (only the crosshair tooltip names the target) |
 | Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
-| Elevator doors | `drawElevator` | ⚠️ static; `doorOpen` not wired (see Known gaps) |
+| Elevator doors | `drawElevator` | ✅ the ridden car's doors open during the ride (the rider stands in it) and close behind them; shut otherwise. Top-Down draws them shut and switches floors instantly |
 | Game state across a flip (P3) | `setCameraMode` | ✅ unchanged, mid-ride included (lossless-flip e2e, step 2) |
 | Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
 
@@ -547,6 +563,7 @@ Ordered so each step is independently shippable; sizes are rough
     `projectPoint`, depth-sort and distance-fade them, draw the same chip
     text Top-Down uses (one shared label function per entity, so the two
     can't drift).
+<<<<<<< HEAD
 11. ✅ **Hallucinations in 3D (S)** — P7. `three-d/shadow-figures.js`
     turns the inventory's `hallucination-figure` items (still created, aged
     and expired only by `updateHallucinations`) into placements of one
@@ -564,7 +581,13 @@ Ordered so each step is independently shippable; sizes are rough
     `getShadowFigures()` (`{figures, topDownDrawn, fpPlaced}`); tests:
     `shadow-figures.test.js`, e2e "shadow figures stand in the First Person
     scene…".
-12. **Elevator doors (S)** — wire `doorOpen` (already in Known gaps).
+12. ✅ **Elevator doors (S)** — `optsFor` passes the ride's `doorOpen`
+    (quantised to 1/16 by `elevatorDoorOpts`) to the ridden car only; the
+    rider lands in the car facing out; the doors retract behind the posts,
+    clipped to the doorway, and stay open until the player steps out.
+    `elevator.test.js` pins the door extents at 0, 0.5 and 1 and the call
+    panel staying clear; `scene.test.js` bounds the memo rebuilds over a
+    ride; Playwright steps a frozen ride through `getElevatorDoorOpen`.
 
 ### Open questions
 
@@ -578,6 +601,7 @@ Ordered so each step is independently shippable; sizes are rough
 
 ## Known gaps
 
+<<<<<<< HEAD
 * Entering FP mid-walk stops the Top-Down click-to-move (`setCameraMode`
   clears `moveTarget` on purpose) but leaves the walk's queued
   `pendingFrontDeskAction` / `pendingCartPickupId` set, so it fires on the
@@ -585,11 +609,11 @@ Ordered so each step is independently shippable; sizes are rough
   (re-clicking a plain station mid-walk in Top-Down leaves it set the same
   way). The lossless-flip e2e runs frozen with no walk in flight, so it
   doesn't cover this.
-* `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
-  `doorOpen`, but `buildFirstPersonScene` does not pass it, so only the
-  camera animates during the ride. Wiring it needs `doorOpen` in the
-  scene's mesh memo key, and a decision on what the doors do: today they
-  slide in front of the frame, so fully open they cover the call panel.
+* An FP elevator ride ends with the player standing in the car (on the
+  elevator's tile if they flip to Top-Down there), while Top-Down's own
+  elevator lands them at the floor's entry point. The doors only open on
+  arrival: doors-close keeps them shut (they are already shut on approach),
+  so the departure has no closing animation.
 * The front desk, return cart, fines counter, boss office and reading nook
   are still plain station boxes; every other prop is referenced to its 2D
   (Camera parity, step 6).
@@ -632,7 +656,9 @@ Ordered so each step is independently shippable; sizes are rough
   Stairs and Elevator check that interacting starts an animated transition
   (via `getActiveTransition`) and that completing it (via
   `forceCompleteTransition`, so specs don't wait out the animation) switches
-  floors. One pixel-level test covers the per-frame clear: with the
+  floors; a frozen, stepped elevator ride checks `getElevatorDoorOpen()` is 0
+  on approach and through the rise, 0.5 mid doors-open with the player in
+  the car facing out, held at 1 while they stay, and 0 after they step out. One pixel-level test covers the per-frame clear: with the
   simulation frozen (`freeze(true)`), the loop keeps rendering the same
   scene, so sampled canvas pixels must be identical ~35 frames later. Before
   the clear they darkened frame by frame.
@@ -642,7 +668,9 @@ Ordered so each step is independently shippable; sizes are rough
   `unlit` set above; `character.test.js` covers the proportions it cannot.
 * Props referenced to 2D: `bookshelf.test.js`, `coffee-machine.test.js` and
   `elevator.test.js` pin each textured front to its exact layout region
-  (the elevator's doors at `doorOpen` 0 and 1), the art's aspect, no
+  (the elevator's doors at `doorOpen` 0, 0.5 and 1, clipped to the doorway
+  and clear of the call panel at every 1/16 step, and seen from inside the
+  car), the art's aspect, no
   untextured face coplanar with a textured front, and culling from in front
   and behind; `stairs.test.js` pins the step ramp to `stairStepColor`, the
   foot facing +Z, the rail and badge, and culling; `transitions.test.js`

@@ -6,7 +6,8 @@ import { FRAME } from './meshes/character-frame.js';
 import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
 import { buildStairs } from './meshes/stairs.js';
-import { buildElevator } from './meshes/elevator.js';
+import { buildElevator, elevatorDoorOpts, ELEVATOR_DOOR_STEPS } from './meshes/elevator.js';
+import { createTransition, updateTransition, transitionCamera } from './transitions.js';
 import { buildFrontDesk } from './meshes/front-desk.js';
 import { buildReturnCart } from './meshes/return-cart.js';
 import { buildFinesCounter } from './meshes/fines-counter.js';
@@ -353,6 +354,36 @@ test("buildBossOffice's locked state changes the mesh and busts the memo", () =>
   assert.notEqual(open, shut, 'a different locked state rebuilds');
   assert.ok(shut.faces.length > open.faces.length, 'locked adds the lock badge');
   assert.equal(meshFor(true), shut, 'the same state hits the memo');
+});
+
+test('an elevator ride opens the ridden car\'s doors through optsFor, rebuilding a bounded number of times', () => {
+  const ridden = { id: 'elevator-2', kind: 'elevator', x: 80, y: 540, floor: 1 };
+  const other = { id: 'elevator-x', kind: 'elevator', x: 300, y: 540, floor: 1 };
+  let ride = createTransition('elevator', 2);
+  const optsFor = (s) => (s === ridden ? elevatorDoorOpts(transitionCamera(ride).doorOpen) : undefined);
+  const meshesOf = (s) => buildFirstPersonScene({ ...input({ stations: [ridden, other], characters: [] }), optsFor })
+    .placed.find((p) => p.placement.pos[0] === s.x).mesh;
+  const closed = meshesOf(ridden);
+  const otherMesh = meshesOf(other);
+  const ridden_ = new Set([closed]);
+  let frames = 0;
+  while (ride.phase !== 'done') {
+    ride = updateTransition(ride, 1 / 60);
+    frames++;
+    ridden_.add(meshesOf(ridden));
+    assert.equal(meshesOf(other), otherMesh, 'only the ridden elevator changes');
+  }
+  assert.ok(frames > 100);
+  assert.equal(ridden_.size, ELEVATOR_DOOR_STEPS + 1, 'shut plus one rebuild per 1/16 step, not one per frame');
+  // Shut during doors-close and the rise: the approach's mesh (one memo entry
+  // per station, so it rebuilds once after the open one, to the same mesh).
+  ride = updateTransition(createTransition('elevator', 2), 1.0);
+  assert.deepEqual(meshesOf(ridden), closed);
+  // The fully open mesh has no door faces; a half-open one has narrower doors.
+  ride = updateTransition(createTransition('elevator', 2), 1.4 + 0.3);
+  const half = meshesOf(ridden);
+  assert.notDeepEqual(half.vertices, closed.vertices);
+  assert.deepEqual(half, buildElevator({ doorOpen: 0.5 }));
 });
 
 test('decor is placed on its own floor and shares one mesh per kind', () => {

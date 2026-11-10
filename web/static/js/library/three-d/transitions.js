@@ -86,6 +86,16 @@ export function forceComplete(state) {
   };
 }
 
+/**
+ * After an elevator ride the doors stay open while the rider is still in the
+ * car or its doorway, then close at the ride's own door speed (doors-open's
+ * ELEVATOR_DURATIONS[2]). Returns the new opening (0..1); 0 is shut.
+ */
+export function stepHeldDoors(open, inside, dt) {
+  const rate = Math.max(0, dt) / ELEVATOR_DURATIONS[2];
+  return inside ? Math.min(1, open + rate) : Math.max(0, open - rate);
+}
+
 // basePose = { x, y, facing } (facing in radians; forward = (sin f, -cos f) in x/z).
 export function transitionCamera(state, basePose = { x: 0, y: 0, facing: 0 }) {
   const floorSwitched = !!state.justSwitched;
