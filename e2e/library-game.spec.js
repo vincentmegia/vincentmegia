@@ -1558,6 +1558,36 @@ test.describe('First Person Mode', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing())).toBeCloseTo(0, 5);
 	});
 
+	test('picking a Return Cart book in First Person picks up the book the crosshair is on, same as clicking it in Top-Down', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		// Five known books on the cart (the middle one sits under the crosshair from the spot below).
+		const books = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.pauseScheduledEvents(true);
+			h.getShiftState().returnCart.length = 0;
+			for (let i = 0; i < 5; i++) h.spawnBookNow(i === 2);
+			return h.getReturnCartSlots().map((b) => b.id);
+		});
+		expect(books).toHaveLength(5);
+
+		await page.locator('#library-camera-button').click();
+		const cart = await getStation(page, 'return-cart');
+		await page.evaluate(({ x, y }) => {
+			window.__libraryGameTestHooks.setPlayerPosition(x, y + 130); // in front of the cart...
+			window.__libraryGameTestHooks.setPlayerFacing(0); // ...facing it.
+		}, cart);
+
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.entityKind))
+			.toBe('returnCartBook');
+		const picked = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget.ref.id);
+		expect(books).toContain(picked);
+
+		await page.keyboard.press('Enter');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(picked);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots().map((b) => b.id))).not.toContain(picked);
+	});
+
 	test('toggling back to Top-Down after First Person still supports normal click-to-move', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

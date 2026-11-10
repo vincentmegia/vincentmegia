@@ -141,12 +141,12 @@ const FP_BUILDER_KINDS = new Set([
   'ghost-patron',       // buildCharacter at placement.alpha
   'ambient-staff',      // buildCharacter via findStaffDesign
   'decor',              // DECOR_BUILDERS in meshes/decor.js
+  'return-cart-book',   // buildBook (meshes/book.js) on the cart's top tray
 ]);
 
 // Kinds where the FP builder is planned but not yet shipped — the test
 // marks these as TODO so CI stays green while each ships in its own step.
 const FP_TODO_KINDS = new Set([
-  'return-cart-book',      // Step 7: genre-colour book mesh
   'hallucination-figure',  // Step 11: dark billboard mesh
 ]);
 
