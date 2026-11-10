@@ -1460,6 +1460,77 @@ test.describe('First Person Mode', () => {
 		expect(await sample()).toEqual(first);
 	});
 
+	// Camera parity P4 (docs/features/library-first-person-3d.md, step 9): the
+	// FP floor is each floor's own Top-Down checker (floor-dressing.js), not one
+	// brown tint for both: 1st Floor's tiles are mint (green over red), 2nd
+	// Floor's cream (red over blue, as warm as Top-Down's).
+	test('First Person floor wears each floor\'s own Top-Down palette: mint on 1F, cream on 2F', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const floorPixels = async () => {
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.freeze(false);
+				h.setPlayerPosition(480, 420);
+				h.setPlayerFacing(0);
+				h.setCameraMode('first-person');
+			});
+			await page.waitForTimeout(200);
+			await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+			await page.waitForTimeout(100);
+			// The floor just ahead, left and right of the pointer-lock hint.
+			return page.evaluate(() => {
+				const canvas = document.getElementById('library-canvas');
+				const ctx = canvas.getContext('2d');
+				return [[0.3, 0.92], [0.7, 0.92], [0.4, 0.85]].map(([fx, fy]) => [...ctx.getImageData(Math.round(canvas.width * fx), Math.round(canvas.height * fy), 1, 1).data]);
+			});
+		};
+		for (const [r, g] of await floorPixels()) expect(g).toBeGreaterThan(r);
+		await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('top-down'));
+		await page.locator('#library-floor-button').click();
+		await expect.poll(() => page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		for (const [r, , b] of await floorPixels()) expect(r).toBeGreaterThan(b);
+	});
+
+	// The back wall's clock shows the live in-game time, but its art is painted
+	// again only when the minute the HUD shows changes, never every frame; the
+	// rest of the wall art (sign, shelf, sakura) and the rug are painted once.
+	test('the First Person wall clock follows the HUD clock, repainting only when its minute changes', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(480, 420);
+			h.setPlayerFacing(0);
+			h.setCameraMode('first-person');
+		});
+		await page.waitForTimeout(300); // many frames, all of the same minute
+		const art = () => page.evaluate(() => Object.fromEntries(window.__libraryGameTestHooks.getFpRoomArt().map((e) => [e.key, e])));
+		const before = await art();
+		expect(Object.keys(before).sort()).toEqual(['1|clock', '1|rug', '1|sakura', '1|shelf', '1|sign']);
+		for (const e of Object.values(before)) expect(e.paints).toBe(1);
+		expect(before['1|clock'].stateKey).toBe(await page.locator('#library-hud-clock').textContent());
+
+		// Advance the shift until the HUD's minute moves on.
+		const startLabel = before['1|clock'].stateKey;
+		await page.evaluate(async (label) => {
+			const h = window.__libraryGameTestHooks;
+			for (let i = 0; i < 600; i++) {
+				h.step(0.25);
+				await new Promise((r) => requestAnimationFrame(r));
+				if (document.getElementById('library-hud-clock').textContent !== label) return;
+			}
+		}, startLabel);
+		await page.waitForTimeout(100);
+		const after = await art();
+		const hud = await page.locator('#library-hud-clock').textContent();
+		expect(hud).not.toBe(startLabel);
+		expect(after['1|clock'].stateKey).toBe(hud);
+		expect(after['1|clock'].paints).toBe(2);
+		for (const id of ['rug', 'sakura', 'shelf', 'sign']) expect(after[`1|${id}`].paints).toBe(1);
+	});
+
 	test('on-screen buttons and arrow keys both turn and move the player', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

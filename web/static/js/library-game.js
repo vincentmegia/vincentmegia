@@ -218,6 +218,11 @@ import {
 } from './library/first-person.js';
 import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
 import { worldInventory } from './library/world-inventory.js';
+import {
+  FLOOR_TILE as TILE, WALL_BAND_HEIGHT, FLOOR_TILES, GUIDE_STRIPES, LIBRARY_SIGNS, floorRug,
+  drawGuideStripe, drawStitchedRug, drawBackWall, drawWallSakura, drawWallBookShelf, drawLibrarySign, drawWallClock,
+  roomArtRect, paintRoomArt, ROOM_ART_SCALE,
+} from './library/floor-dressing.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
@@ -2867,9 +2872,9 @@ export function init(canvas, elements) {
   // afternoon sunbeams, a cream-to-blush back wall with a pink rail, a
   // glossy sign button (Korean and English — the user asked for a Korean
   // library), a painted sakura branch, a little wall shelf of books, and the
-  // pink bell clock. The HUD bars sit on the wall band.
-  const TILE = 40;
-  const WALL_BAND_HEIGHT = 58;
+  // pink bell clock. The HUD bars sit on the wall band. TILE, WALL_BAND_HEIGHT,
+  // the palettes and the wall painters live in library/floor-dressing.js, which
+  // First Person's room builds from too.
 
   /** Set dressing from Hospital Shift's decor kit (hospital/anime-furniture.js's drawDecor). */
   const LIBRARY_DECOR = [
@@ -2903,43 +2908,21 @@ export function init(canvas, elements) {
   }
 
   function drawFloor() {
-    if (currentFloor === FLOOR_1) {
-      drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
-      drawSunbeams();
-      // Pastel guide stripes: the aisle under the Front Desk's queue, and the lower aisle.
-      drawRoundRect(ctx, 190, 252, 720, 7, 3.5, 'rgba(255,138,122,0.28)');
-      drawRoundRect(ctx, 190, 500, 620, 7, 3.5, 'rgba(63,181,143,0.26)');
-      drawBackWall();
-      sakuraBranch(ctx, 672, 28, 1.1);
-      drawWallBookShelf();
-      drawLibrarySign('도서관 · LIBRARY 1F', ANIME.coral, ANIME.coralDeep);
-      // Break-room rug under the coffee machine: soft pink, stitched border.
-      const coffee = stations.find((st) => st.kind === 'coffee-machine');
-      if (coffee) drawStitchedRug(Math.min(coffee.x - 70, CANVAS_WIDTH - 196), coffee.y - 62, 190, 120, 'rgba(255,194,218,0.55)', 'rgba(232,85,143,0.55)');
-    } else {
-      drawAnimeTiles('#f6efe4', '#efe5d6', 'rgba(255,255,255,0.18)');
-      drawSunbeams();
-      drawBackWall();
-      sakuraBranch(ctx, 672, 28, 1.1);
-      drawWallBookShelf();
-      drawLibrarySign('열람실 · READING 2F', ANIME.lavender, ANIME.lavenderDeep);
-      const nook = stations.find((st) => st.kind === 'reading-nook');
-      if (nook) drawStitchedRug(nook.x - 110, nook.y - 62, 220, 124, 'rgba(201,184,255,0.4)', 'rgba(143,122,224,0.55)');
-    }
+    const tiles = FLOOR_TILES[currentFloor];
+    drawAnimeTiles(tiles.light, tiles.dark, tiles.sheen);
+    drawSunbeams();
+    // Pastel guide stripes (1F): the aisle under the Front Desk's queue, and the lower aisle.
+    for (const stripe of GUIDE_STRIPES[currentFloor]) drawGuideStripe(ctx, stripe);
+    drawBackWall(ctx);
+    drawWallSakura(ctx);
+    drawWallBookShelf(ctx);
+    const sign = LIBRARY_SIGNS[currentFloor];
+    drawLibrarySign(ctx, sign.text, sign.color, sign.colorDeep);
+    // 1F's break-room rug under the coffee machine (soft pink), 2F's under the Reading Nook.
+    const rug = floorRug(currentFloor, stations);
+    if (rug) drawStitchedRug(ctx, rug.x, rug.y, rug.w, rug.h, rug.fill, rug.stitch);
     for (const d of LIBRARY_DECOR) if (d.floor === currentFloor) drawDecor(ctx, d);
-    drawWallClock();
-  }
-
-  function drawStitchedRug(x, y, w, h, fill, stitch) {
-    drawRoundRect(ctx, x, y, w, h, 22, fill);
-    ctx.save();
-    ctx.setLineDash([5, 4]);
-    ctx.strokeStyle = stitch;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x + 7, y + 7, w - 14, h - 14, 17);
-    ctx.stroke();
-    ctx.restore();
+    if (shiftState) drawWallClock(ctx, inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds));
   }
 
   /** Hospital Shift's floor: big pastel checker tiles with a glossy sheen. */
@@ -2992,113 +2975,6 @@ export function init(canvas, elements) {
       ctx.fill();
     });
     ctx.restore();
-  }
-
-  /** The back wall: cream to blush, a pink wainscot rail and plum trim. */
-  function drawBackWall() {
-    const g = ctx.createLinearGradient(0, 0, 0, WALL_BAND_HEIGHT);
-    g.addColorStop(0, '#fffaf3');
-    g.addColorStop(1, '#fdeef3');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, WALL_BAND_HEIGHT);
-    ctx.fillStyle = '#ffd1e3';
-    ctx.fillRect(0, 48, CANVAS_WIDTH, 7);
-    ctx.fillStyle = ANIME.ink;
-    ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
-    ctx.fillStyle = 'rgba(59,42,74,0.12)';
-    ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
-  }
-
-  /** The floor's sign, where Hospital Shift has its EMERGENCY button. */
-  function drawLibrarySign(text, color, colorDeep) {
-    animeButton(ctx, { x: 744, y: 12, w: 190, h: 32 }, '', color, colorDeep);
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    outlinedText(ctx, text, 839, 29, '#ffffff', tint(colorDeep, -0.45), 3.2);
-    sparkle(ctx, 750, 14, 5, '#ffffff');
-  }
-
-  /** A little wall shelf of books between the clock and the sakura branch. */
-  function drawWallBookShelf() {
-    const x = 566;
-    const y = 40;
-    const colors = [ANIME.pink, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.coral];
-    colors.forEach((color, i) => {
-      const h = 18 + ((i * 5) % 7);
-      const w = 7;
-      const bx = x + i * 8;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.roundRect(bx, y - h, w, h, 1.5);
-      ctx.fill();
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillRect(bx + 1.5, y - h + 3, w - 3, 1.5);
-    });
-    drawRoundRect(ctx, x - 6, y, 62, 4, 2, '#c9a77a');
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x - 6, y, 62, 4, 2);
-    ctx.stroke();
-  }
-
-  /**
-   * Hospital Shift's pastel wall clock — pink rim, plum line art, two
-   * little bells. The authoritative reading is `#library-hud-clock`'s
-   * `inGameTimeLabel` text; hands are derived by parsing that same label so
-   * the two displays never drift apart.
-   */
-  function drawWallClock() {
-    if (!shiftState) return;
-    const label = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds);
-    const match = /^(\d+):(\d+)\s(AM|PM)$/.exec(label);
-    if (!match) return;
-    const hour = Number(match[1]) % 12;
-    const minute = Number(match[2]);
-    const cx = 520;
-    const cy = 29;
-    for (const dir of [-1, 1]) {
-      ctx.fillStyle = ANIME.gold;
-      ctx.beginPath();
-      ctx.arc(cx + dir * 13, cy - 16, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
-    }
-    ctx.fillStyle = ANIME.pink;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 21, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#fffaf3';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 16.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    const hand = (angle, len, width) => {
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.sin(angle) * len, cy - Math.cos(angle) * len);
-      ctx.stroke();
-    };
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineCap = 'round';
-    hand(((hour + minute / 60) / 12) * Math.PI * 2, 9, 2.5);
-    hand((minute / 60) * Math.PI * 2, 13, 1.5);
-    ctx.lineCap = 'butt';
-    ctx.fillStyle = ANIME.pinkDeep;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   // -- Station art: Hospital Shift's anime furniture kit -----------------------
@@ -3170,6 +3046,35 @@ export function init(canvas, elements) {
       fpArtCache.set(key, art);
     }
     return art;
+  }
+
+  // First Person's room art (floor-dressing.js's paintRoomArt, Top-Down's own
+  // painters): the rug and the back-wall sign, sakura, wall shelf and clock,
+  // one canvas per floor and piece, painted once. The clock's canvas is
+  // repainted in place only when the label it shows (the HUD's minute)
+  // changes, so the scene's room mesh never rebuilds for it.
+  const fpRoomArtCache = new Map(); // `${floor}|${id}` -> {canvas, stateKey}
+  function fpRoomArtFor(id) {
+    const rect = roomArtRect(currentFloor, id, stations);
+    if (!rect) return null;
+    const key = `${currentFloor}|${id}`;
+    const stateKey = id === 'clock' && shiftState ? inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds) : '';
+    let entry = fpRoomArtCache.get(key);
+    if (!entry) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(rect.w * ROOM_ART_SCALE);
+      canvas.height = Math.ceil(rect.h * ROOM_ART_SCALE);
+      entry = { canvas, stateKey: null, paints: 0 };
+      fpRoomArtCache.set(key, entry);
+    }
+    if (entry.stateKey !== stateKey) {
+      const c = entry.canvas.getContext('2d');
+      c.clearRect(0, 0, entry.canvas.width, entry.canvas.height);
+      paintRoomArt(c, currentFloor, id, { stations, clockLabel: stateKey });
+      entry.stateKey = stateKey;
+      entry.paints += 1;
+    }
+    return entry.canvas;
   }
 
   function fpOptsFor(station) {
@@ -5105,6 +5010,7 @@ export function init(canvas, elements) {
       viewport,
       artFor: fpArtFor,
       optsFor: fpOptsFor,
+      roomArtFor: fpRoomArtFor,
     });
     for (const e of books) {
       const genre = findGenre(e.ref.genreId);
@@ -5427,6 +5333,7 @@ export function init(canvas, elements) {
       getPlayerFacing: () => playerFacing,
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
+      getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),
       attemptInteractNow: () => attemptInteract(),
       // Elevator/stair transition hooks: inspect the active ride/climb and
       // force it to complete (commits the floor switch now and clears it), so

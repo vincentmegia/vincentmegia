@@ -72,7 +72,11 @@ handling, in place of Kitchen Shift's cooking and serving.
   coffee machine, stairs, elevator and generic station box). The bookshelf,
   coffee machine and elevator wear their own Top-Down drawer's art as a
   texture, and the stairs are built from `drawStairs`' colours with its
-  arrow badge (`library-first-person-3d.md`). Top-Down keeps its detailed
+  arrow badge (`library-first-person-3d.md`). The room wears each floor's
+  own Top-Down floor and back wall: the mint (1F) or cream (2F) checker,
+  guide stripes and rugs, and the sign, sakura branch, wall shelf and live
+  wall clock on the back wall, all from `library/floor-dressing.js`, which
+  Top-Down's `drawFloor` paints from too. Top-Down keeps its detailed
   2D art, unchanged. Interaction and targeting are
   unchanged: `first-person.js` still projects entities for
   `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
@@ -245,7 +249,8 @@ handling, in place of Kitchen Shift's cooking and serving.
 * A changed Hospital module also changes this game.
 * The page uses Hospital's anime page kit, re-tinted by `.library-anime`
   in `app.css`.
-* There is a decorative wall clock on the 1st Floor (`drawWallClock`). The
+* There is a decorative wall clock on each floor's back wall
+  (`drawWallClock` in `library/floor-dressing.js`), in both cameras. The
   HUD's `#library-hud-clock` is the clock that actually counts.
 
 ---
@@ -1331,7 +1336,9 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   branch, a little wall shelf of books, and Hospital's pink bell clock;
   stitched pastel rugs under the Coffee Machine and Reading Nook; and
   decor from `hospital/anime-furniture.js`'s `drawDecor` (plants, a water
-  cooler, a library ladder, reading chairs).
+  cooler, a library ladder, reading chairs). The palettes, placements and
+  wall painters live in `library/floor-dressing.js`; First Person builds
+  its floor and back wall from the same ones.
 * **Stations**: every station is an `animeTile` with plum line art and
   Hospital's pink (hover) / gold (target) glow ring. Library's fixtures
   are drawn by the new `web/static/js/library/anime-furniture.js` in the
@@ -2100,8 +2107,8 @@ assets exist or are generatable in this environment):
 * **A visible clock**: the 8:00 AM-11:00 PM in-game time
   (`inGameTimeLabel`) is shown two ways — the HUD's `#library-hud-clock`
   text (already wired by the backend template) for at-a-glance tracking,
-  and a diegetic **wall clock** drawn as floor decoration on the 1st
-  Floor (analog clock face, hands positioned per the current in-game
+  and a diegetic **wall clock** drawn on the back wall of both floors,
+  in both cameras (analog clock face, hands positioned per the current in-game
   time) purely for scene flavor — the HUD text is the actual source of
   truth a player tracks time by, the wall clock is not a second
   interactive/authoritative display, just set dressing.
