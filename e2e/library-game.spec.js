@@ -1620,7 +1620,7 @@ test.describe('First Person Mode', () => {
 		for (const id of ['rug', 'sakura', 'shelf', 'sign']) expect(after[`1|${id}`].paints).toBe(1);
 	});
 
-	test('on-screen buttons and arrow keys both turn and move the player', async ({ page }) => {
+	test('on-screen buttons and keys both turn and move the player', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await page.locator('#library-camera-button').click();
@@ -1632,9 +1632,9 @@ test.describe('First Person Mode', () => {
 		const afterButtonTurn = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing());
 		expect(Math.abs(afterButtonTurn - initialFacing)).toBeGreaterThan(0.1);
 
-		await page.keyboard.down('ArrowLeft');
+		await page.keyboard.down('q');
 		await page.waitForTimeout(300);
-		await page.keyboard.up('ArrowLeft');
+		await page.keyboard.up('q');
 		const afterKeyTurn = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing());
 		expect(Math.abs(afterKeyTurn - afterButtonTurn)).toBeGreaterThan(0.1);
 
@@ -1651,6 +1651,39 @@ test.describe('First Person Mode', () => {
 		const afterKeyMove = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
 		expect(Math.hypot(afterKeyMove.x - afterButtonMove.x, afterKeyMove.y - afterButtonMove.y)).toBeGreaterThan(5);
 	});
+
+	// Two direction keys held at once walk diagonally without turning, and a
+	// diagonal is never faster than walking straight (it's scaled by 1/√2).
+	for (const [keys, sx, sy] of [[['w', 'a'], -1, -1], [['w', 'd'], 1, -1], [['s', 'a'], -1, 1], [['ArrowUp', 'ArrowRight'], 1, -1], [['ArrowDown', 'ArrowLeft'], -1, 1]]) {
+		test(`holding ${keys.join(' + ')} in First Person walks diagonally without turning`, async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await page.locator('#library-camera-button').click();
+			// Frozen, so the keys are held for exactly 24 stepped frames (0.4 s).
+			await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+			const walk = async (held) => {
+				await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+				for (const k of held) await page.keyboard.down(k);
+				const pos = await page.evaluate(() => {
+					const h = window.__libraryGameTestHooks;
+					for (let i = 0; i < 24; i++) h.step(1 / 60);
+					return { ...h.getPlayerPosition(), facing: h.getPlayerFacing() };
+				});
+				for (const k of held) await page.keyboard.up(k);
+				return { dx: pos.x - 480, dy: pos.y - 380, facing: pos.facing };
+			};
+			const diagonal = await walk(keys);
+			// Facing north (0), so x goes the strafe way and y the forward/back way.
+			expect(Math.sign(diagonal.dx)).toBe(sx);
+			expect(Math.sign(diagonal.dy)).toBe(sy);
+			expect(Math.abs(diagonal.dx)).toBeGreaterThan(10);
+			expect(Math.abs(diagonal.dy)).toBeGreaterThan(10);
+			expect(diagonal.facing).toBeCloseTo(0, 5);
+			// The same hold straight ahead covers at least as much ground.
+			const straight = await walk([keys[0]]);
+			expect(Math.hypot(diagonal.dx, diagonal.dy)).toBeLessThanOrEqual(Math.hypot(straight.dx, straight.dy) + 0.01);
+		});
+	}
 
 	test('interacting with the Coffee Machine in First Person (via the Enter key) opens the Coffee Pour minigame, same as Top-Down', async ({ page }) => {
 		await page.goto('/library-game');

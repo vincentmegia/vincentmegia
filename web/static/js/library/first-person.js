@@ -258,6 +258,20 @@ export function stepStrafe(x, y, facing, direction, distance) {
   return { x: x - dy * distance * direction, y: y + dx * distance * direction };
 }
 
+/**
+ * One frame's combined walk: `forward` (1 ahead, -1 back, 0 none) and `strafe`
+ * (1 right, -1 left, 0 none) held together move diagonally. A diagonal scales
+ * each axis by 1/√2, so it's never faster than walking straight ahead.
+ * @returns {{dx: number, dy: number}} world-pixel offset
+ */
+export function moveStep(forward, strafe, facing, forwardDistance, strafeDistance) {
+  const scale = forward && strafe ? Math.SQRT1_2 : 1;
+  const { dx, dy } = forwardVector(facing);
+  const f = forward * forwardDistance * scale;
+  const s = strafe * strafeDistance * scale;
+  return { dx: dx * f - dy * s, dy: dy * f + dx * s };
+}
+
 // -- Jump -------------------------------------------------------------------
 
 /** Returns a fresh jump state (not jumping). */

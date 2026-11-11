@@ -209,8 +209,7 @@ import {
   projectScene,
   findInteractTarget,
   turnFacing,
-  stepForward,
-  stepStrafe,
+  moveStep,
   MOVE_SPEED_PIXELS_PER_SECOND,
   createJumpState,
   updateJump,
@@ -1239,21 +1238,13 @@ export function init(canvas, elements) {
     let moveDirection = 0;
     if (heldFP.forward) moveDirection += 1;
     if (heldFP.back) moveDirection -= 1;
-    if (moveDirection !== 0) {
-      const distance = MOVE_SPEED_PIXELS_PER_SECOND * sanityMultiplier * sprintMultiplier * deltaSeconds;
-      const next = stepForward(player.x, player.y, playerFacing, moveDirection, distance);
-      const clamped = clampToCanvas(next.x, next.y);
-      player.x = clamped.x;
-      player.y = clamped.y;
-    }
-
     let strafeDir = 0;
     if (heldFP.strafeLeft) strafeDir -= 1;
     if (heldFP.strafeRight) strafeDir += 1;
-    if (strafeDir !== 0) {
-      const distance = FP_STRAFE_SPEED * sanityMultiplier * sprintMultiplier * deltaSeconds;
-      const next = stepStrafe(player.x, player.y, playerFacing, strafeDir, distance);
-      const clamped = clampToCanvas(next.x, next.y);
+    if (moveDirection !== 0 || strafeDir !== 0) {
+      const speed = sanityMultiplier * sprintMultiplier * deltaSeconds;
+      const { dx, dy } = moveStep(moveDirection, strafeDir, playerFacing, MOVE_SPEED_PIXELS_PER_SECOND * speed, FP_STRAFE_SPEED * speed);
+      const clamped = clampToCanvas(player.x + dx, player.y + dy);
       player.x = clamped.x;
       player.y = clamped.y;
     }
@@ -2547,9 +2538,11 @@ export function init(canvas, elements) {
     hoverStation = null;
   }
 
-  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', a: 'turnLeft', d: 'turnRight', A: 'turnLeft', D: 'turnRight' };
+  // WASD and the arrows both move in four directions, so any two held
+  // together walk diagonally; Q/E (and the mouse, and the on-screen ◀ ▶) turn.
+  const FP_TURN_KEYS = { q: 'turnLeft', Q: 'turnLeft', e: 'turnRight', E: 'turnRight' };
   const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back', w: 'forward', s: 'back', W: 'forward', S: 'back' };
-  const FP_STRAFE_KEYS = { q: 'strafeLeft', Q: 'strafeLeft', e: 'strafeRight', E: 'strafeRight' };
+  const FP_STRAFE_KEYS = { ArrowLeft: 'strafeLeft', ArrowRight: 'strafeRight', a: 'strafeLeft', A: 'strafeLeft', d: 'strafeRight', D: 'strafeRight' };
 
   function onKeyDown(e) {
     if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {

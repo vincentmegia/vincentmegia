@@ -17,6 +17,7 @@ import {
   turnFacing,
   stepForward,
   stepStrafe,
+  moveStep,
   DEFAULT_FOV_DEGREES,
   createJumpState,
   updateJump,
@@ -347,6 +348,43 @@ describe('stepStrafe', () => {
     const { x, y } = stepStrafe(100, 100, Math.PI / 2, 1, 50);
     assert.ok(Math.abs(x - 100) < 1e-9);
     assert.ok(Math.abs(y - 150) < 1e-9);
+  });
+});
+
+describe('moveStep', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+  test('a single axis matches stepForward / stepStrafe', () => {
+    const f = moveStep(1, 0, 0.7, 50, 40);
+    const sf = stepForward(0, 0, 0.7, 1, 50);
+    close(f.dx, sf.x); close(f.dy, sf.y);
+    const s = moveStep(0, -1, 0.7, 50, 40);
+    const ss = stepStrafe(0, 0, 0.7, -1, 40);
+    close(s.dx, ss.x); close(s.dy, ss.y);
+  });
+
+  test('forward + strafe left while facing north moves north-west, each axis scaled by 1/√2', () => {
+    const { dx, dy } = moveStep(1, -1, 0, 50, 50);
+    close(dx, -50 * Math.SQRT1_2);
+    close(dy, -50 * Math.SQRT1_2);
+    close(Math.hypot(dx, dy), 50);
+  });
+
+  test('a diagonal is never faster than walking straight ahead', () => {
+    for (const [f, s] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const { dx, dy } = moveStep(f, s, 1.1, 50, 40);
+      assert.ok(Math.hypot(dx, dy) <= 50 + 1e-9);
+    }
+  });
+
+  test('back + strafe right while facing east moves south-west', () => {
+    const { dx, dy } = moveStep(-1, 1, Math.PI / 2, 50, 50);
+    assert.ok(dx < 0 && dy > 0);
+  });
+
+  test('no input, no movement', () => {
+    const { dx, dy } = moveStep(0, 0, 2, 50, 40);
+    close(dx, 0); close(dy, 0);
   });
 });
 

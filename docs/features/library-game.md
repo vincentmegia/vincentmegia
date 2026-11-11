@@ -61,7 +61,11 @@ handling, in place of Kitchen Shift's cooking and serving.
   the station under the cursor). It also has a First Person camera
   (`#library-camera-button`): a true software-3D view (see
   **First Person Mode** below and `library-first-person-3d.md`) with its
-  own turn/move/interact controls (`library/first-person.js`).
+  own turn/move/interact controls (`library/first-person.js`). W/S or ↑/↓
+  walk forward/back and A/D or ←/→ strafe, so any two held together walk
+  diagonally (`moveStep` scales a diagonal by 1/√2, never faster than
+  straight ahead); Q/E, the mouse once the pointer is locked, and the
+  on-screen ◀ ▶ turn; Shift sprints, Space jumps, Enter/Space interacts.
 * **First Person Mode** is a software-3D renderer on the same 2D canvas
   (no WebGL, no dependencies) under `web/static/js/library/three-d/`: a
   pure `core.js` (matrices, camera, painter-sorted draw list, flat

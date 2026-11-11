@@ -62,11 +62,13 @@
                                      #library-camera-button's label flip.
        #library-fp-turn-left-button
        #library-fp-turn-right-button  Press-and-hold to turn the camera
-                                     left/right (same effect as holding the
-                                     Left/Right arrow keys or A/D).
+                                     left/right (same effect as holding Q/E,
+                                     or moving the mouse once it's locked).
        #library-fp-strafe-left-button
        #library-fp-strafe-right-button Press-and-hold to strafe sideways
-                                     (same effect as Q/E keys).
+                                     (same effect as A/D or the Left/Right
+                                     arrow keys; held with forward/back it
+                                     walks diagonally).
        #library-fp-forward-button
        #library-fp-back-button        Press-and-hold to move forward/back
                                      along the current facing (same effect
@@ -231,12 +233,12 @@
 						<div id="library-fp-controls" class="hidden pointer-events-none absolute inset-x-0 bottom-2 flex items-end justify-between gap-2 px-3">
 							<div class="pointer-events-auto flex touch-none select-none flex-col gap-1">
 								<div class="flex gap-2">
-									<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
-									<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
+									<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">Q&#9664;</button>
+									<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;E</button>
 								</div>
 								<div class="flex gap-2">
-									<button type="button" id="library-fp-strafe-left-button" aria-label="Strafe left" class="ha-btn ha-btn--soft px-3 py-1 text-xs">Q&#8592;</button>
-									<button type="button" id="library-fp-strafe-right-button" aria-label="Strafe right" class="ha-btn ha-btn--soft px-3 py-1 text-xs">&#8594;E</button>
+									<button type="button" id="library-fp-strafe-left-button" aria-label="Strafe left" class="ha-btn ha-btn--soft px-3 py-1 text-xs">A&#8592;</button>
+									<button type="button" id="library-fp-strafe-right-button" aria-label="Strafe right" class="ha-btn ha-btn--soft px-3 py-1 text-xs">&#8594;D</button>
 								</div>
 							</div>
 							<div class="pointer-events-auto flex touch-none select-none flex-col items-center gap-1">
