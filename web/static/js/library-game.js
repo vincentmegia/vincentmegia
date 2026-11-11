@@ -1108,18 +1108,28 @@ export function init(canvas, elements) {
     }
   }
 
-  function switchFloor(floor) {
+  function switchFloor(floor, { viaElevator = false } = {}) {
     currentFloor = floor;
-    const entry = entryPointForFloor(floor);
-    player.x = entry.x;
-    player.y = entry.y;
     moveTarget = null;
     hoverStation = null;
-    // "Picking a sensible default facing angle... is fine" (doc's Scope) —
-    // face the new floor's room center rather than keeping whatever facing
-    // happened to be current, same reasoning as `setCameraMode`'s own
-    // default below. Harmless in Top-Down mode, which never reads facing.
-    playerFacing = defaultFacingTowardCenter(entry.x, entry.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // An elevator rider steps out of the new floor's car, facing out, in either
+    // camera, so the two views agree on where the ride ends.
+    const car = viaElevator ? stations.find((s) => s.kind === 'elevator' && s.floor === floor) : null;
+    if (car) {
+      const pose = elevatorRiderPose(car, UNIT_SCALE);
+      player.x = pose.x;
+      player.y = pose.y;
+      playerFacing = pose.facing;
+    } else {
+      const entry = entryPointForFloor(floor);
+      player.x = entry.x;
+      player.y = entry.y;
+      // "Picking a sensible default facing angle... is fine" (doc's Scope) —
+      // face the new floor's room center rather than keeping whatever facing
+      // happened to be current, same reasoning as `setCameraMode`'s own
+      // default below. Harmless in Top-Down mode, which never reads facing.
+      playerFacing = defaultFacingTowardCenter(entry.x, entry.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
     updateFloorButton();
   }
 
@@ -1285,17 +1295,7 @@ export function init(canvas, elements) {
     if (!fpTransition) return;
     const cam = transitionCamera(fpTransition, { x: player.x, y: player.y, facing: playerFacing });
     const car = fpTransition.kind === 'elevator' ? stations.find((s) => s.kind === 'elevator' && s.floor === fpTransition.targetFloor) : null;
-    if (cam.floorSwitched) {
-      switchFloor(fpTransition.targetFloor);
-      // An elevator rider arrives in the new floor's car, facing out, so the
-      // doors-open phase opens the doors in front of them.
-      if (car) {
-        const pose = elevatorRiderPose(car, UNIT_SCALE);
-        player.x = pose.x;
-        player.y = pose.y;
-        playerFacing = pose.facing;
-      }
-    }
+    if (cam.floorSwitched) switchFloor(fpTransition.targetFloor, { viaElevator: Boolean(car) });
     if (fpTransition.phase === 'done') {
       if (car) fpHeldDoors = { id: car.id, open: 1 };
       fpTransition = null;
@@ -2252,7 +2252,7 @@ export function init(canvas, elements) {
 
   function handleArrival(station) {
     if (station.kind === 'stairs' || station.kind === 'elevator') {
-      switchFloor(station.targetFloor);
+      switchFloor(station.targetFloor, { viaElevator: station.kind === 'elevator' });
       return;
     }
     if (!shiftState) return;

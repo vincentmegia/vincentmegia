@@ -531,6 +531,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Queue/station label chips, patience bars, "+N waiting", "+N more", messy cart, Boss's Office countdown | slot drawers, `drawStation` | ✅ world labels from the same functions (`labelForStation`, `queueSlotChips`, `queueOverflowChip`, `returnCartChips`) |
 | Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
 | Elevator doors | `drawElevator` | ✅ the ridden car's doors open during the ride (the rider stands in it) and close behind them; shut otherwise. Top-Down draws them shut and switches floors instantly |
+| Where an elevator ride ends | `switchFloor` | ✅ both cameras land the rider in the new floor's car facing out (`switchFloor(floor, {viaElevator})` → `elevatorRiderPose`); the stairs and the HUD floor button land at the floor's entry point |
 | Game state across a flip (P3) | `setCameraMode` | ✅ unchanged, mid-ride included (lossless-flip e2e, step 2) |
 | Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
 
@@ -717,11 +718,9 @@ crosshair and minimap.
   (re-clicking a plain station mid-walk in Top-Down leaves it set the same
   way). The lossless-flip e2e runs frozen with no walk in flight, so it
   doesn't cover this.
-* An FP elevator ride ends with the player standing in the car (on the
-  elevator's tile if they flip to Top-Down there), while Top-Down's own
-  elevator lands them at the floor's entry point. The doors only open on
-  arrival: doors-close keeps them shut (they are already shut on approach),
-  so the departure has no closing animation.
+* The elevator doors only open on arrival: doors-close keeps them shut
+  (they are already shut on approach), so the departure has no closing
+  animation.
 * Return Cart books stand on the cart's top tray in FP, but their FP
   interaction entities (`buildFirstPersonEntities`) are still anchored at the
   Top-Down slot points, about 2 units in front of the cart. Aiming at the cart

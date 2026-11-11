@@ -99,9 +99,10 @@ handling, in place of Kitchen Shift's cooking and serving.
   world-anchored labels: every label within 520 px, fading with distance and
   hidden behind a station, the crosshair target's at full opacity; patience
   bars within 300 px. What is still missing is listed under Known gaps in
-  `library-first-person-3d.md`. An elevator ride lands Eun-mi in the new
-  floor's car facing out, its doors open in front of her, and they close
-  once she steps out. **Requirement:** the two cameras are views of one world, so a flip
+  `library-first-person-3d.md`. The elevator lands Eun-mi in the new
+  floor's car facing out in either camera (the stairs and the HUD floor
+  button land her at the floor's entry point); in FP its doors open in
+  front of her and close once she steps out. **Requirement:** the two cameras are views of one world, so a flip
   must never lose a person, prop, label or interaction — see "Camera
   parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and
   work breakdown.

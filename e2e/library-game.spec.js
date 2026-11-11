@@ -384,6 +384,13 @@ test.describe('floor switching', () => {
 
 		await walkToStation(page, 'elevator');
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(1);
+		// Top-Down's elevator lands the rider in the new floor's car, as the First
+		// Person ride does: on that car's tile, a little behind its centre.
+		const car = await getStation(page, 'elevator');
+		const pos = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
+		expect(pos.x).toBeCloseTo(car.x, 0);
+		expect(pos.y).toBeGreaterThan(car.y);
+		expect(pos.y - car.y).toBeLessThan(car.size);
 	});
 
 	// First Person floor changes are animated (ride/climb) rather than instant:
