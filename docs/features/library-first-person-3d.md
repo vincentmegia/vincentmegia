@@ -149,10 +149,10 @@ used for `findInteractTarget`; it does not draw.
 A prop with a flat, readable front wears **its own Top-Down drawer's art**
 (`docs/skills/2d-to-3d/SKILL.md`; design:
 `docs/superpowers/specs/2026-11-07-library-fp-prop-art-design.md`): the
-bookshelf, the coffee machine and the elevator. The stairs' 2D (`drawStairs`)
+bookshelf, the coffee machine, the elevator and the Boss's Office. The stairs' 2D (`drawStairs`)
 is a plan view, which can't be worn as a front, so the stairs are geometry
 built from that drawer's exports plus one textured part, the arrow badge. The
-five other stations are still plain boxes (see Known gaps).
+other stations are geometry in their drawers' colours (see Known gaps).
 
 `library-game.js`'s `FP_ART` is one entry per kind whose mesh wears art,
 `{w, h, paint(ctx, station), stateKey?(station)}`: `fpArtFor` paints a canvas
@@ -181,6 +181,11 @@ just that mesh.
 | `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, the door panels recessed 0.015 behind the frame's face, and the car (ceiling, back wall, and the frame's back seen from inside). Opening, each door slides away behind its post, clipped to the doorway: what is left shows the inner part of its own door region (uv follows the visible part), so the doors never leave the doorway or cover the indicator or call panel; fully open they are gone. The door backs (and, shut, a strip over the 2D seam) face into the car. 56 faces shut, 49 fully open (12 / 10 textured), all `cull` |
 | `elevatorDoorOpts(open)`, `ELEVATOR_DOOR_STEPS` | `meshes/elevator.js` | The `optsFor` value for a door opening: `{doorOpen}` quantised to 1/16, or `undefined` when shut so a closed elevator keeps the memo entry it has on approach. A ride rebuilds the ridden car's mesh at most 16 times opening (`scene.test.js` counts it over a simulated ride) instead of every frame |
 | `elevatorRiderPose(station, unitScale)`, `isInElevatorCar(station, pos, unitScale)`, `ELEVATOR_CAR_STAND_Z` | `meshes/elevator.js` | Where an FP rider stands (0.85 back in the car, facing out: facing 0) and whether a game-px point is in the car or its doorway (where held doors stay open) |
+| `bossDoorLayout(st, height = st.h)`, `drawBossDoor(ctx, st, {height?})`, `drawBossLock(ctx)`, `BOSS_DOOR_COLORS` | `library/anime-furniture.js` | Where the Boss's door drawer puts the frame, door, plaque, knob and padlock badge; `height` draws it into a taller box than the tile (Top-Down passes none, and its call trace is unchanged). `drawBossLock` is the padlock badge Top-Down's `drawStation` draws over the locked door (moved out of `library-game.js`). `BOSS_DOOR_COLORS.tile`/`tileLocked` are the tile it stands on |
+| `BOSS_OFFICE_SIZE`, `BOSS_OFFICE_ART`, `BOSS_OFFICE_ART_SCALE` | `meshes/boss-office.js` | A 1.2 m frame around a ~1.05 × 2.05 m door in a 1.63 × 2.32 m wall section, the office running 2.5 back toward the north wall; the art box `{w: 84, h: 124}` gives the door a real door's aspect; 3 image px per art px |
+| `paintBossOfficeArt(ctx, station, {locked})` | `meshes/boss-office.js` | Opaque tile backing (grey while locked), then `animeTile`, then `drawBossDoor` at `BOSS_OFFICE_ART`, then `drawBossLock` while locked |
+| `buildBossOffice({art, locked})` | `meshes/boss-office.js` | Faces +Z toward the approaching player. A small office: lit tile-coloured sides, roof and back, its front a wall section (either side of the frame and a header) wearing the tile art, the frame 0.04 proud, the door recessed 0.02, the knob and (locked) padlock badge proud of the door, and the BOSS plaque proud over the lintel. 34 faces unlocked, 39 locked (9 / 10 textured), all `cull` |
+| `FP_ART['boss-office']`, `bossOfficeLocked()` | `library-game.js` | `stateKey` is `'locked'` while the office is locked (all shift and through the closing wait; the one check Top-Down's tile, the inventory and `optsFor` share), so the greyed, padlocked canvas is painted once per state |
 | `STAIRS_COLORS`, `STAIRS_RAIL`, `STAIRS_BADGE`, `stairStepColor(i, steps = 5)`, `stairsArrowDir(st)`, `drawStairsBadge(ctx, x, y, dir)` | `hospital/anime-furniture.js` | What `drawStairs` draws with: the step ramp (exact for 5 steps, spread over more), the edge/shadow/rail/badge colours, the rail's 5 px ink under 3 px wood, and the up/down badge |
 | `STAIRS_SIZE`, `STAIRS_BADGE_ART`, `BADGE_ART_SCALE` | `meshes/stairs.js` | 1.12 wide × 1.44 tall × 2.24 deep for 8 steps (rise 0.18, run 0.28, unchanged); the badge art box 24 × 24 at 8 image px per art px |
 | `paintStairsBadgeArt(ctx, station)` | `meshes/stairs.js` | Opaque step-colour backing, then `drawStairsBadge` pointing the station's way |
@@ -517,8 +522,9 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Top-Down draws | Where | In FP today |
 |---|---|---|
 | Every floor-plan station | `drawStation` | ✅ all present; bookshelf, coffee machine, elevator, stairs referenced to 2D |
-| Front Desk, Return Cart, Fines Counter, Boss's Office, Reading Nook | `STATION_DETAIL_DRAWERS` | ✅ geometry meshes in `meshes/{front-desk,return-cart,fines-counter,boss-office,reading-nook}.js` |
-| Boss's Office locked state (grey + padlock) | `drawStation` | ✅ `optsFor` passes `{locked}` to `buildBossOffice`; grey door + lock badge |
+| Front Desk, Return Cart, Fines Counter, Reading Nook | `STATION_DETAIL_DRAWERS` | ✅ geometry meshes in `meshes/{front-desk,return-cart,fines-counter,reading-nook}.js` |
+| Boss's Office | `drawBossDoor` | ✅ wears `drawBossDoor`'s art on a small office (`meshes/boss-office.js`) |
+| Boss's Office locked state (grey + padlock) | `drawStation`, `drawBossLock` | ✅ `optsFor` passes `{locked}` to `buildBossOffice` and `FP_ART`'s stateKey repaints the art: grey tile + padlock badge, proud of the door |
 | Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
 | Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha`; "???" chip as a world label |
 | Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |

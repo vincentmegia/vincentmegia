@@ -49,7 +49,7 @@ import {
 } from './hospital/anime-ui.js';
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import {
-  drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook,
+  drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawBossLock, drawReadingNook,
   drawCoffeeMachine, drawOutOfOrderTape, COFFEE_MACHINE_COLORS,
 } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
@@ -229,6 +229,7 @@ import {
 } from './library/floor-dressing.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
+import { paintBossOfficeArt, BOSS_OFFICE_ART, BOSS_OFFICE_ART_SCALE } from './library/three-d/meshes/boss-office.js';
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, elevatorRiderPose, isInElevatorCar } from './library/three-d/meshes/elevator.js';
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
@@ -2898,8 +2899,6 @@ export function init(canvas, elements) {
   ];
 
   function inventoryOpts() {
-    const bossLocked = shiftState
-      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
     return {
       stations,
       frontDeskSlots: currentFloor === FLOOR_1 ? frontDeskSlots : () => [],
@@ -2908,7 +2907,7 @@ export function init(canvas, elements) {
       ambient,
       decorItems: LIBRARY_DECOR,
       halluc,
-      bossOfficeLocked: Boolean(bossLocked),
+      bossOfficeLocked: bossOfficeLocked(),
       coffeeOutOfOrder: coffeeOutOfOrder(),
     };
   }
@@ -2997,7 +2996,6 @@ export function init(canvas, elements) {
   /** Korean genre names for the bookcase signs (the Korean-library theme). */
   const GENRE_SIGNS_KO = { mystery: '추리', romance: '로맨스', scifi: 'SF', kids: '어린이', reference: '참고' };
 
-  /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
   /** drawBookcase's options for a shelf: the same for Top-Down and First Person's art, so both views show the same books. */
   function bookcaseDrawOpts(station) {
     const genre = findGenre(station.genreId);
@@ -3033,6 +3031,13 @@ export function init(canvas, elements) {
       w: ELEVATOR_ART.w * ELEVATOR_ART_SCALE,
       h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
       paint: (c, station) => paintElevatorArt(c, station),
+    },
+    // The door greys out and wears the padlock while the office is locked, as Top-Down's does.
+    'boss-office': {
+      w: BOSS_OFFICE_ART.w * BOSS_OFFICE_ART_SCALE,
+      h: BOSS_OFFICE_ART.h * BOSS_OFFICE_ART_SCALE,
+      paint: (c, station) => paintBossOfficeArt(c, station, { locked: bossOfficeLocked() }),
+      stateKey: () => (bossOfficeLocked() ? 'locked' : ''),
     },
     // The stairs' arrow badge (up or down: per station, and stations are keyed by id).
     stairs: {
@@ -3105,12 +3110,14 @@ export function init(canvas, elements) {
     return entry.canvas;
   }
 
+  /** Whether the Boss's Office is locked: all shift and through the closing wait. */
+  function bossOfficeLocked() {
+    return Boolean(shiftState
+      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState))));
+  }
+
   function fpOptsFor(station) {
-    if (station.kind === 'boss-office') {
-      const locked = shiftState
-        && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
-      return { locked: Boolean(locked) };
-    }
+    if (station.kind === 'boss-office') return { locked: bossOfficeLocked() };
     if (station.kind === 'elevator') return elevatorDoorOpts(fpElevatorDoorOpen(station));
     return undefined;
   }
@@ -3144,8 +3151,7 @@ export function init(canvas, elements) {
     // Locked all shift and through the closing wait — v2.13: it used to
     // *look* unlocked during the 20 s closing wait while arriving did
     // nothing (user: "when i want to get into the bosses office i cannot").
-    const locked = station.kind === 'boss-office' && shiftState
-      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
+    const locked = station.kind === 'boss-office' && bossOfficeLocked();
     const cx = opts.centerX ?? station.x;
     const cy = opts.centerY ?? station.y;
 
@@ -3154,16 +3160,7 @@ export function init(canvas, elements) {
     ctx.scale(scale, scale);
     animeTile(ctx, -hw, -hh, hw * 2, hh * 2, 12, locked ? '#cfc8d8' : (STATION_COLORS[station.kind] || '#f2e6d0'));
     STATION_DETAIL_DRAWERS[station.kind]?.(box);
-    if (locked) {
-      // A padlock badge over the (greyed) office door.
-      drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
-      ctx.strokeStyle = '#5a5060';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, -2, 5.5, Math.PI, 0);
-      ctx.stroke();
-      drawRoundRect(ctx, -7.5, 1, 15, 11, 3, '#5a5060');
-    }
+    if (locked) drawBossLock(ctx); // a padlock badge over the (greyed) office door
     ctx.strokeStyle = ANIME.ink;
     ctx.lineWidth = 2;
     ctx.beginPath();
