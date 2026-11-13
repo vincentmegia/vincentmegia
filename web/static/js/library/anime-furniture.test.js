@@ -9,6 +9,12 @@ import {
   frontDeskLayout,
   drawReturnCart,
   drawFinesRoom,
+  drawFinesPlaque,
+  drawFinesCounterBase,
+  drawFinesDisplay,
+  drawFinesRegister,
+  finesRoomLayout,
+  FINES_ROOM_COLORS,
   drawBossDoor,
   drawReadingNook,
   coffeeMachineLayout,
@@ -205,6 +211,59 @@ describe('library anime furniture', () => {
     const a = JSON.stringify(whole.calls);
     const b = JSON.stringify(part.calls).slice(1, -1);
     assert.ok(part.calls.length > 0 && a.includes(b), 'the counter\'s calls appear in order, unbroken, in drawFrontDesk');
+  });
+
+  // The First Person fines counter maps its faces onto these regions, so the
+  // layout must keep Top-Down's own numbers (the 130 x 130 room).
+  test('finesRoomLayout keeps the Top-Down fines counter geometry', () => {
+    const L = finesRoomLayout({ w: 130, h: 130 });
+    assert.deepEqual(L.plaque, { x0: -36, y0: -57, x1: 36, y1: -40 });
+    assert.deepEqual(L.body, { x0: -53, y0: 12, x1: 53, y1: 55 });
+    assert.deepEqual(L.top, { x0: -57, y0: 6, x1: 57, y1: 15 });
+    assert.deepEqual(L.housing, { x0: -8, y0: -22, x1: 22, y1: -13 });
+    assert.deepEqual(L.display, { x0: -5, y0: -20.5, x1: 13, y1: -15 });
+    assert.deepEqual(L.register, { x0: -14, y0: -14, x1: 26, y1: 6 });
+    assert.deepEqual(L.coins, [{ x: -34, n: 4 }, { x: -25, n: 2 }]);
+    assert.equal(L.coinBase, 4);
+    assert.equal(L.coinPitch, 3.6);
+    assert.equal(L.coinR, 5);
+    assert.equal(L.floor, 55);
+  });
+
+  test('drawFinesRoom draws its parts from finesRoomLayout', () => {
+    const L = finesRoomLayout({ w: 130, h: 130 });
+    const { ctx, calls } = recordingContext();
+    drawFinesRoom(ctx, { w: 130, h: 130 });
+    const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    for (const r of [L.plaque, L.body, L.top, L.housing, L.display, L.register]) {
+      assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
+    }
+    const coins = calls.filter(([k]) => k === 'ellipse').map(([, a]) => [a[0], a[1], a[2]]);
+    const want = L.coins.flatMap(({ x, n }) => Array.from({ length: n }, (_, i) => [x, L.coinBase - i * L.coinPitch, L.coinR]));
+    assert.deepEqual(coins, want);
+    assert.equal(coins.length, 6);
+    // The flat fills of the parts are FINES_ROOM_COLORS' (the blocks' are gradients of them).
+    const fills = new Set(calls.filter(([k]) => k === 'set:fillStyle').map(([, [v]]) => v));
+    for (const c of ['display', 'keys', 'coin', 'coinDeep']) assert.ok(fills.has(FINES_ROOM_COLORS[c]), c);
+  });
+
+  // First Person repaints each textured part alone, clipped to its region, so
+  // each helper must be exactly the drawer's own unbroken run of calls.
+  test('the fines part helpers are contiguous runs of drawFinesRoom\'s own calls', () => {
+    const st = { w: 130, h: 130 };
+    const L = finesRoomLayout(st);
+    const whole = JSON.stringify((() => { const r = recordingContext(); drawFinesRoom(r.ctx, st); return r.calls; })());
+    for (const [draw, parts] of [
+      [drawFinesPlaque, [L.plaque]],
+      [drawFinesCounterBase, [L.body, L.top]],
+      [drawFinesDisplay, [L.housing, L.display]],
+      [drawFinesRegister, [L.register]],
+    ]) {
+      const part = recordingContext();
+      draw(part.ctx, st);
+      assert.deepEqual(part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a)), parts, draw.name);
+      assert.ok(part.calls.length > 0 && whole.includes(JSON.stringify(part.calls).slice(1, -1)), `${draw.name} is unbroken in drawFinesRoom`);
+    }
   });
 
   test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {

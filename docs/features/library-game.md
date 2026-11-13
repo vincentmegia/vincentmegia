@@ -1409,7 +1409,15 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   repaints over its slab's region to keep the slab's front clean; First Person's Front Desk
   wears that same drawing on its counter, slab and monitor and places its
   books, bell and plant from the layout, so a change to the desk's art
-  shows in both cameras.
+  shows in both cameras. `drawFinesRoom` likewise draws from
+  `finesRoomLayout` and `FINES_ROOM_COLORS` through four exported helpers,
+  each its own unbroken run of calls: `drawFinesPlaque` (plaque and
+  lettering), `drawFinesCounterBase` (body, top, heart), `drawFinesDisplay`
+  (housing and display) and `drawFinesRegister` (register and keypad).
+  First Person's Fines Counter wears that drawing on its body, top,
+  register, housing and plaque (repainting each part clipped to its own
+  region so it shows nothing else) and places its coin stacks from the
+  layout, so a change to the counter's art shows in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

@@ -534,14 +534,104 @@ export function drawReturnCart(ctx, st) {
   }
 }
 
+/** The Fines Counter's own colours: its plaque, counter, register, display and coins. */
+export const FINES_ROOM_COLORS = {
+  plaque: ANIME.coral,
+  counter: '#ffcfa8',
+  top: '#e8b58a',
+  housing: '#5a5a78',
+  display: '#bff2e0',
+  register: ANIME.lavender,
+  keys: '#ffffff',
+  coin: ANIME.gold,
+  coinDeep: ANIME.goldDeep,
+};
+
+/**
+ * Where drawFinesRoom puts its parts, in the station's centered px: the
+ * plaque, the counter body and its top slab, the register's display housing
+ * and display, the register itself, the coin stacks (each an x and a count,
+ * the lowest coin's centre at `coinBase`, each next one `coinPitch` higher,
+ * `coinR` wide), and `floor`, the body's bottom edge the counter stands on.
+ * The plaque and counter follow `st.w`/`st.h`; the register and coins are
+ * fixed px. Top-Down's box is 130 x 130. First Person's fines-counter mesh
+ * maps its faces onto these same regions (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function finesRoomLayout(st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  return {
+    plaque: { x0: -36, y0: -hh + 8, x1: 36, y1: -hh + 8 + 17 },
+    body: { x0: -hw + 12, y0: 12, x1: -hw + 12 + (st.w - 24), y1: 12 + (hh - 22) },
+    top: { x0: -hw + 8, y0: 6, x1: -hw + 8 + (st.w - 16), y1: 15 },
+    housing: { x0: -8, y0: -22, x1: 22, y1: -13 },
+    display: { x0: -5, y0: -20.5, x1: 13, y1: -15 },
+    register: { x0: -14, y0: -14, x1: 26, y1: 6 },
+    coins: [{ x: -34, n: 4 }, { x: -25, n: 2 }],
+    coinBase: 4,
+    coinPitch: 3.6,
+    coinR: 5,
+    floor: 12 + (hh - 22),
+  };
+}
+
+/**
+ * The Fines Counter's plaque with its lettering, as drawFinesRoom draws it.
+ * First Person repaints it clipped to its region, so the plaque's front shows
+ * only the plaque (not the room's tiles and glow at its rounded corners).
+ */
+export function drawFinesPlaque(ctx, st) {
+  const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.plaque), 8, FINES_ROOM_COLORS.plaque, 1.3);
+  plaqueText(ctx, '벌금 · FINES', 0, -hh + 16.8, 'bold 9.5px sans-serif', '#ffffff', ANIME.coralDeep, 2.2);
+}
+
+/**
+ * The Fines Counter's counter alone: the body, the top slab and the heart,
+ * as drawFinesRoom draws them. First Person repaints it clipped to the body
+ * and slab, so their fronts show none of what the 2D draws over the slab's
+ * edge (the register and coins stand on the slab in 3D).
+ */
+export function drawFinesCounterBase(ctx, st) {
+  const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  const C = FINES_ROOM_COLORS;
+  block(ctx, ...xywh(L.body), 8, C.counter, 1.5);
+  block(ctx, ...xywh(L.top), 4.5, C.top, 1.4);
+  heart(ctx, 0, hh - 20, 4, 'rgba(232,85,143,0.7)');
+}
+
+/** The register's display housing and its display, as drawFinesRoom draws them. */
+export function drawFinesDisplay(ctx, st) {
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.housing), 2, FINES_ROOM_COLORS.housing, 1.2);
+  flat(ctx, ...xywh(L.display), 1, FINES_ROOM_COLORS.display, 0.8);
+}
+
+/** The register's body and its keypad, as drawFinesRoom draws them. */
+export function drawFinesRegister(ctx, st) {
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.register), 4, FINES_ROOM_COLORS.register, 1.3);
+  ctx.fillStyle = FINES_ROOM_COLORS.keys;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) ctx.fillRect(-9 + c * 6.5, -10 + r * 4.6, 4.2, 3);
+  }
+}
+
 /**
  * The Fines Counter as a small room, the way Hospital Shift draws its
  * Operating Room: its own pastel tiles and lamp glow inside the box, a
- * plaque, and the counter with a register and coin stacks.
+ * plaque, and the counter with a register and coin stacks. Drawn from
+ * finesRoomLayout and FINES_ROOM_COLORS.
  */
 export function drawFinesRoom(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  const C = FINES_ROOM_COLORS;
   ctx.save();
   path(ctx, -hw, -hh, st.w, st.h, 12);
   ctx.clip();
@@ -555,27 +645,17 @@ export function drawFinesRoom(ctx, st) {
   ctx.fillStyle = glow;
   ctx.fillRect(-hw, -hh, st.w, st.h);
   ctx.restore();
-  // Plaque.
-  block(ctx, -36, -hh + 8, 72, 17, 8, ANIME.coral, 1.3);
-  plaqueText(ctx, '벌금 · FINES', 0, -hh + 16.8, 'bold 9.5px sans-serif', '#ffffff', ANIME.coralDeep, 2.2);
-  // Counter.
-  block(ctx, -hw + 12, 12, st.w - 24, hh - 22, 8, '#ffcfa8', 1.5);
-  block(ctx, -hw + 8, 6, st.w - 16, 9, 4.5, '#e8b58a', 1.4);
-  heart(ctx, 0, hh - 20, 4, 'rgba(232,85,143,0.7)');
-  // Register: display, body, keypad, drawer.
-  block(ctx, -8, -22, 30, 9, 2, '#5a5a78', 1.2);
-  flat(ctx, -5, -20.5, 18, 5.5, 1, '#bff2e0', 0.8);
-  block(ctx, -14, -14, 40, 20, 4, ANIME.lavender, 1.3);
-  ctx.fillStyle = '#ffffff';
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 4; c++) ctx.fillRect(-9 + c * 6.5, -10 + r * 4.6, 4.2, 3);
-  }
+  drawFinesPlaque(ctx, st);
+  drawFinesCounterBase(ctx, st);
+  // Register: display, body, keypad.
+  drawFinesDisplay(ctx, st);
+  drawFinesRegister(ctx, st);
   // Coin stacks.
-  for (const [cx, n] of [[-34, 4], [-25, 2]]) {
+  for (const { x: cx, n } of L.coins) {
     for (let i = 0; i < n; i++) {
-      ctx.fillStyle = i % 2 ? ANIME.goldDeep : ANIME.gold;
+      ctx.fillStyle = i % 2 ? C.coinDeep : C.coin;
       ctx.beginPath();
-      ctx.ellipse(cx, 4 - i * 3.6, 5, 2.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, L.coinBase - i * L.coinPitch, L.coinR, 2.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = INK;
       ctx.lineWidth = 0.8;
