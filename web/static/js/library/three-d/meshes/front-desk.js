@@ -12,7 +12,7 @@
 // patrons queue on and the player walks up to). Pure and deterministic.
 import { prism, merge, emptyMesh, boxWithout, textureFront, translate } from './geom.js';
 import { leafBlob } from './decor.js';
-import { frontDeskLayout, drawFrontDesk, FRONT_DESK_COLORS } from '../../anime-furniture.js';
+import { frontDeskLayout, drawFrontDesk, drawFrontDeskCounter, FRONT_DESK_COLORS } from '../../anime-furniture.js';
 
 /** The box drawFrontDesk is drawn into for First Person: Top-Down's own. */
 export const FRONT_DESK_ART = { w: 124, h: 84 };
@@ -33,7 +33,8 @@ const DIV_WIDE = [2, 1];
  * Paints the First Person front desk art: an opaque backing in the counter
  * colour (the renderer needs the mapped regions opaque, and the blocks'
  * rounded corners are not), seam fills under the slab and monitor, then
- * drawFrontDesk at FRONT_DESK_ART. `ctx` is a
+ * drawFrontDesk at FRONT_DESK_ART, then the counter again clipped to the
+ * slab (drawFrontDeskCounter), so the slab's front is the clean slab. `ctx` is a
  * canvas of FRONT_DESK_ART.w x .h times FRONT_DESK_ART_SCALE. Reads only
  * `station.id`.
  */
@@ -51,7 +52,21 @@ export function paintFrontDeskArt(ctx, station) {
     ctx.fillStyle = color;
     ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
   }
-  drawFrontDesk(ctx, { id: station.id, w: FRONT_DESK_ART.w, h: FRONT_DESK_ART.h });
+  const box = { id: station.id, w: FRONT_DESK_ART.w, h: FRONT_DESK_ART.h };
+  drawFrontDesk(ctx, box);
+  // A clean slab: the 2D draws the pot's foot, the monitor's stand, the
+  // lowest book and the bell's base over the slab's edge, but in 3D those
+  // stand on the slab, so its front shows only the counter, repainted here
+  // clipped to the slab's region (on its seam fill, so its rounded corners
+  // keep nothing of what was drawn over them).
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(L.top.x0, L.top.y0, L.top.x1 - L.top.x0, L.top.y1 - L.top.y0);
+  ctx.clip();
+  ctx.fillStyle = FRONT_DESK_COLORS.top;
+  ctx.fillRect(L.top.x0, L.top.y0, L.top.x1 - L.top.x0, L.top.y1 - L.top.y0);
+  drawFrontDeskCounter(ctx, box);
+  ctx.restore();
   ctx.restore();
 }
 

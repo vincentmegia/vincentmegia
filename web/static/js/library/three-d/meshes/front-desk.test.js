@@ -143,3 +143,29 @@ test('paintFrontDeskArt lays an opaque counter-coloured backing first, from a st
   // drawFrontDesk ran at the 124 x 84 art box: its body block is there.
   assert.ok(calls.some(([k, a]) => k === 'roundRect' && sameRect({ x0: a[0], y0: a[1], x1: a[0] + a[2], y1: a[1] + a[3] }, L.body)));
 });
+
+test('paintFrontDeskArt repaints the slab clean: after the desk, a clip to L.top and the slab block again', () => {
+  const calls = [];
+  const grad = { addColorStop() {} };
+  const ctx = new Proxy({}, {
+    get: (_, k) => (k === 'measureText' ? () => ({ width: 5 }) : (k === 'createLinearGradient' || k === 'createRadialGradient') ? () => grad : (...a) => calls.push([k, a])),
+    set: (_, k, v) => { calls.push(['set:' + k, [v]]); return true; },
+  });
+  paintFrontDeskArt(ctx, { id: 'x' });
+  const rect = (a) => ({ x0: a[0], y0: a[1], x1: a[0] + a[2], y1: a[1] + a[3] });
+  // drawFrontDesk's last call is the sparkle's fill; everything over the slab
+  // edge (pot, stand, books, bell base) comes before it.
+  const pot = calls.findIndex(([k, a]) => k === 'roundRect' && sameRect(rect(a), L.pot));
+  assert.ok(pot > 0, 'the desk was drawn');
+  const clip = calls.findIndex(([k], i) => i > pot && k === 'clip');
+  assert.ok(clip > pot, 'a clip after the desk');
+  const clipRect = calls.slice(pot + 1, clip).filter(([k]) => k === 'rect').map(([, a]) => rect(a)).pop();
+  assert.ok(clipRect && sameRect(clipRect, L.top), `clip rect ${JSON.stringify(clipRect)}`);
+  const slab = calls.findIndex(([k, a], i) => i > clip && k === 'roundRect' && sameRect(rect(a), L.top));
+  assert.ok(slab > clip, 'the slab block is drawn inside the clip');
+  // Nothing but the counter is drawn after the clip: no pot, books, bell.
+  for (const r of [L.pot, L.bellBase, L.stand, ...L.books]) {
+    assert.ok(!calls.slice(clip).some(([k, a]) => k === 'roundRect' && sameRect(rect(a), r)), JSON.stringify(r));
+  }
+  assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
+});

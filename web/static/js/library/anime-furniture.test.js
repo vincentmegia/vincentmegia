@@ -5,6 +5,7 @@ import {
   bookcaseLayout,
   drawBookcase,
   drawFrontDesk,
+  drawFrontDeskCounter,
   frontDeskLayout,
   drawReturnCart,
   drawFinesRoom,
@@ -191,6 +192,19 @@ describe('library anime furniture', () => {
     for (const r of [L.body, L.top, L.stand, L.monitor, L.screen, ...L.books, L.bellBase, L.pot]) {
       assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
     }
+  });
+
+  test('drawFrontDeskCounter is a contiguous run of drawFrontDesk\'s own calls', () => {
+    const whole = recordingContext();
+    drawFrontDesk(whole.ctx, { w: 124, h: 84 });
+    const part = recordingContext();
+    drawFrontDeskCounter(part.ctx, { w: 124, h: 84 });
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    const rounds = part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    assert.deepEqual(rounds, [L.body, L.top]);
+    const a = JSON.stringify(whole.calls);
+    const b = JSON.stringify(part.calls).slice(1, -1);
+    assert.ok(part.calls.length > 0 && a.includes(b), 'the counter\'s calls appear in order, unbroken, in drawFrontDesk');
   });
 
   test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {

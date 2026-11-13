@@ -1404,7 +1404,9 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   drawer at its own 1:2 shape with 4 rows and wears it as a texture
   (`library-first-person-3d.md`), so a change to the bookcase art shows
   in both cameras. `drawFrontDesk` draws from `frontDeskLayout` and
-  `FRONT_DESK_COLORS` (exported beside it); First Person's Front Desk
+  `FRONT_DESK_COLORS` (exported beside it), starting with
+  `drawFrontDeskCounter` (body, shine, slab, heart), which First Person
+  repaints over its slab's region to keep the slab's front clean; First Person's Front Desk
   wears that same drawing on its counter, slab and monitor and places its
   books, bell and plant from the layout, so a change to the desk's art
   shows in both cameras.

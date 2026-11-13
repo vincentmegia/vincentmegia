@@ -446,10 +446,12 @@ export function frontDeskLayout(st) {
 const xywh = (r) => [r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0];
 
 /**
- * The Front Desk: a peach counter with a monitor of book covers, a stack of
- * books, a bell and a plant. Drawn from frontDeskLayout and FRONT_DESK_COLORS.
+ * The Front Desk's counter alone: the body with its shine band, the top slab
+ * and the heart, the first thing drawFrontDesk draws. First Person repaints
+ * it clipped to the slab so the slab's front shows none of the things the 2D
+ * draws over its edge (they stand on the slab in 3D).
  */
-export function drawFrontDesk(ctx, st) {
+export function drawFrontDeskCounter(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
   const L = frontDeskLayout(st);
@@ -459,6 +461,18 @@ export function drawFrontDesk(ctx, st) {
   ctx.fillRect(-hw + 7, 12, st.w - 14, 6);
   block(ctx, ...xywh(L.top), 5, C.top, 1.5);
   heart(ctx, 0, hh - 14, 4.5, 'rgba(232,85,143,0.7)');
+}
+
+/**
+ * The Front Desk: a peach counter with a monitor of book covers, a stack of
+ * books, a bell and a plant. Drawn from frontDeskLayout and FRONT_DESK_COLORS.
+ */
+export function drawFrontDesk(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const L = frontDeskLayout(st);
+  const C = FRONT_DESK_COLORS;
+  drawFrontDeskCounter(ctx, st);
   // Monitor with the catalogue on screen.
   flat(ctx, ...xywh(L.stand), 1, C.stand, 1);
   block(ctx, ...xywh(L.monitor), 5, C.monitor, 1.5);
