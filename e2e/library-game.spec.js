@@ -1589,6 +1589,47 @@ test.describe('First Person Mode', () => {
 	// The back wall's clock shows the live in-game time, but its art is painted
 	// again only when the minute the HUD shows changes, never every frame; the
 	// rest of the wall art (sign, shelf, sakura) and the rug are painted once.
+	// Min-jun has his own First Person mesh wearing his 2D art
+	// (docs/features/library-first-person-3d.md, "Min-jun"): posed from what
+	// Top-Down draws him doing, his face canvas repainted only when his face
+	// changes.
+	test('First Person Min-jun takes his pose and face from Top-Down, repainting his face only when it changes', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-floor-button').click();
+		await expect.poll(() => page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freezeStaff(true);
+			h.setCameraMode('first-person');
+		});
+		const show = async (action) => {
+			await page.evaluate((a) => {
+				const h = window.__libraryGameTestHooks;
+				h.setMinjunAction(a);
+				const mj = h.getMinjun();
+				h.setPlayerPosition(mj.x, mj.y + 80);
+				h.setPlayerFacing(0);
+			}, action);
+			const frames = await page.evaluate(() => window.__libraryGameTestHooks.getFrameCount());
+			await page.waitForFunction((n) => window.__libraryGameTestHooks.getFrameCount() > n + 2, frames);
+			return page.evaluate(() => window.__libraryGameTestHooks.getFpMinjun());
+		};
+		expect((await show('read')).pose).toBe('read');
+		expect((await show('wave')).pose).toBe('wave');
+		expect((await show('help')).pose).toBe('wave');
+		expect((await show(null)).pose).toBe('walk');
+		const hum = await show('hum');
+		expect(hum.pose).toBe('idle');
+		expect(hum.faceKey).toContain('|o|z'); // eyes closed, a round "o"
+		// Staff are frozen, so his humming face holds: no repaint for a second of frames.
+		await page.waitForTimeout(1000);
+		expect((await page.evaluate(() => window.__libraryGameTestHooks.getFpMinjun())).headPaints).toBe(hum.headPaints);
+		// He is the crosshair's target, at his own height.
+		const labels = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels());
+		expect(labels.some((l) => l.id === 'staff-minjun')).toBe(true);
+	});
+
 	test('the First Person wall clock follows the HUD clock, repainting only when its minute changes', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

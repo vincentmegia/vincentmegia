@@ -219,7 +219,8 @@ import {
   startJump,
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
-import { buildFirstPersonScene, UNIT_SCALE, BASE_EYE } from './library/three-d/scene.js';
+import { buildFirstPersonScene, characterMesh, UNIT_SCALE, BASE_EYE } from './library/three-d/scene.js';
+import { minjunPoseFor, minjunFace, MINJUN_ART_SIZE, paintMinjunBodyArt, paintMinjunHeadArt, paintMinjunPropsArt } from './library/three-d/meshes/minjun.js';
 import { shadowFigureAlpha, shadowFigurePlacements } from './library/three-d/shadow-figures.js';
 import { worldInventory } from './library/world-inventory.js';
 import {
@@ -235,7 +236,7 @@ import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './librar
 import { drawScene } from './library/three-d/core.js';
 import { paintReturnCartBookArt, BOOK_ART, BOOK_ART_SCALE } from './library/three-d/meshes/book.js';
 import { buildCharacter } from './library/three-d/meshes/character.js';
-import { layoutLabels, characterAnchorHeight, stationAnchorHeight, stationOccluder, stationTop, PERSON_TOP } from './library/three-d/labels.js';
+import { layoutLabels, characterAnchorHeight, meshTop, stationAnchorHeight, stationOccluder, stationTop, PERSON_TOP } from './library/three-d/labels.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
@@ -1211,7 +1212,7 @@ export function init(canvas, elements) {
           entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref, height: stationTop('return-cart') });
           break;
         case 'ambient-staff':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey), height: PERSON_TOP });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey), height: item.staffKey === 'minjun' ? meshTop(characterMesh({ design: findStaffDesign('minjun') })) * UNIT_SCALE : PERSON_TOP });
           break;
       }
     }
@@ -3086,6 +3087,33 @@ export function init(canvas, elements) {
   // one canvas per floor and piece, painted once. The clock's canvas is
   // repainted in place only when the label it shows (the HUD's minute)
   // changes, so the scene's room mesh never rebuilds for it.
+  // Min-jun's First Person art (three-d/meshes/minjun.js): his 2D body, head
+  // and props painted into three canvases his mesh wears. The body and props
+  // are painted once; the head is repainted in place when his face changes
+  // (a blink, his mouth while he talks or hums), so the mesh never rebuilds
+  // for it; only his pose picks another (memoised) mesh.
+  let fpMinjunArt = null; // {art: {body, head, props}, faceKey, headPaints, pose}
+  function fpMinjunFor(a) {
+    if (!fpMinjunArt) {
+      const canvas = ({ w, h }) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+      const art = { body: canvas(MINJUN_ART_SIZE.body), head: canvas(MINJUN_ART_SIZE.head), props: canvas(MINJUN_ART_SIZE.props) };
+      paintMinjunBodyArt(art.body.getContext('2d'));
+      paintMinjunPropsArt(art.props.getContext('2d'));
+      fpMinjunArt = { art, faceKey: null, headPaints: 0, pose: null };
+    }
+    // Walking and his clock exactly as drawAmbient draws him in Top-Down.
+    const walking = a.pause <= 0 && moveTarget?.staffKey !== a.key;
+    const t = performance.now() / 1000 + a.phase;
+    const { face, key } = minjunFace({ t, walking, action: a.action, actionT: a.actionT });
+    if (fpMinjunArt.faceKey !== key) {
+      paintMinjunHeadArt(fpMinjunArt.art.head.getContext('2d'), face);
+      fpMinjunArt.faceKey = key;
+      fpMinjunArt.headPaints += 1;
+    }
+    fpMinjunArt.pose = minjunPoseFor({ walking, action: a.action });
+    return { pose: fpMinjunArt.pose, art: fpMinjunArt.art };
+  }
+
   const fpRoomArtCache = new Map(); // `${floor}|${id}` -> {canvas, stateKey}
   function fpRoomArtFor(id) {
     const rect = roomArtRect(currentFloor, id, stations);
@@ -5109,7 +5137,8 @@ export function init(canvas, elements) {
         if (lines.length) stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(buildCharacter(design, { angry: item.kind === 'karen' })), lines });
       } else if (item.kind === 'ambient-staff') {
         const design = findStaffDesign(item.staffKey);
-        stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(design ? buildCharacter(design) : null), lines: staffChips(item.ref).map(chipLine) });
+        // characterMesh: Min-jun's own (taller) mesh puts his chips over his own crown.
+        stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(design ? characterMesh({ design }) : null), lines: staffChips(item.ref).map(chipLine) });
       }
     }
     if (currentFloor === FLOOR_1) {
@@ -5181,7 +5210,9 @@ export function init(canvas, elements) {
         });
       } else if (item.kind === 'ambient-staff') {
         const design = findStaffDesign(item.staffKey);
-        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design });
+        // Min-jun wears his own 2D art, posed as Top-Down draws him.
+        const own = item.staffKey === 'minjun' ? fpMinjunFor(item.ref) : {};
+        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design, ...own });
       } else if (item.kind === 'return-cart-book') {
         // Coloured as drawReturnCartBooks colours its cover.
         const genre = findGenre(item.ref.genreId);
@@ -5552,6 +5583,8 @@ export function init(canvas, elements) {
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),
+      /** Min-jun's First Person look: his pose, face key and how often his face canvas was painted (null before First Person has drawn him). */
+      getFpMinjun: () => (fpMinjunArt ? { pose: fpMinjunArt.pose, faceKey: fpMinjunArt.faceKey, headPaints: fpMinjunArt.headPaints } : null),
       /** This frame's First Person world-anchored labels, in draw order: `{id, x, y, alpha, target, rect, lines}` (screen px). */
       getFirstPersonLabels: () => (cameraMode === 'first-person' ? JSON.parse(JSON.stringify(fpLabels)) : []),
       attemptInteractNow: () => attemptInteract(),
@@ -5583,6 +5616,17 @@ export function init(canvas, elements) {
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');
         return mj ? { x: mj.x, y: mj.y, floor: mj.floor, scale: mj.scale ?? 1, action: mj.action } : null;
+      },
+      /**
+       * Stops Min-jun to do `action` (one of MINJUN_ACTIONS), or with null
+       * sets him walking; pair with freezeStaff(true) so it holds.
+       */
+      setMinjunAction(action) {
+        const mj = ambient.find((a) => a.key === 'minjun');
+        if (!mj) return;
+        mj.action = action ?? null;
+        mj.actionT = 0;
+        mj.pause = action ? 999 : 0;
       },
       isBossOfficeReady: () => shiftState && isBossOfficeReady(shiftState),
       spawnBookNow(isCoinHunt) { if (shiftState?.phase === 'playing') spawnBook(Boolean(isCoinHunt)); },

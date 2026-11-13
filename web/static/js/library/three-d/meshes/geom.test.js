@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack } from './geom.js';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack, tube, loft, faceNormal, projectFront } from './geom.js';
 
 function normal(mesh, face) {
   const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
@@ -172,4 +172,57 @@ test('textureFront textures and unlights faces[0] with art, else flat-colours it
   assert.equal(flat.faces[0].color, '#abc');
   assert.equal(flat.faces[0].texture, undefined);
   assert.equal(flat.faces[0].unlit, undefined);
+});
+
+// -- tube, loft, faceNormal, projectFront (Min-jun's mesh) ---------------------
+
+const faceCentre = (m, f) => f.indices.reduce((s, i) => s.map((x, k) => x + m.vertices[i][k] / f.indices.length), [0, 0, 0]);
+
+test('tube: a ring at each end, perpendicular to the axis, every face (caps too) wound outward', () => {
+  for (const [a, b] of [[[0, 0, 0], [0, 1, 0]], [[0, 0, 0], [0, -1, 0.3]], [[0.2, 0.1, 0], [1, 0, 0]], [[0, 0, 0], [0, 0, 1]]]) {
+    const m = tube(a, b, 0.1, 0.05, 6, '#ffffff', { capA: '#ff0000', capB: '#00ff00' });
+    assert.equal(m.vertices.length, 12);
+    assert.equal(m.faces.length, 8);
+    const ax = b.map((c, k) => c - a[k]);
+    const mid = a.map((c, k) => (c + b[k]) / 2);
+    for (const f of m.faces) {
+      const n = faceNormal(m, f);
+      const c = faceCentre(m, f);
+      assert.ok(n[0] * (c[0] - mid[0]) + n[1] * (c[1] - mid[1]) + n[2] * (c[2] - mid[2]) > 0, `${f.color} outward`);
+    }
+    // Each ring's points are its radius from its end, square to the axis.
+    m.vertices.slice(0, 6).forEach((v) => {
+      const d = v.map((c, k) => c - a[k]);
+      assert.ok(Math.abs(Math.hypot(...d) - 0.1) < 1e-9);
+      assert.ok(Math.abs(d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2]) < 1e-9);
+    });
+  }
+});
+
+test('loft: prism with each ring moved to its own centre', () => {
+  const rings = [{ y: 0, rx: 1, rz: 1, color: '#111111' }, { y: 1, rx: 1, rz: 1, cx: 0.5, cz: -0.25, color: '#222222' }];
+  const p = prism(rings, 8);
+  const l = loft(rings, 8);
+  assert.deepEqual(l.faces, p.faces);
+  l.vertices.forEach((v, i) => {
+    const r = rings[Math.floor(i / 8)];
+    assert.deepEqual(v, [p.vertices[i][0] + (r.cx ?? 0), p.vertices[i][1], p.vertices[i][2] + (r.cz ?? 0)]);
+  });
+});
+
+test('projectFront: only quads turned toward +Z take the art (unlit, uv from toUV); nothing changes without an image', () => {
+  const make = () => prism([{ y: 0, rx: 1, rz: 1, color: '#333333' }, { y: 1, rx: 1, rz: 1, color: '#333333' }], 8, '#444444');
+  const image = { width: 10, height: 10 };
+  const m = projectFront(make(), { image, toUV: (v) => [v[0] * 5 + 5, 10 - v[1] * 10], minNz: 0.35 });
+  const dressed = m.faces.filter((f) => f.texture);
+  assert.equal(dressed.length, 3, 'the front and the two faces either side of it');
+  for (const f of dressed) {
+    assert.ok(faceNormal(m, f)[2] >= 0.35);
+    assert.equal(f.unlit, true);
+    assert.deepEqual(f.texture.uv, f.indices.map((i) => [m.vertices[i][0] * 5 + 5, 10 - m.vertices[i][1] * 10]));
+  }
+  assert.equal(m.faces.at(-1).texture, undefined, 'the top cap is not a +Z quad');
+  assert.deepEqual(projectFront(make(), { image: null, toUV: () => [0, 0] }), make());
+  const some = projectFront(make(), { image, toUV: () => [0, 0], only: (f) => f === undefined });
+  assert.equal(some.faces.filter((f) => f.texture).length, 0);
 });

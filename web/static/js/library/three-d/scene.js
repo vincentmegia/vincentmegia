@@ -3,6 +3,7 @@
 import { cameraFromPose } from './core.js';
 import { buildRoom } from './room.js';
 import { buildCharacter } from './meshes/character.js';
+import { buildMinjun } from './meshes/minjun.js';
 import { buildBookshelf } from './meshes/bookshelf.js';
 import { buildStationBox } from './meshes/station-box.js';
 import { buildCoffeeMachine } from './meshes/coffee-machine.js';
@@ -121,6 +122,17 @@ function roomMesh(floor, stations, viewport, roomArtFor) {
 }
 
 /**
+ * A character entry's mesh: Min-jun has his own (meshes/minjun.js, posed by
+ * `c.pose` and wearing `c.art`, his 2D art canvases); everyone else is
+ * buildCharacter's patron built from their design. Both are memoised.
+ * @param {{design: object, angry?: boolean, pose?: string, art?: object}} c
+ */
+export function characterMesh(c) {
+  if (c.design?.key === 'minjun') return buildMinjun({ pose: c.pose, art: c.art });
+  return buildCharacter(c.design, { angry: Boolean(c.angry) });
+}
+
+/**
  * @param {object} input
  * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
  *   a station's 2D art for its mesh to wear (docs/skills/2d-to-3d/SKILL.md);
@@ -182,7 +194,7 @@ export function buildFirstPersonScene({ player, floor, stations, characters, dec
   for (const c of characters) {
     if (c.floor !== undefined && c.floor !== floor) continue;
     placed.push({
-      mesh: buildCharacter(c.design, { angry: Boolean(c.angry) }),
+      mesh: characterMesh(c),
       placement: { pos: [c.x, 0, c.y], yaw: c.yaw ?? 0, scale: UNIT_SCALE, alpha: c.alpha ?? 1 },
     });
   }

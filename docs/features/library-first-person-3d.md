@@ -11,7 +11,8 @@ Library Shift's First Person camera is a software-3D renderer that draws
 flat-shaded, painter-sorted polygons onto the existing 2D canvas (no WebGL,
 no dependencies). Its objects are referenced to their Top-Down 2D art
 (`docs/skills/2d-to-3d/SKILL.md`): characters are built from the same design
-the 2D draws; the bookshelf, coffee machine and elevator wear their 2D
+the 2D draws; Min-jun has his own mesh measured off his 2D renderer and wearing
+its drawing on the front; the bookshelf, coffee machine and elevator wear their 2D
 drawer's own art as a texture; and the stairs (whose 2D is a plan view) are
 geometry in their drawer's own colours with a textured arrow badge. It
 replaced the older billboard-sprite view. Parent doc:
@@ -48,8 +49,8 @@ call in `drawScene` is pure and DOM-free.
 | `../floor-dressing.js` | Shared with Top-Down's `drawFloor`: `FLOOR_TILE`, `WALL_BAND_HEIGHT`, `FLOOR_TILES`, `GUIDE_STRIPES`, `LIBRARY_SIGNS`, `BACK_WALL`, `WALL_ART`, `floorRug`; the painters (`drawBackWall`, `drawLibrarySign`, `drawWallBookShelf`, `drawWallSakura`, `drawWallClock`, `drawStitchedRug`, `drawGuideStripe`); for FP, `tileColor`, `floorDecals`, `roomArtRect`, `paintRoomArt`, `ROOM_ART_SCALE` |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
 | `labels.js` | World-anchored label chips (P5): anchor heights from the drawn meshes, distance fade, occlusion by stations, HUD avoidance, declutter and draw order — `layoutLabels`; see "World-anchored labels" |
-| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
-| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
+| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `loft`, `tube`, `quad`, `translate`, `scaleMesh`, `scaleAbout`, `faceNormal`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack`; and `projectFront` (art projected straight along Z onto every face turned toward the viewer: Min-jun's front) |
+| `meshes/*.js` | One builder per object: `character.js`, `minjun.js` (with `minjun-frame.js`, `minjun-body.js`, `minjun-head.js`; see "Min-jun's own mesh"), `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
 
 ### The character meshes
 
@@ -85,7 +86,8 @@ Keying on `design.key` fails seven tests in the suite for exactly that reason.
 The returned mesh is **shared, so treat it as read-only**; `buildDrawList` does,
 mapping each vertex into world space rather than moving it. A design built fresh
 on every call simply misses the cache, as before.
-`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?}`.
+`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?, yaw?, alpha?}`, plus
+Min-jun's `pose` and `art` (see "Min-jun's own mesh").
 
 Karen is the one character with no roster entry (`findLibraryDesign('karen')`
 is `null`), so `library-people.js` also exports `KAREN_DESIGN` — a design in
@@ -143,6 +145,72 @@ light: FP_LIGHT, fog: FP_FOG})`, then draws the 2D HUD on top (dust,
 vignette, interact flash, world-anchored labels, crosshair, minimap). `fpCameraParams` maps the
 effect state to camera params. `first-person.js` is still the projection
 used for `findInteractTarget`; it does not draw.
+
+### Min-jun's own mesh
+
+Kang Min-jun is the one character with his own First Person mesh. His 2D
+renderer (`library/minjun.js`) is far more detailed than the patron design
+`buildCharacter` reads, and is drawn in Hospital Shift's anime frame, about
+**2.5 heads tall** against a patron's 3.36, so the shared patron frame
+can't carry him. Design: `docs/superpowers/specs/2026-11-13-library-fp-minjun-design.md`.
+
+`scene.js`'s `characterMesh(c)` picks the builder: `c.design.key ===
+'minjun'` goes to `buildMinjun({pose: c.pose, art: c.art})`, everyone else to
+`buildCharacter`. The label anchor and the crosshair's target height use
+`characterMesh` too, so they sit at his own crown.
+
+**Geometry from his measurements, his drawing on the front.** His body is
+real 3D geometry measured off `minjun.js` in its own art px (`MINJUN_FRAME`
+and the drawers' joint points). The front of that geometry wears his 2D art
+**projected straight along Z** (`geom.js`'s `projectFront`): every quad
+whose normal faces the viewer (`nz` ≥ 0.3–0.9 depending on the part) takes
+the image point of its own vertices' art x, y. So head-on he *is* the
+drawing (cable knit, tie, lanyard and ID card, headphones, trinkets, his
+eyes, fringe and hair clip), while the sides and back are lit flat colours
+from `MINJUN_PALETTE` and the silhouette is the drawing's own. This is the
+2D-to-3D skill's texture technique, applied to a character's front.
+
+| File | Role |
+|---|---|
+| `meshes/minjun-frame.js` | `MINJUN_K` (game px per art px, 0.948, chosen so his eyes sit at `MINJUN_EYE_PX` = `BASE_EYE` 60), `S`, `toModel`/`toArt`/`modelY` (the one art → model conversion; the sole's bottom, art y +8.3, is the floor), `MINJUN_ART` (the three canvases' art boxes and image px per art px), `artSize`, `uvIn(box)` |
+| `meshes/minjun-body.js` | `buildMinjunBody(pose, art)`: slack legs (8-sided, `LEG`), sneakers (sole, upper, toe box, navy swoosh and heel tab, sock), the 12-sided shirt and vest (`TORSO_RINGS`, from `torsoPath` and the vest path), neck, arms as `tube`s (sleeve, rolled cuff, forearm, watch, hand) posed by `MINJUN_POSES`, the left arm round the books (`BOOK_ARM`), the three books (`MINJUN_BOOK_SPINES`), the tote (`MINJUN_TOTE`) and, reading, the open book (`MINJUN_OPEN_BOOK`) |
+| `meshes/minjun-head.js` | `buildMinjunHead(art)`: one 12-sided stack following `facePath`'s V-jaw and `drawHair`'s crown (`HEAD_RINGS`), the chin set forward. Front wears the head art; sides and back hair (the undercut's shade low at the back), jaw sides skin; every face `unlit` like every patron head |
+| `meshes/minjun.js` | `buildMinjun({pose, art})` (memoised per art object and pose: at most four meshes per art set), `minjunPoseFor`, `minjunFace` (+ `MOUTH_STEPS`), `MINJUN_ART_SIZE`, `paintMinjunBodyArt`/`paintMinjunHeadArt`/`paintMinjunPropsArt` (an opaque backing in the colours round the drawing, then the drawer) |
+| `geom.js` | `tube(a, b, ra, rb, sides, color, {capA, capB})` (a tapered limb between two 3D points), `loft` (`prism` with a centre per ring), `faceNormal`, `projectFront(part, {image, toUV, minNz, div, only})` |
+
+The art is painted by `minjun.js`'s own drawers, exported for this and
+otherwise unchanged (Top-Down's canvas call trace is identical before and
+after: 50 cases over every action, walking and five times):
+
+| Canvas | Painter (`minjun.js`) | Holds | Painted |
+|---|---|---|---|
+| body, 112 × 208 | `paintMinjunBody` | legs, torso, tote strap, keychain, wallet chain, photocard, neck and headphones, collar pin | once |
+| head, 180 × 264 | `paintMinjunHead(ctx, face)` → `drawHead` | ears, face, eyes, brows, nose, mouth, hair | when his face changes |
+| props, 168 × 128 | `paintMinjunProps` | tote, the three book spines, the open book with his hand on it | once |
+
+**Pose and face come from Top-Down's state.** `fpMinjunFor(a)` in
+`library-game.js` derives `walking` and his clock exactly as `drawAmbient`
+does, then:
+
+* `minjunPoseFor({walking, action})`: walking → `walk` (hand in his
+  pocket, `drawPocketArm`'s joints); `read` → `read` (the open book held
+  before his chest); `wave` and `help` → `wave` (arm raised); `hum` and
+  standing → `idle` (arm hanging, `drawFreeArm`'s joints). The arm's z, which
+  the 2D can't say, is chosen per pose (a hand in a front pocket, a book
+  before the chest).
+* `minjunFace({t, walking, action, actionT})`: `faceForAction`'s mouth cut
+  into `MOUTH_STEPS` (3) steps, `eyesClosed`/`round` while humming, and the
+  blink from `isBlinkingAt(t)`. `drawHead` takes the blink from `face.blink`
+  when given (Top-Down never gives it). Its `key` decides repaints: the head
+  canvas is repainted **in place** only when the key changes, and textures
+  are read at draw time, so blinking and talking never rebuild a mesh.
+
+Tunables: `MINJUN_EYE_PX`, the per-pose z in `MINJUN_POSES`, `BOOK_Z`,
+`TOTE_Z`, `OPEN_BOOK_Z`, the `nz` thresholds, `MOUTH_STEPS`, and each
+canvas's `scale` in `MINJUN_ART` (face 6 image px per art px, the rest 4).
+He is 394–406 faces depending on pose (about 100 of them textured), and a
+2nd Floor frame with him at interact range ran at 60 fps in headless
+Chromium.
 
 ### The prop meshes
 
@@ -528,6 +596,7 @@ vignette, and the Boss cutscene / minigame overlays (full-screen in both).
 | Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
 | Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha`; "???" chip as a world label |
 | Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
+| Min-jun's look and current action (read, hum, wave, help, walking) | `drawMinjun` | ✅ his own mesh wearing `minjun.js`'s art (`meshes/minjun.js`, see "Min-jun's own mesh"): posed by `minjunPoseFor`, his face (blink, talking, humming) repainted from `minjunFace`. His speech bubbles and music notes are not drawn in FP |
 | Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ✅ world labels from `staffChips`; the crosshair target's chips also sit under the crosshair and in `#library-interact-hint` |
 | Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
 | Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included; "+N more" as a world label |
@@ -764,6 +833,17 @@ crosshair and minimap.
   gained three y bands per side and each eye gained a pupil and an
   unconditional lash line. The ceiling still guards runaway growth, but a
   future design stacking headwear would reach it sooner.
+* Min-jun (see "Min-jun's own mesh"): his projected art is exact head-on and
+  stretches across the faces at the edge of the front, so from the side his
+  eye and cheek smear over the side of his head. Anything the 2D draws
+  outside his body's silhouette has no face to land on: the cowlick (ahoge),
+  the pencil behind his ear, his speech bubbles and his music notes. His
+  shirt sleeves are lit, so they read grey beside the drawing's white. He
+  has no walk cycle (the `walk` pose is his hand-in-pocket arm on still
+  legs), his head doesn't bop while humming or dip while reading, and the
+  drawing is painted at rest (no breathing, swinging lanyard or tote). At
+  interact range the textured triangles' seams can show as faint hairlines
+  across his face (the renderer's affine cells; see Limitations).
 * Nothing tests the head's attachments against the head's own silhouette:
   ears, hats, earrings and headphones are placed off `headRX`/`headRZ` by
   convention only, so one of them could be decoupled from the skull and the
@@ -815,3 +895,19 @@ crosshair and minimap.
   `coffeeMachineLayout` and `elevatorLayout` to the Top-Down geometry.
   When changing a drawer a mesh wears, diff its canvas call trace before and
   after (the skill's step 2): Top-Down must stay byte-identical.
+* Min-jun: `minjun.test.js` pins his eye height to `BASE_EYE`, his height
+  and head count against the patron frame, the head and torso silhouettes to
+  the 2D's, `minjunPoseFor` and `minjunFace` (blink, quantised mouth, humming,
+  walking), the memo, that poses move only his free arm, the face budget
+  (under 450), the `unlit` material rule, the flat fallback, that only faces
+  turned toward the viewer wear art (sampling inside their canvas, never on
+  his back), the straight-on projection, `characterMesh`'s dispatch, and that
+  each `paint*Art` lays a full opaque backing before drawing.
+  `geom.test.js` pins `tube`'s winding and rings, `loft` and `projectFront`.
+  Playwright's "First Person Min-jun takes his pose and face from Top-Down"
+  sets each action through `setMinjunAction` (with `freezeStaff`) and checks
+  `getFpMinjun()`'s pose, the humming face key, that his frozen face isn't
+  repainted, and his world label. The `minjun.js` refactor (exported
+  painters, the spines split out of `drawBookArm`, `face.blink`) was checked
+  with a call-trace diff of `drawMinjun` before and after: 50 cases, every
+  action, walking and standing, five times; 0 differ.

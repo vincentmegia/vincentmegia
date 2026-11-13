@@ -91,9 +91,12 @@ handling, in place of Kitchen Shift's cooking and serving.
   pure `core.js` (matrices, camera, painter-sorted draw list, flat
   shading and fog), `room.js` (room shell), `scene.js` (per-frame
   assembly), `transitions.js`, and per-object builders in `meshes/` (one
-  parameterized `buildCharacter` humanoid for every FP character, built
-  from the same patron design the top-down art draws, plus bookshelf,
-  coffee machine, stairs, elevator and generic station box). The bookshelf,
+  parameterized `buildCharacter` humanoid for every FP character but
+  Min-jun, built from the same patron design the top-down art draws;
+  Min-jun's own mesh, measured off `minjun.js` and wearing its drawing on
+  his front, posed and with his face from what Top-Down draws him doing;
+  plus bookshelf, coffee machine, stairs, elevator and generic station
+  box). The bookshelf,
   coffee machine and elevator wear their own Top-Down drawer's art as a
   texture, and the stairs are built from `drawStairs`' colours with its
   arrow badge (`library-first-person-3d.md`). The room wears each floor's

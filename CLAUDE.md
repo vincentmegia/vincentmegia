@@ -81,8 +81,11 @@ HTMX + Tailwind + PostgreSQL.
   staff on `staff-kit.js`, patrons in `patron.js`, Karen).
 - **Library first-person is software 3D**: `web/static/js/library/three-d/`
   (pure core, meshes, room, scene, transitions; canvas-2D, no WebGL) draws the
-  FP view with one parameterized 3D humanoid `buildCharacter` for all FP
-  characters; Top-Down keeps the detailed 2D art. Changing a `three-d/` mesh
+  FP view with one parameterized 3D humanoid `buildCharacter` for every FP
+  character but Min-jun, whose own mesh (`meshes/minjun*.js`) wears
+  `minjun.js`'s drawing on its front (its exported `paintMinjun*` painters),
+  so a change to his 2D drawers shows in both cameras; Top-Down keeps the
+  detailed 2D art. Changing a `three-d/` mesh
   or the core affects only the FP camera, but the FP props wear their 2D
   drawers' own art: `drawBookcase` and `drawCoffeeMachine` (library), and
   Hospital Shift's `drawElevator`/`drawStairs` (via their layout/colour
