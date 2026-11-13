@@ -114,6 +114,63 @@ export function boxWithout(min, max, color, drop = []) {
   return { vertices: b.vertices, faces: b.faces.filter((_, i) => !drop.includes(BOX_FACE_NAMES[i])) };
 }
 
+const TOP_INDICES = '6,7,3,2'; // box's +Y face, kept as is by boxWithout
+const CUT_EPS = 1e-9;
+
+/**
+ * Replace a box part's single top face with up-facing quads cut at the edges
+ * of the footprints standing on it (same plane, colour and winding). The
+ * painter's sort orders faces by mean depth, so one big top face sorts by its
+ * centre and, seen from one side, paints over what stands on its far half;
+ * a cell no bigger than the footprint above it sorts behind that object's
+ * faces from every side. The cut is a guillotine partition: the top is split
+ * along a footprint edge that crosses no other footprint (x first), and each
+ * side again, until every footprint is a cell of its own (footprints that
+ * overlap, which no straight cut can part, are cut through; nested ones, a
+ * pot's foot inside its rim, leave a ring of cells round the inner one). A
+ * footprint marked `hidden` (a closed solid standing flat on the top, with
+ * nothing showing beneath it) drops its cell. Footprints are `{x0, x1, z0, z1,
+ * hidden?}` in the part's model units, clipped to the top. Mutates and
+ * returns `part` (from box or boxWithout, top kept).
+ */
+export function cutTop(part, footprints) {
+  const at = part.faces.findIndex((f) => f.indices.join() === TOP_INDICES);
+  const top = part.faces[at];
+  const [x0, y, z1] = part.vertices[6];
+  const [x1, , z0] = part.vertices[3];
+  const clip = (f, r) => ({
+    x0: Math.max(f.x0, r.x0), x1: Math.min(f.x1, r.x1), z0: Math.max(f.z0, r.z0), z1: Math.min(f.z1, r.z1), hidden: f.hidden,
+  });
+  const live = (f) => f.x1 - f.x0 > CUT_EPS && f.z1 - f.z0 > CUT_EPS;
+  const same = (a, b) => ['x0', 'x1', 'z0', 'z1'].every((k) => Math.abs(a[k] - b[k]) < CUT_EPS);
+  const rects = [];
+  const split = (r, fps) => {
+    if (!fps.length) { rects.push(r); return; }
+    // Footprints nest (a pot's foot inside its rim): once r is what is left
+    // of each of them, it is one cell, dropped if any of them hides it.
+    if (fps.every((f) => same(f, r))) { if (!fps.some((f) => f.hidden)) rects.push(r); return; }
+    // A cut along a footprint edge inside r, crossing no footprint if one exists.
+    let cut = null;
+    for (const [lo, hi] of [['x0', 'x1'], ['z0', 'z1']]) {
+      const edges = fps.flatMap((f) => [f[lo], f[hi]]).filter((v) => v > r[lo] + CUT_EPS && v < r[hi] - CUT_EPS);
+      const clean = edges.find((v) => !fps.some((f) => f[lo] < v - CUT_EPS && f[hi] > v + CUT_EPS));
+      if (clean !== undefined) { cut = [lo, hi, clean]; break; }
+      if (!cut && edges.length) cut = [lo, hi, edges[0], true];
+    }
+    const [lo, hi, v] = cut;
+    for (const side of [{ ...r, [hi]: v }, { ...r, [lo]: v }]) split(side, fps.map((f) => clip(f, side)).filter(live));
+  };
+  split({ x0, x1, z0, z1 }, footprints.map((f) => clip(f, { x0, x1, z0, z1 })).filter(live));
+  const cells = rects.map((c) => {
+    const base = part.vertices.length;
+    // The box's top winding: (x0, z1) (x1, z1) (x1, z0) (x0, z0).
+    part.vertices.push([c.x0, y, c.z1], [c.x1, y, c.z1], [c.x1, y, c.z0], [c.x0, y, c.z0]);
+    return { ...top, indices: [base, base + 1, base + 2, base + 3] };
+  });
+  part.faces.splice(at, 1, ...cells);
+  return part;
+}
+
 /**
  * The uv corners for a box's +Z front (box winds it (x0,y0) (x1,y0) (x1,y1)
  * (x0,y1) in model space, y up) showing art rect `r`. `r` is in the drawer's

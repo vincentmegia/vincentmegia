@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack, tube, loft, faceNormal, projectFront } from './geom.js';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack, tube, loft, faceNormal, projectFront, cutTop } from './geom.js';
 
 function normal(mesh, face) {
   const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
@@ -239,4 +239,32 @@ test('tube side/squash: a flattened tube, wide along `side` (made square to the 
     const c = faceCentre(m, f);
     assert.ok(n[0] * (c[0] - mid[0]) + n[1] * (c[1] - mid[1]) + n[2] * (c[2] - mid[2]) > 0, 'outward');
   }
+});
+
+test('cutTop: the top becomes up-facing cells cut at the footprints\' edges, same plane, colour and winding; hidden footprints drop theirs', () => {
+  const part = boxWithout([-1, 0, -0.5], [1, 1, 0.5], '#abcdef', ['bottom']);
+  part.faces[0].texture = { tag: 'front' };
+  cutTop(part, [
+    { x0: -0.5, x1: 0, z0: -0.2, z1: 0.2 }, // a column cut into 3 rows
+    { x0: 0.5, x1: 2, z0: 0.1, z1: 0.6, hidden: true }, // past the edge: only x 0.5 and z 0.1 cut
+  ]);
+  assert.equal(part.faces[0].texture.tag, 'front', 'the front stays first');
+  assert.ok(!part.faces.some((f) => f.indices.join() === '6,7,3,2'), 'the single top is gone');
+  const cells = part.faces.filter((f) => f.indices.every((i) => part.vertices[i][1] === 1));
+  // Columns [-1,-0.5] 1, [-0.5,0] 3, [0,0.5] 1, [0.5,1] 2 minus the hidden one = 6.
+  assert.equal(cells.length, 6);
+  const area = cells.reduce((s, f) => {
+    const vs = f.indices.map((i) => part.vertices[i]);
+    return s + (Math.max(...vs.map((v) => v[0])) - Math.min(...vs.map((v) => v[0]))) * (Math.max(...vs.map((v) => v[2])) - Math.min(...vs.map((v) => v[2])));
+  }, 0);
+  assert.ok(Math.abs(area - (2 - 0.5 * 0.4)) < 1e-9, `area ${area}`);
+  for (const f of cells) {
+    assert.equal(f.color, '#abcdef');
+    const n = faceNormal(part, f);
+    assert.ok(n[1] > 0.999, 'faces up, wound like the box top');
+  }
+  // Without footprints, one cell the size of the old top.
+  const plain = cutTop(box([0, 0, 0], [1, 1, 1], '#000'), []);
+  assert.equal(plain.faces.length, 6);
+  for (const f of plain.faces) for (const i of f.indices) assert.ok(i < plain.vertices.length);
 });

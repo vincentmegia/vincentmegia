@@ -10,7 +10,7 @@
 //
 // Model space: base at y=0, centered on x/z, front facing +Z (the side the
 // patrons queue on and the player walks up to). Pure and deterministic.
-import { prism, merge, emptyMesh, boxWithout, textureFront, translate } from './geom.js';
+import { prism, merge, emptyMesh, boxWithout, textureFront, translate, cutTop } from './geom.js';
 import { leafBlob } from './decor.js';
 import { frontDeskLayout, drawFrontDesk, drawFrontDeskCounter, FRONT_DESK_COLORS } from '../../anime-furniture.js';
 
@@ -91,9 +91,33 @@ export function buildFrontDesk({ art } = {}) {
     merge(mesh, textureFront(part, r, { image: art, artBox: FRONT_DESK_ART, scale: FRONT_DESK_ART_SCALE, color, div }));
   const solid = (min, max, color, drop) => merge(mesh, boxWithout(min, max, color, drop));
 
-  // The counter body (its top is inside the slab) and the top slab, proud of it.
+  const pr = ((L.pot.x1 - L.pot.x0) / 2) * K;
+  const bb = L.bellBase;
+  const plateHalf = ((bb.x1 - bb.x0) / 2) * K;
+  // What stands on the slab, for cutting its top: the monitor, its foot and
+  // the bell's plate and the pot, closed solids that hide the slab beneath
+  // them; the books (the upper ones overhang the lowest); the plant round
+  // the pot (its leaf blobs reach past the pot's sides).
+  const books = { x0: Math.min(...L.books.map((b) => mx(b.x0))), x1: Math.max(...L.books.map((b) => mx(b.x1))) };
+  const potX = mx((L.pot.x0 + L.pot.x1) / 2);
+  const footprints = [
+    { x0: mx(L.monitor.x0), x1: mx(L.monitor.x1), z0: -MONITOR_HALF, z1: MONITOR_HALF, hidden: true },
+    { x0: mx(L.stand.x0), x1: mx(L.stand.x1), z0: MONITOR_HALF, z1: MONITOR_HALF + STAND_DEPTH, hidden: true },
+    { x0: mx(bb.x0), x1: mx(bb.x1), z0: -plateHalf, z1: plateHalf, hidden: true },
+    { ...books, z0: -BOOK_HALF, z1: BOOK_HALF },
+    { x0: potX - pr, x1: potX + pr, z0: -pr, z1: pr, hidden: true },
+    {
+      x0: Math.min(potX - pr, ...L.leaves.map((l) => mx(l.x - l.r))),
+      x1: Math.max(potX + pr, ...L.leaves.map((l) => mx(l.x + l.r))),
+      z0: -pr,
+      z1: pr,
+    },
+  ];
+
+  // The counter body (its top is inside the slab) and the top slab, proud of
+  // it, its top cut at those footprints so the painter's sort keeps them.
   front(boxWithout([mx(L.body.x0), my(L.body.y1), -BODY_Z], [mx(L.body.x1), my(L.body.y0), BODY_Z], C.counter, ['bottom', 'top']), L.body, C.counter, DIV_WIDE);
-  front(boxWithout([mx(L.top.x0), my(L.top.y1), -FRONT_DESK_SIZE.depth / 2], [mx(L.top.x1), slabTop, FRONT_DESK_SIZE.depth / 2], C.top, ['bottom']), L.top, C.top, DIV_WIDE);
+  front(cutTop(boxWithout([mx(L.top.x0), my(L.top.y1), -FRONT_DESK_SIZE.depth / 2], [mx(L.top.x1), slabTop, FRONT_DESK_SIZE.depth / 2], C.top, ['bottom']), footprints), L.top, C.top, DIV_WIDE);
 
   // The monitor on its foot, the foot showing in front of it as the 2D's stand does below it.
   front(boxWithout([mx(L.monitor.x0), slabTop, -MONITOR_HALF], [mx(L.monitor.x1), my(L.monitor.y0), MONITOR_HALF], C.monitor, ['bottom']), L.monitor, C.monitor, DIV_WIDE);
@@ -107,8 +131,6 @@ export function buildFrontDesk({ art } = {}) {
   });
 
   // The service bell: its base plate, a gold dome and the button on top.
-  const bb = L.bellBase;
-  const plateHalf = ((bb.x1 - bb.x0) / 2) * K;
   const plateTop = onSlab(bb.y0);
   solid([mx(bb.x0), slabTop, -plateHalf], [mx(bb.x1), plateTop, plateHalf], C.bellBase, ['bottom']);
   const R = L.bell.r * K;
@@ -120,13 +142,10 @@ export function buildFrontDesk({ art } = {}) {
   const btn = L.bellButton;
   solid([mx(btn.x - btn.r), my(btn.y + btn.r), -btn.r * K], [mx(btn.x + btn.r), my(btn.y - btn.r), btn.r * K], C.bellBase, ['bottom']);
 
-  // The potted plant: a pot narrowing to its foot, and a leaf blob per 2D circle.
-  const pr = ((L.pot.x1 - L.pot.x0) / 2) * K;
-  const pot = prism([
-    { y: onSlab(L.pot.y1), rx: pr * 0.8, rz: pr * 0.8, color: C.pot },
-    { y: my(L.pot.y0), rx: pr, rz: pr, color: C.pot },
-  ], 6, C.pot, null);
-  merge(mesh, translate(pot, [mx((L.pot.x0 + L.pot.x1) / 2), 0, 0]));
+  // The potted plant: a straight square pot, as the 2D's rounded rect is (a
+  // taper would overhang slab cells the painter cannot keep under it), and a
+  // leaf blob per 2D circle.
+  solid([potX - pr, onSlab(L.pot.y1), -pr], [potX + pr, my(L.pot.y0), pr], C.pot, ['bottom']);
   for (const l of L.leaves) merge(mesh, leafBlob(mx(l.x), my(l.y), 0, l.r * K, C.leaf, { sides: 6, bands: 3 }));
 
   // Every face is wound to face out of the desk (front-desk.test.js renders

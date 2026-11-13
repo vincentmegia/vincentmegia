@@ -218,3 +218,12 @@ test('paintFinesCounterArt repaints each textured part clean: after the room, a 
   });
   assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
 });
+
+test('from every side, what stands on the top is drawn after the top beneath it (the painter sorts by mean depth)', async () => {
+  const { standingOrderFailures, topAndStanding } = await import('./standing-order.test-helper.js');
+  const topY = (L.floor - L.top.y0) * K;
+  const m = buildFinesCounter({ art: ART });
+  // Coins (6), register, housing, two posts; the plaque hangs above the eye.
+  assert.equal(topAndStanding(m, topY).standing.length, 10);
+  assert.deepEqual(standingOrderFailures(m, topY), []);
+});

@@ -123,7 +123,8 @@ test('every face culls, and its winding faces out: fronts show from in front, ne
 
 test('face budget and determinism', () => {
   const m = buildFrontDesk({ art: ART });
-  assert.ok(m.faces.length <= 140, `${m.faces.length} faces`);
+  // 140 before the slab top was cut at what stands on it (18 cells for 1).
+  assert.ok(m.faces.length <= 142, `${m.faces.length} faces`);
   for (const f of m.faces) for (const i of f.indices) assert.ok(i >= 0 && i < m.vertices.length);
   assert.deepEqual(buildFrontDesk({ art: ART }), buildFrontDesk({ art: ART }));
 });
@@ -168,4 +169,13 @@ test('paintFrontDeskArt repaints the slab clean: after the desk, a clip to L.top
     assert.ok(!calls.slice(clip).some(([k, a]) => k === 'roundRect' && sameRect(rect(a), r)), JSON.stringify(r));
   }
   assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
+});
+
+test('from every side, what stands on the slab is drawn after the slab beneath it (the painter sorts by mean depth)', async () => {
+  const { standingOrderFailures, topAndStanding } = await import('./standing-order.test-helper.js');
+  const topY = FRONT_DESK_SIZE.counterTop;
+  const m = buildFrontDesk({ art: ART });
+  // Monitor, stand, 3 books, bell plate, dome, button, pot, 3 leaf blobs.
+  assert.equal(topAndStanding(m, topY).standing.length, 12);
+  assert.deepEqual(standingOrderFailures(m, topY), []);
 });

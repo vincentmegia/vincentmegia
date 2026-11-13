@@ -95,6 +95,14 @@ The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
    bookshelf's crown top over its own sign). So drop faces that can never be
    seen (`boxWithout`), wind every face outward, and set `cull: true` on
    every face, once a test renders the mesh from both sides.
+   **Cut a large top at what stands on it.** The painter sorts by mean
+   depth, so one big counter top sorts by its centre and, from one side,
+   paints over the things standing on its far half. Cut it with
+   `geom.js`'s `cutTop(part, footprints)` at their footprints (`hidden` for
+   a closed solid flat on the top, which drops its cell), and keep what
+   stands on it straight-sided: a taper's overhang or two interpenetrating
+   solids cannot be kept in order. `standing-order.test-helper.js` checks a
+   mesh from every 15 degrees.
 8. **Accept a fallback.** Without art (node tests, no canvas) the same faces
    render in the drawer's flat colours. The geometry is identical either way.
 9. **Wire it through the scene.** Add the kind to `FP_ART` in
