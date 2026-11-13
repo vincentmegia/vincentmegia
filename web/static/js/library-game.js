@@ -211,13 +211,15 @@ import {
   turnFacing,
   moveStep,
   stepPitch,
+  clampPitch,
+  easeSprintBlend,
   MOVE_SPEED_PIXELS_PER_SECOND,
   createJumpState,
   updateJump,
   startJump,
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
-import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { buildFirstPersonScene, UNIT_SCALE, BASE_EYE } from './library/three-d/scene.js';
 import { shadowFigureAlpha, shadowFigurePlacements } from './library/three-d/shadow-figures.js';
 import { worldInventory } from './library/world-inventory.js';
 import {
@@ -232,7 +234,7 @@ import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './librar
 import { drawScene } from './library/three-d/core.js';
 import { paintReturnCartBookArt, BOOK_ART, BOOK_ART_SCALE } from './library/three-d/meshes/book.js';
 import { buildCharacter } from './library/three-d/meshes/character.js';
-import { layoutLabels, characterAnchorHeight, stationAnchorHeight, stationOccluder } from './library/three-d/labels.js';
+import { layoutLabels, characterAnchorHeight, stationAnchorHeight, stationOccluder, stationTop, PERSON_TOP } from './library/three-d/labels.js';
 import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
@@ -790,6 +792,13 @@ export function init(canvas, elements) {
   // The view only moves when the player turns, looks up/down or jumps:
   // walking and strafing keep the horizon level and the eye height fixed.
   let fpPitch = 0;
+  let fpSprintBlend = 0; // 0..1, eased so the sprint FOV widens smoothly
+  // The controls card shown on entering First Person (and while H is toggled
+  // on), counted down in simulation time.
+  const FP_HELP_SECONDS = 6;
+  let fpHelpSeconds = 0;
+  let fpHelpPinned = false;
+  let renderedFrames = 0;
   const FP_SPRINT_MULTIPLIER = 1.6;
   const FP_STRAFE_SPEED = 160;
   const FP_SPRINT_FOV_EXTRA = 8;
@@ -1145,12 +1154,17 @@ export function init(canvas, elements) {
     if (mode === 'first-person') {
       playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
       fpPitch = 0;
+      fpSprintBlend = 0;
+      fpHelpSeconds = FP_HELP_SECONDS;
       hoverStation = null;
       moveTarget = null; // stop any in-flight Top-Down walk — First Person has its own movement
     } else {
       for (const k of Object.keys(heldFP)) heldFP[k] = false;
       fpJump = createJumpState();
       fpPitch = 0;
+      fpSprintBlend = 0;
+      fpHelpSeconds = 0;
+      fpHelpPinned = false;
       fpInteractFlash = 0;
       fpTransition = null; // cancel any in-flight ride/climb and clear the input block
       fpHeldDoors = null;
@@ -1179,22 +1193,24 @@ export function init(canvas, elements) {
     const entities = [];
     for (const item of inv) {
       switch (item.kind) {
+        // `height` (world px, the top of what FP draws) lets the crosshair's
+        // pitch test whether it is still on the entity.
         case 'station':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'station', ref: item.ref });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'station', ref: item.ref, height: stationTop(item.ref.kind) });
           break;
         case 'front-desk-patron':
         case 'karen':
         case 'ghost-patron':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'frontDeskSlot', ref: item.ref, slotIndex: item.slotIndex });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'frontDeskSlot', ref: item.ref, slotIndex: item.slotIndex, height: PERSON_TOP });
           break;
         case 'fines-patron':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'finesSlot', ref: item.ref, slotIndex: item.slotIndex });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'finesSlot', ref: item.ref, slotIndex: item.slotIndex, height: PERSON_TOP });
           break;
         case 'return-cart-book':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref, height: stationTop('return-cart') });
           break;
         case 'ambient-staff':
-          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey) });
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey), height: PERSON_TOP });
           break;
       }
     }
@@ -1207,17 +1223,20 @@ export function init(canvas, elements) {
       fpScene = { projected: [], interactTarget: null };
       return;
     }
-    const fov = DEFAULT_FOV_DEGREES + (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight) ? FP_SPRINT_FOV_EXTRA : 0);
+    const fov = DEFAULT_FOV_DEGREES + fpSprintBlend * FP_SPRINT_FOV_EXTRA;
     const projected = projectScene(
       { x: player.x, y: player.y, facing: playerFacing },
       buildFirstPersonEntities(),
       { canvasWidth: CANVAS_WIDTH, fovDegrees: fov },
     );
-    fpScene = { projected, interactTarget: findInteractTarget(projected), fov };
+    fpScene = { projected, interactTarget: findInteractTarget(projected, { pitch: fpPitch, eyeHeight: BASE_EYE }), fov };
   }
 
   function updateFirstPersonMovement(deltaSeconds) {
     if (cameraMode !== 'first-person') return;
+    if (fpHelpSeconds > 0) fpHelpSeconds = Math.max(0, fpHelpSeconds - deltaSeconds);
+    const sprinting = !fpTransition && heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
+    fpSprintBlend = easeSprintBlend(fpSprintBlend, sprinting, deltaSeconds);
     if (fpTransition) return; // input is frozen while an elevator/stair transition plays
     let turnDirection = 0;
     if (heldFP.turnLeft) turnDirection -= 1;
@@ -2608,6 +2627,13 @@ export function init(canvas, elements) {
     // on-screen buttons.
     if (cameraMode === 'first-person' && running && !overlay) {
       if (e.key === 'Shift') { heldFP.sprint = true; return; }
+      if ((e.key === 'h' || e.key === 'H') && !e.repeat) {
+        e.preventDefault();
+        const showing = fpHelpPinned || fpHelpSeconds > 0;
+        fpHelpPinned = !showing;
+        fpHelpSeconds = 0;
+        return;
+      }
       if (e.key in FP_TURN_KEYS || e.key in FP_MOVE_KEYS || e.key in FP_STRAFE_KEYS) {
         e.preventDefault();
         heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key] ?? FP_STRAFE_KEYS[e.key]] = true;
@@ -2672,6 +2698,7 @@ export function init(canvas, elements) {
     for (const k of Object.keys(heldFP)) heldFP[k] = false;
     fpJump = createJumpState();
     fpPitch = 0;
+    fpSprintBlend = 0;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -4977,6 +5004,38 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  const FP_HELP_LINES = [
+    'W A S D  walk  ·  two at once: diagonal',
+    '← →  turn  ·  ↑ ↓  look  ·  or the mouse',
+    'Shift sprint · Space jump · Enter interact',
+    'H  show / hide these controls',
+  ];
+
+  /** The controls card's opacity: full while pinned or showing, fading over its last second. */
+  function fpHelpAlpha() {
+    if (fpHelpPinned) return 1;
+    return Math.min(1, fpHelpSeconds);
+  }
+
+  // Drawn on the canvas (not the DOM), so it shows in fullscreen too.
+  function drawFpControlsHelp() {
+    const alpha = fpHelpAlpha();
+    if (alpha <= 0) return;
+    const w = 330;
+    const h = 18 + FP_HELP_LINES.length * 17;
+    const x = (CANVAS_WIDTH - w) / 2;
+    const y = 64;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawRoundRect(ctx, x, y, w, h, 10, 'rgba(30,22,40,0.72)');
+    ctx.fillStyle = '#fffaf2';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    FP_HELP_LINES.forEach((line, i) => ctx.fillText(line, CANVAS_WIDTH / 2, y + 17 + i * 17));
+    ctx.restore();
+  }
+
   /**
    * Camera params for the 3D renderer: jump -> eye-height lift, ↑/↓ -> pitch,
    * sprint -> a slightly wider vertical FOV. No head-bob and no roll, so the
@@ -4984,8 +5043,7 @@ export function init(canvas, elements) {
    * in an active transition's vertical camera offset.
    */
   function fpCameraParams(extraEyeY) {
-    const sprinting = heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
-    const fovDeg = FP_BASE_VFOV_DEGREES + (sprinting ? FP_SPRINT_VFOV_EXTRA : 0);
+    const fovDeg = FP_BASE_VFOV_DEGREES + fpSprintBlend * FP_SPRINT_VFOV_EXTRA;
     return {
       bobOffset: 0,
       jumpOffset: fpJump.offset + extraEyeY,
@@ -5179,6 +5237,7 @@ export function init(canvas, elements) {
     drawFpLabels(fpLabels);
     drawFirstPersonCrosshair();
     drawFpMinimap();
+    drawFpControlsHelp();
     // Pointer lock hint
     if (!fpPointerLocked) {
       ctx.save();
@@ -5212,6 +5271,7 @@ export function init(canvas, elements) {
   }
 
   function render() {
+    renderedFrames += 1;
     syncBackingStore();
     // Start every frame from a known state. Done outside the shake transform
     // below so a shaken frame can't leave an unpainted strip at the edge.
@@ -5376,7 +5436,9 @@ export function init(canvas, elements) {
   canvas.addEventListener('mousemove', (e) => {
     if (!fpPointerLocked || cameraMode !== 'first-person') return;
     const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
     playerFacing = normalizeAngle(playerFacing + dx * FP_MOUSE_SENSITIVITY);
+    fpPitch = clampPitch(fpPitch - dy * FP_MOUSE_SENSITIVITY); // mouse up looks up, as ↑ does
   });
   elements.floorButton?.addEventListener('click', () => switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1));
   elements.cameraButton?.addEventListener('click', () => setCameraMode(cameraMode === 'top-down' ? 'first-person' : 'top-down'));
@@ -5483,6 +5545,12 @@ export function init(canvas, elements) {
       getPlayerFacing: () => playerFacing,
       /** The First Person camera's live params: `{bobOffset, jumpOffset, pitch, roll, fov}` (radians). */
       getFpCameraParams: () => fpCameraParams(0),
+      /** The First Person controls card: `{alpha, pinned, secondsLeft}` (alpha 0 = hidden). */
+      getFpHelp: () => ({ alpha: fpHelpAlpha(), pinned: fpHelpPinned, secondsLeft: fpHelpSeconds }),
+      /** Sets the First Person pitch directly (clamped like the keys and mouse). */
+      setFpPitch: (pitch) => { fpPitch = clampPitch(pitch); },
+      /** How many frames have been drawn, so a test can wait for a real repaint (e.g. after the fullscreen transition holds frames back). */
+      getFrameCount: () => renderedFrames,
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),

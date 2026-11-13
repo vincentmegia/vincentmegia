@@ -19,6 +19,10 @@ import {
   stepStrafe,
   moveStep,
   stepPitch,
+  clampPitch,
+  easeSprintBlend,
+  pitchHitsEntity,
+  DEFAULT_EYE_HEIGHT,
   PITCH_MAX_RADIANS,
   PITCH_SPEED_RADIANS_PER_SECOND,
   DEFAULT_FOV_DEGREES,
@@ -367,6 +371,62 @@ describe('stepPitch', () => {
 
   test('no direction leaves it as it is', () => {
     assert.equal(stepPitch(0.2, 0, 1), 0.2);
+  });
+});
+
+describe('clampPitch', () => {
+  test('passes a pitch inside the limit and clamps one outside it', () => {
+    assert.equal(clampPitch(0.1), 0.1);
+    assert.equal(clampPitch(5), PITCH_MAX_RADIANS);
+    assert.equal(clampPitch(-5), -PITCH_MAX_RADIANS);
+  });
+});
+
+describe('easeSprintBlend', () => {
+  test('eases toward 1 while sprinting, without jumping there in one frame', () => {
+    const b = easeSprintBlend(0, true, 1 / 60);
+    assert.ok(b > 0 && b < 0.5);
+  });
+
+  test('reaches the target after holding long enough, and eases back out', () => {
+    let b = 0;
+    for (let i = 0; i < 120; i++) b = easeSprintBlend(b, true, 1 / 60);
+    assert.equal(b, 1);
+    const out = easeSprintBlend(b, false, 1 / 60);
+    assert.ok(out < 1 && out > 0.5);
+    for (let i = 0; i < 120; i++) b = easeSprintBlend(b, false, 1 / 60);
+    assert.equal(b, 0);
+  });
+});
+
+describe('findInteractTarget with pitch', () => {
+  const desk = { id: 'desk', angleOffset: 0, distance: 100, height: 36 };
+  const shelf = { id: 'shelf', angleOffset: 0, distance: 100, height: 80 };
+
+  test('at pitch 0 an entity below eye height is still targeted (unchanged flat behaviour)', () => {
+    assert.equal(findInteractTarget([desk], { pitch: 0 })?.id, 'desk');
+  });
+
+  test('looking up past the top of a low entity misses it', () => {
+    assert.equal(findInteractTarget([desk], { pitch: 0.3 }), null);
+  });
+
+  test('looking up still hits an entity tall enough to reach the crosshair', () => {
+    assert.equal(findInteractTarget([shelf], { pitch: 0.3 })?.id, 'shelf');
+  });
+
+  test('looking down at a low entity hits it', () => {
+    assert.equal(findInteractTarget([desk], { pitch: -0.3 })?.id, 'desk');
+  });
+
+  test('looking up past a nearer low desk targets the taller shelf behind it', () => {
+    assert.equal(findInteractTarget([desk, { ...shelf, distance: 120 }], { pitch: 0.3 })?.id, 'shelf');
+  });
+
+  test('pitchHitsEntity treats a missing height as eye level', () => {
+    const e = { distance: 100 };
+    assert.ok(pitchHitsEntity(0.1, e, DEFAULT_EYE_HEIGHT, 0.157));
+    assert.ok(!pitchHitsEntity(0.3, e, DEFAULT_EYE_HEIGHT, 0.157));
   });
 });
 

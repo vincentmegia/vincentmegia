@@ -719,11 +719,10 @@ crosshair and minimap.
   (re-clicking a plain station mid-walk in Top-Down leaves it set the same
   way). The lossless-flip e2e runs frozen with no walk in flight, so it
   doesn't cover this.
-* The crosshair's interact target (`first-person.js`'s `projectScene` /
-  `findInteractTarget`) is chosen by facing and distance only, so looking up
-  or down with ↑/↓ (±0.35 rad) doesn't change what Enter interacts with;
-  world labels and the 3D view do follow the pitch. The mouse turns only
-  (no mouse pitch).
+* The crosshair's pitch test uses each entity's *top* (`stationTop`,
+  `PERSON_TOP`) and the fixed `BASE_EYE`, not its real silhouette or a
+  jump's raised eye, so it is a slab test: looking at the gap above a short
+  patron's head still counts as on them within the 9° slack.
 * The elevator doors only open on arrival: doors-close keeps them shut
   (they are already shut on approach), so the departure has no closing
   animation.

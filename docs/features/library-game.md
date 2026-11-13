@@ -64,14 +64,23 @@ handling, in place of Kitchen Shift's cooking and serving.
   own turn/move/interact controls (`library/first-person.js`):
   * **Move:** W/S walk forward/back and A/D strafe, so any two held together
     walk diagonally (`moveStep` scales a diagonal by 1/√2, never faster than
-    straight ahead). The on-screen ▲ ▼ and A← →D buttons do the same.
+    straight ahead). The on-screen W▲ S▼ and A← →D buttons do the same.
   * **Rotate the camera:** the arrow keys never move Eun-mi. ←/→ turn (as do
-    Q/E, the on-screen ◀ ▶ and the mouse once the canvas has locked the
-    pointer); ↑/↓ look up/down, held within ±0.35 rad (`stepPitch`,
-    `PITCH_MAX_RADIANS`). Pitch resets to level on entering First Person.
+    Q/E and the on-screen Q◀ ▶E); ↑/↓ look up/down. Once the canvas has
+    locked the pointer the mouse does both (up looks up). Pitch is held
+    within ±0.35 rad (`clampPitch`, `PITCH_MAX_RADIANS`) and resets to level
+    on entering First Person.
+  * **The crosshair follows the pitch:** `findInteractTarget` takes the pitch
+    and each entity's height (`stationTop` for stations, `PERSON_TOP` for
+    people), so looking up past the top of a desk, or down past the foot of
+    something, no longer targets it. Level, it targets exactly as before.
   * **Steady view:** walking and strafing neither roll nor bob the camera, so
     the horizon stays level and the eye height fixed; only turning, looking,
-    jumping and sprinting (a wider FOV) change the view.
+    jumping and sprinting change the view. Sprinting widens the FOV over
+    about a quarter second (`easeSprintBlend`) rather than in one frame.
+  * **Controls card:** entering First Person shows a short controls card on
+    the canvas (so it shows in fullscreen) for 6 s, fading over its last
+    second; H shows or hides it at any time.
   * Shift sprints, Space jumps, Enter/Space interacts. Every held key is
     released when the window loses focus, so movement can't stick after
     Cmd+Tab.

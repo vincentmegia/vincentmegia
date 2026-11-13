@@ -1533,6 +1533,11 @@ test.describe('First Person Mode', () => {
 		await page.locator('#library-camera-button').click();
 
 		await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+		// Wait for First Person to have actually painted: startShift requests
+		// fullscreen, and browsers hold animation frames back during that
+		// transition, so the canvas can still show the Top-Down frame here.
+		const frames = await page.evaluate(() => window.__libraryGameTestHooks.getFrameCount());
+		await page.waitForFunction((n) => window.__libraryGameTestHooks.getFrameCount() >= n + 3, frames);
 		// Scene areas, away from the HUD bars/minimap (top) and the pointer-lock
 		// hint (bottom centre), sampled in canvas backing-store pixels.
 		const sample = () => page.evaluate(() => {
@@ -1707,6 +1712,72 @@ test.describe('First Person Mode', () => {
 			expect(p.pitch).toBe(0);
 			expect(p.jumpOffset).toBe(0);
 		}
+	});
+
+	// Looking up past a low station stops targeting it; looking back down (or
+	// level) targets it again, so Enter acts on what the crosshair is on.
+	test('the First Person interact target follows the up/down pitch', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		const desk = await getStation(page, 'front-desk');
+		await page.evaluate(({ x, y }) => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(x, y + 90);
+			h.setPlayerFacing(0);
+		}, desk);
+		const targetAt = (pitch) => page.evaluate((p) => {
+			const h = window.__libraryGameTestHooks;
+			h.setFpPitch(p);
+			h.step(1 / 60);
+			return h.getFirstPersonScene().interactTarget?.ref?.kind ?? null;
+		}, pitch);
+		expect(await targetAt(0)).toBe('front-desk');
+		expect(await targetAt(0.35)).toBe(null);
+		expect(await targetAt(-0.2)).toBe('front-desk');
+	});
+
+	test('sprinting widens the First Person FOV smoothly instead of jumping', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 420); h.setPlayerFacing(0); });
+		const base = await page.evaluate(() => window.__libraryGameTestHooks.getFpCameraParams().fov);
+		await page.keyboard.down('Shift');
+		await page.keyboard.down('w');
+		const fovs = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const out = [];
+			for (let i = 0; i < 60; i++) { h.step(1 / 60); out.push(h.getFpCameraParams().fov); }
+			return out;
+		});
+		await page.keyboard.up('w');
+		await page.keyboard.up('Shift');
+		const full = fovs[fovs.length - 1];
+		expect(full).toBeGreaterThan(base);
+		// One frame in, it has only started to widen.
+		expect(fovs[0]).toBeGreaterThan(base);
+		expect(fovs[0] - base).toBeLessThan((full - base) * 0.5);
+		for (let i = 1; i < fovs.length; i++) expect(fovs[i]).toBeGreaterThanOrEqual(fovs[i - 1]);
+	});
+
+	test('the First Person controls card shows on entering, fades out, and H toggles it', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+		expect((await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).alpha).toBe(1);
+		const faded = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			for (let i = 0; i < 60 * 7; i++) h.step(1 / 60);
+			return h.getFpHelp();
+		});
+		expect(faded.alpha).toBe(0);
+		await page.keyboard.press('h');
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).toMatchObject({ alpha: 1, pinned: true });
+		await page.keyboard.press('h');
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).toMatchObject({ alpha: 0, pinned: false });
 	});
 
 	test('a key held when the window loses focus is released, so First Person movement never sticks', async ({ page }) => {
