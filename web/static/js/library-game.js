@@ -231,6 +231,7 @@ import {
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
 import { paintBossOfficeArt, BOSS_OFFICE_ART, BOSS_OFFICE_ART_SCALE } from './library/three-d/meshes/boss-office.js';
+import { paintFrontDeskArt, FRONT_DESK_ART, FRONT_DESK_ART_SCALE } from './library/three-d/meshes/front-desk.js';
 import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, elevatorRiderPose, isInElevatorCar } from './library/three-d/meshes/elevator.js';
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
@@ -3031,6 +3032,11 @@ export function init(canvas, elements) {
       h: COFFEE_MACHINE_ART.h * COFFEE_ART_SCALE,
       paint: (c, station) => paintCoffeeMachineArt(c, station, { outOfOrder: coffeeOutOfOrder() }),
       stateKey: () => (coffeeOutOfOrder() ? 'out' : ''),
+    },
+    'front-desk': {
+      w: FRONT_DESK_ART.w * FRONT_DESK_ART_SCALE,
+      h: FRONT_DESK_ART.h * FRONT_DESK_ART_SCALE,
+      paint: paintFrontDeskArt,
     },
     // The indicator shows the station's own targetFloor, fixed per station id.
     elevator: {

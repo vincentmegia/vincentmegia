@@ -38,14 +38,13 @@ const PLANT_STEM = '#5f9e6e';
 
 // One round clump of leaves centred on (cx, cy, cz): rings whose radius
 // follows sin, so the blob is as tall as it is wide.
-function leafBlob(cx, cy, cz, r) {
-  const bands = 5;
+export function leafBlob(cx, cy, cz, r, color = PLANT_LEAF, { sides = 7, bands = 5 } = {}) {
   const rings = [];
   for (let i = 0; i <= bands; i++) {
     const t = i / bands;
-    rings.push({ y: -r + 2 * r * t, rx: r * Math.sin(t * Math.PI) || r * 0.2, rz: r * Math.sin(t * Math.PI) || r * 0.2, color: PLANT_LEAF });
+    rings.push({ y: -r + 2 * r * t, rx: r * Math.sin(t * Math.PI) || r * 0.2, rz: r * Math.sin(t * Math.PI) || r * 0.2, color });
   }
-  return translate(prism(rings, 7, PLANT_LEAF, PLANT_LEAF), [cx, cy, cz]);
+  return translate(prism(rings, sides, color, color), [cx, cy, cz]);
 }
 
 export function buildPlant() {

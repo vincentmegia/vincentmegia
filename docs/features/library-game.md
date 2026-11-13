@@ -1403,7 +1403,11 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   `rows` (Top-Down draws 2): First Person's bookshelf paints this same
   drawer at its own 1:2 shape with 4 rows and wears it as a texture
   (`library-first-person-3d.md`), so a change to the bookcase art shows
-  in both cameras.
+  in both cameras. `drawFrontDesk` draws from `frontDeskLayout` and
+  `FRONT_DESK_COLORS` (exported beside it); First Person's Front Desk
+  wears that same drawing on its counter, slab and monitor and places its
+  books, bell and plant from the layout, so a change to the desk's art
+  shows in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

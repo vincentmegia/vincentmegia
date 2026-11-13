@@ -396,37 +396,91 @@ export function drawOutOfOrderTape(ctx) {
   }
 }
 
-/** The Front Desk: a peach counter with a monitor of book covers, a stack of books, a bell and a plant. */
+/** The Front Desk's own colours: its counter, monitor, cover and book swatches, bell and plant. */
+export const FRONT_DESK_COLORS = {
+  counter: '#ffcfa8',
+  top: '#e8b58a',
+  stand: '#8a8aa0',
+  monitor: '#5a5a78',
+  screen: '#d6ecff',
+  covers: [ANIME.pink, ANIME.mint, ANIME.gold],
+  books: [ANIME.sky, ANIME.coral, ANIME.lavender],
+  bell: ANIME.gold,
+  bellBase: ANIME.goldDeep,
+  pot: '#f2a98a',
+  leaf: ANIME.mint,
+};
+
+/**
+ * Where drawFrontDesk puts its parts, in the station's centered px: the
+ * counter body and its top slab, the monitor (stand, case, screen), the
+ * stack of books (bottom first), the service bell (dome centre and radius,
+ * its base and button), the plant's pot and leaf circles, and `floor`, the
+ * body's bottom edge the desk stands on. Widths and the pot follow `st.w`,
+ * the body's height `st.h`; the rest is fixed px. Top-Down's box is 124 x 84.
+ * First Person's front-desk mesh maps its faces onto these same regions
+ * (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function frontDeskLayout(st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  return {
+    body: { x0: -hw + 6, y0: 2, x1: -hw + 6 + (st.w - 12), y1: 2 + (hh - 6) },
+    top: { x0: -hw + 2, y0: -6, x1: -hw + 2 + (st.w - 4), y1: 4 },
+    stand: { x0: -24, y0: -6, x1: -14, y1: -2 },
+    monitor: { x0: -40, y0: -36, x1: 2, y1: -6 },
+    screen: { x0: -36, y0: -32, x1: -2, y1: -10 },
+    books: [0, 1, 2].map((i) => ({ x0: 6 - i, y0: -12 - i * 7, x1: 6 - i + 24, y1: -12 - i * 7 + 6.5 })),
+    bell: { x: 46, y: -6, r: 8 },
+    bellBase: { x0: 36, y0: -7, x1: 56, y1: -4 },
+    bellButton: { x: 46, y: -15, r: 1.8 },
+    pot: { x0: -hw + 7, y0: -18, x1: -hw + 7 + 12, y1: -18 + 13 },
+    leaves: [[-hw + 13, -24, 5], [-hw + 9, -27, 3.5], [-hw + 17, -28, 3.5]].map(([x, y, r]) => ({ x, y, r })),
+    floor: 2 + (hh - 6),
+  };
+}
+
+/** A rect's x, y, w, h, the way the drawer's primitives take it. */
+const xywh = (r) => [r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0];
+
+/**
+ * The Front Desk: a peach counter with a monitor of book covers, a stack of
+ * books, a bell and a plant. Drawn from frontDeskLayout and FRONT_DESK_COLORS.
+ */
 export function drawFrontDesk(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  block(ctx, -hw + 6, 2, st.w - 12, hh - 6, 8, '#ffcfa8', 1.5);
+  const L = frontDeskLayout(st);
+  const C = FRONT_DESK_COLORS;
+  block(ctx, ...xywh(L.body), 8, C.counter, 1.5);
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.fillRect(-hw + 7, 12, st.w - 14, 6);
-  block(ctx, -hw + 2, -6, st.w - 4, 10, 5, '#e8b58a', 1.5);
+  block(ctx, ...xywh(L.top), 5, C.top, 1.5);
   heart(ctx, 0, hh - 14, 4.5, 'rgba(232,85,143,0.7)');
   // Monitor with the catalogue on screen.
-  flat(ctx, -24, -6, 10, 4, 1, '#8a8aa0', 1);
-  block(ctx, -40, -36, 42, 30, 5, '#5a5a78', 1.5);
-  flat(ctx, -36, -32, 34, 22, 3, '#d6ecff', 1);
-  [ANIME.pink, ANIME.mint, ANIME.gold].forEach((c, i) => flat(ctx, -33 + i * 10, -29, 8, 12, 1.5, c, 0.8));
+  flat(ctx, ...xywh(L.stand), 1, C.stand, 1);
+  block(ctx, ...xywh(L.monitor), 5, C.monitor, 1.5);
+  flat(ctx, ...xywh(L.screen), 3, C.screen, 1);
+  C.covers.forEach((c, i) => flat(ctx, -33 + i * 10, -29, 8, 12, 1.5, c, 0.8));
   ctx.fillStyle = 'rgba(59,42,74,0.35)';
   ctx.fillRect(-33, -14, 28, 1.4);
   // A stack of books.
-  [[ANIME.sky, 0], [ANIME.coral, 1], [ANIME.lavender, 2]].forEach(([c, i]) => block(ctx, 6 - i, -12 - i * 7, 24, 6.5, 2, c, 1.1));
+  L.books.forEach((b, i) => block(ctx, ...xywh(b), 2, C.books[i], 1.1));
   // Service bell.
-  ctx.fillStyle = ANIME.gold;
+  ctx.fillStyle = C.bell;
   ctx.beginPath();
-  ctx.arc(46, -6, 8, Math.PI, 0);
+  ctx.arc(L.bell.x, L.bell.y, L.bell.r, Math.PI, 0);
   ctx.fill();
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.2;
   ctx.stroke();
-  flat(ctx, 36, -7, 20, 3, 1.5, ANIME.goldDeep, 1);
-  circle(ctx, 46, -15, 1.8, ANIME.goldDeep, 0.9);
+  flat(ctx, ...xywh(L.bellBase), 1.5, C.bellBase, 1);
+  circle(ctx, L.bellButton.x, L.bellButton.y, L.bellButton.r, C.bellBase, 0.9);
   // A little potted plant.
-  flat(ctx, -hw + 7, -18, 12, 13, 3, '#f2a98a', 1.1);
-  for (const [dx, dy, r] of [[-hw + 13, -24, 5], [-hw + 9, -27, 3.5], [-hw + 17, -28, 3.5]]) circle(ctx, dx, dy, r, ANIME.mint, 1);
+  flat(ctx, ...xywh(L.pot), 3, C.pot, 1.1);
+  for (const { x, y, r } of L.leaves) circle(ctx, x, y, r, C.leaf, 1);
   sparkle(ctx, hw - 10, -hh + 10, 3.5, '#ffffff');
 }
 

@@ -5,6 +5,7 @@ import {
   bookcaseLayout,
   drawBookcase,
   drawFrontDesk,
+  frontDeskLayout,
   drawReturnCart,
   drawFinesRoom,
   drawBossDoor,
@@ -114,7 +115,9 @@ describe('library anime furniture', () => {
     return {
       calls,
       ctx: new Proxy({}, {
-        get: (_, k) => (k === 'measureText' ? () => ({ width: 5 }) : (...a) => calls.push([k, a])),
+        get: (_, k) => (k === 'measureText' ? () => ({ width: 5 })
+          : (k === 'createLinearGradient' || k === 'createRadialGradient') ? (...a) => { calls.push([k, a]); return { addColorStop: (...s) => calls.push(['addColorStop', s]) }; }
+            : (...a) => calls.push([k, a])),
         set: (_, k, v) => { calls.push(['set:' + k, [v]]); return true; },
       }),
     };
@@ -165,6 +168,29 @@ describe('library anime furniture', () => {
     assert.equal(b.body.y1 - b.cup.y1, a.body.y1 - a.cup.y1);
     assert.equal(b.bay.y1 - b.bay.y0, a.bay.y1 - a.bay.y0 + 20);
     assert.equal(b.body.x1 - b.body.x0, a.body.x1 - a.body.x0);
+  });
+
+  // The First Person front desk maps its faces onto these regions, so the
+  // layout must keep Top-Down's own numbers (the 124 x 84 station).
+  test('frontDeskLayout keeps the Top-Down front desk geometry', () => {
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    assert.deepEqual(L.body, { x0: -56, y0: 2, x1: 56, y1: 38 });
+    assert.deepEqual(L.top, { x0: -60, y0: -6, x1: 60, y1: 4 });
+    assert.deepEqual(L.monitor, { x0: -40, y0: -36, x1: 2, y1: -6 });
+    assert.deepEqual(L.screen, { x0: -36, y0: -32, x1: -2, y1: -10 });
+    assert.deepEqual(L.books[2], { x0: 4, y0: -26, x1: 28, y1: -19.5 });
+    assert.deepEqual(L.pot, { x0: -55, y0: -18, x1: -43, y1: -5 });
+    assert.equal(L.floor, 38);
+  });
+
+  test('drawFrontDesk draws its parts from frontDeskLayout', () => {
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    const { ctx, calls } = recordingContext();
+    drawFrontDesk(ctx, { w: 124, h: 84 });
+    const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    for (const r of [L.body, L.top, L.stand, L.monitor, L.screen, ...L.books, L.bellBase, L.pot]) {
+      assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
+    }
   });
 
   test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {
