@@ -20,7 +20,8 @@ replaced the older billboard-sprite view. Parent doc:
 ## Scope
 
 **In scope:** the room shell, stations, queue characters and Return Cart
-books drawn as 3D meshes; head-bob/jump/tilt/sprint as camera effects; the
+books drawn as 3D meshes; jump, ↑/↓ pitch and sprint FOV as camera effects
+(no head-bob or strafe roll: the view holds still while walking); the
 animated elevator ride (with its doors) and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
@@ -718,6 +719,11 @@ crosshair and minimap.
   (re-clicking a plain station mid-walk in Top-Down leaves it set the same
   way). The lossless-flip e2e runs frozen with no walk in flight, so it
   doesn't cover this.
+* The crosshair's interact target (`first-person.js`'s `projectScene` /
+  `findInteractTarget`) is chosen by facing and distance only, so looking up
+  or down with ↑/↓ (±0.35 rad) doesn't change what Enter interacts with;
+  world labels and the 3D view do follow the pitch. The mouse turns only
+  (no mouse pitch).
 * The elevator doors only open on arrival: doors-close keeps them shut
   (they are already shut on approach), so the departure has no closing
   animation.

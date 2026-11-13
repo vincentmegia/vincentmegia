@@ -1645,16 +1645,91 @@ test.describe('First Person Mode', () => {
 		const afterButtonMove = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
 		expect(Math.hypot(afterButtonMove.x - beforeMove.x, afterButtonMove.y - beforeMove.y)).toBeGreaterThan(5);
 
-		await page.keyboard.down('ArrowDown');
+		await page.keyboard.down('s');
 		await page.waitForTimeout(300);
-		await page.keyboard.up('ArrowDown');
+		await page.keyboard.up('s');
 		const afterKeyMove = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
 		expect(Math.hypot(afterKeyMove.x - afterButtonMove.x, afterKeyMove.y - afterButtonMove.y)).toBeGreaterThan(5);
 	});
 
+	// The arrows rotate the camera and never move Eun-mi: ←/→ turn, ↑/↓ look
+	// up/down (held within the pitch limit).
+	test('the arrow keys rotate the First Person camera without moving the player', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+		const hold = async (key, frames = 24) => {
+			await page.keyboard.down(key);
+			const r = await page.evaluate((n) => {
+				const h = window.__libraryGameTestHooks;
+				for (let i = 0; i < n; i++) h.step(1 / 60);
+				return { pos: h.getPlayerPosition(), facing: h.getPlayerFacing(), pitch: h.getFpCameraParams().pitch };
+			}, frames);
+			await page.keyboard.up(key);
+			return r;
+		};
+		const left = await hold('ArrowLeft');
+		expect(left.facing).toBeLessThan(-0.1);
+		const right = await hold('ArrowRight', 48);
+		expect(right.facing).toBeGreaterThan(left.facing + 0.2);
+		const up = await hold('ArrowUp');
+		expect(up.pitch).toBeGreaterThan(0.1);
+		const down = await hold('ArrowDown', 120); // long enough to hit the limit
+		expect(down.pitch).toBeLessThan(0);
+		expect(down.pitch).toBeGreaterThanOrEqual(-0.35 - 1e-9);
+		for (const r of [left, right, up, down]) {
+			expect(r.pos.x).toBeCloseTo(480, 5);
+			expect(r.pos.y).toBeCloseTo(380, 5);
+		}
+	});
+
+	// Walking or strafing never rolls or bobs the view: only turning, looking
+	// and jumping move the camera.
+	test('the First Person view stays level and still while walking diagonally', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 420); h.setPlayerFacing(0); });
+		await page.keyboard.down('w');
+		await page.keyboard.down('a');
+		const params = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const out = [];
+			for (let i = 0; i < 30; i++) { h.step(1 / 60); out.push(h.getFpCameraParams()); }
+			return out;
+		});
+		await page.keyboard.up('a');
+		await page.keyboard.up('w');
+		for (const p of params) {
+			expect(p.roll).toBe(0);
+			expect(p.bobOffset).toBe(0);
+			expect(p.pitch).toBe(0);
+			expect(p.jumpOffset).toBe(0);
+		}
+	});
+
+	test('a key held when the window loses focus is released, so First Person movement never sticks', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+		await page.keyboard.down('w');
+		// The window blurs and the keyup never arrives (it's released elsewhere).
+		const moved = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			window.dispatchEvent(new Event('blur'));
+			const before = h.getPlayerPosition();
+			for (let i = 0; i < 24; i++) h.step(1 / 60);
+			const after = h.getPlayerPosition();
+			return Math.hypot(after.x - before.x, after.y - before.y);
+		});
+		expect(moved).toBe(0);
+	});
+
 	// Two direction keys held at once walk diagonally without turning, and a
 	// diagonal is never faster than walking straight (it's scaled by 1/√2).
-	for (const [keys, sx, sy] of [[['w', 'a'], -1, -1], [['w', 'd'], 1, -1], [['s', 'a'], -1, 1], [['ArrowUp', 'ArrowRight'], 1, -1], [['ArrowDown', 'ArrowLeft'], -1, 1]]) {
+	for (const [keys, sx, sy] of [[['w', 'a'], -1, -1], [['w', 'd'], 1, -1], [['s', 'a'], -1, 1], [['s', 'd'], 1, 1]]) {
 		test(`holding ${keys.join(' + ')} in First Person walks diagonally without turning`, async ({ page }) => {
 			await page.goto('/library-game');
 			await startShift(page);

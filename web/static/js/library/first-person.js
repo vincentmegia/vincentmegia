@@ -246,6 +246,16 @@ export function turnFacing(facing, direction, deltaSeconds, turnSpeed = TURN_SPE
   return normalizeAngle(facing + direction * turnSpeed * deltaSeconds);
 }
 
+/** How far the view tilts up or down (radians, either way), and how fast. */
+export const PITCH_MAX_RADIANS = 0.35;
+export const PITCH_SPEED_RADIANS_PER_SECOND = 1.2;
+
+/** Tilts the view up (`direction` 1) or down (-1), held within ±PITCH_MAX_RADIANS. */
+export function stepPitch(pitch, direction, deltaSeconds, speed = PITCH_SPEED_RADIANS_PER_SECOND) {
+  const next = pitch + direction * speed * deltaSeconds;
+  return Math.max(-PITCH_MAX_RADIANS, Math.min(PITCH_MAX_RADIANS, next));
+}
+
 /** Moves a point `distance` world pixels along (`direction` 1) or against (`direction` -1) the given facing. */
 export function stepForward(x, y, facing, direction, distance) {
   const { dx, dy } = forwardVector(facing);

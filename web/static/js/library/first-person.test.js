@@ -18,6 +18,9 @@ import {
   stepForward,
   stepStrafe,
   moveStep,
+  stepPitch,
+  PITCH_MAX_RADIANS,
+  PITCH_SPEED_RADIANS_PER_SECOND,
   DEFAULT_FOV_DEGREES,
   createJumpState,
   updateJump,
@@ -348,6 +351,22 @@ describe('stepStrafe', () => {
     const { x, y } = stepStrafe(100, 100, Math.PI / 2, 1, 50);
     assert.ok(Math.abs(x - 100) < 1e-9);
     assert.ok(Math.abs(y - 150) < 1e-9);
+  });
+});
+
+describe('stepPitch', () => {
+  test('up raises the pitch, down lowers it, at the pitch speed', () => {
+    assert.ok(Math.abs(stepPitch(0, 1, 0.1) - PITCH_SPEED_RADIANS_PER_SECOND * 0.1) < 1e-9);
+    assert.ok(Math.abs(stepPitch(0, -1, 0.1) + PITCH_SPEED_RADIANS_PER_SECOND * 0.1) < 1e-9);
+  });
+
+  test('holding it never tilts past the limit either way', () => {
+    assert.equal(stepPitch(0, 1, 10), PITCH_MAX_RADIANS);
+    assert.equal(stepPitch(0, -1, 10), -PITCH_MAX_RADIANS);
+  });
+
+  test('no direction leaves it as it is', () => {
+    assert.equal(stepPitch(0.2, 0, 1), 0.2);
   });
 });
 

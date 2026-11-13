@@ -210,6 +210,7 @@ import {
   findInteractTarget,
   turnFacing,
   moveStep,
+  stepPitch,
   MOVE_SPEED_PIXELS_PER_SECOND,
   createJumpState,
   updateJump,
@@ -784,16 +785,13 @@ export function init(canvas, elements) {
   // "sensible facing angle" — see `switchFloor`) doesn't need special-casing.
   let cameraMode = 'top-down'; // 'top-down' | 'first-person'
   let playerFacing = 0;
-  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false, strafeLeft: false, strafeRight: false, sprint: false };
+  const heldFP = { turnLeft: false, turnRight: false, lookUp: false, lookDown: false, forward: false, back: false, strafeLeft: false, strafeRight: false, sprint: false };
   let fpJump = createJumpState();
-  let fpHeadBobT = 0;
-  let fpTiltAngle = 0;
-  const FP_HEAD_BOB_FREQ = 8;
-  const FP_HEAD_BOB_AMP = 3.5;
+  // The view only moves when the player turns, looks up/down or jumps:
+  // walking and strafing keep the horizon level and the eye height fixed.
+  let fpPitch = 0;
   const FP_SPRINT_MULTIPLIER = 1.6;
   const FP_STRAFE_SPEED = 160;
-  const FP_TILT_MAX = 0.035;
-  const FP_TILT_EASE = 8;
   const FP_SPRINT_FOV_EXTRA = 8;
   const FP_MOUSE_SENSITIVITY = 0.003;
   let fpPointerLocked = false;
@@ -1146,19 +1144,13 @@ export function init(canvas, elements) {
     cameraMode = mode;
     if (mode === 'first-person') {
       playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+      fpPitch = 0;
       hoverStation = null;
       moveTarget = null; // stop any in-flight Top-Down walk — First Person has its own movement
     } else {
-      heldFP.turnLeft = false;
-      heldFP.turnRight = false;
-      heldFP.forward = false;
-      heldFP.back = false;
-      heldFP.strafeLeft = false;
-      heldFP.strafeRight = false;
-      heldFP.sprint = false;
+      for (const k of Object.keys(heldFP)) heldFP[k] = false;
       fpJump = createJumpState();
-      fpHeadBobT = 0;
-      fpTiltAngle = 0;
+      fpPitch = 0;
       fpInteractFlash = 0;
       fpTransition = null; // cancel any in-flight ride/climb and clear the input block
       fpHeldDoors = null;
@@ -1231,6 +1223,10 @@ export function init(canvas, elements) {
     if (heldFP.turnLeft) turnDirection -= 1;
     if (heldFP.turnRight) turnDirection += 1;
     if (turnDirection !== 0) playerFacing = turnFacing(playerFacing, turnDirection, deltaSeconds);
+    let lookDirection = 0;
+    if (heldFP.lookUp) lookDirection += 1;
+    if (heldFP.lookDown) lookDirection -= 1;
+    if (lookDirection !== 0) fpPitch = stepPitch(fpPitch, lookDirection, deltaSeconds);
 
     const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
     const sprintMultiplier = heldFP.sprint ? FP_SPRINT_MULTIPLIER : 1;
@@ -1248,19 +1244,6 @@ export function init(canvas, elements) {
       player.x = clamped.x;
       player.y = clamped.y;
     }
-
-    const isMoving = moveDirection !== 0 || strafeDir !== 0;
-    if (isMoving) {
-      const bobSpeed = heldFP.sprint ? FP_HEAD_BOB_FREQ * 1.3 : FP_HEAD_BOB_FREQ;
-      fpHeadBobT += deltaSeconds * bobSpeed;
-    } else {
-      fpHeadBobT *= Math.max(0, 1 - deltaSeconds * 6);
-      if (fpHeadBobT < 0.01) fpHeadBobT = 0;
-    }
-
-    // Camera tilt when strafing
-    const targetTilt = strafeDir * -FP_TILT_MAX;
-    fpTiltAngle += (targetTilt - fpTiltAngle) * Math.min(1, deltaSeconds * FP_TILT_EASE);
 
     // Dust particles
     for (const d of fpDust) {
@@ -2538,11 +2521,12 @@ export function init(canvas, elements) {
     hoverStation = null;
   }
 
-  // WASD and the arrows both move in four directions, so any two held
-  // together walk diagonally; Q/E (and the mouse, and the on-screen ◀ ▶) turn.
-  const FP_TURN_KEYS = { q: 'turnLeft', Q: 'turnLeft', e: 'turnRight', E: 'turnRight' };
-  const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back', w: 'forward', s: 'back', W: 'forward', S: 'back' };
-  const FP_STRAFE_KEYS = { ArrowLeft: 'strafeLeft', ArrowRight: 'strafeRight', a: 'strafeLeft', A: 'strafeLeft', d: 'strafeRight', D: 'strafeRight' };
+  // WASD moves in four directions (any two held together walk diagonally);
+  // the arrows only rotate the camera: ←/→ turn and ↑/↓ look up/down. Q/E,
+  // the mouse and the on-screen ◀ ▶ turn too.
+  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', ArrowUp: 'lookUp', ArrowDown: 'lookDown', q: 'turnLeft', Q: 'turnLeft', e: 'turnRight', E: 'turnRight' };
+  const FP_MOVE_KEYS = { w: 'forward', s: 'back', W: 'forward', S: 'back' };
+  const FP_STRAFE_KEYS = { a: 'strafeLeft', A: 'strafeLeft', d: 'strafeRight', D: 'strafeRight' };
 
   function onKeyDown(e) {
     if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {
@@ -2685,16 +2669,9 @@ export function init(canvas, elements) {
     player = { ...PLAYER_START };
     resetAmbient();
     playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
-    heldFP.turnLeft = false;
-    heldFP.turnRight = false;
-    heldFP.forward = false;
-    heldFP.back = false;
-    heldFP.strafeLeft = false;
-    heldFP.strafeRight = false;
-    heldFP.sprint = false;
+    for (const k of Object.keys(heldFP)) heldFP[k] = false;
     fpJump = createJumpState();
-    fpHeadBobT = 0;
-    fpTiltAngle = 0;
+    fpPitch = 0;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -5001,20 +4978,19 @@ export function init(canvas, elements) {
   }
 
   /**
-   * Camera params for the 3D renderer, derived from the live effect state:
-   * head-bob -> a small eye-height bob, jump -> eye-height lift, strafe tilt ->
-   * camera roll, sprint -> a slightly wider vertical FOV. `extraEyeY` folds in
-   * an active transition's vertical camera offset.
+   * Camera params for the 3D renderer: jump -> eye-height lift, ↑/↓ -> pitch,
+   * sprint -> a slightly wider vertical FOV. No head-bob and no roll, so the
+   * horizon stays level and still while walking or strafing. `extraEyeY` folds
+   * in an active transition's vertical camera offset.
    */
   function fpCameraParams(extraEyeY) {
-    const bobOffset = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
     const sprinting = heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
     const fovDeg = FP_BASE_VFOV_DEGREES + (sprinting ? FP_SPRINT_VFOV_EXTRA : 0);
     return {
-      bobOffset,
+      bobOffset: 0,
       jumpOffset: fpJump.offset + extraEyeY,
-      pitch: 0,
-      roll: fpTiltAngle,
+      pitch: fpPitch,
+      roll: 0,
       fov: (fovDeg * Math.PI) / 180,
     };
   }
@@ -5373,8 +5349,15 @@ export function init(canvas, elements) {
     }
   }
 
+  // A key released while the window is unfocused never sends its keyup (nor do
+  // keys let go while Cmd is held on macOS), so drop every held FP key on blur.
+  function onWindowBlur() {
+    for (const k of Object.keys(heldFP)) heldFP[k] = false;
+  }
+
   // -- Event wiring ---------------------------------------------------------
 
+  window.addEventListener('blur', onWindowBlur);
   canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
   window.addEventListener('pointerup', onWindowPointerUp);
@@ -5455,6 +5438,7 @@ export function init(canvas, elements) {
     document.removeEventListener('keyup', onKeyUp);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('blur', onWindowBlur);
     document.body.removeEventListener('htmx:beforeSwap', teardown);
     if (teardownActiveInstance === teardown) teardownActiveInstance = null;
   }
@@ -5497,6 +5481,8 @@ export function init(canvas, elements) {
       getCameraMode: () => cameraMode,
       setCameraMode: (mode) => setCameraMode(mode),
       getPlayerFacing: () => playerFacing,
+      /** The First Person camera's live params: `{bobOffset, jumpOffset, pitch, roll, fov}` (radians). */
+      getFpCameraParams: () => fpCameraParams(0),
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
       getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),

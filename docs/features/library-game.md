@@ -61,11 +61,20 @@ handling, in place of Kitchen Shift's cooking and serving.
   the station under the cursor). It also has a First Person camera
   (`#library-camera-button`): a true software-3D view (see
   **First Person Mode** below and `library-first-person-3d.md`) with its
-  own turn/move/interact controls (`library/first-person.js`). W/S or ↑/↓
-  walk forward/back and A/D or ←/→ strafe, so any two held together walk
-  diagonally (`moveStep` scales a diagonal by 1/√2, never faster than
-  straight ahead); Q/E, the mouse once the pointer is locked, and the
-  on-screen ◀ ▶ turn; Shift sprints, Space jumps, Enter/Space interacts.
+  own turn/move/interact controls (`library/first-person.js`):
+  * **Move:** W/S walk forward/back and A/D strafe, so any two held together
+    walk diagonally (`moveStep` scales a diagonal by 1/√2, never faster than
+    straight ahead). The on-screen ▲ ▼ and A← →D buttons do the same.
+  * **Rotate the camera:** the arrow keys never move Eun-mi. ←/→ turn (as do
+    Q/E, the on-screen ◀ ▶ and the mouse once the canvas has locked the
+    pointer); ↑/↓ look up/down, held within ±0.35 rad (`stepPitch`,
+    `PITCH_MAX_RADIANS`). Pitch resets to level on entering First Person.
+  * **Steady view:** walking and strafing neither roll nor bob the camera, so
+    the horizon stays level and the eye height fixed; only turning, looking,
+    jumping and sprinting (a wider FOV) change the view.
+  * Shift sprints, Space jumps, Enter/Space interacts. Every held key is
+    released when the window loses focus, so movement can't stick after
+    Cmd+Tab.
 * **First Person Mode** is a software-3D renderer on the same 2D canvas
   (no WebGL, no dependencies) under `web/static/js/library/three-d/`: a
   pure `core.js` (matrices, camera, painter-sorted draw list, flat
@@ -88,8 +97,9 @@ handling, in place of Kitchen Shift's cooking and serving.
   a frame that is cleared and backdrop-filled first, since the 3D scene
   paints polygons rather than a full-canvas background like Top-Down's
   `drawFloor`.
-  Head-bob, jump, strafe tilt and sprint FOV move the 3D camera
-  (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
+  Jump, ↑/↓ pitch and sprint FOV move the 3D camera (`fpCameraParams` in
+  `library-game.js`); the earlier head-bob and strafe roll were removed so
+  the view holds still while walking. The Stairs and Elevator play an
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
   with movement input frozen; the floor switches at the commit point, and
   Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
