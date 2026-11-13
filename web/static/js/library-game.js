@@ -5235,15 +5235,16 @@ export function init(canvas, elements) {
     drawFirstPersonCrosshair();
     drawFpMinimap();
     drawFpControlsHelp();
-    // Pointer lock hint
+    // Pointer lock hint — top centre, above the controls card (y 64), so the
+    // DOM Jump/Interact cluster at the bottom centre never covers it.
     if (!fpPointerLocked) {
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      drawRoundRect(ctx, CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT - 38, 200, 24, 8, 'rgba(0,0,0,0.35)');
+      drawRoundRect(ctx, CANVAS_WIDTH / 2 - 100, 14, 200, 24, 8, 'rgba(0,0,0,0.35)');
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Click to enable mouse look', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Click to enable mouse look', CANVAS_WIDTH / 2, 26);
       ctx.restore();
     }
   }

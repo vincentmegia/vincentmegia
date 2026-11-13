@@ -67,7 +67,9 @@ handling, in place of Kitchen Shift's cooking and serving.
     straight ahead). The on-screen W▲ S▼ and A← →D buttons do the same.
   * **Rotate the camera:** the arrow keys never move Eun-mi. ←/→ turn (as do
     Q/E and the on-screen Q◀ ▶E); ↑/↓ look up/down. Once the canvas has
-    locked the pointer the mouse does both (up looks up). Pitch is held
+    locked the pointer the mouse does both (up looks up); until then a
+    "Click to enable mouse look" chip sits at the top centre of the canvas
+    (clear of the bottom-centre Jump/Interact buttons). Pitch is held
     within ±0.35 rad (`clampPitch`, `PITCH_MAX_RADIANS`) and resets to level
     on entering First Person.
   * **The crosshair follows the pitch:** `findInteractTarget` takes the pitch
