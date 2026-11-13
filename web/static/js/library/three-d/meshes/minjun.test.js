@@ -6,7 +6,7 @@ import {
 } from './minjun.js';
 import { MINJUN_ART, MINJUN_EYE_PX, MINJUN_K, S, modelY, toArt, toModel, uvIn } from './minjun-frame.js';
 import { HEAD_RINGS } from './minjun-head.js';
-import { TORSO_RINGS } from './minjun-body.js';
+import { TORSO_RINGS, buildHand, HAND, POCKET, BOOK_ARM } from './minjun-body.js';
 import { faceNormal } from './geom.js';
 import { buildCharacter } from './character.js';
 import { FRAME } from './character-frame.js';
@@ -116,8 +116,51 @@ test('poses move only his free arm (and the read pose\'s open book): his left si
   for (const pose of POSES) assert.equal(right(buildMinjun({ pose })), base, pose);
 });
 
-test('a face budget: under 450 faces in every pose', () => {
-  for (const pose of POSES) assert.ok(buildMinjun({ pose }).faces.length < 450, pose);
+test('a face budget: under 500 faces in every pose', () => {
+  for (const pose of POSES) assert.ok(buildMinjun({ pose }).faces.length < 500, pose);
+});
+
+test('buildHand: a flat palm, four fingers and a thumb, all in his skin tones, reaching past the wrist along `dir`', () => {
+  const wrist = [-12.6, -17.4, 1.5];
+  const m = buildHand(wrist, { dir: [0, 1, 0], side: [1, 0, 0], thumb: 1 });
+  // Palm: 8 sides + 2 caps; four fingers and the thumb: 4 sides + a tip each.
+  assert.equal(m.faces.length, 10 + 5 * 5);
+  for (const f of m.faces) assert.ok(SKIN.has(f.color), f.color);
+  const art = m.vertices.map(toArt);
+  const ys = art.map((p) => p[1]);
+  const xs = art.map((p) => p[0] - wrist[0]);
+  // Fingers down: from just above the wrist to palm + finger below it.
+  near(Math.min(...ys), wrist[1] - 0.5, 0.05);
+  near(Math.max(...ys), wrist[1] + HAND.palm + HAND.finger, 0.05);
+  // Wider than thick, and the thumb sticks out on the + side only.
+  const zs = m.vertices.map((v) => v[2] / S - wrist[2]);
+  assert.ok(Math.max(...xs) > HAND.width + 1, 'thumb');
+  assert.ok(Math.min(...xs) > -HAND.width - 0.01);
+  assert.ok(Math.max(...zs) < HAND.width * HAND.thick + 0.7);
+  // Mirrored thumb.
+  const left = buildHand(wrist, { dir: [0, 1, 0], side: [1, 0, 0], thumb: -1 });
+  assert.ok(Math.min(...left.vertices.map((v) => toArt(v)[0] - wrist[0])) < -HAND.width - 1);
+});
+
+test('every pose shows his hands: a hand on the free arm (the pocket and its hooked thumb when walking, the book art when reading) and one round the books', () => {
+  const below = (m, y) => m.faces.filter((f) => SKIN.has(f.color) && f.indices.every((i) => toArt(m.vertices[i])[1] > y));
+  for (const pose of POSES) {
+    const m = buildMinjun({ pose });
+    // The book hand: skin right of the last spine's left edge, in front of the books.
+    const bookHand = m.faces.filter((f) => SKIN.has(f.color) && f.indices.every((i) => toArt(m.vertices[i])[0] > BOOK_ARM.wrist[0] - 1 && m.vertices[i][2] > 0));
+    assert.ok(bookHand.length >= 30, `:  book-hand faces`);
+    const p = MINJUN_POSES[pose];
+    if (p.hand === 'pocket') {
+      assert.equal(m.faces.filter((f) => f.color === POCKET.color).length, 8, 'the pocket bulge');
+      assert.ok(below(m, POCKET.thumbFrom[1] - 1).length >= 5, 'the thumb');
+    } else {
+      assert.equal(m.faces.filter((f) => f.color === POCKET.color).length, 0);
+    }
+  }
+  // Standing, the hand hangs below the wrist; waving, it is above it.
+  const y = (pose) => { const m = buildMinjun({ pose }); const w = MINJUN_POSES[pose].wrist; return m.vertices.map(toArt).filter((q) => Math.abs(q[0] - w[0]) < 2.2).map((q) => q[1]); };
+  assert.ok(Math.max(...y('idle')) > MINJUN_POSES.idle.wrist[1] + 4);
+  assert.ok(Math.min(...y('wave')) < MINJUN_POSES.wave.wrist[1] - 4);
 });
 
 test('the material rule: every skin-toned face is unlit; clothes are lit; the whole head is unlit', () => {

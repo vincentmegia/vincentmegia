@@ -226,3 +226,17 @@ test('projectFront: only quads turned toward +Z take the art (unlit, uv from toU
   const some = projectFront(make(), { image, toUV: () => [0, 0], only: (f) => f === undefined });
   assert.equal(some.faces.filter((f) => f.texture).length, 0);
 });
+
+test('tube side/squash: a flattened tube, wide along `side` (made square to the axis) and squash times that thick', () => {
+  const m = tube([0, 0, 0], [0, 2, 0], 1, 1, 8, '#ffffff', { side: [1, 5, 0], squash: 0.5, capB: '#000000' });
+  const xs = m.vertices.map((v) => Math.abs(v[0]));
+  const zs = m.vertices.map((v) => Math.abs(v[2]));
+  assert.ok(Math.abs(Math.max(...xs) - 1) < 1e-9, 'full radius along side, its axial part dropped');
+  assert.ok(Math.abs(Math.max(...zs) - 0.5) < 1e-9, 'half as thick');
+  const mid = [0, 1, 0];
+  for (const f of m.faces) {
+    const n = faceNormal(m, f);
+    const c = faceCentre(m, f);
+    assert.ok(n[0] * (c[0] - mid[0]) + n[1] * (c[1] - mid[1]) + n[2] * (c[2] - mid[2]) > 0, 'outward');
+  }
+});

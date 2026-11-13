@@ -1872,6 +1872,38 @@ test.describe('First Person Mode', () => {
 		});
 	}
 
+	// Enter is the one interact key and Space the one jump key ("make 'enter'
+	// key the button for interaction"); they used to share both jobs.
+	test('in First Person, Space only jumps (even with a target centered) and Enter only interacts (never jumps)', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		const h = (fn) => page.evaluate(fn);
+		const coffee = await getStation(page, 'coffee-machine');
+
+		// Nothing targeted: Enter does not jump.
+		await page.evaluate(({ x, y }) => {
+			window.__libraryGameTestHooks.setPlayerPosition(x, y + 60);
+			window.__libraryGameTestHooks.setPlayerFacing(Math.PI); // back to the machine
+		}, coffee);
+		await expect.poll(() => h(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget)).toBe(null);
+		await page.keyboard.press('Enter');
+		expect(await h(() => window.__libraryGameTestHooks.getJumpState().phase)).toBe('ground');
+
+		// The Coffee Machine centered: Space jumps and opens nothing.
+		await h(() => window.__libraryGameTestHooks.setPlayerFacing(0));
+		await expect.poll(() => h(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.ref?.kind)).toBe('coffee-machine');
+		await h(() => window.__libraryGameTestHooks.freeze(true)); // hold the jump where it starts
+		await page.keyboard.press('Space');
+		expect(await h(() => window.__libraryGameTestHooks.getJumpState().phase)).toBe('rise');
+		expect(await getOverlay(page)).toBeFalsy();
+		await h(() => window.__libraryGameTestHooks.freeze(false));
+
+		// Enter interacts.
+		await page.keyboard.press('Enter');
+		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
+	});
+
 	test('interacting with the Coffee Machine in First Person (via the Enter key) opens the Coffee Pour minigame, same as Top-Down', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);

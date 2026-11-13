@@ -2641,13 +2641,18 @@ export function init(canvas, elements) {
         heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key] ?? FP_STRAFE_KEYS[e.key]] = true;
         return;
       }
-      if (e.key === ' ' || e.key === 'Enter') {
+      // Enter is THE interact key (the user: "make 'enter' key the button for
+      // interaction"); Space only jumps. They used to share both jobs
+      // (interact with a target centred, jump without one), so Space could
+      // interact by accident and Enter could jump.
+      if (e.key === 'Enter') {
         e.preventDefault();
-        if (fpScene.interactTarget) {
-          attemptInteract();
-        } else if (!e.repeat && !fpTransition) {
-          fpJump = startJump(fpJump);
-        }
+        if (!e.repeat) attemptInteract();
+        return;
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (!e.repeat && !fpTransition) fpJump = startJump(fpJump);
         return;
       }
     }

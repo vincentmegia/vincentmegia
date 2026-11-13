@@ -116,37 +116,94 @@ function buildNeck(art) {
  * drawPocketArm (walk), drawReadingArm (read) for his right arm (viewer's
  * left); drawBookArm for the left arm round the books, the same in every
  * pose. z is the one thing the 2D can't say: a hand in a front pocket, a
- * book held before his chest. `hand` says how the hand shows: 'down'
- * (continuing the forearm), 'pocket' (hidden in it), 'up' (raised),
- * 'book' (on the open book's edge, where the book's own art draws it).
+ * book held before his chest. `hand` says how the hand shows:
+ *   - {dir, side, thumb}: a hand (buildHand) pointing along `dir`, its palm
+ *     `side` wide, the thumb on `side`'s + or - edge;
+ *   - 'pocket': in his trouser pocket (drawPocketArm): the pocket's bulge
+ *     over the hand and the thumb hooked outside it;
+ *   - 'book': on the open book's edge, where the book's own art draws it.
  */
 export const MINJUN_POSES = {
-  idle: { elbow: [-12.8, -27, 0.5], wrist: [-12.6, -17.4, 1.5], hand: 'down', watch: true },
-  walk: { elbow: [-15.6, -27.6, -0.5], wrist: [-8.6, -14.6, 6.4], hand: 'pocket', watch: true },
+  // Hanging: fingers down, the back of the hand turned out to the front.
+  idle: { elbow: [-12.8, -27, 0.5], wrist: [-12.6, -17.4, 1.5], hand: { dir: [0.05, 1, 0.1], side: [0.9, 0, 0.45], thumb: 1 }, watch: true },
+  walk: { elbow: [-15.6, -27.6, -0.5], wrist: [-8.2, -15, 4.2], hand: 'pocket', watch: true },
   read: { elbow: [-13.4, -27.5, 3], wrist: [-7.4, -26.8, 8.6], hand: 'book', watch: true, book: true },
-  wave: { elbow: [-17, -33.5, 1.5], wrist: [-17.6, -43.5, 2.5], hand: 'up', watch: true },
+  // Raised: fingers up, the palm to the viewer (drawFreeArm's wave turns the hand over).
+  wave: { elbow: [-17, -33.5, 1.5], wrist: [-17.6, -43.5, 2.5], hand: { dir: [0, -1, 0], side: [1, 0, 0], thumb: 1 }, watch: true },
 };
 
-export const BOOK_ARM = { shoulder: [10.6, -38, 0], elbow: [12.8, -27.6, 3], wrist: [17.2, -21.4, 5.2] };
+/** The left arm round the books: the hand lies across their fronts, fingers out past the last spine (drawBookArm's hand at -1.9 rad). */
+export const BOOK_ARM = {
+  shoulder: [10.6, -38, 0],
+  elbow: [12.8, -27.6, 3],
+  wrist: [16.2, -21.4, 4.4],
+  hand: { dir: [0.95, -0.3, -0.12], side: [0.3, 0.95, 0], thumb: -1 },
+};
 
 const SHOULDER_R = 2.7; // drawArm's 5.4 px sleeve stroke
 const FOREARM_R = 1.75; // its 3.5 px forearm stroke
 
+/**
+ * drawHand's hand, in art px: the 2D draws a 4 x 4.8 oval with three finger
+ * lines and a thumb; here that is a flat palm, four fingers and a thumb.
+ * `width` is the palm's half-width, `thick` its thickness as a part of it.
+ */
+export const HAND = { palm: 2.5, width: 1.95, thick: 0.5, finger: 2.1, fingerR: 0.4, thumb: 2.2, thumbR: 0.6 };
+
+const vAdd = (p, q, k = 1) => [p[0] + q[0] * k, p[1] + q[1] * k, p[2] + q[2] * k];
+const vUnit = (p) => { const l = Math.hypot(p[0], p[1], p[2]) || 1; return [p[0] / l, p[1] / l, p[2] / l]; };
+const vDot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+/** An art-space direction (y down) as a model-space one (y up). */
+const artDir = (d) => [d[0], -d[1], d[2]];
+const at = (p) => toModel(p[0], p[1], p[2]);
+
+/**
+ * A hand at `wrist`: a flat palm widening from the wrist, four fingers with
+ * gaps between them (shorter at the edges) and a thumb off one side. The
+ * palm is his skin tone and the fingers and thumb its shade (the 2D separates
+ * them with ink lines; without outlines a one-tone hand vanishes against the
+ * cream tote behind it). All skin tones, so unlit like the rest of his skin.
+ * @param {number[]} wrist art px
+ * @param {{dir: number[], side: number[], thumb: number}} h
+ */
+export function buildHand(wrist, h) {
+  const dir = vUnit(h.dir);
+  // `side` square to the hand's direction.
+  const side = vUnit(vAdd(h.side, dir, -vDot(h.side, dir)));
+  const along = (d, across = 0) => vAdd(vAdd(wrist, dir, d), side, across);
+  const flat = { side: artDir(side), squash: HAND.thick };
+  const m = emptyMesh();
+  merge(m, tube(at(along(-0.5)), at(along(HAND.palm)), 1.55 * S, HAND.width * S, 8, P.skin, { ...flat, capA: P.skin, capB: P.skinDeep }));
+  [-1.44, -0.48, 0.48, 1.44].forEach((across, i) => {
+    const len = HAND.finger - (i === 0 || i === 3 ? 0.45 : 0);
+    merge(m, tube(at(along(HAND.palm - 0.2, across)), at(along(HAND.palm + len, across * 0.92)), HAND.fingerR * S, HAND.fingerR * 0.85 * S, 4, P.skinShade, { side: artDir(side), capB: P.skinDeep }));
+  });
+  const t = h.thumb;
+  merge(m, tube(at(along(0.5, t * (HAND.width - 0.5))), at(along(0.5 + HAND.thumb * 0.8, t * (HAND.width + 1.2))), HAND.thumbR * S, HAND.thumbR * 0.8 * S, 4, P.skinShade, { side: artDir(side), capB: P.skinDeep }));
+  return m;
+}
+
+/** drawPocketArm's pocket: the bulge the hidden hand makes (a shade lighter than the slacks) and the thumb hooked over its edge. */
+export const POCKET = { color: '#4a4a58', from: [-8.4, -15.6, 4.0], to: [-6.9, -11.6, 3.3], thumbFrom: [-6.9, -16.6, 4.9], thumbTo: [-5.9, -14.5, 4.5] };
+
+function buildPocketHand() {
+  const m = emptyMesh();
+  merge(m, tube(at(POCKET.from), at(POCKET.to), 2.3 * S, 1.6 * S, 6, POCKET.color, { side: [1, 0, 0], squash: 0.55, capA: POCKET.color, capB: POCKET.color }));
+  merge(m, tube(at(POCKET.thumbFrom), at(POCKET.thumbTo), 0.75 * S, 0.6 * S, 4, P.skin, { capA: P.skin, capB: P.skinShade }));
+  return m;
+}
+
 function buildArm(shoulder, elbow, wrist, { hand, watch }) {
-  const at = (p) => toModel(p[0], p[1], p[2]);
   const m = emptyMesh();
   merge(m, tube(at(shoulder), at(elbow), SHOULDER_R * S, 2.45 * S, 6, P.shirt, { capA: P.shirt }));
   // The rolled cuff at the elbow (drawArm's 6.8 x 3.2 band).
-  const dir = [wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]];
-  const len = Math.hypot(...dir);
-  const along = (p, d) => [p[0] + (dir[0] / len) * d, p[1] + (dir[1] / len) * d, p[2] + (dir[2] / len) * d];
+  const dir = vUnit([wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]]);
+  const along = (p, d) => vAdd(p, dir, d);
   merge(m, tube(at(along(elbow, -1.2)), at(along(elbow, 1.6)), 2.75 * S, 2.6 * S, 6, P.shirtShade, { capA: P.shirtShade, capB: P.shirtShade }));
   merge(m, tube(at(along(elbow, 1.6)), at(wrist), FOREARM_R * S, 1.5 * S, 6, P.skin));
   if (watch) merge(m, tube(at(along(wrist, -2.4)), at(along(wrist, -1.2)), 1.8 * S, 1.75 * S, 6, P.watchBand, { capA: P.watchFace, capB: P.watchBand }));
-  if (hand === 'down' || hand === 'up') {
-    // A hand, fingers together, carrying on from the forearm (or raised).
-    merge(m, tube(at(wrist), at(along(wrist, 3.6)), 1.55 * S, 1.15 * S, 6, P.skin, { capB: P.skinShade }));
-  }
+  if (hand === 'pocket') merge(m, buildPocketHand());
+  else if (hand && typeof hand === 'object') merge(m, buildHand(wrist, hand));
   return m;
 }
 
@@ -180,7 +237,7 @@ function buildArms(pose, art) {
   const p = MINJUN_POSES[pose] ?? MINJUN_POSES.idle;
   const m = emptyMesh();
   merge(m, buildArm([-10.6, -38, 0], p.elbow, p.wrist, p));
-  merge(m, buildArm(BOOK_ARM.shoulder, BOOK_ARM.elbow, BOOK_ARM.wrist, { hand: 'down', watch: false }));
+  merge(m, buildArm(BOOK_ARM.shoulder, BOOK_ARM.elbow, BOOK_ARM.wrist, { hand: BOOK_ARM.hand, watch: false }));
   if (p.book) merge(m, buildOpenBook(art));
   return m;
 }

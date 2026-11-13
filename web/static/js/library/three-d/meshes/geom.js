@@ -179,8 +179,11 @@ export function textureFront(part, r, { image, artBox, scale, color, div }) {
  * `sides` faces round, with optional end caps. Its rings are perpendicular
  * to a→b, so it follows a limb at any angle (an arm from shoulder to elbow).
  * Faces wind outward. `capA`/`capB` colour the end caps (null for none).
+ * `side` and `squash` make a flattened tube (a palm, a pocket's bulge): the
+ * rings are `ra`/`rb` wide along `side` (taken square to the axis) and
+ * `squash` times that thick the other way.
  */
-export function tube(a, b, ra, rb, sides, color, { capA = null, capB = null } = {}) {
+export function tube(a, b, ra, rb, sides, color, { capA = null, capB = null, side = null, squash = 1 } = {}) {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const len = Math.hypot(d[0], d[1], d[2]) || 1;
   const ax = d.map((c) => c / len);
@@ -188,14 +191,19 @@ export function tube(a, b, ra, rb, sides, color, { capA = null, capB = null } = 
   const ref = Math.abs(ax[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
   const cross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
   const norm = (p) => { const l = Math.hypot(p[0], p[1], p[2]); return p.map((c) => c / l); };
-  const u = norm(cross(ax, ref));
+  let u = norm(cross(ax, ref));
+  if (side) {
+    // `side` with its part along the axis removed.
+    const along = side[0] * ax[0] + side[1] * ax[1] + side[2] * ax[2];
+    u = norm([side[0] - ax[0] * along, side[1] - ax[1] * along, side[2] - ax[2] * along]);
+  }
   const w = cross(ax, u);
   const vertices = [];
   for (const [c, r] of [[a, ra], [b, rb]]) {
     for (let i = 0; i < sides; i++) {
       const t = (i / sides) * Math.PI * 2;
       const cs = Math.cos(t) * r;
-      const sn = Math.sin(t) * r;
+      const sn = Math.sin(t) * r * squash;
       vertices.push([c[0] + u[0] * cs + w[0] * sn, c[1] + u[1] * cs + w[1] * sn, c[2] + u[2] * cs + w[2] * sn]);
     }
   }

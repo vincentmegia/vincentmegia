@@ -83,7 +83,8 @@ handling, in place of Kitchen Shift's cooking and serving.
   * **Controls card:** entering First Person shows a short controls card on
     the canvas (so it shows in fullscreen) for 6 s, fading over its last
     second; H shows or hides it at any time.
-  * Shift sprints, Space jumps, Enter/Space interacts. Every held key is
+  * Shift sprints, Space jumps, Enter interacts (Enter is the one interact
+    key: Space never interacts and Enter never jumps). Every held key is
     released when the window loses focus, so movement can't stick after
     Cmd+Tab.
 * **First Person Mode** is a software-3D renderer on the same 2D canvas
@@ -518,7 +519,7 @@ Look values up there rather than relying on this doc.
   | Kang Min-jun (`minjun`) | 2nd | Shelves the book Eun-mi is carrying (`minjunShelveCarriedBook`) | 60 s (`MINJUN_HELP_COOLDOWN_SECONDS`) |
 
   In First Person Mode, aim the crosshair at a staff member within
-  interact range (the same range as stations) and interact (Enter/Space,
+  interact range (the same range as stations) and interact (Enter,
   the Interact button, or a click once the mouse is captured): the same
   help runs, with the same toasts and cooldowns, without the walk over. The crosshair shows their name chip
   and the same "click: …" / "busy Ns" hint as Top-Down.

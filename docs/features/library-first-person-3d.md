@@ -153,6 +153,8 @@ renderer (`library/minjun.js`) is far more detailed than the patron design
 `buildCharacter` reads, and is drawn in Hospital Shift's anime frame, about
 **2.5 heads tall** against a patron's 3.36, so the shared patron frame
 can't carry him. Design: `docs/superpowers/specs/2026-11-13-library-fp-minjun-design.md`.
+The procedure, for the next character built this way:
+`docs/skills/2d-character-to-3d/SKILL.md`.
 
 `scene.js`'s `characterMesh(c)` picks the builder: `c.design.key ===
 'minjun'` goes to `buildMinjun({pose: c.pose, art: c.art})`, everyone else to
@@ -173,10 +175,10 @@ from `MINJUN_PALETTE` and the silhouette is the drawing's own. This is the
 | File | Role |
 |---|---|
 | `meshes/minjun-frame.js` | `MINJUN_K` (game px per art px, 0.948, chosen so his eyes sit at `MINJUN_EYE_PX` = `BASE_EYE` 60), `S`, `toModel`/`toArt`/`modelY` (the one art → model conversion; the sole's bottom, art y +8.3, is the floor), `MINJUN_ART` (the three canvases' art boxes and image px per art px), `artSize`, `uvIn(box)` |
-| `meshes/minjun-body.js` | `buildMinjunBody(pose, art)`: slack legs (8-sided, `LEG`), sneakers (sole, upper, toe box, navy swoosh and heel tab, sock), the 12-sided shirt and vest (`TORSO_RINGS`, from `torsoPath` and the vest path), neck, arms as `tube`s (sleeve, rolled cuff, forearm, watch, hand) posed by `MINJUN_POSES`, the left arm round the books (`BOOK_ARM`), the three books (`MINJUN_BOOK_SPINES`), the tote (`MINJUN_TOTE`) and, reading, the open book (`MINJUN_OPEN_BOOK`) |
+| `meshes/minjun-body.js` | `buildMinjunBody(pose, art)`: slack legs (8-sided, `LEG`), sneakers (sole, upper, toe box, navy swoosh and heel tab, sock), the 12-sided shirt and vest (`TORSO_RINGS`, from `torsoPath` and the vest path), neck, arms as `tube`s (sleeve, rolled cuff, forearm, watch) posed by `MINJUN_POSES`, each ending in a hand (`buildHand`, `HAND`: a flat palm, four fingers with gaps and a thumb, the fingers and thumb in his skin's shade so the hand keeps its shape without outlines) or, walking, in his pocket (`POCKET`: the bulge over the hidden hand and the thumb hooked outside, as `drawPocketArm` draws), the left arm round the books (`BOOK_ARM`, its hand across their fronts), the three books (`MINJUN_BOOK_SPINES`), the tote (`MINJUN_TOTE`) and, reading, the open book (`MINJUN_OPEN_BOOK`) |
 | `meshes/minjun-head.js` | `buildMinjunHead(art)`: one 12-sided stack following `facePath`'s V-jaw and `drawHair`'s crown (`HEAD_RINGS`), the chin set forward. Front wears the head art; sides and back hair (the undercut's shade low at the back), jaw sides skin; every face `unlit` like every patron head |
 | `meshes/minjun.js` | `buildMinjun({pose, art})` (memoised per art object and pose: at most four meshes per art set), `minjunPoseFor`, `minjunFace` (+ `MOUTH_STEPS`), `MINJUN_ART_SIZE`, `paintMinjunBodyArt`/`paintMinjunHeadArt`/`paintMinjunPropsArt` (an opaque backing in the colours round the drawing, then the drawer) |
-| `geom.js` | `tube(a, b, ra, rb, sides, color, {capA, capB})` (a tapered limb between two 3D points), `loft` (`prism` with a centre per ring), `faceNormal`, `projectFront(part, {image, toUV, minNz, div, only})` |
+| `geom.js` | `tube(a, b, ra, rb, sides, color, {capA, capB, side, squash})` (a tapered limb between two 3D points; `side`/`squash` flatten it into a palm or a pocket bulge), `loft` (`prism` with a centre per ring), `faceNormal`, `projectFront(part, {image, toUV, minNz, div, only})` |
 
 The art is painted by `minjun.js`'s own drawers, exported for this and
 otherwise unchanged (Top-Down's canvas call trace is identical before and
@@ -193,7 +195,8 @@ after: 50 cases over every action, walking and five times):
 does, then:
 
 * `minjunPoseFor({walking, action})`: walking → `walk` (hand in his
-  pocket, `drawPocketArm`'s joints); `read` → `read` (the open book held
+  pocket, `drawPocketArm`'s joints, with the pocket's bulge and his thumb
+  outside it); `read` → `read` (the open book held
   before his chest); `wave` and `help` → `wave` (arm raised); `hum` and
   standing → `idle` (arm hanging, `drawFreeArm`'s joints). The arm's z, which
   the 2D can't say, is chosen per pose (a hand in a front pocket, a book
@@ -206,9 +209,9 @@ does, then:
   are read at draw time, so blinking and talking never rebuild a mesh.
 
 Tunables: `MINJUN_EYE_PX`, the per-pose z in `MINJUN_POSES`, `BOOK_Z`,
-`TOTE_Z`, `OPEN_BOOK_Z`, the `nz` thresholds, `MOUTH_STEPS`, and each
+`TOTE_Z`, `OPEN_BOOK_Z`, `HAND`, `POCKET`, each pose's hand `dir`/`side`, the `nz` thresholds, `MOUTH_STEPS`, and each
 canvas's `scale` in `MINJUN_ART` (face 6 image px per art px, the rest 4).
-He is 394–406 faces depending on pose (about 100 of them textured), and a
+He is 427–454 faces depending on pose (about 100 of them textured; the test budget is 500), and a
 2nd Floor frame with him at interact range ran at 60 fps in headless
 Chromium.
 
@@ -654,7 +657,8 @@ Ordered so each step is independently shippable; sizes are rough
    `STAFF_HELP_TEXT` entry, or Min-jun; the same test `staffAtPoint` uses),
    and `findInteractTarget` skips `interactable: false` entities, so a
    future set-dressing walker can't hide a station behind it. Interact
-   (Enter/Space, the Interact button, a pointer-locked canvas click) on a
+   (Enter, the Interact button, a pointer-locked canvas click; Space only
+   jumps) on a
    staff target calls
    `askStaffForHelp(key)`, the function Top-Down's click-then-walk ends in,
    so the rules (`staffHelpBlocker`/`staffHelp`/`askMinjunForHelp`) and
@@ -899,7 +903,8 @@ crosshair and minimap.
   and head count against the patron frame, the head and torso silhouettes to
   the 2D's, `minjunPoseFor` and `minjunFace` (blink, quantised mouth, humming,
   walking), the memo, that poses move only his free arm, the face budget
-  (under 450), the `unlit` material rule, the flat fallback, that only faces
+  (under 500), `buildHand` (palm, four fingers, thumb) and that every pose
+  shows both hands (the pocket and thumb when walking), the `unlit` material rule, the flat fallback, that only faces
   turned toward the viewer wear art (sampling inside their canvas, never on
   his back), the straight-on projection, `characterMesh`'s dispatch, and that
   each `paint*Art` lays a full opaque backing before drawing.

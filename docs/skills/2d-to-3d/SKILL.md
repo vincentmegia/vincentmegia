@@ -37,7 +37,7 @@ and lettering, which a colour table does not capture.
 | Object | Technique | Why |
 |---|---|---|
 | Characters (curved, seen from every side, posed) | **Geometry from the 2D's measurements**: proportions, full palette, baked tones | A texture can't wrap a curved, moving body; the measured silhouette is what reads |
-| A character with its own detailed 2D renderer (Min-jun) | **Geometry from that renderer's measurements, wearing its drawing projected straight on** (`projectFront`): front-facing faces take the drawing, sides and back its palette | His look is in detail no design object holds (knit, lanyard, his own eyes); a straight-on projection needs no unwrap, so the drawing itself is what shows head-on |
+| A character with its own detailed 2D renderer (Min-jun) | **Geometry from that renderer's measurements, wearing its drawing projected straight on** (`projectFront`): front-facing faces take the drawing, sides and back its palette | His look is in detail no design object holds (knit, lanyard, his own eyes); a straight-on projection needs no unwrap, so the drawing itself is what shows head-on. Procedure: `docs/skills/2d-character-to-3d/SKILL.md` |
 | Props with a flat, readable front (bookshelf, coffee machine, elevator, signs, doors) | **The 2D art as a texture** on real 3D geometry | The look *is* the drawing (plum line art, gradients, lettering); only the drawer itself can reproduce it |
 | Props whose 2D is a plan view (stairs) | **Geometry in the drawer's exported colours**, with only the parts that are flat in 2D (the stairs' arrow badge) as textures | A plan view can't be worn as a front; its colours, line art and signs still can |
 
@@ -116,13 +116,9 @@ Summarised from the character spec; read it for the measurements.
 3. Share derived tones with the 2D (`hairTones`, `skinTones` in
    `shared/people.js`); bake them per face with `box`'s `tint`.
 4. `unlit` is a material rule: every skin-toned face, nothing else.
-5. A character with his own detailed renderer (Min-jun, `meshes/minjun*.js`)
-   gets his own frame measured off that renderer (his head count, not the
-   patron's), and his front wears the renderer's own drawing: export painters
-   that draw his parts at rest (Top-Down's call trace unchanged), paint them
-   into canvases with an opaque backing, and `projectFront` them onto the
-   faces that turn toward the viewer. A part that changes (his face) is a
-   canvas repainted in place on a state key, never a mesh rebuild.
+5. A character with their own detailed renderer (Min-jun, `meshes/minjun*.js`)
+   gets their own mesh wearing that renderer's drawing on its front. That
+   has its own procedure: `docs/skills/2d-character-to-3d/SKILL.md`.
 
 ## Verifying
 

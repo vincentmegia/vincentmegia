@@ -15,6 +15,7 @@ WebGL).
 Parent docs: `docs/features/library-first-person-3d.md`,
 `docs/skills/2d-to-3d/SKILL.md`,
 `docs/superpowers/specs/2026-11-05-library-fp-character-art-design.md`.
+The reusable procedure this wave produced: `docs/skills/2d-character-to-3d/SKILL.md`.
 
 ## The problem, measured
 
@@ -72,7 +73,10 @@ as on the props.
   conversion, the three canvases' art boxes (`MINJUN_ART`), `uvIn`.
 * `three-d/meshes/minjun-body.js`: legs, sneakers, torso, neck, arms
   (`tube`s between the 2D drawers' own joint points, plus a z per pose),
-  books, tote, open book.
+  books, tote, open book. Each arm ends in a real hand (`buildHand`: palm,
+  four fingers, thumb), or in his pocket when walking (bulge and hooked
+  thumb); added after review ("the hand is missed out": the first hands
+  were plain tapered stubs and the pocket pose had none).
 * `three-d/meshes/minjun-head.js`: a 12-sided stack along `facePath`'s
   V-jaw and `drawHair`'s crown, the chin set forward.
 * `three-d/meshes/minjun.js`: `buildMinjun({pose, art})` memoised per art
