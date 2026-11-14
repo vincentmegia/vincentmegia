@@ -4,6 +4,7 @@ import {
   identityMat4, multiplyMat4, transformPoint, cameraFromPose, projectPoint,
   buildDrawList, drawScene, shadeColor,
 } from './core.js';
+import { box } from './meshes/geom.js';
 
 const VP = { width: 800, height: 600 };
 const OPTS = { eyeHeight: 1.6, fov: Math.PI / 3, aspect: 800 / 600, near: 0.1, far: 100 };
@@ -398,5 +399,74 @@ test('cullOffscreen drops faces wholly outside the viewport, flat or textured', 
       buildDrawList(CAM, [at(m, -5)], SCENE),
       'an on-screen face is untouched',
     );
+  }
+});
+
+// A scene of meshes with no `under` face (textured and flat, with a character)
+// from several cameras, at the scale the game places them.
+async function plainScene() {
+  const { buildBookshelf } = await import('./meshes/bookshelf.js');
+  const { buildCoffeeMachine } = await import('./meshes/coffee-machine.js');
+  const { buildElevator } = await import('./meshes/elevator.js');
+  const { buildCharacter } = await import('./meshes/character.js');
+  const art = { width: 1, height: 1 };
+  const meshes = [buildBookshelf({ art }), buildCoffeeMachine({ art }), buildElevator({ art }), buildCharacter(null)];
+  const placed = meshes.map((mesh, i) => ({ mesh, placement: { pos: [(i - 1.5) * 60, 0, (i % 2) * 40], yaw: i * 0.7, scale: 40 } }));
+  const env = { viewport: { width: 400, height: 300 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 }, fog: { color: '#d8ccb0', start: 520, end: 1500 } };
+  const cams = [[0, 260, 0, 0], [180, 200, 0.6, 0.2], [-200, -150, 2.4, -0.3], [40, -260, Math.PI, 0.35]].map(([x, y, facing, pitch]) =>
+    cameraFromPose({ x, y, facing }, { eyeHeight: 60, pitch, fov: Math.PI / 3, aspect: 4 / 3, near: 1, far: 2000 }));
+  return { placed, env, cams, meshes };
+}
+
+test('without `under` faces the draw list is exactly the mean-depth sort it always was', async () => {
+  const { placed, env, cams, meshes } = await plainScene();
+  assert.ok(meshes.every((m) => !m.faces.some((f) => f.under)));
+  const layer = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
+  for (const cam of cams) {
+    const list = buildDrawList(cam, placed, env);
+    assert.ok(list.length > 50);
+    assert.ok(list.every((p) => !('key' in p)), 'no polygon is given a sort key');
+    // Re-sorting by the old comparator (stable) changes nothing.
+    assert.deepEqual([...list].sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth), list);
+  }
+});
+
+test('an `under` face is drawn before every face of its mesh on or above its plane, and keeps its depth against other meshes', () => {
+  // A wide slab whose top (its own colour) has a tall thin post standing on
+  // its far edge: by mean depth the top's centre is nearer than the post, so
+  // it would be drawn over it. A cube stands far behind, another in front.
+  const slab = (under) => {
+    const m = { vertices: [], faces: [] };
+    const add = (part) => { const b = m.vertices.length; m.vertices.push(...part.vertices); for (const f of part.faces) m.faces.push({ ...f, indices: f.indices.map((i) => i + b), cull: true, unlit: true }); };
+    const top = box([-2, 0.9, -1], [2, 1, 1], '#aa0000', { top: '#ff0000' });
+    if (under) top.faces[4].under = true;
+    add(top);
+    add(box([-0.1, 1, -1], [0.1, 3, -0.8], '#00aa00'));
+    return m;
+  };
+  const cube = box([-0.5, 0, -0.5], [0.5, 1, 0.5], '#0000aa');
+  cube.faces = cube.faces.map((f) => ({ ...f, cull: true, unlit: true }));
+  const env = { viewport: { width: 400, height: 400 }, light: { dir: [0, 1, 0], ambient: 1 } };
+  const cam = cameraFromPose({ x: 0, y: 160, facing: 0 }, { eyeHeight: 90, pitch: 0.3, fov: Math.PI / 3, aspect: 1, near: 1, far: 2000 });
+  const run = (under) => buildDrawList(cam, [
+    { mesh: slab(under), placement: { pos: [0, 0, 0], yaw: 0, scale: 40 } },
+    { mesh: cube, placement: { pos: [0, 0, -400], yaw: 0, scale: 40 } },
+    { mesh: cube, placement: { pos: [0, 0, 120], yaw: 0, scale: 40 } },
+  ], env);
+  const idx = (list, color, keep = () => true) => list.map((p, i) => (p.color === shadeColor(color, 1) && keep(p) ? i : -1)).filter((i) => i >= 0);
+  for (const under of [false, true]) {
+    const list = run(under);
+    const [top] = idx(list, '#ff0000');
+    const post = idx(list, '#00aa00');
+    assert.ok(top >= 0 && post.length > 0);
+    if (under) assert.ok(post.every((i) => i > top), 'with `under` the top is drawn before the post');
+    else assert.ok(post.some((i) => i < top), 'by mean depth alone the post is drawn first (the bug)');
+    // The far cube is drawn before the whole slab and the near one after it, either way.
+    const slabAll = [...idx(list, '#ff0000'), ...idx(list, '#aa0000'), ...post];
+    const far = idx(list, '#0000aa', (p) => p.depth > 300);
+    const nearCube = idx(list, '#0000aa', (p) => p.depth < 100);
+    assert.ok(far.length > 0 && nearCube.length > 0);
+    assert.ok(Math.max(...far) < Math.min(...slabAll), 'the far cube first');
+    assert.ok(Math.min(...nearCube) > Math.max(...slabAll), 'the near cube last');
   }
 });

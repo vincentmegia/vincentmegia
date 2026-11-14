@@ -219,11 +219,20 @@ test('paintFinesCounterArt repaints each textured part clean: after the room, a 
   assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
 });
 
-test('from every side, what stands on the top is drawn after the top beneath it (the painter sorts by mean depth)', async () => {
-  const { standingOrderFailures, topAndStanding } = await import('./standing-order.test-helper.js');
+test('from every yaw, pitch and range, nothing standing on the top is painted over by it', async () => {
+  const { standingOrderPairs, topAndStanding } = await import('./standing-order.test-helper.js');
   const topY = (L.floor - L.top.y0) * K;
   const m = buildFinesCounter({ art: ART });
-  // Coins (6), register, housing, two posts; the plaque hangs above the eye.
-  assert.equal(topAndStanding(m, topY).standing.length, 10);
-  assert.deepEqual(standingOrderFailures(m, topY), []);
+  // Coins (6), register, housing, two posts, plaque.
+  assert.equal(topAndStanding(m, topY).standing.length, 11);
+  const { total, counts, pairs } = standingOrderPairs(m, topY);
+  assert.equal(total, 0, JSON.stringify({ counts, pairs }));
+});
+
+test('the top still sorts by depth against other meshes: behind it a far character, in front of it a near one', async () => {
+  const { crossMeshFailures } = await import('./standing-order.test-helper.js');
+  const { buildCharacter } = await import('./character.js');
+  const { failures, checked } = crossMeshFailures(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE.depth, buildCharacter(null));
+  assert.ok(checked > 0, 'the characters overlap the top on screen');
+  assert.deepEqual(failures, []);
 });

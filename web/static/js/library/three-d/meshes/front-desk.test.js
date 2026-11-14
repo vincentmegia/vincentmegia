@@ -123,8 +123,7 @@ test('every face culls, and its winding faces out: fronts show from in front, ne
 
 test('face budget and determinism', () => {
   const m = buildFrontDesk({ art: ART });
-  // 140 before the slab top was cut at what stands on it (18 cells for 1).
-  assert.ok(m.faces.length <= 142, `${m.faces.length} faces`);
+  assert.ok(m.faces.length <= 140, `${m.faces.length} faces`);
   for (const f of m.faces) for (const i of f.indices) assert.ok(i >= 0 && i < m.vertices.length);
   assert.deepEqual(buildFrontDesk({ art: ART }), buildFrontDesk({ art: ART }));
 });
@@ -171,11 +170,20 @@ test('paintFrontDeskArt repaints the slab clean: after the desk, a clip to L.top
   assert.equal(calls.filter(([k]) => k === 'save').length, calls.filter(([k]) => k === 'restore').length);
 });
 
-test('from every side, what stands on the slab is drawn after the slab beneath it (the painter sorts by mean depth)', async () => {
-  const { standingOrderFailures, topAndStanding } = await import('./standing-order.test-helper.js');
+test('from every yaw, pitch and range, nothing standing on the slab is painted over by it', async () => {
+  const { standingOrderPairs, topAndStanding } = await import('./standing-order.test-helper.js');
   const topY = FRONT_DESK_SIZE.counterTop;
   const m = buildFrontDesk({ art: ART });
   // Monitor, stand, 3 books, bell plate, dome, button, pot, 3 leaf blobs.
   assert.equal(topAndStanding(m, topY).standing.length, 12);
-  assert.deepEqual(standingOrderFailures(m, topY), []);
+  const { total, counts, pairs } = standingOrderPairs(m, topY);
+  assert.equal(total, 0, JSON.stringify({ counts, pairs }));
+});
+
+test('the slab still sorts by depth against other meshes: behind it a far character, in front of it a near one', async () => {
+  const { crossMeshFailures } = await import('./standing-order.test-helper.js');
+  const { buildCharacter } = await import('./character.js');
+  const { failures, checked } = crossMeshFailures(buildFrontDesk({ art: ART }), FRONT_DESK_SIZE.counterTop, FRONT_DESK_SIZE.depth, buildCharacter(null));
+  assert.ok(checked > 0, 'the characters overlap the slab on screen');
+  assert.deepEqual(failures, []);
 });

@@ -12,7 +12,7 @@
 //
 // Model space: base at y=0, centered on x/z, front facing +Z (the side the
 // patrons queue on and the player walks up to). Pure and deterministic.
-import { prism, merge, emptyMesh, boxWithout, textureFront, translate, cutTop } from './geom.js';
+import { prism, merge, emptyMesh, boxWithout, textureFront, translate, supportTop } from './geom.js';
 import {
   finesRoomLayout, drawFinesRoom, drawFinesPlaque, drawFinesCounterBase, drawFinesDisplay, drawFinesRegister,
   FINES_ROOM_COLORS,
@@ -35,8 +35,9 @@ const BOARD = 0.04; // the plaque board's thickness and the posts' side
 const POST_X = 0.75;
 const COIN_SIDES = 8;
 // The 2D draws the second stack over the first's edge. In 3D two discs 9 art
-// px apart would intersect, so the first stands back and the second forward,
-// their footprints just touching.
+// px apart would intersect (and intersecting solids cannot be painted in
+// order), so the first stands back and the second forward, a disc's
+// half-width each, their footprints just touching.
 const COIN_SIDES_COS = Math.cos(Math.PI / COIN_SIDES); // an 8-gon disc's half-width over its radius
 const DIV_WIDE = [2, 1];
 const DIV_ONE = [1, 1];
@@ -108,19 +109,12 @@ export function buildFinesCounter({ art } = {}) {
   const r = L.coinR * K;
   const rr = r * COIN_SIDES_COS; // the disc's half-width on x and z
   const coinZ = (s) => (s === 0 ? -rr : rr);
-  // What stands on the top, for cutting it: the coin stacks (their discs
-  // leave the footprint's corners bare), and the register and posts, closed
-  // solids that hide the top beneath them.
-  const footprints = [
-    ...L.coins.map(({ x }, s) => ({ x0: mx(x) - rr, x1: mx(x) + rr, z0: coinZ(s) - rr, z1: coinZ(s) + rr })),
-    { x0: mx(L.register.x0), x1: mx(L.register.x1), z0: -REGISTER_HALF, z1: REGISTER_HALF, hidden: true },
-    ...[-POST_X, POST_X].map((px) => ({ x0: px - BOARD / 2, x1: px + BOARD / 2, z0: PLAQUE_BACK - BOARD, z1: PLAQUE_BACK, hidden: true })),
-  ];
 
-  // The counter body (its top is inside the top) and the top, overhanging it,
-  // its top face cut at those footprints so the painter's sort keeps them.
+  // The counter body (its top is inside the top) and the top, overhanging
+  // it; the top's top face is a supporting surface, drawn before all that
+  // stands on it (supportTop).
   front(boxWithout([mx(L.body.x0), 0, -BODY_Z], [mx(L.body.x1), my(L.body.y0), BODY_Z], C.counter, ['bottom', 'top']), L.body, C.counter, DIV_WIDE);
-  front(cutTop(boxWithout([mx(L.top.x0), my(L.top.y1), -FINES_COUNTER_SIZE.depth / 2], [mx(L.top.x1), topY, FINES_COUNTER_SIZE.depth / 2], C.top, ['bottom']), footprints), L.top, C.top, DIV_WIDE);
+  front(supportTop(boxWithout([mx(L.top.x0), my(L.top.y1), -FINES_COUNTER_SIZE.depth / 2], [mx(L.top.x1), topY, FINES_COUNTER_SIZE.depth / 2], C.top, ['bottom'])), L.top, C.top, DIV_WIDE);
 
   // The register on the top, and its display housing above it. The housing
   // keeps its full art height, so its foot (1 art px) sits inside the register.

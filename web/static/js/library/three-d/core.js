@@ -250,6 +250,47 @@ function modelPoint(p, pl) {
   return [x * c + z * sn + pl.pos[0], y + pl.pos[1], -x * sn + z * c + pl.pos[2]];
 }
 
+const UNDER_EPS = 1e-6;
+
+/**
+ * Orders a mesh's `under` faces (supporting surfaces: a counter top that
+ * things stand on) before every other face of the same placed mesh that lies
+ * on or above their plane. The painter sorts by mean depth, which puts a big
+ * top's centre nearer than things standing on its far side (or, looking up,
+ * than anything taller than it), so it would paint over them. But a top face
+ * is only drawn when the eye is above its plane (it culls otherwise), and
+ * from there nothing on or above the plane can be hidden by it, so drawing it
+ * first is exact. Each such face's polygons get a sort `key` just deeper than
+ * the deepest polygon (by its own key) of those faces; highest planes first,
+ * so a top under a shelf sorts before the shelf. A face already deeper keeps
+ * its depth and gets no key. Faces without `under` are never given a key,
+ * so a mesh without one sorts exactly as before. Against other meshes a lifted
+ * face moves earlier only past polygons whose depth lies between its own and
+ * the deepest face standing on it, all within the mesh's own extent.
+ */
+function liftUnderFaces(out, spans, world) {
+  const verts = (span) => span.face.indices.map((i) => world[i]);
+  const unders = spans.filter((s) => s.face.under).map((s) => {
+    const [a, b, c] = verts(s);
+    const n = normalize(cross(sub(b, a), sub(c, a)));
+    return { s, a, n, top: Math.max(...verts(s).map((v) => v[1])) };
+  });
+  unders.sort((u, v) => v.top - u.top);
+  for (const { s, a, n } of unders) {
+    const dist = (v) => dot(n, sub(v, a));
+    let deepest = -Infinity;
+    for (const r of spans) {
+      if (r === s) continue;
+      const d = verts(r).map(dist);
+      if (d.some((x) => x < -UNDER_EPS)) continue; // reaches below the plane
+      if (r.face.under && d.every((x) => x <= UNDER_EPS)) continue; // another face of the same surface
+      for (let k = r.from; k < r.to; k++) deepest = Math.max(deepest, out[k].key ?? out[k].depth);
+    }
+    if (deepest === -Infinity) continue;
+    for (let k = s.from; k < s.to; k++) if (out[k].depth <= deepest) out[k].key = deepest + UNDER_EPS;
+  }
+}
+
 export function buildDrawList(camera, placed, opts) {
   const { viewport, light, fog } = opts;
   const cullView = opts.cullOffscreen ? viewport : null;
@@ -259,25 +300,26 @@ export function buildDrawList(camera, placed, opts) {
     const alpha = placement.alpha ?? 1;
     const world = mesh.vertices.map((v) => modelPoint(v, placement));
     const clip = world.map((w) => transformPoint(camera.viewProj, w));
-    for (const face of mesh.faces) {
+    // One face's polygons, pushed onto `out` (none when culled or clipped away).
+    const pushFace = (face) => {
       const idx = face.indices;
-      if (idx.length < 3) continue;
+      if (idx.length < 3) return;
       if (face.cull) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
-        if (dot(cross(sub(b, a), sub(c, a)), sub(camera.position, a)) <= 0) continue;
+        if (dot(cross(sub(b, a), sub(c, a)), sub(camera.position, a)) <= 0) return;
       }
       if (face.texture && idx.length === 4) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
         const n = normalize(cross(sub(b, a), sub(c, a)));
         const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
         pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha, cullView);
-        continue;
+        return;
       }
       // Clip against the near plane; a face entirely behind it yields nothing.
       // Shading still comes from the unclipped world vertices, so a face looks
       // the same whether or not the camera happens to cut it.
       const poly = clipNear(idx.map((i) => clip[i]));
-      if (poly.length < 3) continue;
+      if (poly.length < 3) return;
       let depthSum = 0;
       for (const p of poly) depthSum += p[3];
       const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
@@ -288,11 +330,18 @@ export function buildDrawList(camera, placed, opts) {
         (cx / cw * 0.5 + 0.5) * viewport.width,
         (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
       ]);
-      if (offscreen(screen, cullView)) continue;
+      if (offscreen(screen, cullView)) return;
       out.push({
         screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), decal: Boolean(face.decal), alpha,
       });
+    };
+    const spans = mesh.faces.some((f) => f.under) ? [] : null;
+    for (const face of mesh.faces) {
+      const from = out.length;
+      pushFace(face);
+      if (spans && out.length > from) spans.push({ face, from, to: out.length });
     }
+    if (spans) liftUnderFaces(out, spans, world);
   }
   // Ground is its own layer, painted first and farthest-first within itself.
   // The floor is the shell's lowest surface and everything in the room rests on
@@ -304,7 +353,9 @@ export function buildDrawList(camera, placed, opts) {
   // that are also `decal` (the floor's stripes and rugs) are a second ground
   // pass, over every tile: they lie on the tiles, so no tile may cover them.
   const layer = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
-  return out.sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth);
+  // A lifted `under` face sorts by its `key` (see liftUnderFaces); every
+  // other polygon has none and sorts by its depth, exactly as before.
+  return out.sort((p, q) => (layer(p) - layer(q)) || (q.key ?? q.depth) - (p.key ?? p.depth));
 }
 
 export function drawScene(ctx, camera, placed, opts) {
