@@ -24,6 +24,11 @@ export const FINES_COUNTER_ART = { w: 130, h: 130 };
 export const FINES_COUNTER_ART_SCALE = 4;
 /** Model units per art px, x and y alike: the 114 px top is 2.4 wide. */
 export const FINES_COUNTER_K = 2.4 / 114;
+/** The art region the housing's front shows: L.housing down to the register's top (the 2D tucks its last px behind the register). */
+export const FINES_HOUSING_FRONT = (() => {
+  const L = finesRoomLayout(FINES_COUNTER_ART);
+  return { ...L.housing, y1: Math.min(L.housing.y1, L.register.y0) };
+})();
 /** Real-world size, in units (~1 = one metre): the top's width and depth. */
 export const FINES_COUNTER_SIZE = { width: 2.4, depth: 1.1 };
 
@@ -51,8 +56,9 @@ const DIV_ONE = [1, 1];
  * none of the room's tiles or glow at the rounded corners, none of the
  * register or coins the 2D draws over the top's edge (they stand on the top
  * in 3D). The register runs last, so the housing region's bottom art row
- * (y -14..-13, the housing's foot, inside the register in 3D and never
- * seen) shows the register's top edge again, as the 2D does. `ctx` is a canvas of
+ * (y -14..-13) shows the register's top edge again, as the 2D does; the
+ * housing's 3D front shows its region only down to the register's top
+ * (FINES_HOUSING_FRONT), so that row is not used. `ctx` is a canvas of
  * FINES_COUNTER_ART.w x .h times FINES_COUNTER_ART_SCALE. Reads only
  * `station.id`.
  */
@@ -116,10 +122,13 @@ export function buildFinesCounter({ art } = {}) {
   front(boxWithout([mx(L.body.x0), 0, -BODY_Z], [mx(L.body.x1), my(L.body.y0), BODY_Z], C.counter, ['bottom', 'top']), L.body, C.counter, DIV_WIDE);
   front(supportTop(boxWithout([mx(L.top.x0), my(L.top.y1), -FINES_COUNTER_SIZE.depth / 2], [mx(L.top.x1), topY, FINES_COUNTER_SIZE.depth / 2], C.top, ['bottom'])), L.top, C.top, DIV_WIDE);
 
-  // The register on the top, and its display housing above it. The housing
-  // keeps its full art height, so its foot (1 art px) sits inside the register.
-  front(boxWithout([mx(L.register.x0), topY, -REGISTER_HALF], [mx(L.register.x1), my(L.register.y0), REGISTER_HALF], C.register, ['bottom']), L.register, C.register, DIV_ONE);
-  front(boxWithout([mx(L.housing.x0), my(L.housing.y1), -HOUSING_HALF], [mx(L.housing.x1), my(L.housing.y0), HOUSING_HALF], C.housing, ['bottom']), L.housing, C.housing, DIV_ONE);
+  // The register on the top, its top a supporting surface too, and its
+  // display housing standing on it. The 2D tucks the housing 1 art px behind
+  // the register's edge; in 3D it sits on the register's top and its front
+  // shows its art region cropped there (FINES_HOUSING_FRONT), not stretched.
+  front(supportTop(boxWithout([mx(L.register.x0), topY, -REGISTER_HALF], [mx(L.register.x1), my(L.register.y0), REGISTER_HALF], C.register, ['bottom'])), L.register, C.register, DIV_ONE);
+  const hf = FINES_HOUSING_FRONT;
+  front(boxWithout([mx(hf.x0), my(hf.y1), -HOUSING_HALF], [mx(hf.x1), my(hf.y0), HOUSING_HALF], C.housing, ['bottom']), hf, C.housing, DIV_ONE);
 
   // The coin stacks: discs coinPitch high, coin and coinDeep from the bottom, on the top.
   const h = L.coinPitch * K;

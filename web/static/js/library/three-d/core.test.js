@@ -402,33 +402,60 @@ test('cullOffscreen drops faces wholly outside the viewport, flat or textured', 
   }
 });
 
-// A scene of meshes with no `under` face (textured and flat, with a character)
-// from several cameras, at the scale the game places them.
-async function plainScene() {
-  const { buildBookshelf } = await import('./meshes/bookshelf.js');
-  const { buildCoffeeMachine } = await import('./meshes/coffee-machine.js');
-  const { buildElevator } = await import('./meshes/elevator.js');
-  const { buildCharacter } = await import('./meshes/character.js');
-  const art = { width: 1, height: 1 };
-  const meshes = [buildBookshelf({ art }), buildCoffeeMachine({ art }), buildElevator({ art }), buildCharacter(null)];
-  const placed = meshes.map((mesh, i) => ({ mesh, placement: { pos: [(i - 1.5) * 60, 0, (i % 2) * 40], yaw: i * 0.7, scale: 40 } }));
-  const env = { viewport: { width: 400, height: 300 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 }, fog: { color: '#d8ccb0', start: 520, end: 1500 } };
-  const cams = [[0, 260, 0, 0], [180, 200, 0.6, 0.2], [-200, -150, 2.4, -0.3], [40, -260, Math.PI, 0.35]].map(([x, y, facing, pitch]) =>
-    cameraFromPose({ x, y, facing }, { eyeHeight: 60, pitch, fov: Math.PI / 3, aspect: 4 / 3, near: 1, far: 2000 }));
-  return { placed, env, cams, meshes };
+// Plain mean-depth order, re-implemented independently of buildDrawList:
+// every face that survives culling, keyed (layer, depth, push index), with
+// the push index as an explicit tie-break. Flat faces only, and cameras far
+// enough that nothing is near-clipped.
+function referenceOrder(camera, placed) {
+  const rows = [];
+  placed.forEach(({ mesh, placement }, mi) => {
+    const c = Math.cos(placement.yaw), sn = Math.sin(placement.yaw), k = placement.scale;
+    // Scale, then turn about Y, then move: the same arithmetic as placing a mesh, so depths match to the bit.
+    const world = mesh.vertices.map(([x0, y0, z0]) => {
+      const x = x0 * k, y = y0 * k, z = z0 * k;
+      return [x * c + z * sn + placement.pos[0], y + placement.pos[1], -x * sn + z * c + placement.pos[2]];
+    });
+    mesh.faces.forEach((f, fi) => {
+      const [a, b, d] = f.indices.slice(0, 3).map((i) => world[i]);
+      const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const e2 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      const v = [camera.position[0] - a[0], camera.position[1] - a[1], camera.position[2] - a[2]];
+      if (f.cull && n[0] * v[0] + n[1] * v[1] + n[2] * v[2] <= 0) return;
+      const depth = f.indices.reduce((s, i) => s + transformPoint(camera.viewProj, world[i])[3], 0) / f.indices.length;
+      rows.push({ id: `${mi}:${fi}`, layer: f.ground ? (f.decal ? 1 : 0) : 2, depth, at: rows.length });
+    });
+  });
+  rows.sort((p, q) => p.layer - q.layer || q.depth - p.depth || p.at - q.at);
+  return rows.map((r) => r.id);
 }
 
-test('without `under` faces the draw list is exactly the mean-depth sort it always was', async () => {
-  const { placed, env, cams, meshes } = await plainScene();
-  assert.ok(meshes.every((m) => !m.faces.some((f) => f.under)));
-  const layer = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
-  for (const cam of cams) {
+test('without `under` faces the draw list is exactly plain mean-depth order, ties in push order (checked against an independent re-implementation)', async () => {
+  const { buildBookshelf } = await import('./meshes/bookshelf.js');
+  const { buildCoffeeMachine } = await import('./meshes/coffee-machine.js');
+  const { buildCharacter } = await import('./meshes/character.js');
+  const twin = box([-0.5, 0, -0.5], [0.5, 1, 0.5], '#000000');
+  twin.faces.forEach((f) => { f.cull = true; });
+  // The twin box is placed twice at the same spot: every face of it ties exactly.
+  const meshes = [buildBookshelf(), buildCoffeeMachine(), buildCharacter(null), twin, twin];
+  assert.ok(meshes.every((m) => !m.faces.some((f) => f.under || f.texture)));
+  const pos = [[-60, 0, 0], [0, 0, 40], [60, 0, -30], [0, 0, -80], [0, 0, -80]];
+  let n = 0;
+  const tagged = meshes.map((m) => ({ vertices: m.vertices, faces: m.faces.map((f) => ({ ...f, unlit: true, color: '#' + (++n).toString(16).padStart(6, '0') })) }));
+  const ids = [];
+  meshes.forEach((m, mi) => m.faces.forEach((_, fi) => ids.push(`${mi}:${fi}`)));
+  const placed = tagged.map((mesh, i) => ({ mesh, placement: { pos: pos[i], yaw: i * 0.6, scale: 40 } }));
+  const env = { viewport: { width: 400, height: 300 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 } };
+  let ties = 0;
+  for (let k = 0; k < 12; k++) {
+    const a = k * 0.53;
+    const cam = cameraFromPose({ x: Math.sin(a) * 420, y: Math.cos(a) * 420, facing: -a }, { eyeHeight: 60, pitch: ((k % 3) - 1) * 0.3, fov: Math.PI / 3, aspect: 4 / 3, near: 1, far: 3000 });
     const list = buildDrawList(cam, placed, env);
-    assert.ok(list.length > 50);
-    assert.ok(list.every((p) => !('key' in p)), 'no polygon is given a sort key');
-    // Re-sorting by the old comparator (stable) changes nothing.
-    assert.deepEqual([...list].sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth), list);
+    const got = list.map((p) => { const [r, g, b] = p.color.match(/\d+/g).map(Number); return ids[((r << 16) | (g << 8) | b) - 1]; });
+    assert.deepEqual(got, referenceOrder(cam, placed));
+    for (let i = 1; i < list.length; i++) if (list[i].depth === list[i - 1].depth) ties++;
   }
+  assert.ok(ties > 0, 'the twin boxes do tie');
 });
 
 test('an `under` face is drawn before every face of its mesh on or above its plane, and keeps its depth against other meshes', () => {

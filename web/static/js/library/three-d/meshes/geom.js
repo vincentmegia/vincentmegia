@@ -116,12 +116,15 @@ export function boxWithout(min, max, color, drop = []) {
 
 const TOP_INDICES = '6,7,3,2'; // box's +Y face, kept as is by boxWithout
 /**
- * Mark a box part's top face as a supporting surface (`under: true`): the
- * renderer draws it before every other face of the same mesh on or above its
- * plane (core.js liftUnderFaces). Use it for a top that things stand on: the
- * painter sorts by mean depth, so a big top would otherwise paint over what
- * stands on its far half, or, looking up, over anything on it. Mutates and
- * returns `part` (from box or boxWithout, top kept).
+ * Mark a box part's top face as a supporting surface (`under: true`): after
+ * the mean-depth sort, the renderer moves what of the same mesh stands on or
+ * above its plane and overlaps it on screen to after it (core.js
+ * settleUnderFaces); the top itself keeps its place. Use it for a top that
+ * things stand on: the painter sorts by mean depth, so a big top would
+ * otherwise paint over what stands on its far half, or, looking up, over
+ * anything on it. The part's faces must `cull` (the renderer ignores an
+ * `under` face that does not). Mutates and returns `part` (from box or
+ * boxWithout, top kept).
  */
 export function supportTop(part) {
   part.faces.find((f) => f.indices.join() === TOP_INDICES).under = true;

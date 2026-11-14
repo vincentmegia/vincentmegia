@@ -176,14 +176,27 @@ test('from every yaw, pitch and range, nothing standing on the slab is painted o
   const m = buildFrontDesk({ art: ART });
   // Monitor, stand, 3 books, bell plate, dome, button, pot, 3 leaf blobs.
   assert.equal(topAndStanding(m, topY).standing.length, 12);
+  assert.ok(topAndStanding(m, topY).top.length > 0, 'the slab is found');
   const { total, counts, pairs } = standingOrderPairs(m, topY);
   assert.equal(total, 0, JSON.stringify({ counts, pairs }));
 });
 
-test('the slab still sorts by depth against other meshes: behind it a far character, in front of it a near one', async () => {
-  const { crossMeshFailures } = await import('./standing-order.test-helper.js');
+test('the slab keeps its mean-depth place: with a character at each of six positions, everything but what stands on it is drawn in plain order', async () => {
+  const { orderAudit } = await import('./standing-order.test-helper.js');
   const { buildCharacter } = await import('./character.js');
-  const { failures, checked } = crossMeshFailures(buildFrontDesk({ art: ART }), FRONT_DESK_SIZE.counterTop, FRONT_DESK_SIZE.depth, buildCharacter(null));
-  assert.ok(checked > 0, 'the characters overlap the slab on screen');
-  assert.deepEqual(failures, []);
+  const { checked, mismatches } = orderAudit(buildFrontDesk({ art: ART }), FRONT_DESK_SIZE.counterTop, FRONT_DESK_SIZE, buildCharacter(null));
+  assert.ok(checked > 3000, `${checked} cameras`);
+  assert.deepEqual(mismatches, []);
+});
+
+test('exact pixels: the rule never worsens the slab against its own lower faces or a character, and its price stays bounded', async () => {
+  const { pixelAudit } = await import('./standing-order.test-helper.js');
+  const { buildCharacter } = await import('./character.js');
+  const audit = pixelAudit(buildFrontDesk({ art: ART }), FRONT_DESK_SIZE.counterTop, FRONT_DESK_SIZE, buildCharacter(null));
+  for (const [pos, r] of Object.entries(audit)) {
+    assert.deepEqual(r.worse, [], pos);
+    // The price: something moved to after the slab painted over a character
+    // truly in front of it. Measured on this sample: 0 at every position.
+    assert.ok(r.price <= 0, `${pos}: ${r.price} px (worst ${JSON.stringify(r.worst)})`);
+  }
 });

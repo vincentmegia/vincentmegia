@@ -96,14 +96,21 @@ The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
    seen (`boxWithout`), wind every face outward, and set `cull: true` on
    every face, once a test renders the mesh from both sides.
    **Mark a top that things stand on as a supporting surface.** The painter
-   sorts by mean depth, so a big counter top would paint over what stands
-   on its far half, or, looking up, over anything on it. `geom.js`'s
-   `supportTop(part)` marks its top face `under`, and `buildDrawList` then
-   draws it before every face of the same mesh on or above its plane
-   (exact: the top is only drawn when the eye is above it). Keep the solids
-   standing on it apart: two that interpenetrate cannot be painted in order.
-   `meshes/standing-order.test-helper.js` checks a mesh over every yaw,
-   pitch and range.
+   sorts by mean depth, so a big counter top paints over what stands on its
+   far half, or, looking up, over anything on it. `geom.js`'s
+   `supportTop(part)` marks its top face `under` (it must also `cull`).
+   After the sort, `buildDrawList` moves each polygon of the same mesh that
+   lies on or above the top's plane, overlaps the top on screen and was
+   sorted before it, to just after it: the top is only drawn when the eye is
+   above its plane, and from there it can hide nothing on that plane. The
+   top itself never moves, so it keeps its depth order against other meshes
+   and its own lower faces. The residual: a moved polygon is drawn after
+   whatever sat between it and the top, wrong only where that is truly in
+   front of it, within the standing objects' own screen area. Seat what
+   stands on a top exactly on it, mark a box on the top (a register) as a
+   support too if things stand on it, and keep solids apart: two that
+   interpenetrate cannot be painted in order. `meshes/standing-order.test-helper.js`
+   checks a mesh over every yaw, pitch and range, with exact per-pixel truth.
 8. **Accept a fallback.** Without art (node tests, no canvas) the same faces
    render in the drawer's flat colours. The geometry is identical either way.
 9. **Wire it through the scene.** Add the kind to `FP_ART` in

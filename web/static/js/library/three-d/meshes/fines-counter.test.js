@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildFinesCounter, paintFinesCounterArt, FINES_COUNTER_ART, FINES_COUNTER_ART_SCALE, FINES_COUNTER_K, FINES_COUNTER_SIZE,
+  buildFinesCounter, paintFinesCounterArt, FINES_COUNTER_ART, FINES_COUNTER_ART_SCALE, FINES_COUNTER_K, FINES_COUNTER_SIZE, FINES_HOUSING_FRONT,
 } from './fines-counter.js';
 import { finesRoomLayout, FINES_ROOM_COLORS } from '../../anime-furniture.js';
 import { stationTop } from '../labels.js';
@@ -26,6 +26,8 @@ const uvBox = (f) => {
 };
 const sameRect = (a, b) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(a[k] - b[k]) < 1e-9);
 const frontZ = (m, f) => m.vertices[f.indices[0]][2];
+// The regions the 3D fronts show: the drawer's own, but the housing's cropped at the register's top.
+const R = { ...L, housing: FINES_HOUSING_FRONT };
 const PARTS = [['body', 'counter'], ['top', 'top'], ['plaque', 'plaque'], ['register', 'register'], ['housing', 'housing']];
 
 test('real-world size: the top 2.4 x 1.1 on the floor, the plaque its highest point', () => {
@@ -74,7 +76,7 @@ test('with art, the body, top, plaque, register and housing fronts are textured,
     }
   }
   const boxes = t.map(uvBox);
-  for (const [part] of PARTS) assert.ok(boxes.some((b) => sameRect(b, L[part])), part);
+  for (const [part] of PARTS) assert.ok(boxes.some((b) => sameRect(b, R[part])), part);
   const div = (r) => t.find((f) => sameRect(uvBox(f), r)).texture.div;
   assert.deepEqual(div(L.register), [1, 1]);
   assert.deepEqual(div(L.plaque), [2, 1]);
@@ -87,7 +89,7 @@ test('planes: body front 0.45, top front 0.55, register before the housing, the 
   near(at(L.body), 0.45);
   near(at(L.top), 0.55);
   near(at(L.register), 0.25);
-  assert.ok(at(L.housing) < at(L.register), 'the housing is thinner than the register');
+  assert.ok(at(R.housing) < at(R.register), 'the housing is thinner than the register');
   near(at(L.plaque), -0.46);
   const plane = (f) => {
     const p = f.indices.map((i) => m.vertices[i]);
@@ -99,6 +101,18 @@ test('planes: body front 0.45, top front 0.55, register before the housing, the 
     if (z === null) continue;
     assert.ok(!texZ.has(z.toFixed(6)), `untextured face at z=${z} ties with a textured front`);
   }
+});
+
+test('the housing stands exactly on the register, whose top is a supporting surface; its front is its art cropped there, not stretched', () => {
+  assert.deepEqual(FINES_HOUSING_FRONT, { ...L.housing, y1: L.register.y0 });
+  const m = buildFinesCounter({ art: ART });
+  const f = textured(m).find((x) => sameRect(uvBox(x), FINES_HOUSING_FRONT));
+  const ys = f.indices.map((i) => m.vertices[i][1]);
+  near(Math.min(...ys), (L.floor - L.register.y0) * K, 1e-12);
+  near(Math.max(...ys) - Math.min(...ys), (FINES_HOUSING_FRONT.y1 - FINES_HOUSING_FRONT.y0) * K);
+  const under = m.faces.filter((x) => x.under);
+  assert.deepEqual(under.map((x) => x.color).sort(), [C.register, C.top].sort());
+  assert.ok(under.every((x) => x.cull));
 });
 
 test('exactly 6 coin discs, 4 and 2, alternating coin and coinDeep from the bottom, standing on the top', () => {
@@ -132,7 +146,7 @@ test('without art the same faces are drawn in the counter\'s flat colours', () =
   assert.deepEqual(flat.vertices, tex.vertices);
   const idx = tex.faces.map((f, i) => (f.texture ? i : -1)).filter((i) => i >= 0);
   for (const [part, color] of PARTS) {
-    const i = idx.find((j) => sameRect(uvBox(tex.faces[j]), L[part]));
+    const i = idx.find((j) => sameRect(uvBox(tex.faces[j]), R[part]));
     assert.equal(flat.faces[i].color, C[color], part);
   }
 });
@@ -225,14 +239,30 @@ test('from every yaw, pitch and range, nothing standing on the top is painted ov
   const m = buildFinesCounter({ art: ART });
   // Coins (6), register, housing, two posts, plaque.
   assert.equal(topAndStanding(m, topY).standing.length, 11);
+  assert.ok(topAndStanding(m, topY).top.length > 0, 'the top is found');
   const { total, counts, pairs } = standingOrderPairs(m, topY);
   assert.equal(total, 0, JSON.stringify({ counts, pairs }));
+  // The housing stands on the register, whose top is a supporting surface too.
+  const reg = standingOrderPairs(m, (L.floor - L.register.y0) * K);
+  assert.equal(reg.total, 0, JSON.stringify(reg));
 });
 
-test('the top still sorts by depth against other meshes: behind it a far character, in front of it a near one', async () => {
-  const { crossMeshFailures } = await import('./standing-order.test-helper.js');
+test('the top keeps its mean-depth place: with a character at each of six positions, everything but what stands on it is drawn in plain order', async () => {
+  const { orderAudit } = await import('./standing-order.test-helper.js');
   const { buildCharacter } = await import('./character.js');
-  const { failures, checked } = crossMeshFailures(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE.depth, buildCharacter(null));
-  assert.ok(checked > 0, 'the characters overlap the top on screen');
-  assert.deepEqual(failures, []);
+  const { checked, mismatches } = orderAudit(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE, buildCharacter(null));
+  assert.ok(checked > 3000, `${checked} cameras`);
+  assert.deepEqual(mismatches, []);
+});
+
+test('exact pixels: the rule never worsens the top against its own lower faces or a character, and its price stays bounded', async () => {
+  const { pixelAudit } = await import('./standing-order.test-helper.js');
+  const { buildCharacter } = await import('./character.js');
+  const audit = pixelAudit(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE, buildCharacter(null));
+  for (const [pos, r] of Object.entries(audit)) {
+    assert.deepEqual(r.worse, [], pos);
+    // The price: something moved to after the top painted over a character
+    // truly in front of it. Measured on this sample: 0 at every position.
+    assert.ok(r.price <= 0, `${pos}: ${r.price} px (worst ${JSON.stringify(r.worst)})`);
+  }
 });
