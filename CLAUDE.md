@@ -89,10 +89,12 @@ HTMX + Tailwind + PostgreSQL.
   so a change to his 2D drawers shows in both cameras; Top-Down keeps the
   detailed 2D art. Changing a `three-d/` mesh
   or the core affects only the FP camera, but the FP props wear their 2D
-  drawers' own art: `drawBookcase` and `drawCoffeeMachine` (library), and
-  Hospital Shift's `drawElevator`/`drawStairs` (via their layout/colour
-  exports). A change to any of those drawers shows in both cameras, and the
-  Hospital ones in both games. Doc: `library-first-person-3d.md`.
+  drawers' own art: `drawBookcase`, `drawCoffeeMachine`, `drawFrontDesk`,
+  `drawFinesRoom` and `drawReturnCart` (library), and Hospital Shift's
+  `drawElevator`/`drawStairs` (via their layout/colour exports); the decor
+  meshes read `DECOR_COLORS` from Hospital's `anime-furniture.js`. A change
+  to any of those shows in both cameras, and the Hospital ones in both
+  games. Doc: `library-first-person-3d.md`.
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):

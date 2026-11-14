@@ -1,7 +1,7 @@
 # Library Shift — First-Person Stations and Decor Referenced to the 2D Art
 
 Date: 2026-11-13
-Status: Design, awaiting review
+Status: Implemented
 
 ## Goal
 
