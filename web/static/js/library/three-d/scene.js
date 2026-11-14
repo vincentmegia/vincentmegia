@@ -12,6 +12,7 @@ import { buildElevator } from './meshes/elevator.js';
 import { buildFrontDesk } from './meshes/front-desk.js';
 import { buildReturnCart, RETURN_CART_BOOK_SLOTS } from './meshes/return-cart.js';
 import { buildBook } from './meshes/book.js';
+import { emptyMesh, merge, translate } from './meshes/geom.js';
 import { buildFinesCounter } from './meshes/fines-counter.js';
 import { buildBossOffice } from './meshes/boss-office.js';
 import { buildReadingNook } from './meshes/reading-nook.js';
@@ -89,6 +90,23 @@ function bookMesh(book, art) {
   return mesh;
 }
 
+// Cart station object -> {cart, books, mesh}: the cart's mesh with the books
+// on its top tray merged in, each moved to its RETURN_CART_BOOK_SLOTS point.
+// One placed mesh, so the renderer's `under` rule (core.js settleUnderFaces)
+// draws the top tray before the books standing on it; as separate meshes the
+// mean-depth sort painted the tray over them. Rebuilt only when the cart's
+// mesh or a book's (memoised per key and art) changes; one entry per cart.
+const cartBookMeshes = new WeakMap();
+
+function cartWithBooks(s, cart, books) {
+  const hit = cartBookMeshes.get(s);
+  if (hit && hit.cart === cart && hit.books.length === books.length && hit.books.every((m, i) => m === books[i])) return hit.mesh;
+  const mesh = merge(emptyMesh(), cart);
+  books.forEach((b, i) => merge(mesh, translate(b, RETURN_CART_BOOK_SLOTS[i])));
+  cartBookMeshes.set(s, { cart, books, mesh });
+  return mesh;
+}
+
 // The room shell for one floor: Top-Down's checker, decals and back-wall art
 // (library/floor-dressing.js). Rebuilt only when the floor, the room size, the
 // decals or an art canvas's identity changes; a canvas repainted in place
@@ -144,7 +162,8 @@ export function characterMesh(c) {
  *   decor props from the world inventory; a kind with no mesh is skipped.
  * @param {{id: string, title?: string, color: string, isCoinHunt?: boolean}[]} [input.cartBooks]
  *   the Return Cart's books in Top-Down slot order; the first
- *   RETURN_CART_BOOK_SLOTS.length stand on this floor's cart's top tray.
+ *   RETURN_CART_BOOK_SLOTS.length stand on this floor's cart's top tray,
+ *   merged into the cart's placed mesh.
  * @param {(book: object) => (CanvasImageSource | null | undefined)} [input.bookArtFor]
  *   a cart book's painted cover (meshes/book.js's paintReturnCartBookArt).
  * @param {(id: string) => (CanvasImageSource | null | undefined)} [input.roomArtFor]
@@ -157,6 +176,12 @@ export function buildFirstPersonScene({ player, floor, stations, characters, dec
   const room = roomMesh(floor, stations, viewport, roomArtFor);
   placed.push({ mesh: room, placement: { pos: [0, 0, 0], yaw: 0, scale: 1 } });
 
+  // The cart's books stand on this floor's cart, merged into its mesh (cartWithBooks).
+  const cart = cartBooks?.length ? stations.find((s) => s.kind === 'return-cart' && s.floor === floor) : null;
+  const books = cart
+    ? cartBooks.slice(0, RETURN_CART_BOOK_SLOTS.length).map((book) => bookMesh(book, bookArtFor ? bookArtFor(book) ?? undefined : undefined))
+    : [];
+
   for (const s of stations) {
     if (s.floor !== floor) continue;
     const builder = meshForStationKind(s.kind);
@@ -168,20 +193,10 @@ export function buildFirstPersonScene({ player, floor, stations, characters, dec
         placement: { pos: [s.x, 0, s.y], yaw: 0, scale: 1 },
       });
     } else {
-      placed.push({ mesh: stationMesh(s, builder, artFor, optsFor), placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
+      const own = stationMesh(s, builder, artFor, optsFor);
+      const mesh = s === cart ? cartWithBooks(s, own, books) : own;
+      placed.push({ mesh, placement: { pos: [s.x, 0, s.y], yaw: 0, scale: UNIT_SCALE } });
     }
-  }
-
-  const cart = cartBooks?.length ? stations.find((s) => s.kind === 'return-cart' && s.floor === floor) : null;
-  if (cart) {
-    cartBooks.slice(0, RETURN_CART_BOOK_SLOTS.length).forEach((book, i) => {
-      const [bx, by, bz] = RETURN_CART_BOOK_SLOTS[i];
-      const art = bookArtFor ? bookArtFor(book) ?? undefined : undefined;
-      placed.push({
-        mesh: bookMesh(book, art),
-        placement: { pos: [cart.x + bx * UNIT_SCALE, by * UNIT_SCALE, cart.y + bz * UNIT_SCALE], yaw: 0, scale: UNIT_SCALE },
-      });
-    });
   }
 
   for (const d of decor ?? []) {

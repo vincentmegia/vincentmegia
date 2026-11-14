@@ -413,32 +413,46 @@ test('a decor kind with no mesh yet is skipped, not drawn as a box', () => {
   assert.equal(placed.length, bare);
 });
 
-test('Return Cart books stand on this floor\'s cart top tray, in slot order, at most five, memoised', async () => {
+test('Return Cart books stand on this floor\'s cart top tray, in slot order, at most five, merged into the cart\'s mesh, memoised', async () => {
   const { RETURN_CART_BOOK_SLOTS } = await import('./meshes/return-cart.js');
-  const { BOOK_SIZE } = await import('./meshes/book.js');
+  const { buildBook } = await import('./meshes/book.js');
   const cart = { kind: 'return-cart', x: 300, y: 115, floor: 1 };
   const books = Array.from({ length: 7 }, (_, i) => ({ id: `b${i}`, title: `T${i}`, color: '#8fd3ff', isCoinHunt: i === 1 }));
   const art = { width: 160, height: 208 };
+  const cartArt = { width: 336, height: 336 };
   const asked = [];
-  const run = (over) => buildFirstPersonScene(input({ stations: [cart], characters: [], cartBooks: books, bookArtFor: (b) => { asked.push(b.id); return art; }, ...over }));
+  const run = (over) => buildFirstPersonScene(input({ stations: [cart], characters: [], cartBooks: books, artFor: () => cartArt, bookArtFor: (b) => { asked.push(b.id); return art; }, ...over }));
   const { placed } = run();
-  // room + cart + 5 books
-  assert.equal(placed.length, 7);
-  const bookPlaced = placed.slice(2);
-  bookPlaced.forEach((p, i) => {
-    const [bx, by, bz] = RETURN_CART_BOOK_SLOTS[i];
-    assert.deepEqual(p.placement.pos, [cart.x + bx * UNIT_SCALE, by * UNIT_SCALE, cart.y + bz * UNIT_SCALE]);
-    assert.equal(p.placement.scale, UNIT_SCALE);
-    const ys = p.mesh.vertices.map((v) => v[1]);
-    assert.ok(Math.abs(Math.max(...ys) - BOOK_SIZE.height) < 1e-9 || i === 1, 'a plain book is its own height');
-    assert.equal(p.mesh.faces[0].texture.image, art);
+  // room + the cart, its books merged in: one placed mesh, at the cart.
+  assert.equal(placed.length, 2);
+  const [, p] = placed;
+  assert.deepEqual(p.placement, { pos: [cart.x, 0, cart.y], yaw: 0, scale: UNIT_SCALE });
+  const own = buildReturnCart({ art: cartArt });
+  assert.deepEqual(p.mesh.vertices.slice(0, own.vertices.length), own.vertices, 'the cart comes first');
+  assert.equal(p.mesh.faces.slice(0, own.faces.length).filter((f) => f.texture?.image === cartArt).length, own.faces.filter((f) => f.texture).length);
+  // Then each of the first five books, moved to its slot, wearing its cover.
+  let v = own.vertices.length;
+  let f = own.faces.length;
+  books.slice(0, 5).forEach((b, i) => {
+    const m = buildBook({ art, color: b.color, isCoinHunt: b.isCoinHunt });
+    const at = RETURN_CART_BOOK_SLOTS[i];
+    assert.deepEqual(p.mesh.vertices.slice(v, v + m.vertices.length), m.vertices.map((w) => w.map((c, k) => c + at[k])), `book ${i} stands at its slot`);
+    assert.equal(p.mesh.faces[f].texture.image, art);
+    v += m.vertices.length;
+    f += m.faces.length;
   });
+  assert.equal(p.mesh.vertices.length, v, 'five books, no more');
+  assert.equal(p.mesh.faces.length, f);
   assert.deepEqual(asked, ['b0', 'b1', 'b2', 'b3', 'b4']);
-  assert.ok(bookPlaced[1].mesh.faces.length > bookPlaced[0].mesh.faces.length, 'the Coin Hunt book carries its star');
-  // Memoised per book: the same book and art reuse the mesh next frame.
-  const again = run().placed.slice(2);
-  again.forEach((p, i) => assert.equal(p.mesh, bookPlaced[i].mesh));
-  // Another floor's cart shows none; no books, none.
+  // Memoised: the same cart, books and art reuse the merged mesh next frame;
+  // a different book on the cart builds a new one.
+  assert.equal(run().placed[1].mesh, p.mesh);
+  const swapped = run({ cartBooks: [{ ...books[0], id: 'other' }, ...books.slice(1)] }).placed[1].mesh;
+  assert.notEqual(swapped, p.mesh);
+  assert.equal(swapped.vertices.length, p.mesh.vertices.length);
+  // Another floor's cart shows none; no books, the cart alone.
   assert.equal(run({ floor: 2 }).placed.length, 1);
-  assert.equal(run({ cartBooks: [] }).placed.length, 2);
+  const bare = run({ cartBooks: [] }).placed;
+  assert.equal(bare.length, 2);
+  assert.equal(bare[1].mesh.vertices.length, own.vertices.length);
 });

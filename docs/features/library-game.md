@@ -1418,6 +1418,16 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   register, housing and plaque (repainting each part clipped to its own
   region so it shows nothing else) and places its coin stacks from the
   layout, so a change to the counter's art shows in both cameras.
+  `drawReturnCart` draws from `returnCartLayout` (the two trays, the
+  RETURNS tag, the decorative books' left edge, pitch and width, the posts'
+  x, the wheels and the hubs' radius), `RETURN_CART_COLORS` and
+  `returnCartDecorBooks(tray)` (each tray's books, colour and height; the
+  lower tray's colours start two along), all exported, through two helpers
+  that are its own unbroken runs of calls: `drawReturnCartTray(ctx, st,
+  tray)` and `drawReturnCartTag` (tag and lettering). First Person's Return
+  Cart wears that drawing on both trays and its tag (each repainted clipped
+  to its own region) and stands the lower tray's books from the same
+  colours and heights, so a change to the cart's art shows in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

@@ -498,39 +498,111 @@ export function drawFrontDesk(ctx, st) {
   sparkle(ctx, hw - 10, -hh + 10, 3.5, '#ffffff');
 }
 
-/** The Return Cart: a wooden cart with two trays of pastel books and wheels, under a RETURNS tag. */
-export function drawReturnCart(ctx, st) {
+/** The Return Cart's own colours: its wooden trays, plum frame, RETURNS tag, wheels and the pastel book swatches. */
+export const RETURN_CART_COLORS = {
+  wood: '#d9a877',
+  frame: ANIME.ink,
+  tag: '#ffffff',
+  tagInk: ANIME.coralDeep,
+  wheel: '#5a5a78',
+  hub: '#d6ecff',
+  books: [ANIME.coral, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.pink],
+};
+
+/**
+ * The decorative books drawReturnCart stands on tray `tray` (0 the upper, 1
+ * the lower), left to right: each its colour and its height in px. The upper
+ * tray holds 6, the lower 5, its colours shifted two along the swatches.
+ * @param {0|1} tray
+ * @returns {{color: string, h: number}[]}
+ */
+export function returnCartDecorBooks(tray) {
+  const books = RETURN_CART_COLORS.books;
+  const n = tray === 0 ? 6 : 5;
+  const shift = tray === 0 ? 0 : 2;
+  return Array.from({ length: n }, (_, i) => ({ color: books[(i + shift) % books.length], h: 13 + ((i * 7) % 5) }));
+}
+
+/**
+ * Where drawReturnCart puts its parts, in the station's centered px: the two
+ * trays (upper first), the RETURNS tag, the decorative books' left edge,
+ * pitch and width (each tray's books stand on its `y0`), the frame posts'
+ * x, the wheels (centre and radius) and their hubs' radius. The trays, posts
+ * and wheels follow `st.w`/`st.h`; the rest is fixed px. Top-Down's box is
+ * 84 x 84. First Person's return-cart mesh maps its faces onto these same
+ * regions (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function returnCartLayout(st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  const books = [ANIME.coral, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.pink];
-  for (const [ty, n] of [[-3, 6], [17, 5]]) {
-    for (let i = 0; i < n; i++) {
-      const h = 13 + ((i * 7) % 5);
-      flat(ctx, -hw + 14 + i * 9, ty - h, 7.5, h, 1.5, books[(i + (ty > 0 ? 2 : 0)) % books.length], 0.9);
-    }
-    block(ctx, -hw + 9, ty, st.w - 18, 5, 2.5, '#d9a877', 1.2);
-  }
-  // Frame posts and handle.
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(-hw + 10, -8);
-  ctx.lineTo(-hw + 10, hh - 14);
-  ctx.moveTo(hw - 10, -8);
-  ctx.lineTo(hw - 10, hh - 14);
-  ctx.moveTo(hw - 10, -8);
-  ctx.lineTo(hw - 2, -12);
-  ctx.stroke();
-  // RETURNS tag, drawn last so the books never cover it.
-  flat(ctx, -26, -hh + 5, 52, 14, 7, '#ffffff', 1.2);
+  return {
+    trays: [-3, 17].map((ty) => ({ x0: -hw + 9, y0: ty, x1: -hw + 9 + (st.w - 18), y1: ty + 5 })),
+    tag: { x0: -26, y0: -hh + 5, x1: 26, y1: -hh + 5 + 14 },
+    bookX0: -hw + 14,
+    bookPitch: 9,
+    bookW: 7.5,
+    posts: [-hw + 10, hw - 10],
+    wheels: [-hw + 16, hw - 16].map((x) => ({ x, y: hh - 10, r: 5 })),
+    hubR: 1.8,
+  };
+}
+
+/**
+ * One of the Return Cart's trays (0 the upper, 1 the lower), as drawReturnCart
+ * draws it. First Person repaints it clipped to its region, so the tray's
+ * front shows none of the books and posts the 2D draws over it.
+ */
+export function drawReturnCartTray(ctx, st, tray) {
+  const r = returnCartLayout(st).trays[tray];
+  block(ctx, ...xywh(r), 2.5, RETURN_CART_COLORS.wood, 1.2);
+}
+
+/** The Return Cart's RETURNS tag and its lettering, as drawReturnCart draws it. */
+export function drawReturnCartTag(ctx, st) {
+  const hh = st.h / 2;
+  const L = returnCartLayout(st);
+  flat(ctx, ...xywh(L.tag), 7, RETURN_CART_COLORS.tag, 1.2);
   ctx.font = 'bold 8px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = ANIME.coralDeep;
+  ctx.fillStyle = RETURN_CART_COLORS.tagInk;
   ctx.fillText('RETURNS', 0, -hh + 12.5);
-  for (const wx of [-hw + 16, hw - 16]) {
-    circle(ctx, wx, hh - 10, 5, '#5a5a78', 1.2);
-    circle(ctx, wx, hh - 10, 1.8, '#d6ecff', 0.8);
+}
+
+/**
+ * The Return Cart: a wooden cart with two trays of pastel books and wheels,
+ * under a RETURNS tag. Drawn from returnCartLayout and RETURN_CART_COLORS.
+ */
+export function drawReturnCart(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const L = returnCartLayout(st);
+  const C = RETURN_CART_COLORS;
+  L.trays.forEach((tray, t) => {
+    returnCartDecorBooks(t).forEach(({ color, h }, i) => {
+      flat(ctx, L.bookX0 + i * L.bookPitch, tray.y0 - h, L.bookW, h, 1.5, color, 0.9);
+    });
+    drawReturnCartTray(ctx, st, t);
+  });
+  // Frame posts and handle.
+  const [p0, p1] = L.posts;
+  ctx.strokeStyle = C.frame;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(p0, -8);
+  ctx.lineTo(p0, hh - 14);
+  ctx.moveTo(p1, -8);
+  ctx.lineTo(p1, hh - 14);
+  ctx.moveTo(p1, -8);
+  ctx.lineTo(hw - 2, -12);
+  ctx.stroke();
+  // RETURNS tag, drawn last so the books never cover it.
+  drawReturnCartTag(ctx, st);
+  for (const { x, y, r } of L.wheels) {
+    circle(ctx, x, y, r, C.wheel, 1.2);
+    circle(ctx, x, y, L.hubR, C.hub, 0.8);
   }
 }
 
