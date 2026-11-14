@@ -1428,6 +1428,10 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   Cart wears that drawing on both trays and its tag (each repainted clipped
   to its own region) and stands the lower tray's books from the same
   colours and heights, so a change to the cart's art shows in both cameras.
+  `drawReadingNook` draws from `READING_NOOK_COLORS` (exported: rug, chair,
+  arm, cushion, leg, book, pole, base, shade; its heart and the lamp's glow
+  are overlays outside it), the colours First Person's Reading Nook is built
+  in, so a change to the nook's colours shows in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

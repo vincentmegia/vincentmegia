@@ -22,6 +22,7 @@ import {
   FINES_ROOM_COLORS,
   drawBossDoor,
   drawReadingNook,
+  READING_NOOK_COLORS,
   coffeeMachineLayout,
   drawCoffeeMachine,
   drawOutOfOrderTape,
@@ -30,7 +31,7 @@ import {
 } from './anime-furniture.js';
 import { buildStations, stationExtents } from './floor-plan.js';
 import { GENRES } from './rules.js';
-import { ANIME } from '../hospital/anime-ui.js';
+import { ANIME, tint } from '../hospital/anime-ui.js';
 
 /** A canvas 2D context stand-in: every method is a no-op that counts calls. */
 function fakeContext() {
@@ -328,6 +329,29 @@ describe('library anime furniture', () => {
       assert.deepEqual(part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a)), parts);
       assert.ok(part.calls.length > 0 && whole.includes(JSON.stringify(part.calls).slice(1, -1)), `${JSON.stringify(parts)} is unbroken in drawReturnCart`);
     }
+  });
+
+  // The First Person Reading Nook builds in these colours, so the drawer must
+  // paint with exactly them: its flat fills and strokes are table values, and
+  // its blocks' gradients are block()'s two tints of one. The heart on the
+  // chair (ANIME.pinkDeep) and the lamp's glow (rgba stops) are overlays the
+  // mesh doesn't model.
+  test('drawReadingNook draws in READING_NOOK_COLORS', () => {
+    const C = READING_NOOK_COLORS;
+    assert.deepEqual(C, {
+      rug: ANIME.lavender, chair: ANIME.pink, arm: tint(ANIME.pink, -0.12), cushion: tint(ANIME.pink, 0.2),
+      leg: '#8a6a4a', book: '#ffffff', pole: ANIME.ink, base: '#5a5a78', shade: ANIME.gold,
+    });
+    const palette = new Set(Object.values(C));
+    const { ctx, calls } = recordingContext();
+    drawReadingNook(ctx, { w: 84, h: 84 });
+    const styles = calls.filter(([k]) => k === 'set:fillStyle' || k === 'set:strokeStyle').map(([, [v]]) => v);
+    const flatStyles = styles.filter((v) => typeof v === 'string');
+    assert.ok(styles.length - flatStyles.length >= 5, 'the blocks and the glow are gradients');
+    for (const v of flatStyles) assert.ok(palette.has(v) || v === ANIME.pinkDeep, v);
+    const tints = new Set(Object.values(C).flatMap((c) => [tint(c, 0.22), tint(c, -0.06)]));
+    for (const [, [, c]] of calls.filter(([k]) => k === 'addColorStop')) assert.ok(tints.has(c) || c.startsWith('rgba('), c);
+    for (const c of ['rug', 'leg', 'book', 'pole', 'base', 'shade']) assert.ok(flatStyles.includes(C[c]), c);
   });
 
   test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {

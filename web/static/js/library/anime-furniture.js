@@ -828,25 +828,39 @@ export function drawBossDoor(ctx, st, opts = {}) {
   sparkle(ctx, hw - 10, -hh + 22, 3.5, '#ffffff');
 }
 
+/** The Reading Nook's own colours: its lavender rug, the pink armchair (darker arms, lighter cushion) on wooden legs, the open book, and the floor lamp's plum pole, slate base and gold shade. */
+export const READING_NOOK_COLORS = {
+  rug: ANIME.lavender,
+  chair: ANIME.pink,
+  arm: tint(ANIME.pink, -0.12),
+  cushion: tint(ANIME.pink, 0.2),
+  leg: '#8a6a4a',
+  book: '#ffffff',
+  pole: ANIME.ink,
+  base: '#5a5a78',
+  shade: ANIME.gold,
+};
+
 /** The Reading Nook: a round rug, a plump pastel armchair with an open book, and a glowing floor lamp. */
 export function drawReadingNook(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  ctx.fillStyle = ANIME.lavender;
+  const C = READING_NOOK_COLORS;
+  ctx.fillStyle = C.rug;
   ctx.beginPath();
   ctx.ellipse(0, hh - 14, hw - 8, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = INK;
+  ctx.strokeStyle = C.pole;
   ctx.lineWidth = 1.1;
   ctx.stroke();
   // Armchair.
-  block(ctx, -26, -16, 40, 28, 10, ANIME.pink, 1.4);
-  block(ctx, -32, -4, 11, 26, 5, tint(ANIME.pink, -0.12), 1.3);
-  block(ctx, 9, -4, 11, 26, 5, tint(ANIME.pink, -0.12), 1.3);
-  block(ctx, -22, 4, 32, 15, 6, tint(ANIME.pink, 0.2), 1.3);
-  for (const lx of [-27, 14]) flat(ctx, lx, 21, 3.5, 6, 1, '#8a6a4a', 0.8);
+  block(ctx, -26, -16, 40, 28, 10, C.chair, 1.4);
+  block(ctx, -32, -4, 11, 26, 5, C.arm, 1.3);
+  block(ctx, 9, -4, 11, 26, 5, C.arm, 1.3);
+  block(ctx, -22, 4, 32, 15, 6, C.cushion, 1.3);
+  for (const lx of [-27, 14]) flat(ctx, lx, 21, 3.5, 6, 1, C.leg, 0.8);
   // Open book on the seat.
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = C.book;
   ctx.beginPath();
   ctx.moveTo(-14, 6);
   ctx.quadraticCurveTo(-9, 3, -6, 6);
@@ -868,14 +882,14 @@ export function drawReadingNook(ctx, st) {
   ctx.beginPath();
   ctx.arc(28, -26, 24, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = INK;
+  ctx.strokeStyle = C.pole;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(28, -22);
   ctx.lineTo(28, 22);
   ctx.stroke();
-  flat(ctx, 21, 21, 14, 3.5, 1.5, '#5a5a78', 1);
-  ctx.fillStyle = ANIME.gold;
+  flat(ctx, 21, 21, 14, 3.5, 1.5, C.base, 1);
+  ctx.fillStyle = C.shade;
   ctx.beginPath();
   ctx.moveTo(20, -22);
   ctx.lineTo(36, -22);
