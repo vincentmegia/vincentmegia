@@ -100,9 +100,10 @@ test('with art, the tag and both trays wear their own regions on +Z fronts, unli
     assert.ok(z.every((v) => Math.abs(v - z[0]) < 1e-12), 'one plane');
     assert.ok(normalZ(m, f) > 0, 'faces +Z');
     for (const [u, v] of f.texture.uv) assert.ok(u >= 0 && u <= ART.width && v >= 0 && v <= ART.height, `uv ${u},${v} off the image`);
-    assert.deepEqual(f.texture.div, [2, 1]);
   }
   for (const r of [L.tag, ...L.trays]) assert.ok(t.some((f) => sameRect(uvBox(f), r)), JSON.stringify(r));
+  // The lower tray's front in four cells (the wheels stand just behind its outer quarters).
+  assert.deepEqual([L.tag, ...L.trays].map((r) => t.find((f) => sameRect(uvBox(f), r)).texture.div), [[2, 1], [2, 1], [4, 1]]);
   // Each tray's front is its own tray box's front.
   L.trays.forEach((r, i) => {
     const f = t.find((x) => sameRect(uvBox(x), r));
@@ -152,17 +153,31 @@ test('the lower tray holds the 2D\'s five books, left to right in its colours an
 });
 function near0(x) { return Math.abs(x) < 1e-9; }
 
-test('the wheels are round: 8-sided tubes with pale hubs on both sides', () => {
+test('the wheels are round: a front and a back pair of 8-sided tubes, each round face and pale hub facing out at the tray\'s edge', () => {
   const m = buildReturnCart();
   const wheels = parts(m).filter((p) => p.color === C.wheel);
-  assert.equal(wheels.length, 2);
+  assert.equal(wheels.length, 4);
+  const at = wheels.map((w) => [(w.lo[0] + w.hi[0]) / 2, (w.lo[2] + w.hi[2]) / 2].map((v) => Math.round(v * 100) / 100)).sort();
+  assert.deepEqual(at, [[-0.55, -0.38], [-0.55, 0.38], [0.55, -0.38], [0.55, 0.38]]);
   for (const w of wheels) {
     assert.ok(w.faces.filter((f) => f.indices.length === 4).length >= 8, 'not a box');
     near(w.lo[1], 0);
-    near(w.hi[1], 0.2);
-    near(Math.abs((w.lo[0] + w.hi[0]) / 2), 0.55);
+    near(w.hi[1], 0.2, 1e-12);
+    const out = Math.sign(w.lo[2] + w.hi[2]);
+    // Its round faces (8-gon caps) face along z, the outer one toward the cart's edge, inside the tray's footprint.
+    const caps = w.faces.filter((f) => f.indices.length === 8);
+    assert.equal(caps.length, 2);
+    assert.ok(caps.some((f) => normalZ(m, f) * out > 0), 'a cap faces out');
+    assert.ok(Math.max(Math.abs(w.lo[2]), Math.abs(w.hi[2])) <= 0.45);
   }
-  assert.equal(parts(m).filter((p) => p.color === C.hub).length, 4);
+  // One hub per wheel, on the outer cap, its own cap facing out.
+  const hubs = parts(m).filter((p) => p.color === C.hub);
+  assert.equal(hubs.length, 4);
+  for (const h of hubs) {
+    const out = Math.sign(h.lo[2] + h.hi[2]);
+    near(Math.min(Math.abs(h.lo[2]), Math.abs(h.hi[2])), 0.44, 1e-12);
+    assert.ok(h.faces.some((f) => f.indices.length === 6 && normalZ(m, f) * out > 0));
+  }
 });
 
 test('no two parts interpenetrate: their boxes meet in at most a plane', () => {
@@ -212,7 +227,7 @@ test('every face culls, and its winding faces out: fronts show from in front, ne
 
 test('face budget and determinism', () => {
   const m = buildReturnCart({ art: ART });
-  assert.ok(m.faces.length <= 170, `${m.faces.length} faces`);
+  assert.ok(m.faces.length <= 200, `${m.faces.length} faces`);
   for (const f of m.faces) for (const i of f.indices) assert.ok(i >= 0 && i < m.vertices.length);
   assert.deepEqual(buildReturnCart({ art: ART }), buildReturnCart({ art: ART }));
 });

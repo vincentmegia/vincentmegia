@@ -2,8 +2,8 @@
 // (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: two wooden trays on plum posts, the push handle, the RETURNS tag
 // hung at the back between the back posts (high enough to clear the books on
-// the top tray), the lower tray's five pastel books and two round wheels with
-// pale hubs. The flat fronts wear the 2D art itself: the game paints
+// the top tray), the lower tray's five pastel books and four round wheels
+// near the tray's front and back edges, each with a pale hub facing out. The flat fronts wear the 2D art itself: the game paints
 // drawReturnCart into a canvas (paintReturnCartArt) and each tray and the tag
 // show exactly their own region of it. The top tray holds the cart's real
 // books (book.js; scene.js merges them into this mesh at
@@ -51,8 +51,13 @@ const ARM = { h: 0.04, depth: 0.02 }; // the tag's arms, inside the board's thic
 // not be painted in order against it).
 const HANDLE = { x0: POST_X + POST_HALF, x1: 0.95, y0: 1.05, y1: 1.12, z: 0.45 - POST_HALF };
 const BOOK = { w: 0.2, pitch: 0.24, depth: 0.3, perPx: 0.02 }; // the lower tray's books
-const WHEEL = { x: 0.55, y: 0.1, r: 0.1, half: 0.06, sides: 8, hubSides: 6, hubR: 0.036, hubProud: 0.01 };
+// Four wheels, a front pair and a back pair, their axles along z and their
+// outer caps (with the hub) 0.06 inside the tray's front and back edges, so
+// the round faces show below the lower tray to the eye from +Z and from -Z.
+const WHEEL = { x: 0.55, z: 0.38, y: 0.1, r: 0.1, half: 0.06, sides: 8, hubSides: 6, hubR: 0.036, hubProud: 0.01 };
 const DIV_WIDE = [2, 1];
+// The lower tray's front in four cells: the wheels sit just behind its outer quarters.
+const DIV_LOWER = [4, 1];
 
 // Box face corner indices (geom.js box), and for each its first edge (v0 to
 // v1) and second edge (v0 to v3) as model axes.
@@ -66,19 +71,21 @@ const backAlong = (cuts, [a, b]) => [b, ...[...cuts].reverse(), a].map(frac(b, a
 /** The cells of a grid at fractions `us` by `vs`, as splitFace takes them ([u0, u1, v0, v1]). */
 const grid = (us, vs) => us.slice(1).flatMap((u1, i) => vs.slice(1).map((v1, j) => [us[i], u1, vs[j], v1]));
 const LOWER_X = along([-0.65, -0.45, 0.45, 0.65], TRAY_X);
-const LOWER_Z = backAlong([-0.1, 0.1], TRAY_Z);
+const LOWER_Z = [-(WHEEL.z - WHEEL.half - 0.02), WHEEL.z - WHEEL.half - 0.02]; // ±0.3, just inside the wheels' inner caps
 /**
  * How each tray's faces are split, as [face, cells] (splitFace's fraction
  * rects; geom.js box winds a top's first edge along +x and its second along
  * −z). The painter sorts by mean depth, so a big face paints over what is
  * under or behind it wherever the thing's own centre is nearer: the upper
  * tray's top is in cells round the lower books (x and z) and its back and
- * ends in halves; the lower tray's top is in cells round the wheels (x and z
- * there) and one full-depth cell between them, under the lower books (rows
- * there let its rule move a lower book past the upper top's cells). Measured
+ * ends in halves; the lower tray's top is in cells round the wheels (x
+ * cuts at their sides, z cuts just inside their inner caps, so the middle
+ * row holds the lower books whole: rows under them let its rule move a lower
+ * book past the upper top's cells), its back in thirds and its ends split
+ * like its top (its textured front is in four cells, DIV_LOWER). Measured
  * with exact per-pixel truth over the standing-order sweep, the wrong samples
- * of what is under a tray against it drop from about 47 000 unsplit to about
- * 750 (docs/features/library-first-person-3d.md).
+ * of what is under or behind a tray against it drop from about 47 000 with
+ * whole faces to about 500 (docs/features/library-first-person-3d.md).
  */
 const TRAY_CELLS = [
   [
@@ -89,10 +96,11 @@ const TRAY_CELLS = [
   ],
   [
     ['top', [
-      ...grid(LOWER_X.slice(0, 3), LOWER_Z),
-      [LOWER_X[2], LOWER_X[3], 0, 1],
-      ...grid(LOWER_X.slice(3), LOWER_Z),
+      ...grid(LOWER_X, backAlong(LOWER_Z, TRAY_Z)),
     ]],
+    ['back', grid(backAlong([-0.45, 0.45], TRAY_X), [0, 1])],
+    ['right', grid(backAlong(LOWER_Z, TRAY_Z), [0, 1])],
+    ['left', grid(along(LOWER_Z, TRAY_Z), [0, 1])],
   ],
 ];
 
@@ -177,7 +185,7 @@ export function buildReturnCart({ art } = {}) {
   // what it covers (TRAY_CELLS).
   [TRAY.upper, TRAY.lower].forEach(([y0, y1], t) => {
     const part = boxWithout([-TRAY.x, y0, -TRAY.z], [TRAY.x, y1, TRAY.z], C.wood, ['bottom']);
-    textureFront(part, L.trays[t], { image: art, artBox: RETURN_CART_ART, scale: RETURN_CART_ART_SCALE, color: C.wood, div: DIV_WIDE });
+    textureFront(part, L.trays[t], { image: art, artBox: RETURN_CART_ART, scale: RETURN_CART_ART_SCALE, color: C.wood, div: t === 1 ? DIV_LOWER : DIV_WIDE });
     const cells = TRAY_CELLS[t];
     for (const [name, rects] of cells) splitFace(part, name, rects, name === 'top' ? { under: true } : {});
     merge(mesh, part);
@@ -219,14 +227,17 @@ export function buildReturnCart({ art } = {}) {
     solid([cx - BOOK.w / 2, LOWER_TRAY, -BOOK.depth / 2], [cx + BOOK.w / 2, LOWER_TRAY + h * BOOK.perPx, BOOK.depth / 2], color, ['bottom']);
   });
 
-  // The wheels: round tubes along z under the lower tray, a hub standing
-  // proud of each cap.
+  // The wheels: a front and a back pair of round tubes along z under the
+  // lower tray, their outer caps just inside its front and back edges.
   for (const x of [-WHEEL.x, WHEEL.x]) {
-    merge(mesh, tube([x, WHEEL.y, -WHEEL.half], [x, WHEEL.y, WHEEL.half], WHEEL.r, WHEEL.r, WHEEL.sides, C.wheel, { capA: C.wheel, capB: C.wheel }));
     for (const s of [-1, 1]) {
-      const a = [x, WHEEL.y, s * WHEEL.half];
-      const b = [x, WHEEL.y, s * (WHEEL.half + WHEEL.hubProud)];
-      merge(mesh, tube(a, b, WHEEL.hubR, WHEEL.hubR, WHEEL.hubSides, C.hub, { capB: C.hub }));
+      // Inner cap at a, outer cap (facing out of the cart) at b.
+      const a = [x, WHEEL.y, s * (WHEEL.z - WHEEL.half)];
+      const b = [x, WHEEL.y, s * (WHEEL.z + WHEEL.half)];
+      merge(mesh, tube(a, b, WHEEL.r, WHEEL.r, WHEEL.sides, C.wheel, { capA: C.wheel, capB: C.wheel }));
+      // The hub on the outer cap only: the inner one faces the other wheel of the pair.
+      const out = [x, WHEEL.y, s * (WHEEL.z + WHEEL.half + WHEEL.hubProud)];
+      merge(mesh, tube(b, out, WHEEL.hubR, WHEEL.hubR, WHEEL.hubSides, C.hub, { capB: C.hub }));
     }
   }
 
