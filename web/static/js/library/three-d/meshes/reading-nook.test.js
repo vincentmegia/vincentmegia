@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReadingNook, READING_NOOK_SIZE } from './reading-nook.js';
+import { buildReadingNook, READING_NOOK_SIZE, READING_NOOK_ROUND } from './reading-nook.js';
 import { faceNormal } from './geom.js';
 import { READING_NOOK_COLORS } from '../../anime-furniture.js';
 import { stationTop } from '../labels.js';
@@ -87,20 +87,33 @@ test('the chair faces +Z: its back stands on the -Z side of its seat, the arms b
   for (const l of legs) near(l.lo[1], RUG_TOP);
 });
 
-test('every chair block is rounded: a 0.05 slab on top, inset 0.05 from its exposed edges', () => {
+test('every chair block is chamfered: its flat top sits in from its front, reached by sloped faces, not steps', () => {
   const m = buildReadingNook();
-  for (const color of [C.chair, C.arm, C.cushion]) {
-    const ps = parts(m).filter((p) => p.color === color && p.hi[1] - p.lo[1] > 1e-9);
-    const slabs = ps.filter((p) => Math.abs(p.hi[1] - p.lo[1] - 0.05) < 1e-9 && p.hi[0] - p.lo[0] > 1e-9 && p.hi[2] - p.lo[2] > 1e-9);
-    assert.ok(slabs.length > 0, color);
-    for (const s of slabs) {
-      // The block under it (its faces may be panels of their own) reaches its top.
-      const body = ps.filter((p) => p !== s && Math.abs(p.hi[1] - s.lo[1]) < 1e-9 && p.lo[0] < s.hi[0] && p.hi[0] > s.lo[0]);
-      assert.ok(body.length, `${color}: the slab stands on its block`);
-      // Inset on at least the front edge (every block's front is exposed).
-      near(Math.max(...body.map((p) => p.hi[2])) - s.hi[2], 0.05);
+  const { chamfer, inset } = READING_NOOK_ROUND;
+  const blocks = parts(m).filter((p) => [C.chair, C.arm, C.cushion].includes(p.color) && p.faces.some((f) => f.under));
+  // The back's upper part, both arms, the seat and the cushion.
+  assert.equal(blocks.length, 5);
+  for (const p of blocks) {
+    const top = p.faces.filter((f) => f.under);
+    assert.equal(top.length, 1, 'one flat top');
+    for (const y of ys(m, top[0])) near(y, p.hi[1]);
+    // The front edge is chamfered: the top ends `inset` short of the block's front.
+    near(p.hi[2] - Math.max(...pts(m, top[0]).map((v) => v[2])), inset);
+    const slopes = p.faces.filter((f) => { const ny = faceNormal(m, f)[1]; return ny > 0.3 && ny < 0.98; });
+    assert.ok(slopes.length > 0, `${p.color}: sloped faces`);
+    for (const f of slopes) {
+      near(Math.max(...ys(m, f)), p.hi[1]);
+      near(Math.min(...ys(m, f)), p.hi[1] - chamfer);
     }
+    // No flat face but the top: no ledges.
+    assert.ok(p.faces.every((f) => f.under || Math.abs(faceNormal(m, f)[1]) < 0.98), 'no ledge');
   }
+  // In plan, the back's rear corners and the arms' outer front corners are cut (a vertical face at 45 degrees).
+  const diagonal = (p) => p.faces.some((f) => { const n = faceNormal(m, f); return Math.abs(n[1]) < 1e-9 && Math.abs(Math.abs(n[0]) - Math.SQRT1_2) < 1e-9; });
+  const back = blocks.find((p) => p.color === C.chair && p.hi[1] > 1);
+  assert.ok(diagonal(back), 'the back');
+  for (const arm of blocks.filter((p) => p.color === C.arm)) assert.ok(diagonal(arm), 'an arm');
+  assert.ok(diagonal(blocks.find((p) => p.color === C.cushion)), 'the cushion');
 });
 
 test('the open book lies on the cushion: two pages facing up, above it, white', () => {
