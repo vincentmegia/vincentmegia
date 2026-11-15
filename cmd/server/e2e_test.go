@@ -654,7 +654,6 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("placeholder routes are unaffected by the resume feature", func(t *testing.T) {
 		for path, want := range map[string]string{
 			"/blogs": "Blog posts coming soon.",
-			"/about": "About content coming soon.",
 		} {
 			resp, body := get(t, client, srv.URL+path)
 			if resp.StatusCode != http.StatusOK {

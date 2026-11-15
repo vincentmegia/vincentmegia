@@ -72,7 +72,7 @@ instead of reinventing it.
 * Dark mode's toggle behavior, cookie persistence, and validation —
   `docs/features/dark-mode.md`.
 * Resume, Projects, Blogs, About page content (separate feature docs; Blogs
-  and About are placeholders).
+  is a placeholder).
 * Profile/Security page content, and Logout's real implementation.
 * Authentication/session implementation — this feature only consumes
   `IsAuthenticated(r)`.
@@ -263,7 +263,7 @@ This feature owns the shell, plus the shell-level routes served by
 | GET    | `/projects`            | `PagesHandler.Projects`      | no            | `projects.md` |
 | GET    | `/puzzle-solver`       | `PagesHandler.PuzzleSolver`  | no            | `puzzle-solver.md` |
 | GET    | `/blogs`               | `PagesHandler.Blogs`         | no            | placeholder |
-| GET    | `/about`               | `PagesHandler.About`         | no            | placeholder |
+| GET    | `/about`               | `PagesHandler.About`         | no            | `about.md` |
 | GET    | `/settings/profile`    | `PagesHandler.Profile`       | yes           | placeholder; anonymous → 302 `/login` (`requireOwnerAuth`) |
 | GET    | `/settings/security`   | `PagesHandler.Security`      | yes           | placeholder; anonymous → 302 `/login` |
 | POST   | `/logout`              | `PagesHandler.Logout`        | no (stub)     | stub: 302 to `/`; no session to destroy yet |
@@ -344,8 +344,7 @@ database-driven in future must go through normal auto-escaping instead.
 ## Testing Plan
 
 * [x] Every content template's `#main-content` wrapper survives an HTMX nav
-      swap, not just a direct load — `/resume` and a placeholder route
-      (About): `e2e/nav.spec.js` "container survives an HTMX nav swap";
+      swap, not just a direct load — `/resume` and About: `e2e/nav.spec.js` "container survives an HTMX nav swap";
       `internal/handler/template_test.go` `TestRenderFullPage`,
       `TestRenderHTMXFragment`, `TestRenderPlaceholderRoutesUnaffected`.
 * [x] Header renders the flat Home/Projects/About links and the Résumé

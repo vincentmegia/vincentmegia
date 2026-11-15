@@ -3,6 +3,8 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 
 // PagesHandler serves the shell-level routes (docs/features/home.md) that
 // have no handler of their own: the landing page (Home), /projects,
-// /puzzle-solver, the Blogs/About/Profile/Security placeholders, and the
+// /puzzle-solver, /about, the Blogs/Profile/Security placeholders, and the
 // stub POST /logout. Features with their own data (resume, the games, Bus
 // Stop Finder, content authoring) have their own handlers.
 type PagesHandler struct {
@@ -23,6 +25,9 @@ type PagesHandler struct {
 	// var (see docs/features/home.md's Business Rules: the footer version
 	// is build metadata, not hand-maintained in a template).
 	Version string
+	// StaticDir is the directory served at /static/, used by About to see
+	// which donate QR images exist. Empty means "web/static".
+	StaticDir string
 }
 
 // NewPagesHandler constructs a PagesHandler.
@@ -258,13 +263,35 @@ func (h *PagesHandler) Blogs(w http.ResponseWriter, r *http.Request) {
 	h.Renderer.Render(w, r, h.page(r, "Blogs", false, "Blogs", "Blog posts coming soon."))
 }
 
-// About renders GET /about. Real content is a separate feature (CLAUDE.md's
-// "Planned content": Bio/About) — linked from the primary nav per the
-// pulled-in design's Home.dc.html, same not-yet-built-placeholder pattern
-// as Projects/Blogs.
+// donateMethods is the fixed, ordered list of /about's donate QR cards. The
+// image files are supplied at deployment (docs/features/about.md), so About
+// renders only the ones present on disk.
+var donateMethods = []struct {
+	file string
+	DonateMethod
+}{
+	{"paynow-qr.png", DonateMethod{Label: "PayNow", Note: "Scan with your Singapore banking app."}},
+	{"paypal-qr.png", DonateMethod{Label: "PayPal", Note: "Scan with your phone camera or the PayPal app."}},
+}
+
+// About renders GET /about: intro, hobby section and the donate-by-QR
+// section. See docs/features/about.md.
 func (h *PagesHandler) About(w http.ResponseWriter, r *http.Request) {
-	data := h.page(r, "About", false, "About", "About content coming soon.")
+	data := shellPageData(r, h.Version, "About", false)
 	data.NavActive = "/about"
+	data.ContentTemplate = "about-content"
+	staticDir := h.StaticDir
+	if staticDir == "" {
+		staticDir = "web/static"
+	}
+	for _, m := range donateMethods {
+		if info, err := os.Stat(filepath.Join(staticDir, "images", "about", m.file)); err != nil || info.IsDir() {
+			continue
+		}
+		method := m.DonateMethod
+		method.ImagePath = "/static/images/about/" + m.file
+		data.DonateMethods = append(data.DonateMethods, method)
+	}
 	h.Renderer.Render(w, r, data)
 }
 

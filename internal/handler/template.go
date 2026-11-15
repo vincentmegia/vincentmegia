@@ -154,6 +154,18 @@ type PageData struct {
 	// emits, since that policy's 'strict-dynamic' ignores 'self'. Empty on
 	// every other route, where the strict site CSP still applies.
 	CSPNonce string
+
+	// DonateMethods backs /about's "Support my work" QR cards — only the
+	// methods whose image exists (PagesHandler.About). See
+	// docs/features/about.md.
+	DonateMethods []DonateMethod
+}
+
+// DonateMethod is one QR card in /about's donate section.
+type DonateMethod struct {
+	Label     string // e.g. "PayNow"
+	ImagePath string // served path of the QR image, under /static/
+	Note      string // one-line scanning instruction
 }
 
 // Project is one card in the /projects grid. Card markup/styling (image
@@ -256,6 +268,7 @@ func LoadTemplates(templatesDir string) (*template.Template, error) {
 		filepath.Join(templatesDir, "components", "selected-work.html"),
 		filepath.Join(templatesDir, "pages", "landing.html"),
 		filepath.Join(templatesDir, "pages", "projects.html"),
+		filepath.Join(templatesDir, "pages", "about.html"),
 		filepath.Join(templatesDir, "components", "content-hero-form.html"),
 		filepath.Join(templatesDir, "components", "content-carousel-editor.html"),
 		filepath.Join(templatesDir, "components", "content-work-editor.html"),

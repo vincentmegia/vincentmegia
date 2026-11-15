@@ -58,6 +58,7 @@ HTMX + Tailwind + PostgreSQL.
 | Landing page, carousel | `/` | `landing-page.md`, `landing-carousel.md` |
 | Landing content authoring / API | `/settings/content`, `/api/internal/v1/landing/*` | `landing-content-authoring.md`, `landing-content-api.md` |
 | Projects grid | `/projects` | `projects.md` |
+| About, donate by QR | `/about` | `about.md` |
 | Resume, export, authoring | `/resume`, `/resume/download.{pdf,docx}`, `/settings/resume` | `resume.md`, `resume-export.md`, `resume-content-authoring.md` |
 | Fishing Game | `/fishing-game` | `fishing-game.md` |
 | Kitchen Shift | `/kitchen-shift` | `cooking-game*.md` |
@@ -128,7 +129,9 @@ HTMX + Tailwind + PostgreSQL.
   via its **session** pooler (not the transaction pooler or direct
   connection — see `landing-content-api.md`).
 - The cutover from vincentmegia.onrender.com (DNS/redirects) isn't planned yet.
-- Blogs and About are placeholders. The visual system is "Organic" (cream
+- Blogs is a placeholder; About's donate QR images
+  (`web/static/images/about/{paynow,paypal}-qr.png`) are added at deployment
+  and the section shows "coming soon" until then. The visual system is "Organic" (cream
   ground, terracotta/sage, Caprasimo + Figtree — `tailwind-ui/SKILL.md`); a
   restyle of page-specific components to it is still open.
 

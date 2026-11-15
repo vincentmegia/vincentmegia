@@ -1,0 +1,68 @@
+{{/* /about page: a short intro, the hobby section, and a "Support my work"
+     section with one QR card per donate method. See docs/features/about.md.
+
+     .DonateMethods holds only the methods whose QR image exists under
+     web/static/images/about/ (PagesHandler.About); the images are supplied
+     at deployment, so the list can be short or empty.
+
+     Defines "about-content" (not "content", the shared placeholder) and
+     supplies its own <main id="main-content"> wrapper, as every page must:
+     hx-swap="outerHTML" replaces the whole element. See resume.html. */}}
+{{define "about-content"}}
+<main id="main-content" class="mx-auto max-w-5xl px-4 py-8">
+	<section class="space-y-3 pb-8">
+		<h1 class="text-4xl text-ink sm:text-5xl">About</h1>
+		<p class="max-w-xl text-lg text-muted">Hi, I&rsquo;m Vincent &mdash; a Principal Software Engineer, a loving dad, and someone who loves building things.</p>
+	</section>
+
+	<section id="about-hobby" class="rounded-card bg-surface p-6 sm:p-8">
+		<h2 class="text-2xl text-ink">What I do for fun</h2>
+		<p class="mt-3 max-w-2xl leading-relaxed text-ink">Programming is my job, and it&rsquo;s also my hobby. Most of what you see on this site started as a &ldquo;what if I tried&hellip;&rdquo; on a free evening &mdash; small browser games, a bus stop finder, a diagram tool. I build things to learn how they work, and I keep the ones that turn out fun.</p>
+		<div class="mt-4 flex flex-wrap gap-1.5">
+			<span class="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Programming</span>
+			<span class="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-medium text-accent">Building things</span>
+			<span class="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Browser games</span>
+			<span class="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-medium text-accent">Small useful tools</span>
+		</div>
+		<a
+			href="/projects"
+			data-nav-link
+			hx-get="/projects"
+			hx-target="#main-content"
+			hx-swap="outerHTML"
+			hx-push-url="true"
+			hx-indicator="#nav-loading"
+			class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+		>
+			See my projects
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
+				<path d="M5 12h14" />
+				<path d="m13 6 6 6-6 6" />
+			</svg>
+		</a>
+	</section>
+
+	<section id="about-donate" class="mt-8 rounded-card bg-surface p-6 sm:p-8">
+		<h2 class="text-2xl text-ink">Support my work</h2>
+		<p class="mt-3 max-w-2xl leading-relaxed text-ink">Everything here is free to use. If a game or tool made your day a little better and you&rsquo;d like to say thanks, you can scan a code below. No pressure at all.</p>
+
+		{{if .DonateMethods}}
+		<div class="mt-6 grid max-w-xl grid-cols-1 gap-5 sm:grid-cols-2">
+			{{range .DonateMethods}}
+			<div class="about-donate-method rounded-3xl bg-surface-2 p-5 text-center">
+				<h3 class="text-lg text-ink">{{.Label}}</h3>
+				{{/* White tile in both themes so the code stays scannable. */}}
+				<div class="mx-auto my-3 aspect-square w-full max-w-56 rounded-2xl bg-white p-3">
+					<img src="{{.ImagePath}}" alt="{{.Label}} QR code for donating to Vincent" class="h-full w-full object-contain">
+				</div>
+				<p class="text-sm text-muted">{{.Note}}</p>
+			</div>
+			{{end}}
+		</div>
+		<p class="mt-5 text-xs text-muted">Payments happen in your own app. This site never sees or stores any payment details.</p>
+		{{else}}
+		<p id="about-donate-empty" class="mt-5 text-sm text-muted">Donation QR codes are coming soon.</p>
+		{{end}}
+	</section>
+</main>
+{{end}}
