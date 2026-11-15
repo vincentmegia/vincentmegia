@@ -9,6 +9,7 @@ async function expectAboutContent(page) {
 	const main = page.locator('#main-content');
 	await expect(main.getByRole('heading', { level: 1, name: 'About' })).toBeVisible();
 	await expect(main).toContainText('Principal Software Engineer');
+	await expect(main.getByRole('heading', { name: 'Get in touch' })).toBeVisible();
 	await expect(main.getByRole('heading', { name: 'What I do for fun' })).toBeVisible();
 	await expect(main.getByRole('heading', { name: 'Support my work' })).toBeVisible();
 

@@ -59,8 +59,8 @@ func TestPagesHandler_About(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			out := getAbout(t, h, tc.htmx)
 			for _, want := range []string{
-				"Principal Software Engineer", `id="about-hobby"`, `id="about-donate"`,
-				`hx-get="/projects"`,
+				"Principal Software Engineer", `id="about-contact"`, `id="about-hobby"`, `id="about-donate"`,
+				"Get in touch", `hx-get="/projects"`,
 			} {
 				if !strings.Contains(out, want) {
 					t.Errorf("missing %q\n--- output ---\n%s", want, out)

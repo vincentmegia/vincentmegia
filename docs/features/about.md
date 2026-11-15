@@ -23,6 +23,8 @@ them, and no way to say thanks.
 **In scope:**
 
 * A short intro about Vincent.
+* A "Get in touch" section with links to **LinkedIn**, **GitHub**, and
+  **email** (the contact links are static text in the template).
 * A hobby section: programming and building things, with a link to
   `/projects`.
 * A donate section with one QR card per method: **PayNow** and **PayPal**.
@@ -43,7 +45,8 @@ them, and no way to say thanks.
 
 ```text
 1. Visitor clicks "About" in the header (HTMX swap) or opens /about directly.
-2. Page shows the intro, then the hobby section with a link to Projects.
+2. Page shows the intro, then a "Get in touch" card with LinkedIn, GitHub and
+   email links, then the hobby section with a link to Projects.
 3. Visitor scrolls to "Support my work" and sees a QR card per available
    method, each labelled (PayNow, PayPal) with a one-line instruction.
 4. Visitor scans a QR with their phone; their own app completes the payment.
@@ -67,7 +70,7 @@ web/static/images/about/
 
 | State               | Behavior |
 | ------------------- | -------- |
-| Default             | Intro, hobby section, and a QR card for each method whose image exists. |
+| Default             | Intro, contact links, hobby section, and a QR card for each method whose image exists. |
 | One QR missing      | Only the available method's card is shown; no broken image, no gap. |
 | No QR images at all | The donate section stays, with a short "Donation QR codes are coming soon." note. |
 
@@ -132,7 +135,8 @@ None. The text lives in the template; the QR codes are static image files.
 ## Testing Plan
 
 * [x] Handler test (`internal/handler/about_test.go`): `/about` renders the
-      real content, not the placeholder, as a full page and an HTMX fragment.
+      real content including the "Get in touch" contact section, as a full
+      page and an HTMX fragment.
 * [x] Handler test: a method's card appears only when its image file exists;
       with no files the "coming soon" note is rendered.
 * [x] Playwright (`e2e/about.spec.js`): direct load with About current in the
