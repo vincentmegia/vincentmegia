@@ -139,7 +139,7 @@ function triangle(points, color, normal) {
   return t;
 }
 /** A vertical quad in the plane z = `z` over x0..x1, y0..y1, facing `side` (+1 +Z, -1 -Z). */
-const zPanel =(z, x0, x1, y0, y1, color, side) => panel([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, [0, 0, side]);
+const zPanel = (z, x0, x1, y0, y1, color, side) => panel([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, [0, 0, side]);
 
 /** One page of the open book: from the spine at x = BOOK.x out to `side` (-1 left, +1 right), rising BOOK.tilt to its outer edge. */
 function page(side, y) {
