@@ -219,18 +219,41 @@ export function projectScene(player, entities, opts = {}) {
  * `maxAngleDegrees`) and close enough in distance (`maxDistance`) to count
  * as "looked at" — the thing the interact prompt/crosshair should target.
  * `null` if nothing qualifies. Ties (equal distance) keep whichever the
- * input list visited first, same as a plain linear-scan minimum.
+ * input list visited first, same as a plain linear-scan minimum. An entity
+ * flagged `interactable: false` is drawn but never targeted (and so never
+ * hides a target behind it), like a Top-Down figure with no click box.
+ *
+ * `opts.pitch` (radians, up positive) adds a vertical test against each
+ * entity's `height` (world px, default the eye height): looking up past an
+ * entity's top, or down past its foot, by more than `maxAngleDegrees` misses
+ * it. Eye level always counts as on the entity, so at pitch 0 the result is
+ * exactly the flat test above (a desk below eye height is still targeted).
  */
 export function findInteractTarget(projectedEntities, opts = {}) {
   const maxAngleRadians = ((opts.maxAngleDegrees ?? DEFAULT_INTERACT_MAX_ANGLE_DEGREES) * Math.PI) / 180;
   const maxDistance = opts.maxDistance ?? DEFAULT_INTERACT_MAX_DISTANCE;
+  const pitch = opts.pitch ?? 0;
+  const eye = opts.eyeHeight ?? DEFAULT_EYE_HEIGHT;
   let best = null;
   for (const entity of projectedEntities) {
+    if (entity.interactable === false) continue;
     if (Math.abs(entity.angleOffset) > maxAngleRadians) continue;
     if (entity.distance > maxDistance) continue;
+    if (pitch !== 0 && !pitchHitsEntity(pitch, entity, eye, maxAngleRadians)) continue;
     if (!best || entity.distance < best.distance) best = entity;
   }
   return best;
+}
+
+/** The camera's eye height in world px (three-d/scene.js's BASE_EYE). */
+export const DEFAULT_EYE_HEIGHT = 60;
+
+/** Whether a view pitched by `pitch` still points at `entity` (foot at the floor, top at `entity.height`), with `margin` radians of slack beyond eye level either way. */
+export function pitchHitsEntity(pitch, entity, eyeHeight, margin) {
+  const d = Math.max(entity.distance, 1);
+  const top = Math.atan2((entity.height ?? eyeHeight) - eyeHeight, d);
+  const foot = Math.atan2(-eyeHeight, d);
+  return pitch <= Math.max(top, 0) + margin && pitch >= Math.min(foot, 0) - margin;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +266,30 @@ export function turnFacing(facing, direction, deltaSeconds, turnSpeed = TURN_SPE
   return normalizeAngle(facing + direction * turnSpeed * deltaSeconds);
 }
 
+/** How far the view tilts up or down (radians, either way), and how fast. */
+export const PITCH_MAX_RADIANS = 0.35;
+export const PITCH_SPEED_RADIANS_PER_SECOND = 1.2;
+
+/** Holds a pitch within ±PITCH_MAX_RADIANS (the keys and the mouse share it). */
+export function clampPitch(pitch) {
+  return Math.max(-PITCH_MAX_RADIANS, Math.min(PITCH_MAX_RADIANS, pitch));
+}
+
+/** Tilts the view up (`direction` 1) or down (-1), held within ±PITCH_MAX_RADIANS. */
+export function stepPitch(pitch, direction, deltaSeconds, speed = PITCH_SPEED_RADIANS_PER_SECOND) {
+  return clampPitch(pitch + direction * speed * deltaSeconds);
+}
+
+/** How quickly the sprint FOV eases in and out (fraction of the gap closed per second, before clamping). */
+export const SPRINT_FOV_EASE_PER_SECOND = 6;
+
+/** Eases a 0..1 sprint blend toward 1 while sprinting and 0 otherwise, so the FOV widens smoothly rather than jumping. */
+export function easeSprintBlend(blend, sprinting, deltaSeconds, rate = SPRINT_FOV_EASE_PER_SECOND) {
+  const target = sprinting ? 1 : 0;
+  const next = blend + (target - blend) * Math.min(1, rate * deltaSeconds);
+  return Math.abs(next - target) < 1e-3 ? target : next;
+}
+
 /** Moves a point `distance` world pixels along (`direction` 1) or against (`direction` -1) the given facing. */
 export function stepForward(x, y, facing, direction, distance) {
   const { dx, dy } = forwardVector(facing);
@@ -253,6 +300,20 @@ export function stepForward(x, y, facing, direction, distance) {
 export function stepStrafe(x, y, facing, direction, distance) {
   const { dx, dy } = forwardVector(facing);
   return { x: x - dy * distance * direction, y: y + dx * distance * direction };
+}
+
+/**
+ * One frame's combined walk: `forward` (1 ahead, -1 back, 0 none) and `strafe`
+ * (1 right, -1 left, 0 none) held together move diagonally. A diagonal scales
+ * each axis by 1/√2, so it's never faster than walking straight ahead.
+ * @returns {{dx: number, dy: number}} world-pixel offset
+ */
+export function moveStep(forward, strafe, facing, forwardDistance, strafeDistance) {
+  const scale = forward && strafe ? Math.SQRT1_2 : 1;
+  const { dx, dy } = forwardVector(facing);
+  const f = forward * forwardDistance * scale;
+  const s = strafe * strafeDistance * scale;
+  return { dx: dx * f - dy * s, dy: dy * f + dx * s };
 }
 
 // -- Jump -------------------------------------------------------------------

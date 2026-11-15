@@ -2,8 +2,10 @@
 // Shift's hospital/anime-furniture.js, which Library Shift draws with too;
 // docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: a 1.4 x 2.2 frame (posts, lintel, sill) standing proud of a wall
-// section, two door panels proud of the frame, an indicator plate and a call
-// panel (its button proud again) on the wall, and a car behind the doorway.
+// section, two door panels recessed just behind the frame's face (opening,
+// they slide away behind the posts, clipped to the doorway), an indicator
+// plate and a call panel (its button proud again) on the wall, and a car
+// behind the doorway that a rider stands in.
 // The surface is the 2D art itself: the game paints drawElevator into a
 // canvas (paintElevatorArt) and each part's front shows exactly its own
 // region of it, read from elevatorLayout, the layout drawElevator draws with.
@@ -42,13 +44,18 @@ export const ELEVATOR_HALF_DOORWAY = (F.w / 2 - (L.doors[0].x0 - F.x0)) * S;
 
 const Z_WALL = -0.1; // the wall section's front
 const Z_FRAME = Z_WALL - 0.03; // the frame stands proud of it
-const Z_DOOR_BACK = Z_FRAME - 0.02; // the doors slide clear in front of the frame
-const Z_DOOR = Z_DOOR_BACK - 0.03;
+const Z_DOOR = Z_FRAME + 0.015; // the doors sit in the doorway, behind the frame's face,
+const Z_DOOR_BACK = Z_WALL - 0.005; // so they can slide away behind the posts
+const Z_CAR_FRONT = Z_WALL + 0.003; // the car's front wall, seen from inside
 const Z_INDICATOR = Z_WALL - 0.02;
 const Z_PANEL = Z_WALL - 0.03;
 const Z_BUTTON = Z_PANEL - 0.005;
 const Z_CAR = Z_WALL + ELEVATOR_SIZE.depth; // the car's back
 const CAR_WALL = 0.05;
+/** Where a rider stands in the car (model z, ~0.85 m back from the doorway). */
+export const ELEVATOR_CAR_STAND_Z = 0.85;
+/** doorOpen is quantised to 1/ELEVATOR_DOOR_STEPS, so a ride rebuilds the mesh a bounded number of times. */
+export const ELEVATOR_DOOR_STEPS = 16;
 // [nu, nv] cells per textured face (see bookshelf.js).
 const DIV_TALL = [1, 3];
 const DIV_WIDE = [2, 1];
@@ -75,10 +82,36 @@ export function paintElevatorArt(ctx, station) {
 }
 
 /**
+ * The build options for a door opening `open` (0..1), as the scene's optsFor
+ * passes them: quantised to 1/ELEVATOR_DOOR_STEPS, and undefined when shut,
+ * so a closed elevator shares the memo entry it has on approach.
+ */
+export function elevatorDoorOpts(open) {
+  const q = Math.round(Math.min(1, Math.max(0, open || 0)) * ELEVATOR_DOOR_STEPS) / ELEVATOR_DOOR_STEPS;
+  return q > 0 ? { doorOpen: q } : undefined;
+}
+
+/**
+ * Where a rider stands in `station`'s car, in game px (the mesh is placed at
+ * the station with `unitScale`), facing out through the doors (facing 0 =
+ * game north = model -Z).
+ */
+export function elevatorRiderPose(station, unitScale) {
+  return { x: station.x, y: station.y + ELEVATOR_CAR_STAND_Z * unitScale, facing: 0 };
+}
+
+/** Whether game-px `pos` is in `station`'s car or its doorway (where held doors stay open). */
+export function isInElevatorCar(station, pos, unitScale) {
+  const dz = (pos.y - station.y) / unitScale;
+  return Math.abs(pos.x - station.x) / unitScale < ELEVATOR_SIZE.width / 2 && dz > Z_FRAME - 0.3 && dz < Z_CAR;
+}
+
+/**
  * @param {{art?: CanvasImageSource, doorOpen?: number}} [opts] art: a canvas
  *   paintElevatorArt painted; doorOpen in [0,1]: 0 shut (the drawer's 1 px
- *   seam between the doors), 1 with each door's inner edge at
- *   ±ELEVATOR_HALF_DOORWAY. Each door keeps its own art as it slides.
+ *   seam between the doors), 0.5 with each door half behind its post, 1 with
+ *   both gone behind the posts (no door faces). Each door is clipped to the
+ *   doorway and shows the part of its own art still in it.
  * @returns {{vertices: number[][], faces: object[]}}
  */
 export function buildElevator({ art, doorOpen = 0 } = {}) {
@@ -112,11 +145,28 @@ export function buildElevator({ art, doorOpen = 0 } = {}) {
   part({ x0: F.x0, y0: F.y0, x1: F.x1, y1: D0.y0 }, Z_FRAME, Z_WALL, C.frame, ['front'], DIV_WIDE);
   part({ x0: F.x0, y0: D0.y1, x1: F.x1, y1: F.y1 }, Z_FRAME, Z_WALL, C.frame, ['front', 'bottom'], DIV_WIDE);
 
-  // The doors, each wearing its own region as it slides apart (the art-left
-  // door is model +X). Fully open, each inner edge reaches the post.
-  const slide = open * (ELEVATOR_HALF_DOORWAY - X(D0.x1));
-  part(D0, Z_DOOR, Z_DOOR_BACK, C.door, ['front', 'bottom'], DIV_TALL, slide);
-  part(D1, Z_DOOR, Z_DOOR_BACK, C.door, ['front', 'bottom'], DIV_TALL, -slide);
+  // Seen from inside the car: the backs of the posts and lintel (the frame
+  // boxes drop their +Z faces), facing +Z.
+  const inner = (x0, x1, y0, y1) => merge(mesh, quad([[x0, y0, Z_CAR_FRONT], [x1, y0, Z_CAR_FRONT], [x1, y1, Z_CAR_FRONT], [x0, y1, Z_CAR_FRONT]], C.frame));
+  inner(X(D0.x0), X(F.x0), 0, Y(D0.y0));
+  inner(X(F.x1), X(D1.x1), 0, Y(D1.y0));
+  inner(X(F.x1), X(F.x0), Y(D0.y0), yTop);
+
+  // The doors, in the doorway behind the frame's face. Opening, each slides
+  // away behind its post (the art-left door toward model +X), clipped to the
+  // doorway: what is left shows the inner part of its own art, so the art
+  // moves with the panel. Their backs face into the car for a rider.
+  const slide = open * D0.w; // art px each door has slid behind its post
+  if (D0.w - slide > 1e-9) {
+    part({ ...D0, x0: D0.x0 + slide }, Z_DOOR, Z_DOOR_BACK, C.door, ['right', 'top', 'bottom'], DIV_TALL, slide * S);
+    part({ ...D1, x1: D1.x1 - slide }, Z_DOOR, Z_DOOR_BACK, C.door, ['left', 'top', 'bottom'], DIV_TALL, -slide * S);
+  }
+  // Shut, the drawer's 1 px seam would show the room to a rider: close it
+  // from inside (facing +Z, so the outside still sees the 2D seam).
+  if (open === 0) {
+    const zs = Z_DOOR_BACK + 0.001;
+    merge(mesh, quad([[X(D1.x0), 0, zs], [X(D0.x1), 0, zs], [X(D0.x1), Y(D0.y0), zs], [X(D1.x0), Y(D0.y0), zs]], C.door));
+  }
 
   // The fittings on the wall: the indicator plate (with the floor label), the
   // call panel and its button.

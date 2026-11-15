@@ -384,6 +384,13 @@ test.describe('floor switching', () => {
 
 		await walkToStation(page, 'elevator');
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(1);
+		// Top-Down's elevator lands the rider in the new floor's car, as the First
+		// Person ride does: on that car's tile, a little behind its centre.
+		const car = await getStation(page, 'elevator');
+		const pos = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
+		expect(pos.x).toBeCloseTo(car.x, 0);
+		expect(pos.y).toBeGreaterThan(car.y);
+		expect(pos.y - car.y).toBeLessThan(car.size);
 	});
 
 	// First Person floor changes are animated (ride/climb) rather than instant:
@@ -431,6 +438,46 @@ test.describe('floor switching', () => {
 			expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
 		});
 	}
+
+	test('First Person: the elevator ride lands the player in the car, its doors open in front of them, and close once they step out', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('first-person'));
+		const station = await getStation(page, 'elevator');
+		// Frozen, so step() alone advances the ride and each frame is exact.
+		await page.evaluate(({ x, y }) => {
+			const hooks = window.__libraryGameTestHooks;
+			hooks.freeze(true);
+			hooks.setPlayerPosition(x, y - 90);
+			hooks.setPlayerFacing(Math.PI);
+			hooks.step(0.01); // refreshes the crosshair target
+		}, station);
+		const stepFor = (seconds) => page.evaluate((s) => {
+			for (let i = 0; i < Math.round(s * 100); i++) window.__libraryGameTestHooks.step(0.01);
+		}, seconds);
+		const doorOpen = () => page.evaluate(() => window.__libraryGameTestHooks.getElevatorDoorOpen());
+		expect(await doorOpen()).toBe(0); // shut on approach
+		await page.evaluate(() => window.__libraryGameTestHooks.attemptInteractNow());
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getActiveTransition())).toMatchObject({ kind: 'elevator' });
+
+		await stepFor(1.0); // doors-close + part of the rise: still shut
+		expect(await doorOpen()).toBe(0);
+		await stepFor(0.7); // 0.3 s into doors-open, on the 2nd Floor, inside the car
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		expect(await doorOpen()).toBe(0.5);
+		const pos = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
+		expect(pos.x).toBeCloseTo(station.x, 5);
+		expect(pos.y).toBeGreaterThan(station.y);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing())).toBe(0);
+
+		await page.evaluate(() => window.__libraryGameTestHooks.forceCompleteTransition());
+		await stepFor(1.0); // the doors stay open while the player is in the car
+		expect(await doorOpen()).toBe(1);
+		await page.evaluate(({ x, y }) => window.__libraryGameTestHooks.setPlayerPosition(x, y - 90), station);
+		await stepFor(1.0);
+		expect(await doorOpen()).toBe(0);
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
+	});
 
 	test('floor switching still works during closing-wait (a 2nd-Floor trip must not strand the player away from the 1st-Floor-only Boss\'s Office)', async ({ page }) => {
 		await page.goto('/library-game');
@@ -1151,6 +1198,48 @@ test.describe('hallucinations', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots().some((s) => s.kind === 'ghost'))).toBe(false);
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().sanity)).toBeLessThan(16);
 	});
+
+	test('shadow figures stand in the First Person scene at their world x/y, not as 2D overlays', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.pauseScheduledEvents(true);
+			h.getShiftState().sanity = 0;
+		});
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getHallucinations())).intensity).toBe(1);
+		// Freeze so no natural figures spawn or age out; frames still draw.
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.getShiftState().sanity = 0;
+			h.spawnShadowFigureNow(470, 380);
+			h.spawnShadowFigureNow(620, 200);
+		});
+		const figures = (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).figures;
+		expect(figures.length).toBeGreaterThanOrEqual(2);
+
+		// Top-Down paints every figure as 2D, as before.
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).topDownDrawn).toBe(figures.length);
+
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.setCameraMode('first-person');
+			h.setPlayerPosition(480, 520);
+		});
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures())).fpPlaced.length).toBe(figures.length);
+		const fp = await page.evaluate(() => window.__libraryGameTestHooks.getShadowFigures());
+		expect(fp.topDownDrawn).toBe(0);
+		for (const f of figures) {
+			const placed = fp.fpPlaced.find((p) => p.x === f.x && p.y === f.y);
+			expect(placed, `figure at ${f.x},${f.y} is in the FP scene`).toBeTruthy();
+			expect(placed.alpha).toBeGreaterThan(0);
+			// Billboard: turned toward the camera at (480, 520).
+			const facing = [Math.sin(placed.yaw), Math.cos(placed.yaw)];
+			const to = [480 - f.x, 520 - f.y];
+			expect((facing[0] * to[0] + facing[1] * to[1]) / Math.hypot(...to)).toBeGreaterThan(0.999);
+		}
+	});
 });
 
 test.describe('zero Mood', () => {
@@ -1444,6 +1533,11 @@ test.describe('First Person Mode', () => {
 		await page.locator('#library-camera-button').click();
 
 		await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+		// Wait for First Person to have actually painted: startShift requests
+		// fullscreen, and browsers hold animation frames back during that
+		// transition, so the canvas can still show the Top-Down frame here.
+		const frames = await page.evaluate(() => window.__libraryGameTestHooks.getFrameCount());
+		await page.waitForFunction((n) => window.__libraryGameTestHooks.getFrameCount() >= n + 3, frames);
 		// Scene areas, away from the HUD bars/minimap (top) and the pointer-lock
 		// hint (bottom centre), sampled in canvas backing-store pixels.
 		const sample = () => page.evaluate(() => {
@@ -1460,7 +1554,119 @@ test.describe('First Person Mode', () => {
 		expect(await sample()).toEqual(first);
 	});
 
-	test('on-screen buttons and arrow keys both turn and move the player', async ({ page }) => {
+	// Camera parity P4 (docs/features/library-first-person-3d.md, step 9): the
+	// FP floor is each floor's own Top-Down checker (floor-dressing.js), not one
+	// brown tint for both: 1st Floor's tiles are mint (green over red), 2nd
+	// Floor's cream (red over blue, as warm as Top-Down's).
+	test('First Person floor wears each floor\'s own Top-Down palette: mint on 1F, cream on 2F', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const floorPixels = async () => {
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.freeze(false);
+				h.setPlayerPosition(480, 420);
+				h.setPlayerFacing(0);
+				h.setCameraMode('first-person');
+			});
+			await page.waitForTimeout(200);
+			await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+			await page.waitForTimeout(100);
+			// The floor just ahead, left and right of the pointer-lock hint.
+			return page.evaluate(() => {
+				const canvas = document.getElementById('library-canvas');
+				const ctx = canvas.getContext('2d');
+				return [[0.3, 0.92], [0.7, 0.92], [0.4, 0.85]].map(([fx, fy]) => [...ctx.getImageData(Math.round(canvas.width * fx), Math.round(canvas.height * fy), 1, 1).data]);
+			});
+		};
+		for (const [r, g] of await floorPixels()) expect(g).toBeGreaterThan(r);
+		await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('top-down'));
+		await page.locator('#library-floor-button').click();
+		await expect.poll(() => page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		for (const [r, , b] of await floorPixels()) expect(r).toBeGreaterThan(b);
+	});
+
+	// The back wall's clock shows the live in-game time, but its art is painted
+	// again only when the minute the HUD shows changes, never every frame; the
+	// rest of the wall art (sign, shelf, sakura) and the rug are painted once.
+	// Min-jun has his own First Person mesh wearing his 2D art
+	// (docs/features/library-first-person-3d.md, "Min-jun"): posed from what
+	// Top-Down draws him doing, his face canvas repainted only when his face
+	// changes.
+	test('First Person Min-jun takes his pose and face from Top-Down, repainting his face only when it changes', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-floor-button').click();
+		await expect.poll(() => page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freezeStaff(true);
+			h.setCameraMode('first-person');
+		});
+		const show = async (action) => {
+			await page.evaluate((a) => {
+				const h = window.__libraryGameTestHooks;
+				h.setMinjunAction(a);
+				const mj = h.getMinjun();
+				h.setPlayerPosition(mj.x, mj.y + 80);
+				h.setPlayerFacing(0);
+			}, action);
+			const frames = await page.evaluate(() => window.__libraryGameTestHooks.getFrameCount());
+			await page.waitForFunction((n) => window.__libraryGameTestHooks.getFrameCount() > n + 2, frames);
+			return page.evaluate(() => window.__libraryGameTestHooks.getFpMinjun());
+		};
+		expect((await show('read')).pose).toBe('read');
+		expect((await show('wave')).pose).toBe('wave');
+		expect((await show('help')).pose).toBe('wave');
+		expect((await show(null)).pose).toBe('walk');
+		const hum = await show('hum');
+		expect(hum.pose).toBe('idle');
+		expect(hum.faceKey).toContain('|o|z'); // eyes closed, a round "o"
+		// Staff are frozen, so his humming face holds: no repaint for a second of frames.
+		await page.waitForTimeout(1000);
+		expect((await page.evaluate(() => window.__libraryGameTestHooks.getFpMinjun())).headPaints).toBe(hum.headPaints);
+		// He is the crosshair's target, at his own height.
+		const labels = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels());
+		expect(labels.some((l) => l.id === 'staff-minjun')).toBe(true);
+	});
+
+	test('the First Person wall clock follows the HUD clock, repainting only when its minute changes', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(480, 420);
+			h.setPlayerFacing(0);
+			h.setCameraMode('first-person');
+		});
+		await page.waitForTimeout(300); // many frames, all of the same minute
+		const art = () => page.evaluate(() => Object.fromEntries(window.__libraryGameTestHooks.getFpRoomArt().map((e) => [e.key, e])));
+		const before = await art();
+		expect(Object.keys(before).sort()).toEqual(['1|clock', '1|rug', '1|sakura', '1|shelf', '1|sign']);
+		for (const e of Object.values(before)) expect(e.paints).toBe(1);
+		expect(before['1|clock'].stateKey).toBe(await page.locator('#library-hud-clock').textContent());
+
+		// Advance the shift until the HUD's minute moves on.
+		const startLabel = before['1|clock'].stateKey;
+		await page.evaluate(async (label) => {
+			const h = window.__libraryGameTestHooks;
+			for (let i = 0; i < 600; i++) {
+				h.step(0.25);
+				await new Promise((r) => requestAnimationFrame(r));
+				if (document.getElementById('library-hud-clock').textContent !== label) return;
+			}
+		}, startLabel);
+		await page.waitForTimeout(100);
+		const after = await art();
+		const hud = await page.locator('#library-hud-clock').textContent();
+		expect(hud).not.toBe(startLabel);
+		expect(after['1|clock'].stateKey).toBe(hud);
+		expect(after['1|clock'].paints).toBe(2);
+		for (const id of ['rug', 'sakura', 'shelf', 'sign']) expect(after[`1|${id}`].paints).toBe(1);
+	});
+
+	test('on-screen buttons and keys both turn and move the player', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
 		await page.locator('#library-camera-button').click();
@@ -1472,9 +1678,9 @@ test.describe('First Person Mode', () => {
 		const afterButtonTurn = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing());
 		expect(Math.abs(afterButtonTurn - initialFacing)).toBeGreaterThan(0.1);
 
-		await page.keyboard.down('ArrowLeft');
+		await page.keyboard.down('q');
 		await page.waitForTimeout(300);
-		await page.keyboard.up('ArrowLeft');
+		await page.keyboard.up('q');
 		const afterKeyTurn = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing());
 		expect(Math.abs(afterKeyTurn - afterButtonTurn)).toBeGreaterThan(0.1);
 
@@ -1485,11 +1691,217 @@ test.describe('First Person Mode', () => {
 		const afterButtonMove = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
 		expect(Math.hypot(afterButtonMove.x - beforeMove.x, afterButtonMove.y - beforeMove.y)).toBeGreaterThan(5);
 
-		await page.keyboard.down('ArrowDown');
+		await page.keyboard.down('s');
 		await page.waitForTimeout(300);
-		await page.keyboard.up('ArrowDown');
+		await page.keyboard.up('s');
 		const afterKeyMove = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
 		expect(Math.hypot(afterKeyMove.x - afterButtonMove.x, afterKeyMove.y - afterButtonMove.y)).toBeGreaterThan(5);
+	});
+
+	// The arrows rotate the camera and never move Eun-mi: ←/→ turn, ↑/↓ look
+	// up/down (held within the pitch limit).
+	test('the arrow keys rotate the First Person camera without moving the player', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+		const hold = async (key, frames = 24) => {
+			await page.keyboard.down(key);
+			const r = await page.evaluate((n) => {
+				const h = window.__libraryGameTestHooks;
+				for (let i = 0; i < n; i++) h.step(1 / 60);
+				return { pos: h.getPlayerPosition(), facing: h.getPlayerFacing(), pitch: h.getFpCameraParams().pitch };
+			}, frames);
+			await page.keyboard.up(key);
+			return r;
+		};
+		const left = await hold('ArrowLeft');
+		expect(left.facing).toBeLessThan(-0.1);
+		const right = await hold('ArrowRight', 48);
+		expect(right.facing).toBeGreaterThan(left.facing + 0.2);
+		const up = await hold('ArrowUp');
+		expect(up.pitch).toBeGreaterThan(0.1);
+		const down = await hold('ArrowDown', 120); // long enough to hit the limit
+		expect(down.pitch).toBeLessThan(0);
+		expect(down.pitch).toBeGreaterThanOrEqual(-0.35 - 1e-9);
+		for (const r of [left, right, up, down]) {
+			expect(r.pos.x).toBeCloseTo(480, 5);
+			expect(r.pos.y).toBeCloseTo(380, 5);
+		}
+	});
+
+	// Walking or strafing never rolls or bobs the view: only turning, looking
+	// and jumping move the camera.
+	test('the First Person view stays level and still while walking diagonally', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 420); h.setPlayerFacing(0); });
+		await page.keyboard.down('w');
+		await page.keyboard.down('a');
+		const params = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const out = [];
+			for (let i = 0; i < 30; i++) { h.step(1 / 60); out.push(h.getFpCameraParams()); }
+			return out;
+		});
+		await page.keyboard.up('a');
+		await page.keyboard.up('w');
+		for (const p of params) {
+			expect(p.roll).toBe(0);
+			expect(p.bobOffset).toBe(0);
+			expect(p.pitch).toBe(0);
+			expect(p.jumpOffset).toBe(0);
+		}
+	});
+
+	// Looking up past a low station stops targeting it; looking back down (or
+	// level) targets it again, so Enter acts on what the crosshair is on.
+	test('the First Person interact target follows the up/down pitch', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		const desk = await getStation(page, 'front-desk');
+		await page.evaluate(({ x, y }) => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(x, y + 90);
+			h.setPlayerFacing(0);
+		}, desk);
+		const targetAt = (pitch) => page.evaluate((p) => {
+			const h = window.__libraryGameTestHooks;
+			h.setFpPitch(p);
+			h.step(1 / 60);
+			return h.getFirstPersonScene().interactTarget?.ref?.kind ?? null;
+		}, pitch);
+		expect(await targetAt(0)).toBe('front-desk');
+		expect(await targetAt(0.35)).toBe(null);
+		expect(await targetAt(-0.2)).toBe('front-desk');
+	});
+
+	test('sprinting widens the First Person FOV smoothly instead of jumping', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 420); h.setPlayerFacing(0); });
+		const base = await page.evaluate(() => window.__libraryGameTestHooks.getFpCameraParams().fov);
+		await page.keyboard.down('Shift');
+		await page.keyboard.down('w');
+		const fovs = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const out = [];
+			for (let i = 0; i < 60; i++) { h.step(1 / 60); out.push(h.getFpCameraParams().fov); }
+			return out;
+		});
+		await page.keyboard.up('w');
+		await page.keyboard.up('Shift');
+		const full = fovs[fovs.length - 1];
+		expect(full).toBeGreaterThan(base);
+		// One frame in, it has only started to widen.
+		expect(fovs[0]).toBeGreaterThan(base);
+		expect(fovs[0] - base).toBeLessThan((full - base) * 0.5);
+		for (let i = 1; i < fovs.length; i++) expect(fovs[i]).toBeGreaterThanOrEqual(fovs[i - 1]);
+	});
+
+	test('the First Person controls card shows on entering, fades out, and H toggles it', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+		expect((await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).alpha).toBe(1);
+		const faded = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			for (let i = 0; i < 60 * 7; i++) h.step(1 / 60);
+			return h.getFpHelp();
+		});
+		expect(faded.alpha).toBe(0);
+		await page.keyboard.press('h');
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).toMatchObject({ alpha: 1, pinned: true });
+		await page.keyboard.press('h');
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFpHelp())).toMatchObject({ alpha: 0, pinned: false });
+	});
+
+	test('a key held when the window loses focus is released, so First Person movement never sticks', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.freeze(true); h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+		await page.keyboard.down('w');
+		// The window blurs and the keyup never arrives (it's released elsewhere).
+		const moved = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			window.dispatchEvent(new Event('blur'));
+			const before = h.getPlayerPosition();
+			for (let i = 0; i < 24; i++) h.step(1 / 60);
+			const after = h.getPlayerPosition();
+			return Math.hypot(after.x - before.x, after.y - before.y);
+		});
+		expect(moved).toBe(0);
+	});
+
+	// Two direction keys held at once walk diagonally without turning, and a
+	// diagonal is never faster than walking straight (it's scaled by 1/√2).
+	for (const [keys, sx, sy] of [[['w', 'a'], -1, -1], [['w', 'd'], 1, -1], [['s', 'a'], -1, 1], [['s', 'd'], 1, 1]]) {
+		test(`holding ${keys.join(' + ')} in First Person walks diagonally without turning`, async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await page.locator('#library-camera-button').click();
+			// Frozen, so the keys are held for exactly 24 stepped frames (0.4 s).
+			await page.evaluate(() => window.__libraryGameTestHooks.freeze(true));
+			const walk = async (held) => {
+				await page.evaluate(() => { const h = window.__libraryGameTestHooks; h.setPlayerPosition(480, 380); h.setPlayerFacing(0); });
+				for (const k of held) await page.keyboard.down(k);
+				const pos = await page.evaluate(() => {
+					const h = window.__libraryGameTestHooks;
+					for (let i = 0; i < 24; i++) h.step(1 / 60);
+					return { ...h.getPlayerPosition(), facing: h.getPlayerFacing() };
+				});
+				for (const k of held) await page.keyboard.up(k);
+				return { dx: pos.x - 480, dy: pos.y - 380, facing: pos.facing };
+			};
+			const diagonal = await walk(keys);
+			// Facing north (0), so x goes the strafe way and y the forward/back way.
+			expect(Math.sign(diagonal.dx)).toBe(sx);
+			expect(Math.sign(diagonal.dy)).toBe(sy);
+			expect(Math.abs(diagonal.dx)).toBeGreaterThan(10);
+			expect(Math.abs(diagonal.dy)).toBeGreaterThan(10);
+			expect(diagonal.facing).toBeCloseTo(0, 5);
+			// The same hold straight ahead covers at least as much ground.
+			const straight = await walk([keys[0]]);
+			expect(Math.hypot(diagonal.dx, diagonal.dy)).toBeLessThanOrEqual(Math.hypot(straight.dx, straight.dy) + 0.01);
+		});
+	}
+
+	// Enter is the one interact key and Space the one jump key ("make 'enter'
+	// key the button for interaction"); they used to share both jobs.
+	test('in First Person, Space only jumps (even with a target centered) and Enter only interacts (never jumps)', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		const h = (fn) => page.evaluate(fn);
+		const coffee = await getStation(page, 'coffee-machine');
+
+		// Nothing targeted: Enter does not jump.
+		await page.evaluate(({ x, y }) => {
+			window.__libraryGameTestHooks.setPlayerPosition(x, y + 60);
+			window.__libraryGameTestHooks.setPlayerFacing(Math.PI); // back to the machine
+		}, coffee);
+		await expect.poll(() => h(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget)).toBe(null);
+		await page.keyboard.press('Enter');
+		expect(await h(() => window.__libraryGameTestHooks.getJumpState().phase)).toBe('ground');
+
+		// The Coffee Machine centered: Space jumps and opens nothing.
+		await h(() => window.__libraryGameTestHooks.setPlayerFacing(0));
+		await expect.poll(() => h(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.ref?.kind)).toBe('coffee-machine');
+		await h(() => window.__libraryGameTestHooks.freeze(true)); // hold the jump where it starts
+		await page.keyboard.press('Space');
+		expect(await h(() => window.__libraryGameTestHooks.getJumpState().phase)).toBe('rise');
+		expect(await getOverlay(page)).toBeFalsy();
+		await h(() => window.__libraryGameTestHooks.freeze(false));
+
+		// Enter interacts.
+		await page.keyboard.press('Enter');
+		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
 	});
 
 	test('interacting with the Coffee Machine in First Person (via the Enter key) opens the Coffee Pour minigame, same as Top-Down', async ({ page }) => {
@@ -1525,6 +1937,46 @@ test.describe('First Person Mode', () => {
 		await page.evaluate(() => window.__libraryGameTestHooks.freeze(false));
 	});
 
+	// Camera parity P5 (docs/features/library-first-person-3d.md): what a
+	// Top-Down chip says is shown in First Person as world-anchored labels.
+	test('First Person shows world-anchored labels: the Front Desk name and a queued patron\'s chip, on screen', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => window.__libraryGameTestHooks.spawnBorrowNow());
+		const [slot] = await page.evaluate(() => window.__libraryGameTestHooks.getFrontDeskSlots());
+		expect(slot.kind).toBe('borrow');
+
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels())).toEqual([]); // Top-Down: none
+		await page.locator('#library-camera-button').click();
+		const desk = await getStation(page, 'front-desk');
+		await page.evaluate(({ x, y }) => {
+			const hooks = window.__libraryGameTestHooks;
+			hooks.setPlayerPosition(x - 90, y + 330); // south of the queue, off its axis...
+			hooks.setPlayerFacing(0.2); // ...facing north toward the desk.
+		}, desk);
+
+		await expect.poll(async () => (await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels())).map((l) => l.id).sort())
+			.toEqual(expect.arrayContaining(['front-desk', `fd-${slot.id}`]));
+		const labels = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonLabels());
+		const deskLabel = labels.find((l) => l.id === 'front-desk');
+		const patronLabel = labels.find((l) => l.id === `fd-${slot.id}`);
+		expect(deskLabel.lines.map((l) => l.text)).toEqual(['Front Desk']);
+		// The patron's chip is their book's Korean title, as in Top-Down, with
+		// the patience bar this close.
+		expect(patronLabel.lines[0].type).toBe('chip');
+		expect(patronLabel.lines[0].text.length).toBeGreaterThan(0);
+		expect(patronLabel.lines.some((l) => l.type === 'bar')).toBe(true);
+		for (const l of [deskLabel, patronLabel]) {
+			expect(l.rect.x).toBeGreaterThanOrEqual(0);
+			expect(l.rect.y).toBeGreaterThanOrEqual(0);
+			expect(l.rect.x + l.rect.w).toBeLessThanOrEqual(960);
+			expect(l.rect.y + l.rect.h).toBeLessThanOrEqual(600);
+			expect(l.alpha).toBeGreaterThan(0);
+		}
+		// Above the patron's head means above eye height: the upper half of the view.
+		expect(patronLabel.y).toBeLessThan(300);
+	});
+
 	test('interacting with Stairs in First Person (via the on-screen Interact button) switches floors and resets to a sensible facing, same as Top-Down', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
@@ -1558,6 +2010,93 @@ test.describe('First Person Mode', () => {
 		expect(await page.evaluate(() => window.__libraryGameTestHooks.getPlayerFacing())).toBeCloseTo(0, 5);
 	});
 
+	/** Freezes the staff and stands Eun-mi `distance` px west of `key`, facing east at them. */
+	async function aimAtStaff(page, key, distance = 90) {
+		await page.evaluate(({ k, d }) => {
+			const h = window.__libraryGameTestHooks;
+			h.freezeStaff(true);
+			const s = k === 'minjun' ? h.getMinjun() : h.getStaff(k);
+			h.setPlayerPosition(s.x - d, s.y);
+			h.setPlayerFacing(Math.PI / 2);
+		}, { k: key, d: distance });
+	}
+
+	test('asking the Janitor for help in First Person tidies up for +Mood, same as Top-Down, then he is busy', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
+		await page.locator('#library-camera-button').click();
+
+		// Out of interact range he isn't a target, as with stations.
+		await aimAtStaff(page, 'libJanitor', 220);
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey ?? null)).toBe(null);
+
+		await aimAtStaff(page, 'libJanitor');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey)).toBe('libJanitor');
+		// The tooltip names him and carries Top-Down's name-chip hint.
+		await expect(page.locator('#library-interact-hint')).toHaveText('Janitor · 미화원 — click: tidy up');
+
+		await page.keyboard.press('Enter');
+		await expect(page.locator('#library-toast')).toContainText('Janitor tidies up');
+		const state = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		expect(state.libraryMood).toBeGreaterThan(60);
+		expect(state.staffCooldowns.libJanitor).toBeGreaterThan(0);
+		expect(state.staffHelps).toBe(1);
+		await expect(page.locator('#library-interact-hint')).toContainText(/Janitor · 미화원 — busy \d+s/);
+
+		// Asking again while he's on cooldown only says so.
+		await page.locator('#library-fp-interact-button').click();
+		await expect(page.locator('#library-toast')).toContainText("They're still busy");
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getShiftState().staffHelps)).toBe(1);
+	});
+
+	test('the Volunteer upstairs brings you a coffee in First Person (via the Interact button), same as Top-Down', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().sanity = 40; });
+		await page.locator('#library-floor-button').click();
+		await page.locator('#library-camera-button').click();
+		await aimAtStaff(page, 'volunteer');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.staffKey)).toBe('volunteer');
+
+		await page.locator('#library-fp-interact-button').click();
+		await expect(page.locator('#library-toast')).toContainText('brings you a coffee');
+		const after = await page.evaluate(() => window.__libraryGameTestHooks.getShiftState());
+		// +30, less whatever the passive drain took since.
+		expect(after.sanity).toBeGreaterThan(60);
+		expect(after.staffHelps).toBe(1);
+	});
+
+	test('picking a Return Cart book in First Person picks up the book the crosshair is on, same as clicking it in Top-Down', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		// Five known books on the cart (the middle one sits under the crosshair from the spot below).
+		const books = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.pauseScheduledEvents(true);
+			h.getShiftState().returnCart.length = 0;
+			for (let i = 0; i < 5; i++) h.spawnBookNow(i === 2);
+			return h.getReturnCartSlots().map((b) => b.id);
+		});
+		expect(books).toHaveLength(5);
+
+		await page.locator('#library-camera-button').click();
+		const cart = await getStation(page, 'return-cart');
+		await page.evaluate(({ x, y }) => {
+			window.__libraryGameTestHooks.setPlayerPosition(x, y + 130); // in front of the cart...
+			window.__libraryGameTestHooks.setPlayerFacing(0); // ...facing it.
+		}, cart);
+
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.entityKind))
+			.toBe('returnCartBook');
+		const picked = await page.evaluate(() => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget.ref.id);
+		expect(books).toContain(picked);
+
+		await page.keyboard.press('Enter');
+		await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(picked);
+		expect(await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots().map((b) => b.id))).not.toContain(picked);
+	});
+
 	test('toggling back to Top-Down after First Person still supports normal click-to-move', async ({ page }) => {
 		await page.goto('/library-game');
 		await startShift(page);
@@ -1570,6 +2109,172 @@ test.describe('First Person Mode', () => {
 		// arrival, from before the Coffee Pour minigame).
 		await walkToStation(page, 'coffee-machine');
 		await expect.poll(async () => (await getOverlay(page))?.kind).toBe('coffee-pour');
+	});
+
+	// Camera parity P3 (docs/features/library-first-person-3d.md): flipping
+	// cameras never changes game state. With the simulation frozen nothing
+	// moves on its own, so every snapshot taken around a flip must be
+	// deep-equal to the one before it. Facing is deliberately NOT in the
+	// snapshot: `setCameraMode('first-person')` resets it toward the room
+	// centre on every flip, the doc's open question "Facing on entering FP"
+	// (unresolved; Top-Down never reads facing).
+	test.describe('lossless camera flips (P3)', () => {
+		/** Everything a flip must preserve, as plain JSON (facing excluded, see above). */
+		const flipSnapshot = (page) => page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const shift = h.getShiftState();
+			return JSON.parse(JSON.stringify({
+				floor: h.getCurrentFloor(),
+				position: h.getPlayerPosition(),
+				walking: h.isPlayerMoving(),
+				shift,
+				carried: { book: shift.carriedBook, fine: shift.carriedFine },
+				inventory: { 1: h.getWorldInventory(1), 2: h.getWorldInventory(2) },
+				frontDesk: h.getFrontDeskSlots(),
+				finesCounter: h.getFinesCounterSlots(),
+				returnCart: h.getReturnCartSlots(),
+				overlay: h.getOverlay(),
+				transition: h.getActiveTransition(),
+				scheduled: h.getScheduledEvents(),
+				hallucinations: h.getHallucinations(),
+			}));
+		});
+
+		/** Flips with the real camera button; returns the mode it landed in. */
+		const flip = async (page) => {
+			await page.locator('#library-camera-button').click();
+			return page.evaluate(() => window.__libraryGameTestHooks.getCameraMode());
+		};
+
+		/** A busy 1st Floor: three returns on the cart, one picked up and carried, two borrows and a fine in line. */
+		async function busyFloorOne(page) {
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.spawnBookNow(false);
+				h.spawnBookNow(true);
+				h.spawnBookNow(false);
+			});
+			const book = (await page.evaluate(() => window.__libraryGameTestHooks.getReturnCartSlots()))[0];
+			await clickQueueItem(page, book);
+			await expect.poll(async () => page.evaluate(() => window.__libraryGameTestHooks.getShiftState().carriedBook?.id)).toBe(book.id);
+			await page.evaluate(() => {
+				const h = window.__libraryGameTestHooks;
+				h.spawnBorrowNow();
+				h.spawnBorrowNow();
+				h.spawnFineNow(30);
+			});
+		}
+
+		/** Freezes, then adds a ghost patron in the same frame: at full Sanity the next live frame's `updateHallucinations` would clear it. */
+		const freezeWithGhost = (page) => page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.spawnGhostPatronNow();
+			h.setCameraMode('first-person');
+		});
+
+		/** Starts in First Person, then flips FP → Top-Down → FP `rounds` times, asserting each side matches the frozen baseline. */
+		async function assertLosslessFlips(page, rounds = 3) {
+			const baseline = await flipSnapshot(page);
+			for (let i = 0; i < rounds; i++) {
+				expect(await flip(page)).toBe('top-down');
+				expect(await flipSnapshot(page)).toEqual(baseline);
+				expect(await flip(page)).toBe('first-person');
+				expect(await flipSnapshot(page)).toEqual(baseline);
+			}
+			return baseline;
+		}
+
+		test('flipping cameras is lossless on a busy 1st Floor (queues, cart books, carried book)', async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await busyFloorOne(page);
+			await freezeWithGhost(page);
+
+			const baseline = await assertLosslessFlips(page);
+			// The baseline really is a busy floor, so equality means something.
+			expect(baseline.floor).toBe(1);
+			expect(baseline.carried.book).not.toBeNull();
+			expect(baseline.returnCart.length).toBe(2);
+			expect(baseline.frontDesk.length).toBeGreaterThanOrEqual(2); // borrow patron(s) + the ghost
+			expect(baseline.finesCounter.length).toBe(1);
+			const kinds = new Set(baseline.inventory[1].map((item) => item.kind));
+			for (const k of ['station', 'return-cart-book', 'front-desk-patron', 'ghost-patron', 'fines-patron', 'ambient-staff']) {
+				expect(kinds, `1st Floor inventory has a ${k}`).toContain(k);
+			}
+		});
+
+		test('flipping cameras is lossless on the 2nd Floor, with the 1st Floor queues still waiting downstairs', async ({ page }) => {
+			await page.goto('/library-game');
+			await startShift(page);
+			await busyFloorOne(page);
+			await page.locator('#library-floor-button').click();
+			expect(await page.evaluate(() => window.__libraryGameTestHooks.getCurrentFloor())).toBe(2);
+			await freezeWithGhost(page);
+
+			const baseline = await assertLosslessFlips(page);
+			expect(baseline.floor).toBe(2);
+			expect(baseline.carried.book).not.toBeNull();
+			expect(baseline.returnCart.length).toBe(2);
+			expect(baseline.inventory[2].some((item) => item.kind === 'ambient-staff')).toBe(true);
+		});
+
+		// What leaving First Person does to an in-flight ride/climb
+		// (`setCameraMode`'s Top-Down branch): it cancels the transition
+		// outright — no forced completion — so the player stays on whichever
+		// floor the transition had already committed to (P3's rule). The
+		// elevator commits on entering 'doors-open' (t ≥ 1.4 s); the stairs
+		// only at the very end of the climb, so a climb cut short always lands
+		// back on the floor it started from. Nothing else changes, and going
+		// back to First Person does not restart the transition.
+		for (const { kind, seconds, phase, committedFloor } of [
+			{ kind: 'elevator', seconds: 0.3, phase: 'doors-close', committedFloor: 1 },
+			{ kind: 'elevator', seconds: 1.0, phase: 'rise', committedFloor: 1 },
+			{ kind: 'elevator', seconds: 1.6, phase: 'doors-open', committedFloor: 2 },
+			{ kind: 'stairs', seconds: 0.75, phase: 'travel', committedFloor: 1 },
+		]) {
+			test(`leaving First Person ${seconds}s into the ${kind} (${phase}) cancels it on the committed floor and changes nothing else`, async ({ page }) => {
+				await page.goto('/library-game');
+				await startShift(page);
+				await busyFloorOne(page);
+				await page.evaluate(() => window.__libraryGameTestHooks.setCameraMode('first-person'));
+
+				// Face the station from 90 units out (as the transition test in
+				// 'floor switching' does) and let the live scene acquire it.
+				const station = await getStation(page, kind);
+				await page.evaluate(({ sx, sy }) => {
+					const h = window.__libraryGameTestHooks;
+					const dx = 480 - sx;
+					const dy = 300 - sy;
+					const len = Math.hypot(dx, dy);
+					h.setPlayerPosition(sx + (dx / len) * 90, sy + (dy / len) * 90);
+					h.setPlayerFacing(Math.atan2(-dx, dy));
+				}, { sx: station.x, sy: station.y });
+				await page.waitForFunction((k) => window.__libraryGameTestHooks.getFirstPersonScene().interactTarget?.ref?.kind === k, kind);
+
+				// Frozen from here: start the ride/climb through the real interact
+				// path, then advance it exactly `seconds` in 1/60 s frames.
+				await page.evaluate((s) => {
+					const h = window.__libraryGameTestHooks;
+					h.freeze(true);
+					h.attemptInteractNow();
+					for (let i = 0; i < Math.round(s * 60); i++) h.step(1 / 60);
+				}, seconds);
+				const mid = await flipSnapshot(page);
+				expect(mid.transition).toMatchObject({ kind, phase, targetFloor: 2 });
+				expect(mid.floor).toBe(committedFloor);
+
+				const expected = { ...mid, transition: null };
+				expect(await flip(page)).toBe('top-down');
+				expect(await flipSnapshot(page)).toEqual(expected);
+				for (let i = 0; i < 2; i++) {
+					expect(await flip(page)).toBe('first-person');
+					expect(await flipSnapshot(page)).toEqual(expected);
+					expect(await flip(page)).toBe('top-down');
+					expect(await flipSnapshot(page)).toEqual(expected);
+				}
+			});
+		}
 	});
 });
 

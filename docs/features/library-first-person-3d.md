@@ -2,7 +2,8 @@
 
 ## Status
 
-`Shipped` (branch `fp-3d`)
+`Shipped` (branch `fp-3d`); Top-Down ↔ First Person parity is `Planned`
+(see Camera parity)
 
 ## Summary
 
@@ -10,7 +11,8 @@ Library Shift's First Person camera is a software-3D renderer that draws
 flat-shaded, painter-sorted polygons onto the existing 2D canvas (no WebGL,
 no dependencies). Its objects are referenced to their Top-Down 2D art
 (`docs/skills/2d-to-3d/SKILL.md`): characters are built from the same design
-the 2D draws; the bookshelf, coffee machine and elevator wear their 2D
+the 2D draws; Min-jun has his own mesh measured off his 2D renderer and wearing
+its drawing on the front; the bookshelf, coffee machine and elevator wear their 2D
 drawer's own art as a texture; and the stairs (whose 2D is a plan view) are
 geometry in their drawer's own colours with a textured arrow badge. It
 replaced the older billboard-sprite view. Parent doc:
@@ -19,13 +21,18 @@ replaced the older billboard-sprite view. Parent doc:
 ## Scope
 
 **In scope:** the room shell, stations, queue characters and Return Cart
-books drawn as 3D meshes; head-bob/jump/tilt/sprint as camera effects; the
-animated elevator ride and stair climb in First Person.
+books drawn as 3D meshes; jump, ↑/↓ pitch and sprint FOV as camera effects
+(no head-bob or strafe roll: the view holds still while walking); the
+animated elevator ride (with its doors) and stair climb in First Person.
 
 **Out of scope:** Top-Down art (unchanged, detailed 2D); interaction and
 targeting (still `library/first-person.js`); textures other than a 2D
-drawer's own art; z-buffer, lighting beyond one directional light plus ambient; ambient staff in FP (not drawn);
-elevator door animation in the scene (see Known gaps).
+drawer's own art; z-buffer, lighting beyond one directional light plus ambient.
+
+**Required, not yet built:** full parity with Top-Down — every person,
+prop, decor item, label and interaction Top-Down has, in FP too (ambient
+staff included). See Camera parity for the requirements and work
+breakdown.
 
 ---
 
@@ -37,11 +44,13 @@ call in `drawScene` is pure and DOM-free.
 | File | Role |
 |---|---|
 | `core.js` | Column-major `Mat4` math, `cameraFromPose`, `projectPoint`, `shadeColor`, `buildDrawList`, `drawScene` |
-| `room.js` | `buildRoom({width, depth, height, floorTint})`: floor, ceiling, four walls, wainscot, windows, light fixtures |
-| `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR`, `FLOOR_TINT` constants |
+| `room.js` | `buildRoom({width, depth, height, tileSize, tileColor, decals, wallArt})`: the checker floor, floor decals, ceiling, four walls (the back one with its art), wainscot, rail, windows, light fixtures; `WALL_ART_TOP` |
+| `scene.js` | `buildFirstPersonScene(...)` assembles `{camera, placed}` per frame and memoises the room per floor; `meshForStationKind`; the `ROOM_HEIGHT`, `BASE_EYE`, `UNIT_SCALE`, `NEAR`, `FAR` constants |
+| `../floor-dressing.js` | Shared with Top-Down's `drawFloor`: `FLOOR_TILE`, `WALL_BAND_HEIGHT`, `FLOOR_TILES`, `GUIDE_STRIPES`, `LIBRARY_SIGNS`, `BACK_WALL`, `WALL_ART`, `floorRug`; the painters (`drawBackWall`, `drawLibrarySign`, `drawWallBookShelf`, `drawWallSakura`, `drawWallClock`, `drawStitchedRug`, `drawGuideStripe`); for FP, `tileColor`, `floorDecals`, `roomArtRect`, `paintRoomArt`, `ROOM_ART_SCALE` |
 | `transitions.js` | Pure elevator/stairs state machine: `createTransition`, `updateTransition`, `transitionCamera`, `forceComplete` |
-| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `quad`, `translate`, `scaleMesh`, `scaleAbout`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack` |
-| `meshes/*.js` | One builder per object: `character.js`, `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js` |
+| `labels.js` | World-anchored label chips (P5): anchor heights from the drawn meshes, distance fade, occlusion by stations, HUD avoidance, declutter and draw order — `layoutLabels`; see "World-anchored labels" |
+| `meshes/geom.js` | Shared primitives every mesh is built from: `emptyMesh`, `merge`, `box`, `prism`, `loft`, `tube`, `quad`, `translate`, `scaleMesh`, `scaleAbout`, `faceNormal`; and for props wearing 2D art, `boxWithout` (a box minus its hidden faces), `artFrontUV`/`textureFront` (show an art rect on a box's +Z front) and their −Z twins `artBackUV`/`textureBack`; and `projectFront` (art projected straight along Z onto every face turned toward the viewer: Min-jun's front) |
+| `meshes/*.js` | One builder per object: `character.js`, `minjun.js` (with `minjun-frame.js`, `minjun-body.js`, `minjun-head.js`; see "Min-jun's own mesh"), `bookshelf.js`, `station-box.js`, `coffee-machine.js`, `stairs.js`, `elevator.js`, `front-desk.js`, `return-cart.js` (with `RETURN_CART_BOOK_SLOTS`), `book.js` (a Return Cart book), `fines-counter.js`, `boss-office.js`, `reading-nook.js`, `decor.js` (four props plus `meshForDecorKind`) |
 
 ### The character meshes
 
@@ -77,7 +86,8 @@ Keying on `design.key` fails seven tests in the suite for exactly that reason.
 The returned mesh is **shared, so treat it as read-only**; `buildDrawList` does,
 mapping each vertex into world space rather than moving it. A design built fresh
 on every call simply misses the cache, as before.
-`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?}`.
+`scene.js`'s `characters` entries are `{x, y, design, angry?, floor?, yaw?, alpha?}`, plus
+Min-jun's `pose` and `art` (see "Min-jun's own mesh").
 
 Karen is the one character with no roster entry (`findLibraryDesign('karen')`
 is `null`), so `library-people.js` also exports `KAREN_DESIGN` — a design in
@@ -132,19 +142,88 @@ head widens together.
 Wiring lives in `web/static/js/library-game.js`: `drawFirstPersonView`
 builds the scene and calls `drawScene(ctx, camera, placed, {viewport,
 light: FP_LIGHT, fog: FP_FOG})`, then draws the 2D HUD on top (dust,
-vignette, interact flash, crosshair, minimap). `fpCameraParams` maps the
+vignette, interact flash, world-anchored labels, crosshair, minimap). `fpCameraParams` maps the
 effect state to camera params. `first-person.js` is still the projection
 used for `findInteractTarget`; it does not draw.
+
+### Min-jun's own mesh
+
+Kang Min-jun is the one character with his own First Person mesh. His 2D
+renderer (`library/minjun.js`) is far more detailed than the patron design
+`buildCharacter` reads, and is drawn in Hospital Shift's anime frame, about
+**2.5 heads tall** against a patron's 3.36, so the shared patron frame
+can't carry him. Design: `docs/superpowers/specs/2026-11-13-library-fp-minjun-design.md`.
+The procedure, for the next character built this way:
+`docs/skills/2d-character-to-3d/SKILL.md`.
+
+`scene.js`'s `characterMesh(c)` picks the builder: `c.design.key ===
+'minjun'` goes to `buildMinjun({pose: c.pose, art: c.art})`, everyone else to
+`buildCharacter`. The label anchor and the crosshair's target height use
+`characterMesh` too, so they sit at his own crown.
+
+**Geometry from his measurements, his drawing on the front.** His body is
+real 3D geometry measured off `minjun.js` in its own art px (`MINJUN_FRAME`
+and the drawers' joint points). The front of that geometry wears his 2D art
+**projected straight along Z** (`geom.js`'s `projectFront`): every quad
+whose normal faces the viewer (`nz` ≥ 0.3–0.9 depending on the part) takes
+the image point of its own vertices' art x, y. So head-on he *is* the
+drawing (cable knit, tie, lanyard and ID card, headphones, trinkets, his
+eyes, fringe and hair clip), while the sides and back are lit flat colours
+from `MINJUN_PALETTE` and the silhouette is the drawing's own. This is the
+2D-to-3D skill's texture technique, applied to a character's front.
+
+| File | Role |
+|---|---|
+| `meshes/minjun-frame.js` | `MINJUN_K` (game px per art px, 0.948, chosen so his eyes sit at `MINJUN_EYE_PX` = `BASE_EYE` 60), `S`, `toModel`/`toArt`/`modelY` (the one art → model conversion; the sole's bottom, art y +8.3, is the floor), `MINJUN_ART` (the three canvases' art boxes and image px per art px), `artSize`, `uvIn(box)` |
+| `meshes/minjun-body.js` | `buildMinjunBody(pose, art)`: slack legs (8-sided, `LEG`), sneakers (sole, upper, toe box, navy swoosh and heel tab, sock), the 12-sided shirt and vest (`TORSO_RINGS`, from `torsoPath` and the vest path), neck, arms as `tube`s (sleeve, rolled cuff, forearm, watch) posed by `MINJUN_POSES`, each ending in a hand (`buildHand`, `HAND`: a flat palm, four fingers with gaps and a thumb, the fingers and thumb in his skin's shade so the hand keeps its shape without outlines) or, walking, in his pocket (`POCKET`: the bulge over the hidden hand and the thumb hooked outside, as `drawPocketArm` draws), the left arm round the books (`BOOK_ARM`, its hand across their fronts), the three books (`MINJUN_BOOK_SPINES`), the tote (`MINJUN_TOTE`) and, reading, the open book (`MINJUN_OPEN_BOOK`) |
+| `meshes/minjun-head.js` | `buildMinjunHead(art)`: one 12-sided stack following `facePath`'s V-jaw and `drawHair`'s crown (`HEAD_RINGS`), the chin set forward. Front wears the head art; sides and back hair (the undercut's shade low at the back), jaw sides skin; every face `unlit` like every patron head |
+| `meshes/minjun.js` | `buildMinjun({pose, art})` (memoised per art object and pose: at most four meshes per art set), `minjunPoseFor`, `minjunFace` (+ `MOUTH_STEPS`), `MINJUN_ART_SIZE`, `paintMinjunBodyArt`/`paintMinjunHeadArt`/`paintMinjunPropsArt` (an opaque backing in the colours round the drawing, then the drawer) |
+| `geom.js` | `tube(a, b, ra, rb, sides, color, {capA, capB, side, squash})` (a tapered limb between two 3D points; `side`/`squash` flatten it into a palm or a pocket bulge), `loft` (`prism` with a centre per ring), `faceNormal`, `projectFront(part, {image, toUV, minNz, div, only})` |
+
+The art is painted by `minjun.js`'s own drawers, exported for this and
+otherwise unchanged (Top-Down's canvas call trace is identical before and
+after: 50 cases over every action, walking and five times):
+
+| Canvas | Painter (`minjun.js`) | Holds | Painted |
+|---|---|---|---|
+| body, 112 × 208 | `paintMinjunBody` | legs, torso, tote strap, keychain, wallet chain, photocard, neck and headphones, collar pin | once |
+| head, 180 × 264 | `paintMinjunHead(ctx, face)` → `drawHead` | ears, face, eyes, brows, nose, mouth, hair | when his face changes |
+| props, 168 × 128 | `paintMinjunProps` | tote, the three book spines, the open book with his hand on it | once |
+
+**Pose and face come from Top-Down's state.** `fpMinjunFor(a)` in
+`library-game.js` derives `walking` and his clock exactly as `drawAmbient`
+does, then:
+
+* `minjunPoseFor({walking, action})`: walking → `walk` (hand in his
+  pocket, `drawPocketArm`'s joints, with the pocket's bulge and his thumb
+  outside it); `read` → `read` (the open book held
+  before his chest); `wave` and `help` → `wave` (arm raised); `hum` and
+  standing → `idle` (arm hanging, `drawFreeArm`'s joints). The arm's z, which
+  the 2D can't say, is chosen per pose (a hand in a front pocket, a book
+  before the chest).
+* `minjunFace({t, walking, action, actionT})`: `faceForAction`'s mouth cut
+  into `MOUTH_STEPS` (3) steps, `eyesClosed`/`round` while humming, and the
+  blink from `isBlinkingAt(t)`. `drawHead` takes the blink from `face.blink`
+  when given (Top-Down never gives it). Its `key` decides repaints: the head
+  canvas is repainted **in place** only when the key changes, and textures
+  are read at draw time, so blinking and talking never rebuild a mesh.
+
+Tunables: `MINJUN_EYE_PX`, the per-pose z in `MINJUN_POSES`, `BOOK_Z`,
+`TOTE_Z`, `OPEN_BOOK_Z`, `HAND`, `POCKET`, each pose's hand `dir`/`side`, the `nz` thresholds, `MOUTH_STEPS`, and each
+canvas's `scale` in `MINJUN_ART` (face 6 image px per art px, the rest 4).
+He is 427–454 faces depending on pose (about 100 of them textured; the test budget is 500), and a
+2nd Floor frame with him at interact range ran at 60 fps in headless
+Chromium.
 
 ### The prop meshes
 
 A prop with a flat, readable front wears **its own Top-Down drawer's art**
 (`docs/skills/2d-to-3d/SKILL.md`; design:
 `docs/superpowers/specs/2026-11-07-library-fp-prop-art-design.md`): the
-bookshelf, the coffee machine and the elevator. The stairs' 2D (`drawStairs`)
+bookshelf, the coffee machine, the elevator and the Boss's Office. The stairs' 2D (`drawStairs`)
 is a plan view, which can't be worn as a front, so the stairs are geometry
 built from that drawer's exports plus one textured part, the arrow badge. The
-five other stations are still plain boxes (see Known gaps).
+other stations are geometry in their drawers' colours (see Known gaps).
 
 `library-game.js`'s `FP_ART` is one entry per kind whose mesh wears art,
 `{w, h, paint(ctx, station), stateKey?(station)}`: `fpArtFor` paints a canvas
@@ -170,17 +249,64 @@ just that mesh.
 | `elevatorLayout(st, {height})`, `drawElevator(ctx, st, {t, height?, pulse?})`, `ELEVATOR_COLORS` | `hospital/anime-furniture.js` | Where Hospital Shift's elevator drawer (Library draws with it too) puts the indicator plate, label, frame, doors (with shines), call panel and button. `height` (default `st.w`) stretches only the vertical runs and `pulse` fixes the button's glow; Top-Down passes neither. `ELEVATOR_COLORS.tile` is the station tile both games draw it on (`elevator.test.js` pins it to both games' `STATION_COLORS.elevator`) |
 | `ELEVATOR_SIZE`, `ELEVATOR_ART`, `ELEVATOR_ART_SCALE` | `meshes/elevator.js` | The frame is 1.4 × 2.2 and the car 1.1 deep; the art box `{w: 84, h: 114}` makes the drawer's frame exactly 1.4 : 2.2; 3 image px per art px |
 | `paintElevatorArt(ctx, station)` | `meshes/elevator.js` | Opaque tile backing, then `animeTile`, then `drawElevator` at `ELEVATOR_ART` with `pulse: 1` (painted once, so it does not pulse in FP) |
-| `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, door panels 0.02 in front of it each wearing its own door region as it slides, and the car's ceiling and back wall seen through the doorway. 54 faces (12 textured), all `cull` |
+| `buildElevator({art, doorOpen})` | `meshes/elevator.js` | Faces −Z (art x maps to model −x, so the call panel is on the viewer's right). A tile-coloured wall section that carries the indicator and call panel (so the mesh is 2.1 × 2.7 overall), the frame 0.03 proud, the door panels recessed 0.015 behind the frame's face, and the car (ceiling, back wall, and the frame's back seen from inside). Opening, each door slides away behind its post, clipped to the doorway: what is left shows the inner part of its own door region (uv follows the visible part), so the doors never leave the doorway or cover the indicator or call panel; fully open they are gone. The door backs (and, shut, a strip over the 2D seam) face into the car. 56 faces shut, 49 fully open (12 / 10 textured), all `cull` |
+| `elevatorDoorOpts(open)`, `ELEVATOR_DOOR_STEPS` | `meshes/elevator.js` | The `optsFor` value for a door opening: `{doorOpen}` quantised to 1/16, or `undefined` when shut so a closed elevator keeps the memo entry it has on approach. A ride rebuilds the ridden car's mesh at most 16 times opening (`scene.test.js` counts it over a simulated ride) instead of every frame |
+| `elevatorRiderPose(station, unitScale)`, `isInElevatorCar(station, pos, unitScale)`, `ELEVATOR_CAR_STAND_Z` | `meshes/elevator.js` | Where an FP rider stands (0.85 back in the car, facing out: facing 0) and whether a game-px point is in the car or its doorway (where held doors stay open) |
+| `bossDoorLayout(st, height = st.h)`, `drawBossDoor(ctx, st, {height?})`, `drawBossLock(ctx)`, `BOSS_DOOR_COLORS` | `library/anime-furniture.js` | Where the Boss's door drawer puts the frame, door, plaque, knob and padlock badge; `height` draws it into a taller box than the tile (Top-Down passes none, and its call trace is unchanged). `drawBossLock` is the padlock badge Top-Down's `drawStation` draws over the locked door (moved out of `library-game.js`). `BOSS_DOOR_COLORS.tile`/`tileLocked` are the tile it stands on |
+| `BOSS_OFFICE_SIZE`, `BOSS_OFFICE_ART`, `BOSS_OFFICE_ART_SCALE` | `meshes/boss-office.js` | A 1.2 m frame around a ~1.05 × 2.05 m door in a 1.63 × 2.32 m wall section, the office running 2.5 back toward the north wall; the art box `{w: 84, h: 124}` gives the door a real door's aspect; 3 image px per art px |
+| `paintBossOfficeArt(ctx, station, {locked})` | `meshes/boss-office.js` | Opaque tile backing (grey while locked), then `animeTile`, then `drawBossDoor` at `BOSS_OFFICE_ART`, then `drawBossLock` while locked |
+| `buildBossOffice({art, locked})` | `meshes/boss-office.js` | Faces +Z toward the approaching player. A small office: lit tile-coloured sides, roof and back, its front a wall section (either side of the frame and a header) wearing the tile art, the frame 0.04 proud, the door recessed 0.02, the knob and (locked) padlock badge proud of the door, and the BOSS plaque proud over the lintel. 34 faces unlocked, 39 locked (9 / 10 textured), all `cull` |
+| `FP_ART['boss-office']`, `bossOfficeLocked()` | `library-game.js` | `stateKey` is `'locked'` while the office is locked (all shift and through the closing wait; the one check Top-Down's tile, the inventory and `optsFor` share), so the greyed, padlocked canvas is painted once per state |
 | `STAIRS_COLORS`, `STAIRS_RAIL`, `STAIRS_BADGE`, `stairStepColor(i, steps = 5)`, `stairsArrowDir(st)`, `drawStairsBadge(ctx, x, y, dir)` | `hospital/anime-furniture.js` | What `drawStairs` draws with: the step ramp (exact for 5 steps, spread over more), the edge/shadow/rail/badge colours, the rail's 5 px ink under 3 px wood, and the up/down badge |
 | `STAIRS_SIZE`, `STAIRS_BADGE_ART`, `BADGE_ART_SCALE` | `meshes/stairs.js` | 1.12 wide × 1.44 tall × 2.24 deep for 8 steps (rise 0.18, run 0.28, unchanged); the badge art box 24 × 24 at 8 image px per art px |
 | `paintStairsBadgeArt(ctx, station)` | `meshes/stairs.js` | Opaque step-colour backing, then `drawStairsBadge` pointing the station's way |
 | `buildStairs({steps?, art?})` | `meshes/stairs.js` | Centred on the station, foot facing +Z toward the approaching player, climbing toward −Z (the way `transitionCamera` moves). Treads in the ramp, risers under the 2D shadow, plum nosings, pastel stringers with plum tops, the two-tone rail on the left between two newels, and the badge sign at the foot on the right (textured, `unlit`; flat white without art). 85 faces, all `cull` |
 
+| `drawReturnCartCover(ctx, x, y, w, h, color, title, isCoinHunt, {shadow?})`, `drawCoverTitle`, `fitTitleLines`, `titleInkFor`, `returnCartStar`, `RETURN_CART_COVER` | `library/book-cover.js` | Top-Down's Return Cart cover (moved out of `library-game.js` with its title helpers; Top-Down's call trace is unchanged): drop shadow, genre colour, spine shine, plum line art, the fitted title in ink chosen by cover brightness, and the Coin Hunt star centred on the cover's top-right corner, overhanging it. `shadow: false` drops the shadow for FP |
+| `BOOK_SIZE`, `BOOK_ART`, `BOOK_ART_SCALE`, `BOOK_PAGES` | `meshes/book.js` | A 0.25 × 0.333 × 0.06 book (the 2D cover's 30 : 40); the art box `{w: 40, h: 52}` is the cover plus room for the star's overhang; 4 image px per art px; fore-edge and top in `ANIME.paper` |
+| `paintReturnCartBookArt(ctx, {title, color, isCoinHunt})` | `meshes/book.js` | Opaque ink backing, the cover rect in the genre colour (the 2D's rounded corners would show the backing), then `drawReturnCartCover` without its shadow |
+| `buildBook({art, color, isCoinHunt})`, `starOverhang()` | `meshes/book.js` | A box without its bottom, cover (+Z, textured, `unlit`) and spine (−X) and back in the genre colour. On a Coin Hunt book the star's part *outside* the cover (its five kites, grown by the outline, clipped to the right of and above the cover) is extra faces in the cover's plane wearing the same canvas; inside the cover the star is already in the cover's pixels. Nothing overlaps the cover, so the painter's sort never has to pick. 5 faces, 11 with the star (the test budget is 24); all `cull`; flat genre colour / gold without art |
+| `RETURN_CART_BOOK_SLOTS` | `meshes/return-cart.js` | The five Top-Down slots (`returnCartSlots`) as base points on the cart's top tray, left to right seen from the cart's front, 0.29 apart inside the posts. The cart's own decorative books moved to the lower tray (the 2D cart has books on both) |
+| `cartBooks`, `bookArtFor`; `fpBookArtFor` | `scene.js`; `library-game.js` | `drawFirstPersonView` passes the inventory's `return-cart-book` items as `{id, title, color, isCoinHunt}` (colour as `drawReturnCartBooks` picks it); the scene stands the first five on this floor's cart, each mesh memoised on `id|title|coin|colour` and art. `fpBookArtFor` paints one canvas per the same key. Both caches clear at 64 entries, since books come and go |
+
 Textured fronts are `unlit` (the 2D art carries its own top-lit gradients);
 sides, tops and backs stay lit so each prop reads as solid. Without `art`
 (node tests) the same faces take the drawer's exported flat colours.
 `buildFirstPersonScene` asks `artFor(station)` for each same-floor station
-with its own mesh and memoises the built mesh per station object and art.
+with its own mesh, and `optsFor(station)` for any extra build options that
+station's kind needs (the Boss's Office's `{locked}`, the elevator's
+`{doorOpen}` from `elevatorDoorOpts`). The mesh is memoised
+per station object, art, builder and those options serialised, so a station
+whose state flips rebuilds and one that holds still does not.
+
+### The room dressing (per floor)
+
+The room is Top-Down's own floor and back wall (`drawFloor`), built from
+`library/floor-dressing.js`, which `drawFloor` paints from too (it holds the
+constants and the painters moved out of `library-game.js` verbatim, so
+Top-Down's pixels are unchanged; outside the clock, whose time moved, the
+wall band diffs to zero pixels before/after).
+
+| Piece | First Person |
+|---|---|
+| Checker tiles | One ground face per 40 px `FLOOR_TILE` (24 × 15), coloured `tileColor(floor, col, row)`: `FLOOR_TILES[floor].dark` on even (row + col), otherwise `drawAnimeTiles`' gradient (`tint(light, 0.3)` under the wall band down to `light`) sampled at the row's centre. 1st Floor mint, 2nd Floor cream. Wound to face up, so the floor takes full light (it used to face down and render at the ambient 0.5) |
+| Guide stripes (1F) | `floorDecals` cuts each `GUIDE_STRIPES` stripe at the tile grid (and at the rug's edges); each piece is a flat face in the stripe's rgba composited over its own tile (`blendOver`), so it reads as Top-Down's translucent stripe. The part under the rug is the rug art's |
+| Rugs (1F Coffee Machine, 2F Reading Nook) | `floorRug` (drawFloor's placement); one decal face wearing `paintRoomArt(…, 'rug')`: the tiles, stripes and `drawStitchedRug` of exactly that box at `ROOM_ART_SCALE` 4 |
+| Back wall (z = 0) | `BACK_WALL`'s colours on every wall: cream wall, blush wainscot, pink rail with the plum trim under it, plum baseboard. The back wall is `unlit` (it *is* Top-Down's band, and its art needs no darkening overlay); the other walls stay lit |
+| Sign, sakura, wall shelf, wall clock | `WALL_ART` boxes (band px) cut out of the back wall and filled with `paintRoomArt`'s canvas of the same painter, at the same x, band y mapped to height `WALL_ART_TOP − y` (1:1, so above the rail at 135) |
+
+Decals are a **second ground pass**: their faces carry `ground` and `decal`,
+and `buildDrawList` sorts floor tiles, then decals, then everything else, so a
+nearer tile can never cover a farther rug. Wall art is coplanar with the wall
+but never overlaps a wall face (the wall is emitted around the boxes).
+
+`library-game.js`'s `fpRoomArtFor(id)` hands the scene one canvas per floor
+and piece, painted once; the clock's is repainted in place only when its
+label (the HUD's `inGameTimeLabel` minute) changes, the `FP_ART` stateKey
+pattern. Textures are read at draw time, so the repaint needs no mesh
+rebuild; the scene rebuilds the room only when the floor, the decals or an
+art canvas's identity changes. `getFpRoomArt()` on the test hooks lists each
+canvas's key, stateKey and paint count.
 
 ### Data shapes (JSDoc in `core.js`)
 
@@ -198,8 +324,12 @@ with its own mesh and memoises the built mesh per station object and art.
 * `Texture` = `{image, uv, div?}` on a 4-index face: `image` any canvas image
   source, `uv` one `[u, v]` in image px per index, `div` the `[nu, nv]` cells
   (default `[1, 1]`). The mapped region must be opaque.
-* `Placement` = `{pos: Vec3, yaw, scale}`; `yaw` is radians about +Y,
-  `scale` a number or `Vec3`. Order is scale, yaw, translate.
+* `Placement` = `{pos: Vec3, yaw, scale, alpha?}`; `yaw` is radians about +Y,
+  `scale` a number or `Vec3`. Order is scale, yaw, translate. `alpha`
+  (default 1) is a paint property only — `buildDrawList` copies it onto
+  every poly the placement yields and both paint paths honour it, but it
+  changes neither geometry nor colour, so a translucent mesh sorts and
+  shades exactly as the opaque one does.
 * `Placed` = `{mesh, placement}`.
 * Camera = `{viewProj, position}` from `cameraFromPose(player, {eyeHeight,
   pitch, roll, fov, aspect, near, far})` where `player` is `{x, y, facing}`
@@ -223,6 +353,13 @@ fogs toward `fog.color` between `fog.start` and
 `fog.end` by face depth, and sorts back to front (painter's algorithm, face
 depth = mean clip-space w of the clipped polygon's vertices).
 
+**Off-screen faces are dropped.** Only the near plane is clipped, so
+`drawScene` passes `cullOffscreen` and `buildDrawList` drops any face (flat,
+textured cell or near-clipped fallback) whose screen polygon lies wholly off
+one side of the viewport; the 2D checker floor's 360 tiles made that matter
+(705 polys a frame down to 280 at the harness pose). A bare `buildDrawList`
+call keeps them, as the tests expect.
+
 **Ground is its own layer.** A mean depth is wrong for a wide, near-horizontal
 face: the floor tile a patron *stands on* can have a nearer centroid than the
 patron, so a plain depth sort paints the floor over their legs and feet. (It
@@ -230,7 +367,8 @@ did: a patron at interact range kept only the top quarter of their legs and
 never showed their shoes at all.) So every face a mesh marks `ground` — only
 `room.js`'s floor does — sorts as a layer before everything else, each layer
 still back to front within itself, which keeps the floor's own overlap and fog
-gradient. This is sound because the floor is the shell's lowest surface:
+gradient. Within the ground, faces also marked `decal` (stripes, rugs) are a
+second pass after every tile. This is sound because the floor is the shell's lowest surface:
 everything in the room rests on it, so it can never *legitimately* occlude any
 of it, while the walls rise from its edges and the ceiling is above, so neither
 overlaps a floor tile on screen. `room.test.js` pins that exactly the floor
@@ -322,14 +460,16 @@ leftover Top-Down art showed through.
 | `UNIT_SCALE` | `scene.js` | 40 (unit mesh to game px) |
 | `BASE_EYE` | `scene.js` | 60 (eye height, game px) |
 | `ROOM_HEIGHT`, `NEAR`, `FAR` | `scene.js` | 300, 1, 2000 |
-| `FLOOR_TINT` | `scene.js` | `#b08f5e` |
+| `FLOOR_TILE`, `FLOOR_TILES`, `BACK_WALL` | `library/floor-dressing.js` | 40 px; 1F `#e6f6f0`/`#d8efe7`, 2F `#f6efe4`/`#efe5d6`; `#fffaf3`/`#fdeef3`/`#ffd1e3`/plum |
+| `WALL_ART_TOP` | `room.js` | 200 (wall height of the band's top; art at band y sits at 200 − y) |
+| `ROOM_ART_SCALE` | `library/floor-dressing.js` | 4 image px per game px (rug and wall-art canvases) |
 | `FP_BASE_VFOV_DEGREES` / `FP_SPRINT_VFOV_EXTRA` | `library-game.js` | 60 / +6 |
 | `FP_LIGHT` | `library-game.js` | `{dir: [0.35, 1, 0.25], ambient: 0.5}` |
 | `FP_FOG` / `FP_BACKDROP` | `library-game.js` | `{color: '#d8ccb0', start: 520, end: 1500}` / the same cream |
 | `TILE` | `room.js` | 120 (longest edge of one shell face) |
 | `ART_SCALE`, `RECESS`, `LIP` | `meshes/bookshelf.js` | 3 image px per art px; spine rows 0.07 behind the frame; plank lips 0.01 proud |
 | `ART_SCALE`, stand | `meshes/coffee-machine.js` | 4 image px per art px; a 0.9 stand; bay back 0.07 behind the front, tray lip 0.03 proud |
-| `ELEVATOR_ART_SCALE`, offsets | `meshes/elevator.js` | 3 image px per art px; frame 0.03 proud of the wall; doors 0.02 in front of the frame; indicator 0.02, call panel 0.03, button 0.005 proud |
+| `ELEVATOR_ART_SCALE`, offsets | `meshes/elevator.js` | 3 image px per art px; frame 0.03 proud of the wall; doors 0.015 behind the frame's face (0.01 thick); indicator 0.02, call panel 0.03, button 0.005 proud; a rider stands 0.85 into the car |
 | `BADGE_ART_SCALE` | `meshes/stairs.js` | 8 image px per art px (a 192 px badge canvas); nosings 0.006 proud of the riser |
 | `FP_HEAD_BOB_AMP`, `FP_TILT_MAX` | `library-game.js` | 3.5 px, 0.035 rad (bob and roll) |
 
@@ -360,6 +500,19 @@ offset by `UNIT_SCALE` and adds it to the camera. `forceComplete` jumps to
 `getActiveTransition` and `forceCompleteTransition` on
 `window.__libraryGameTestHooks` expose this to Playwright.
 
+**Elevator doors.** At the commit point an FP elevator ride also puts the
+player in the new floor's car (`elevatorRiderPose`: 0.85 back from the
+doorway, facing out), so the doors-open phase opens the doors in front of
+them; the stairs still land at the floor's entry point, as Top-Down's
+instant switch does for both. The ridden car alone gets the ride's
+`doorOpen` (`fpOptsFor` → `fpElevatorDoorOpen` in `library-game.js`); it is
+0 through doors-close and the rise, so the doors stay shut on approach and
+while waiting, as before. After the ride `fpHeldDoors` keeps them open while
+the player is in the car or its doorway (`isInElevatorCar`), then
+`stepHeldDoors` (`transitions.js`) closes them at the ride's door speed
+(0.6 s); leaving FP drops the hold. The `getElevatorDoorOpen()` test hook
+returns the `doorOpen` this floor's elevator mesh is built with.
+
 ## How to add a new object mesh
 
 Follow `docs/skills/2d-to-3d/SKILL.md` first: it decides whether the object
@@ -383,25 +536,300 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
    in range, bounds (base at y=0), and any colors that matter. Add a
    `scene.test.js` case if the mapping needs one.
 
+## Camera parity (Top-Down ↔ First Person)
+
+**Status: `Planned`.** The two cameras are two views of **one** game world.
+Today the game state is shared (`player.x/y`, `currentFloor`, `shiftState`,
+`ambient` all keep updating in either mode) but the First Person *scene*
+only receives a subset of it, so flipping to 3D loses people, props and
+information. This section is the requirement that closes that gap; each
+work item below removes a row from the audit table when it ships.
+
+### Requirements
+
+* **P1 — One inventory, two renderers.** Both cameras draw from the same
+  per-floor world inventory: a pure `worldInventory(floor, state)` returning
+  every station, person, prop, decor item and state flag Top-Down draws.
+  `render()`'s Top-Down branch and `drawFirstPersonView` both consume it;
+  neither builds its own list (today `drawFirstPersonView` hand-picks queue
+  slots and cart books, and `buildFirstPersonEntities` does the same).
+* **P2 — Nothing disappears on a flip.** Every inventory item has an FP
+  representation at the same `x`/`y`/floor, or is on the explicit
+  exemption list below. A node test fails when an inventory kind has
+  neither, so a new Top-Down object can't ship 2D-only by accident.
+* **P3 — Flipping is lossless.** Switching cameras never changes game
+  state: position, floor, shift clock, queues, carried book, open overlay,
+  staff positions and actions are identical before and after, in both
+  directions, any number of times. A ride/climb cut short by leaving FP
+  lands on whichever floor the transition had committed to.
+* **P4 — Same look, referenced to the 2D.** People are built from the design
+  their 2D renderer draws; props wear their 2D drawer's art or colours
+  (`docs/skills/2d-to-3d/SKILL.md`). State-dependent looks carry over: Boss's
+  Office locked/unlocked, Coffee Machine out of order, ghost patrons
+  translucent, Karen angry, Min-jun's current action.
+* **P5 — Same information.** What a Top-Down chip tells the player (station
+  names, staff names and help hints, patience bars, fine amounts, borrow
+  titles, "Check out!", "Karen!", recommend bubble, "+N waiting", messy
+  cart warning, OUT OF ORDER) is readable in FP — as world-anchored labels
+  projected with `projectPoint`, shown for the crosshair target and nearby
+  entities so the view doesn't drown in chips.
+* **P6 — Same interactions.** Everything clickable in Top-Down is
+  interactable in FP with the same result: stations, queue patrons, Return
+  Cart books, **and the helpful staff** (Shelver, Ji-ho, Min-jun), which
+  `buildFirstPersonEntities` doesn't list today.
+* **P7 — World effects live in the world.** Effects drawn at world
+  coordinates in Top-Down (hallucination shadow figures) are placed in the
+  3D scene in FP, not painted at their 2D canvas coordinates over the 3D
+  view. Screen-space HUD (bars, clock, daily chip, overlays) stays
+  screen-space in both.
+
+**Exempt (camera-specific by design):** Eun-mi herself (she is the FP
+camera; FP shows the crosshair instead), Top-Down's hover/target rings
+(FP's crosshair target highlight replaces them), FP's minimap, dust and
+vignette, and the Boss cutscene / minigame overlays (full-screen in both).
+
+### Audit (verified against the code, Nov 2026)
+
+| Top-Down draws | Where | In FP today |
+|---|---|---|
+| Every floor-plan station | `drawStation` | ✅ all present; bookshelf, coffee machine, elevator, stairs referenced to 2D |
+| Front Desk, Return Cart, Fines Counter, Reading Nook | `STATION_DETAIL_DRAWERS` | ✅ geometry meshes in `meshes/{front-desk,return-cart,fines-counter,reading-nook}.js` |
+| Boss's Office | `drawBossDoor` | ✅ wears `drawBossDoor`'s art on a small office (`meshes/boss-office.js`) |
+| Boss's Office locked state (grey + padlock) | `drawStation`, `drawBossLock` | ✅ `optsFor` passes `{locked}` to `buildBossOffice` and `FP_ART`'s stateKey repaints the art: grey tile + padlock badge, proud of the door |
+| Front Desk / Fines queue patrons, Karen | `drawFrontDeskSlots`, `drawFinesCounterSlots` | ✅ built from the same design; each faces its own desk |
+| Ghost patron (translucent, "???") | `drawFrontDeskSlots` | ✅ same shimmer alpha and drift via `placement.alpha`; "???" chip as a world label |
+| Ambient staff: Security, Janitor, Shelver, Ji-ho (1F); Volunteer, Min-jun, Storyteller, Archivist (2F) | `drawAmbient` | ✅ design objects in `LIBRARY_STAFF_DESIGNS`, wired through `worldInventory` → `drawFirstPersonView` → `buildCharacter`; each faces the way it walks |
+| Min-jun's look and current action (read, hum, wave, help, walking) | `drawMinjun` | ✅ his own mesh wearing `minjun.js`'s art (`meshes/minjun.js`, see "Min-jun's own mesh"): posed by `minjunPoseFor`, his face (blink, talking, humming) repainted from `minjunFace`. His speech bubbles and music notes are not drawn in FP |
+| Staff name chips and help hints ("click: shelve a return") | `drawAmbient` | ✅ world labels from `staffChips`; the crosshair target's chips also sit under the crosshair and in `#library-interact-hint` |
+| Staff help interactions | Top-Down click | ✅ helpful staff are FP interact targets; interact runs `askStaffForHelp` |
+| Return Cart books (genre colour, title, coin-hunt star) | `drawReturnCartBooks` | ✅ `meshes/book.js` on the cart's top tray, wearing `drawReturnCartCover`'s cover, star included; "+N more" as a world label |
+| Decor: water cooler, 2 plants (1F); ladder, waiting chairs, 2 plants (2F) | `LIBRARY_DECOR` / `drawDecor` | ✅ geometry meshes in `meshes/decor.js`, placed from the inventory's `decor` items |
+| Floor dressing: checker tiles, guide stripes, rugs, sunbeams; per-floor palette | `drawFloor` | ✅ per-floor checker, stripes and rugs from `floor-dressing.js` (sunbeams, tile sheen and grid lines ❌, see Known gaps) |
+| Back wall: sign, sakura branch, wall book shelf, wall clock | `drawFloor` | ✅ textured boxes cut into the back wall at Top-Down's x; the clock shows the live time |
+| Coffee Machine OUT OF ORDER | `drawCoffeeOutOfOrder` | ✅ tape, and the chip as a world label (`coffeeOutOfOrderChip`) |
+| Queue/station label chips, patience bars, "+N waiting", "+N more", messy cart, Boss's Office countdown | slot drawers, `drawStation` | ✅ world labels from the same functions (`labelForStation`, `queueSlotChips`, `queueOverflowChip`, `returnCartChips`) |
+| Hallucination shadow figures | `drawHallucinations` | ✅ dark camera-facing billboards (`meshes/shadow-figure.js`) at their world x/y, same fade/flicker alpha via `placement.alpha`; vignette, whispers, flicker and jump scare stay screen-space |
+| Elevator doors | `drawElevator` | ✅ the ridden car's doors open during the ride (the rider stands in it) and close behind them; shut otherwise. Top-Down draws them shut and switches floors instantly |
+| Where an elevator ride ends | `switchFloor` | ✅ both cameras land the rider in the new floor's car facing out (`switchFloor(floor, {viaElevator})` → `elevatorRiderPose`); the stairs and the HUD floor button land at the floor's entry point |
+| Game state across a flip (P3) | `setCameraMode` | ✅ unchanged, mid-ride included (lossless-flip e2e, step 2) |
+| Facing on entering FP | `setCameraMode` | ⚠️ reset toward the room centre on every flip (open question below) |
+
+### Work breakdown
+
+Ordered so each step is independently shippable; sizes are rough
+(S < ½ day, M ≈ 1 day, L = several).
+
+1. **~~Inventory + parity test (M)~~** ✅ — P1, P2. `world-inventory.js`
+   (`worldInventory(floor, state)`), both renderers and
+   `buildFirstPersonEntities` rewired to it, 14-test
+   `world-inventory.test.js` with `FP_TODO_KINDS` that shrink as steps ship.
+   `getWorldInventory()` exposed on `window.__libraryGameTestHooks`.
+2. ✅ **Lossless-flip e2e (S)** — P3. `e2e/library-game.spec.js`, "First
+   Person Mode › lossless camera flips (P3)": with the simulation frozen it
+   snapshots both floors' `getWorldInventory`, `getShiftState` (carried
+   book/fine included), position, floor, walk flag, queue/cart slots,
+   overlay, active transition, scheduled events and hallucinations, flips
+   with the real camera button three round trips, and asserts every
+   snapshot deep-equal. Cases: a busy 1st Floor (cart books, one carried,
+   borrows, a fine, a ghost patron), the 2nd Floor with that 1st Floor
+   still queued, and leaving FP mid-transition (elevator in doors-close,
+   rise and doors-open; stairs mid-climb). Facing is excluded on purpose
+   (open question below). **Pinned behaviour:** leaving FP cancels an
+   in-flight ride/climb outright (`setCameraMode` sets `fpTransition =
+   null`, no forced completion), so the player stays on the floor already
+   committed — the destination only once the elevator reached doors-open,
+   the start floor for any unfinished climb — and re-entering FP does not
+   resume it.
+3. **~~Ambient staff in FP (L)~~** ✅ — P2, P4. `LIBRARY_STAFF_DESIGNS` in
+   `library-people.js` (8 designs matching the 2D renderers' palettes),
+   `findStaffDesign(key)`, wired into `drawFirstPersonView` via the world
+   inventory. `staff-design.test.js` pins skin/hair/outfit colours to the
+   2D.
+4. ✅ **Character facing and state (S)** — P4. `placement.yaw` per
+   character: queue patrons `atan2` towards their desk, ambient staff take
+   the walker's own `a.facing` (set in `updateAmbient` from its step).
+   `placement.alpha` threads through `buildDrawList` and both paint paths,
+   so ghost patrons shimmer and drift as `drawFrontDeskSlots` paints them.
+   Character meshes were already memoised on design identity
+   (`meshes/character.js`'s `CACHE`).
+5. ✅ **Staff interactions in FP (S)** — P6. `buildFirstPersonEntities`
+   flags each `ambientStaff` entity `interactable: isHelpfulStaff(key)` (a
+   `STAFF_HELP_TEXT` entry, or Min-jun; the same test `staffAtPoint` uses),
+   and `findInteractTarget` skips `interactable: false` entities, so a
+   future set-dressing walker can't hide a station behind it. Interact
+   (Enter, the Interact button, a pointer-locked canvas click; Space only
+   jumps) on a
+   staff target calls
+   `askStaffForHelp(key)`, the function Top-Down's click-then-walk ends in,
+   so the rules (`staffHelpBlocker`/`staffHelp`/`askMinjunForHelp`) and
+   toasts are shared. Decision: where Top-Down walks Eun-mi over, FP needs
+   her within `DEFAULT_INTERACT_MAX_DISTANCE` (150 px), the gate stations
+   already use; the staff member doesn't stop and wait, since she's already
+   beside them. The crosshair shows the target's name as Top-Down's name
+   chip, with the `ambientHint` chip ("click: tidy up" / "busy Ns") under
+   it; `labelForFPTarget` puts `<name> — <hint>` in `#library-interact-hint`
+   (which is hidden in fullscreen, hence the canvas chips). The hint keeps
+   Top-Down's "click:" wording. Covered by `first-person.test.js` and two
+   e2e tests (Janitor +Mood then busy, out-of-range; Volunteer on 2F).
+6. ✅ **Remaining station meshes (L)** — P4. Front Desk, Return Cart,
+   Fines Counter, Boss's Office (locked/unlocked via `optsFor`), Reading
+   Nook: geometry-technique meshes in `meshes/` matching the 2D drawers'
+   colours; `scene.js` BUILDERS map wired; boss locked state via `optsFor`
+   callback.
+7. ✅ **Return Cart books (S)** — P4. `meshes/book.js`: book meshes in the
+   genre colour wearing Top-Down's cover (`drawReturnCartCover`, moved with
+   `drawCoverTitle` into `library/book-cover.js`) as art, Coin Hunt star
+   included, standing on the cart's top tray in slot order (up to five).
+   **Decision:** in Top-Down the covers are laid out in a row just below the
+   cart; in FP they stand *on* the cart, and the interaction anchors stay at
+   the Top-Down slot points (see Known gaps).
+8. ✅ **Decor meshes (M)** — P2, P4. `meshes/decor.js`: water cooler,
+   plant, ladder and waiting chairs as geometry in `drawDecor`'s own
+   colours (its drawers are 3/4 sprites, not plan views, so there is no
+   front texture to wear). `buildFirstPersonScene` takes a `decor` list
+   and memoises one shared mesh per kind. `meshes/decor.test.js` pins the
+   kinds Library places, their standing heights and those colours.
+9. ✅ **Room dressing per floor (M)** — P4. `library/floor-dressing.js`
+   holds `drawFloor`'s palettes, placements and wall painters for both
+   cameras; `buildRoom` takes the 40 px checker (`tileColor`), floor decals
+   (stripes as flat composited pieces, rugs textured) and back-wall art
+   (sign, sakura, wall shelf, live wall clock) as textured boxes; see The
+   room dressing. `room.test.js` and `floor-dressing.test.js` pin the
+   palette, decal and art placement, and FP's art to Top-Down's own
+   painter calls. Measured in headless Chromium at 6× CPU throttle,
+   facing the back wall from (480, 420): 1F 32.7 → 31 fps, 2F 24.7 →
+   22–25 fps (unthrottled both stay at the 60 fps cap), after adding
+   off-screen culling to `drawScene`.
+10. ✅ **World-anchored labels (M)** — P5. `three-d/labels.js`'s
+    `layoutLabels` projects each entity's label stack with `projectPoint`
+    and the frame's camera, fades, occludes, declutters and depth-sorts it;
+    `drawFpLabels` draws the chips with `drawLabelChip`. The text comes from
+    one shared function per entity that Top-Down's drawers now call too
+    (see "World-anchored labels"). `getFirstPersonLabels()` on
+    `window.__libraryGameTestHooks` exposes the laid-out model.
+11. ✅ **Hallucinations in 3D (S)** — P7. `three-d/shadow-figures.js`
+    turns the inventory's `hallucination-figure` items (still created, aged
+    and expired only by `updateHallucinations`) into placements of one
+    shared flat silhouette, `meshes/shadow-figure.js`'s `buildShadowFigure`:
+    `drawShadowFigure`'s head circle, sampled body curves and red eyes in
+    its own colours, 75 px tall at `UNIT_SCALE` (an adult is 73), all faces
+    `unlit` and unculled. `billboardYaw` turns its front to the camera each
+    frame; `shadowFigureAlpha` is the one fade × flicker formula both
+    cameras use, carried in `placement.alpha`, so the figures sort, occlude
+    and fog with the rest of the scene. `drawHallucinations` paints the 2D
+    figures only in Top-Down. Decision: the vignette, whispers, light
+    flicker and the jump scare's giant figure rising from the bottom edge
+    are screen-space effects (they aren't at a floor position) and stay as
+    they are in both cameras. Hooks: `spawnShadowFigureNow(x, y)`,
+    `getShadowFigures()` (`{figures, topDownDrawn, fpPlaced}`); tests:
+    `shadow-figures.test.js`, e2e "shadow figures stand in the First Person
+    scene…".
+12. ✅ **Elevator doors (S)** — `optsFor` passes the ride's `doorOpen`
+    (quantised to 1/16 by `elevatorDoorOpts`) to the ridden car only; the
+    rider lands in the car facing out; the doors retract behind the posts,
+    clipped to the doorway, and stay open until the player steps out.
+    `elevator.test.js` pins the door extents at 0, 0.5 and 1 and the call
+    panel staying clear; `scene.test.js` bounds the memo rebuilds over a
+    ride; Playwright steps a frozen ride through `getElevatorDoorOpen`.
+
+### Open questions
+
+* Facing on entering FP: keep "face the room centre" (today) or face the way
+  Eun-mi was last walking in Top-Down? The latter is more "same world";
+  the former always shows something useful.
+* ~~Label density in FP (P5)~~ **Resolved:** all labels within a world
+  distance cutoff, faded by distance, with the crosshair target at full
+  opacity on top. `LABEL_RANGE` 520 px (about half the room), opaque up to
+  `LABEL_FADE_START` 200 px and fading to `LABEL_MIN_ALPHA` 0.3 at the
+  cutoff; patience bars only within `BAR_RANGE` 300 px. The target ignores
+  the cutoff, the bar range and occlusion. "Crosshair target + within N px"
+  was rejected because station names are what you navigate by from across
+  the room.
+* Performance budget: ~8 more characters at up to 340 faces each on 1F —
+  set a frame-time target before step 3 and measure it.
+
+### World-anchored labels
+
+Each entity's chips come from **one content function that both cameras
+call**, so the two can't drift; Top-Down's drawers were refactored onto them
+with their canvas output unchanged (a seeded canvas call trace of a busy
+Top-Down frame matched the old one apart from time-driven bobbing).
+
+| Entity | Content function (`library-game.js`) | FP stack, top to bottom |
+|---|---|---|
+| Station | `labelForStation` (incl. Reading Nook cooldown, Boss's Office locked / closing-wait countdown) | name; above it `coffeeOutOfOrderChip` on the Coffee Machine and `returnCartChips` ("+N more", pulsing messy cart) on the Return Cart |
+| Front Desk / Fines patron, Karen, ghost | `queueSlotChips(slot)` → `{chip, sub, patience}` | chip ("Waiting", "Check out!", Korean title, "Karen!", "단골 ★"/"추천?", "???", "Ng"), the English title line, the patience bar (colour from `patienceColor`) |
+| Ambient staff | `staffChips(a)` (name, then `ambientHint`) | name, help hint |
+| A queue longer than it shows | `queueOverflowChip(kind)` | "+N waiting", at the line's end |
+
+Chip models are `{text, font, fill?, ink?, maxWidth?}`; `chipText` applies
+`truncateForChip` for `maxWidth` and `drawChip` draws one with
+`drawLabelChip`. In FP, `fpLabelStacks(inventory)` turns the world
+inventory into stacks, `layoutLabels` (pure, in `three-d/labels.js`) lays
+them out, and `drawFpLabels` paints them after the vignette and before the
+crosshair and minimap.
+
+`layoutLabels(stacks, {camera, viewport, measure, targetId, hud, occluders})`:
+
+* **Anchor:** a stack's bottom edge sits `ANCHOR_GAP` (8 px) above its
+  entity's top, read from the very mesh FP draws: `stationTop(kind)` (mesh
+  bounds × `UNIT_SCALE`, 40 for a plain box) or `characterAnchorHeight(mesh)`
+  (the character mesh's crown, so a kid's label is lower). It is projected
+  with `projectPoint` and the camera `drawScene` used that frame; behind
+  the camera, or with any part of the stack off-screen, it is skipped.
+* **Range and fade:** see the resolved open question above.
+* **Occlusion:** a label whose sight line passes through another station's
+  box below that station's top (`isOccluded`, a floor-plane slab test plus
+  the line's height) is hidden, as its entity is.
+* **HUD:** a stack overlapping one of `fpHudRects` (top-left gauges,
+  minimap, crosshair and its tooltip, bottom-centre hint) first moves up
+  clear of it; if that pushes it off-screen or into another HUD rect, it is
+  dropped.
+* **Declutter and order:** the target, then nearer stacks first, keep their
+  place; a stack overlapping one already kept (2 px pad) is dropped. The
+  survivors draw far to near, the target last.
+
 ## Known gaps
 
-* `buildElevator` accepts `{doorOpen}` and `transitionCamera` returns
-  `doorOpen`, but `buildFirstPersonScene` does not pass it, so only the
-  camera animates during the ride. Wiring it needs `doorOpen` in the
-  scene's mesh memo key, and a decision on what the doors do: today they
-  slide in front of the frame, so fully open they cover the call panel.
-* The front desk, return cart, fines counter, boss office and reading nook
-  are still plain station boxes; every other prop is referenced to its 2D.
+* Entering FP mid-walk stops the Top-Down click-to-move (`setCameraMode`
+  clears `moveTarget` on purpose) but leaves the walk's queued
+  `pendingFrontDeskAction` / `pendingCartPickupId` set, so it fires on the
+  next arrival at that station instead of being dropped with the walk
+  (re-clicking a plain station mid-walk in Top-Down leaves it set the same
+  way). The lossless-flip e2e runs frozen with no walk in flight, so it
+  doesn't cover this.
+* The crosshair's pitch test uses each entity's *top* (`stationTop`,
+  `PERSON_TOP`) and the fixed `BASE_EYE`, not its real silhouette or a
+  jump's raised eye, so it is a slab test: looking at the gap above a short
+  patron's head still counts as on them within the 9° slack.
+* The elevator doors only open on arrival: doors-close keeps them shut
+  (they are already shut on approach), so the departure has no closing
+  animation.
+* Return Cart books stand on the cart's top tray in FP, but their FP
+  interaction entities (`buildFirstPersonEntities`) are still anchored at the
+  Top-Down slot points, about 2 units in front of the cart. Aiming at the cart
+  from a step or two away targets a book, as before; from right against the
+  cart the crosshair names the cart itself (both pick up a book).
 * The stairs climb (`transitions.js`, `STAIRS_STEPS` 10) is longer than the
   8-step mesh, so the camera overshoots the top by about 0.56 units; the
   2nd-Floor stairs also climb *up* on screen to go down.
 * FP props have no plum station outline (Top-Down's `drawStation` strokes it,
-  not the drawers), and the OUT OF ORDER label chip is Top-Down only (FP shows
-  the tape).
+  not the drawers).
+* World labels are hidden only by *stations* (`stationOccluder` boxes):
+  a person or decor prop between the camera and a label does not hide it,
+  and labels always paint over the 3D frame (no z-buffer). Labels are a
+  fixed screen size at every distance; the alpha fade is the only depth cue.
+  A label partly off-screen is skipped rather than clamped to the edge.
+* Top-Down's non-chip queue art has no FP counterpart: the recommend
+  speech bubble (its "추천?"/"단골 ★" chip carries the same information),
+  the genre swatch beside a borrower's head and the fines star.
 * `ELEVATOR_COLORS.tile` is a copy of both games' `STATION_COLORS.elevator`,
   held equal by a source-text test rather than imported.
-* In FP only the Front Desk / Fines Counter queues (1st Floor) and Return
-  Cart books are drawn as characters/props, as before.
+* The FP floor has no sunbeams, tile sheen or faint grid lines (they are
+  lighting/gloss effects painted in plan space), and Top-Down's back-wall
+  band covers the floor's first 58 px where FP has floor up to the wall.
+  The side and front walls take `BACK_WALL`'s colours by choice (Top-Down
+  never shows them).
 * The visual constants above are plausible but untuned; the character
   proportions are the exception — they are measured off the 2D art.
 * The face budget (`character.test.js`, ceiling 340) now has less headroom:
@@ -409,6 +837,17 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
   gained three y bands per side and each eye gained a pupil and an
   unconditional lash line. The ceiling still guards runaway growth, but a
   future design stacking headwear would reach it sooner.
+* Min-jun (see "Min-jun's own mesh"): his projected art is exact head-on and
+  stretches across the faces at the edge of the front, so from the side his
+  eye and cheek smear over the side of his head. Anything the 2D draws
+  outside his body's silhouette has no face to land on: the cowlick (ahoge),
+  the pencil behind his ear, his speech bubbles and his music notes. His
+  shirt sleeves are lit, so they read grey beside the drawing's white. He
+  has no walk cycle (the `walk` pose is his hand-in-pocket arm on still
+  legs), his head doesn't bop while humming or dip while reading, and the
+  drawing is painted at rest (no breathing, swinging lanyard or tote). At
+  interact range the textured triangles' seams can show as faint hairlines
+  across his face (the renderer's affine cells; see Limitations).
 * Nothing tests the head's attachments against the head's own silhouette:
   ears, hats, earrings and headphones are placed off `headRX`/`headRZ` by
   convention only, so one of them could be decoupled from the skull and the
@@ -426,11 +865,19 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
   to span more than one `TILE`, and `scene.test.js` samples a grid of screen
   points from five poses inside the room and requires the shell to paint
   every one of them.
+* `labels.test.js` pins the anchor heights to the meshes, the fade curve,
+  culling (behind, out of range, off-screen), the bar range, occlusion,
+  HUD avoidance and the declutter's priority and draw order. Playwright's
+  "First Person shows world-anchored labels" checks, facing the Front Desk
+  with a queued patron, that `getFirstPersonLabels()` holds the Front Desk
+  label and the patron's chip (with its patience bar) on screen.
 * Playwright (`e2e/library-game.spec.js`): First Person tests for the
   Stairs and Elevator check that interacting starts an animated transition
   (via `getActiveTransition`) and that completing it (via
   `forceCompleteTransition`, so specs don't wait out the animation) switches
-  floors. One pixel-level test covers the per-frame clear: with the
+  floors; a frozen, stepped elevator ride checks `getElevatorDoorOpen()` is 0
+  on approach and through the rise, 0.5 mid doors-open with the player in
+  the car facing out, held at 1 while they stay, and 0 after they step out. One pixel-level test covers the per-frame clear: with the
   simulation frozen (`freeze(true)`), the loop keeps rendering the same
   scene, so sampled canvas pixels must be identical ~35 frames later. Before
   the clear they darkened frame by frame.
@@ -440,7 +887,9 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
   `unlit` set above; `character.test.js` covers the proportions it cannot.
 * Props referenced to 2D: `bookshelf.test.js`, `coffee-machine.test.js` and
   `elevator.test.js` pin each textured front to its exact layout region
-  (the elevator's doors at `doorOpen` 0 and 1), the art's aspect, no
+  (the elevator's doors at `doorOpen` 0, 0.5 and 1, clipped to the doorway
+  and clear of the call panel at every 1/16 step, and seen from inside the
+  car), the art's aspect, no
   untextured face coplanar with a textured front, and culling from in front
   and behind; `stairs.test.js` pins the step ramp to `stairStepColor`, the
   foot facing +Z, the rail and badge, and culling; `transitions.test.js`
@@ -450,3 +899,20 @@ gets the 2D art as a texture (flat-fronted props) or measured geometry
   `coffeeMachineLayout` and `elevatorLayout` to the Top-Down geometry.
   When changing a drawer a mesh wears, diff its canvas call trace before and
   after (the skill's step 2): Top-Down must stay byte-identical.
+* Min-jun: `minjun.test.js` pins his eye height to `BASE_EYE`, his height
+  and head count against the patron frame, the head and torso silhouettes to
+  the 2D's, `minjunPoseFor` and `minjunFace` (blink, quantised mouth, humming,
+  walking), the memo, that poses move only his free arm, the face budget
+  (under 500), `buildHand` (palm, four fingers, thumb) and that every pose
+  shows both hands (the pocket and thumb when walking), the `unlit` material rule, the flat fallback, that only faces
+  turned toward the viewer wear art (sampling inside their canvas, never on
+  his back), the straight-on projection, `characterMesh`'s dispatch, and that
+  each `paint*Art` lays a full opaque backing before drawing.
+  `geom.test.js` pins `tube`'s winding and rings, `loft` and `projectFront`.
+  Playwright's "First Person Min-jun takes his pose and face from Top-Down"
+  sets each action through `setMinjunAction` (with `freezeStaff`) and checks
+  `getFpMinjun()`'s pose, the humming face key, that his frozen face isn't
+  repainted, and his world label. The `minjun.js` refactor (exported
+  painters, the spines split out of `drawBookArm`, `face.blink`) was checked
+  with a call-trace diff of `drawMinjun` before and after: 50 cases, every
+  action, walking and standing, five times; 0 differ.

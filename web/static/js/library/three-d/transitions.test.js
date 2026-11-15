@@ -5,6 +5,7 @@ import {
   updateTransition,
   transitionCamera,
   forceComplete,
+  stepHeldDoors,
   ELEVATOR_DURATIONS,
   STAIRS_DURATION,
   STAIRS_STEPS,
@@ -182,4 +183,17 @@ test('the climb from the e2e spot goes up the stairs mesh, never through a tread
     if (under.length) onStairs++;
   }
   assert.ok(onStairs > 50, 'the camera passes over the treads');
+});
+
+test('held doors stay open while the rider is inside, then close at the ride\'s door speed', () => {
+  assert.equal(stepHeldDoors(1, true, 5), 1, 'inside: stays fully open');
+  const close = ELEVATOR_DURATIONS[2];
+  let open = 1;
+  let t = 0;
+  while (open > 0) { open = stepHeldDoors(open, false, 0.01); t += 0.01; }
+  assert.ok(Math.abs(t - close) < 0.02, `closed in ${t}s`);
+  assert.ok(Math.abs(stepHeldDoors(1, false, close / 2) - 0.5) < 1e-9);
+  assert.ok(Math.abs(stepHeldDoors(0.5, true, close / 4) - 0.75) < 1e-9, 'stepping back in reopens them');
+  assert.equal(stepHeldDoors(0, false, 1), 0);
+  assert.equal(stepHeldDoors(0.5, false, -1), 0.5, 'a negative dt does nothing');
 });

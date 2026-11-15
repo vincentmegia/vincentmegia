@@ -49,7 +49,7 @@ import {
 } from './hospital/anime-ui.js';
 import { drawStairs, drawElevator, drawDecor } from './hospital/anime-furniture.js';
 import {
-  drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawReadingNook,
+  drawBookcase, drawFrontDesk, drawReturnCart, drawFinesRoom, drawBossDoor, drawBossLock, drawReadingNook,
   drawCoffeeMachine, drawOutOfOrderTape, COFFEE_MACHINE_COLORS,
 } from './library/anime-furniture.js';
 import { drawMinjun } from './library/minjun.js';
@@ -64,7 +64,7 @@ import { drawStoryteller } from './library/storyteller.js';
 import { drawArchivist } from './library/archivist.js';
 import { drawKaren } from './library/karen.js';
 import { drawPatron } from './library/patron.js';
-import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN } from './library/library-people.js';
+import { findLibraryDesign, LIBRARY_PATRON_DESIGN_KEYS, KAREN_DESIGN, findStaffDesign } from './library/library-people.js';
 import { pickMinjunAction, MINJUN_ACTION_SECONDS } from './library/minjun-actions.js';
 import { drawKimonoHimura } from './hospital/kimono-himura.js';
 import {
@@ -201,6 +201,7 @@ import {
 } from './library/floor-plan.js';
 import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
+import { drawCoverTitle, drawReturnCartCover } from './library/book-cover.js';
 import { blurbForTitle, REVIEW_QUOTES } from './library/book-blurbs.js';
 import {
   normalizeAngle,
@@ -208,22 +209,35 @@ import {
   projectScene,
   findInteractTarget,
   turnFacing,
-  stepForward,
-  stepStrafe,
+  moveStep,
+  stepPitch,
+  clampPitch,
+  easeSprintBlend,
   MOVE_SPEED_PIXELS_PER_SECOND,
   createJumpState,
   updateJump,
   startJump,
   DEFAULT_FOV_DEGREES,
 } from './library/first-person.js';
-import { buildFirstPersonScene, UNIT_SCALE } from './library/three-d/scene.js';
+import { buildFirstPersonScene, characterMesh, UNIT_SCALE, BASE_EYE } from './library/three-d/scene.js';
+import { minjunPoseFor, minjunFace, MINJUN_ART_SIZE, paintMinjunBodyArt, paintMinjunHeadArt, paintMinjunPropsArt } from './library/three-d/meshes/minjun.js';
+import { shadowFigureAlpha, shadowFigurePlacements } from './library/three-d/shadow-figures.js';
+import { worldInventory } from './library/world-inventory.js';
+import {
+  FLOOR_TILE as TILE, WALL_BAND_HEIGHT, FLOOR_TILES, GUIDE_STRIPES, LIBRARY_SIGNS, floorRug,
+  drawGuideStripe, drawStitchedRug, drawBackWall, drawWallSakura, drawWallBookShelf, drawLibrarySign, drawWallClock,
+  roomArtRect, paintRoomArt, ROOM_ART_SCALE,
+} from './library/floor-dressing.js';
 import { paintBookshelfArt, BOOKSHELF_ART, ART_SCALE } from './library/three-d/meshes/bookshelf.js';
 import { paintCoffeeMachineArt, COFFEE_MACHINE_ART, ART_SCALE as COFFEE_ART_SCALE } from './library/three-d/meshes/coffee-machine.js';
-import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE } from './library/three-d/meshes/elevator.js';
+import { paintBossOfficeArt, BOSS_OFFICE_ART, BOSS_OFFICE_ART_SCALE } from './library/three-d/meshes/boss-office.js';
+import { paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, elevatorDoorOpts, elevatorRiderPose, isInElevatorCar } from './library/three-d/meshes/elevator.js';
 import { paintStairsBadgeArt, STAIRS_BADGE_ART, BADGE_ART_SCALE } from './library/three-d/meshes/stairs.js';
 import { drawScene } from './library/three-d/core.js';
-import { buildStationBox } from './library/three-d/meshes/station-box.js';
-import { createTransition, updateTransition, transitionCamera, forceComplete } from './library/three-d/transitions.js';
+import { paintReturnCartBookArt, BOOK_ART, BOOK_ART_SCALE } from './library/three-d/meshes/book.js';
+import { buildCharacter } from './library/three-d/meshes/character.js';
+import { layoutLabels, characterAnchorHeight, meshTop, stationAnchorHeight, stationOccluder, stationTop, PERSON_TOP } from './library/three-d/labels.js';
+import { createTransition, updateTransition, transitionCamera, forceComplete, stepHeldDoors } from './library/three-d/transitions.js';
 
 // ---------------------------------------------------------------------------
 // localStorage progress (doc's Data Model: "in-progress shift state, Gard,
@@ -350,6 +364,20 @@ const LABEL_TEXT_COLOR = ANIME.ink;
 /** A name/label chip — Hospital Shift's anime nameplate (hospital/anime-ui.js's animeChip). */
 function drawLabelChip(ctx, x, y, text, font, fill = null, ink = LABEL_TEXT_COLOR) {
   animeChip(ctx, x, y, text, font, fill, ink);
+}
+
+/**
+ * A chip model `{text, font, fill?, ink?, maxWidth?}` — what the shared label
+ * functions (labelForStation, queueSlotChips, staffChips, …) return so
+ * Top-Down and First Person draw the same text (camera parity P5).
+ * `maxWidth` truncates the text to fit, as the front-desk slots need.
+ */
+function chipText(ctx, chip) {
+  return chip.maxWidth ? truncateForChip(ctx, chip.text, chip.maxWidth, chip.font) : chip.text;
+}
+
+function drawChip(ctx, chip, x, y) {
+  drawLabelChip(ctx, x, y, chipText(ctx, chip), chip.font, chip.fill ?? null, chip.ink ?? LABEL_TEXT_COLOR);
 }
 
 /** Truncates `text` (adding "…") to fit within `maxWidth` at `font`, measured via the same canvas context text will render in — used wherever a label chip's width must stay bounded (e.g. front-desk slots sitting only SLOT_PITCH apart) rather than auto-sizing to a title of arbitrary length. */
@@ -519,79 +547,6 @@ const SCENE_X = [120, 840];
 const SCENE_Y = [205, 445];
 
 /** Scatters `count` points inside the scene bounds with a minimum separation, retrying on overlap (bounded attempts, falls back to whatever fits). */
-/**
- * Greedy word-wraps `title` into at most `maxLines` lines no wider than
- * `maxWidth`, stepping the font size down from `maxFont` to `minFont`
- * until it fits. Returns the font size + lines; if even `minFont` can't
- * fit, returns that size's best effort (callers clip to the book's rect).
- */
-function fitTitleLines(ctx, title, maxWidth, maxLines, maxFont, minFont, bold = true) {
-  const words = title.split(' ');
-  let best = null;
-  for (let size = maxFont; size >= minFont; size -= 0.5) {
-    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
-    const lines = [];
-    let fits = true;
-    for (const word of words) {
-      if (ctx.measureText(word).width > maxWidth) fits = false;
-      const candidate = lines.length ? `${lines[lines.length - 1]} ${word}` : word;
-      if (lines.length && ctx.measureText(candidate).width <= maxWidth) lines[lines.length - 1] = candidate;
-      else lines.push(word);
-    }
-    if (lines.length > maxLines) fits = false;
-    best = { size, lines: lines.slice(0, maxLines) };
-    if (fits) return best;
-  }
-  return best;
-}
-
-/** Cream text on dark covers, dark text on light ones. */
-function titleInkFor(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
-  return lum > 170 ? '#3a2a2a' : '#fdf8ee';
-}
-
-/**
- * Draws a book's full title centered on its front cover, wrapped and
- * shrunk to fit, clipped to the cover rect so it can never bleed into a
- * neighboring book (v1.4's original overflow bug).
- */
-/**
- * A book's title on its cover: the Korean title large, its English
- * translation smaller underneath (library/book-titles.js); a title without
- * a translation fills the cover on its own.
- */
-function drawCoverTitle(ctx, title, x, y, w, h, coverColor, opts = {}) {
-  const pad = opts.pad ?? 2;
-  const maxFont = opts.maxFont ?? 8;
-  const minFont = opts.minFont ?? 5;
-  const { ko, en } = splitTitle(title);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  ctx.fillStyle = titleInkFor(coverColor);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const block = (text, top, height, bold, maxLines, hi, lo) => {
-    const { size, lines } = fitTitleLines(ctx, text, w - pad * 2, maxLines, hi, lo, bold);
-    ctx.font = `${bold ? 'bold ' : ''}${size}px sans-serif`;
-    const lineH = size * 1.15;
-    const first = top + height / 2 - ((lines.length - 1) * lineH) / 2;
-    lines.forEach((line, i) => ctx.fillText(line, x + w / 2, first + i * lineH));
-  };
-  if (en) {
-    const split = h * 0.56;
-    block(ko, y, split, true, 2, maxFont, minFont);
-    ctx.globalAlpha = 0.85;
-    block(en, y + split - 1, h - split, false, 2, Math.max(4, maxFont * 0.72), 4);
-  } else {
-    block(ko, y, h, true, opts.maxLines ?? 4, maxFont, minFont);
-  }
-  ctx.restore();
-}
-
 function scatterPoints(count, random, minDist = 70) {
   const points = [];
   for (let i = 0; i < count; i++) {
@@ -645,7 +600,7 @@ export function init(canvas, elements) {
     const minjunOff = Boolean(daily?.twist.effect.noMinjun);
     ambient = AMBIENT_STAFF.filter((def) => !(minjunOff && def.key === 'minjun')).map((def, i) => {
       const [x, y] = def.waypoints[i % def.waypoints.length];
-      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null, dir: 1, phase: i * 1.3 };
+      return { ...def, x, y, target: (i + 1) % def.waypoints.length, pause: random() * 2, action: null, actionT: 0, lastAction: null, dir: 1, facing: 0, phase: i * 1.3 };
     });
   }
 
@@ -686,6 +641,7 @@ export function init(canvas, elements) {
         a.x += (dx / dist) * step;
         if (Math.abs(dx) > 0.5) a.dir = dx > 0 ? 1 : -1;
         a.y += (dy / dist) * step;
+        a.facing = Math.atan2(dx, dy);
       }
     }
   }
@@ -728,10 +684,23 @@ export function init(canvas, elements) {
     return blocker === null ? `click: ${text.verb}` : null;
   }
 
+  /** Whether a staff member can be asked for help (clicked in Top-Down, interacted with in First Person). */
+  function isHelpfulStaff(key) {
+    return key === 'minjun' || Boolean(STAFF_HELP_TEXT[key]);
+  }
+
+  /** A staff member's chips, top to bottom: their name, then the help hint if any (both cameras draw these). */
+  function staffChips(a) {
+    const chips = [{ text: a.name, font: '9px sans-serif' }];
+    const hint = ambientHint(a);
+    if (hint) chips.push(hint.startsWith('busy') ? { text: hint, font: 'bold 8px sans-serif' } : { text: hint, font: 'bold 8px sans-serif', fill: '#2f9a78', ink: '#ffffff' });
+    return chips;
+  }
+
   /** The staff member on the current floor whose drawn figure (x, y) is on, if any. */
   function staffAtPoint(x, y) {
     for (const a of ambient) {
-      if (a.floor !== currentFloor || (a.key !== 'minjun' && !STAFF_HELP_TEXT[a.key])) continue;
+      if (a.floor !== currentFloor || !isHelpfulStaff(a.key)) continue;
       const k = a.scale ?? LIBRARY_PERSON_SCALE;
       // Min-jun's renderer units (tote and books included) vs. the anime people's.
       const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k]
@@ -798,9 +767,9 @@ export function init(canvas, elements) {
       applyWalk(ctx, a.key, t, a.dir, walking);
       drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT, t });
       ctx.restore();
-      drawLabelChip(ctx, a.x, a.y + 20, a.name, '9px sans-serif');
-      const hint = ambientHint(a);
-      if (hint) drawLabelChip(ctx, a.x, a.y + 34, hint, 'bold 8px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
+      const [nameChip, hintChip] = staffChips(a);
+      drawChip(ctx, nameChip, a.x, a.y + 20);
+      if (hintChip) drawChip(ctx, hintChip, a.x, a.y + 34);
     }
   }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -820,16 +789,20 @@ export function init(canvas, elements) {
   // "sensible facing angle" — see `switchFloor`) doesn't need special-casing.
   let cameraMode = 'top-down'; // 'top-down' | 'first-person'
   let playerFacing = 0;
-  const heldFP = { turnLeft: false, turnRight: false, forward: false, back: false, strafeLeft: false, strafeRight: false, sprint: false };
+  const heldFP = { turnLeft: false, turnRight: false, lookUp: false, lookDown: false, forward: false, back: false, strafeLeft: false, strafeRight: false, sprint: false };
   let fpJump = createJumpState();
-  let fpHeadBobT = 0;
-  let fpTiltAngle = 0;
-  const FP_HEAD_BOB_FREQ = 8;
-  const FP_HEAD_BOB_AMP = 3.5;
+  // The view only moves when the player turns, looks up/down or jumps:
+  // walking and strafing keep the horizon level and the eye height fixed.
+  let fpPitch = 0;
+  let fpSprintBlend = 0; // 0..1, eased so the sprint FOV widens smoothly
+  // The controls card shown on entering First Person (and while H is toggled
+  // on), counted down in simulation time.
+  const FP_HELP_SECONDS = 6;
+  let fpHelpSeconds = 0;
+  let fpHelpPinned = false;
+  let renderedFrames = 0;
   const FP_SPRINT_MULTIPLIER = 1.6;
   const FP_STRAFE_SPEED = 160;
-  const FP_TILT_MAX = 0.035;
-  const FP_TILT_EASE = 8;
   const FP_SPRINT_FOV_EXTRA = 8;
   const FP_MOUSE_SENSITIVITY = 0.003;
   let fpPointerLocked = false;
@@ -851,6 +824,9 @@ export function init(canvas, elements) {
   // movement/turn/strafe/jump input is ignored and the camera is driven by
   // transitions.js; cleared when the transition reaches 'done' or FP is left.
   let fpTransition = null;
+  // The elevator a FP ride just arrived in, {id, open}: its doors stay open
+  // while the player is still in the car, then close (stepHeldDoors).
+  let fpHeldDoors = null;
   const FP_DUST_COUNT = 24;
   let fpDust = [];
   function initFpDust() {
@@ -991,6 +967,11 @@ export function init(canvas, elements) {
     if (target.entityKind === 'frontDeskSlot') return labelForStation(stations.find((s) => s.kind === 'front-desk'));
     if (target.entityKind === 'finesSlot') return labelForStation(stations.find((s) => s.kind === 'fines-counter'));
     if (target.entityKind === 'returnCartBook') return labelForStation(stations.find((s) => s.kind === 'return-cart'));
+    if (target.entityKind === 'ambientStaff') {
+      // Top-Down's name chip and the help/busy line under it (`ambientHint`).
+      const hint = ambientHint(target.ref);
+      return hint ? `${target.ref.name} — ${hint}` : target.ref.name;
+    }
     return '';
   }
 
@@ -1135,18 +1116,28 @@ export function init(canvas, elements) {
     }
   }
 
-  function switchFloor(floor) {
+  function switchFloor(floor, { viaElevator = false } = {}) {
     currentFloor = floor;
-    const entry = entryPointForFloor(floor);
-    player.x = entry.x;
-    player.y = entry.y;
     moveTarget = null;
     hoverStation = null;
-    // "Picking a sensible default facing angle... is fine" (doc's Scope) —
-    // face the new floor's room center rather than keeping whatever facing
-    // happened to be current, same reasoning as `setCameraMode`'s own
-    // default below. Harmless in Top-Down mode, which never reads facing.
-    playerFacing = defaultFacingTowardCenter(entry.x, entry.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // An elevator rider steps out of the new floor's car, facing out, in either
+    // camera, so the two views agree on where the ride ends.
+    const car = viaElevator ? stations.find((s) => s.kind === 'elevator' && s.floor === floor) : null;
+    if (car) {
+      const pose = elevatorRiderPose(car, UNIT_SCALE);
+      player.x = pose.x;
+      player.y = pose.y;
+      playerFacing = pose.facing;
+    } else {
+      const entry = entryPointForFloor(floor);
+      player.x = entry.x;
+      player.y = entry.y;
+      // "Picking a sensible default facing angle... is fine" (doc's Scope) —
+      // face the new floor's room center rather than keeping whatever facing
+      // happened to be current, same reasoning as `setCameraMode`'s own
+      // default below. Harmless in Top-Down mode, which never reads facing.
+      playerFacing = defaultFacingTowardCenter(entry.x, entry.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
     updateFloorButton();
   }
 
@@ -1164,21 +1155,21 @@ export function init(canvas, elements) {
     cameraMode = mode;
     if (mode === 'first-person') {
       playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
+      fpPitch = 0;
+      fpSprintBlend = 0;
+      fpHelpSeconds = FP_HELP_SECONDS;
       hoverStation = null;
       moveTarget = null; // stop any in-flight Top-Down walk — First Person has its own movement
     } else {
-      heldFP.turnLeft = false;
-      heldFP.turnRight = false;
-      heldFP.forward = false;
-      heldFP.back = false;
-      heldFP.strafeLeft = false;
-      heldFP.strafeRight = false;
-      heldFP.sprint = false;
+      for (const k of Object.keys(heldFP)) heldFP[k] = false;
       fpJump = createJumpState();
-      fpHeadBobT = 0;
-      fpTiltAngle = 0;
+      fpPitch = 0;
+      fpSprintBlend = 0;
+      fpHelpSeconds = 0;
+      fpHelpPinned = false;
       fpInteractFlash = 0;
       fpTransition = null; // cancel any in-flight ride/climb and clear the input block
+      fpHeldDoors = null;
       fpScene = { projected: [], interactTarget: null };
       if (fpPointerLocked) document.exitPointerLock?.();
     }
@@ -1200,20 +1191,30 @@ export function init(canvas, elements) {
 
   /** Builds this frame's First Person entity list: every station on the current floor, plus (1st Floor only, mirroring `drawFrontDeskSlots`/`drawReturnCartBooks`'s own floor gate) every front-desk patron slot and Return Cart book — the doc's "every station... and every visible patron on the current floor." */
   function buildFirstPersonEntities() {
+    const inv = getWorldInventory();
     const entities = [];
-    for (const station of stationsOnFloor(stations, currentFloor)) {
-      entities.push({ id: station.id, x: station.x, y: station.y, entityKind: 'station', ref: station });
-    }
-    if (currentFloor === FLOOR_1) {
-      frontDeskSlots().forEach((slot, i) => {
-        entities.push({ id: `fd-${slot.id}`, x: slot.x, y: slot.y, entityKind: 'frontDeskSlot', ref: slot, slotIndex: i });
-      });
-      finesCounterSlots().forEach((slot, i) => {
-        entities.push({ id: `fc-${slot.id}`, x: slot.x, y: slot.y, entityKind: 'finesSlot', ref: slot, slotIndex: i });
-      });
-      returnCartSlots().forEach((book) => {
-        entities.push({ id: `cart-${book.id}`, x: book.x, y: book.y, entityKind: 'returnCartBook', ref: book });
-      });
+    for (const item of inv) {
+      switch (item.kind) {
+        // `height` (world px, the top of what FP draws) lets the crosshair's
+        // pitch test whether it is still on the entity.
+        case 'station':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'station', ref: item.ref, height: stationTop(item.ref.kind) });
+          break;
+        case 'front-desk-patron':
+        case 'karen':
+        case 'ghost-patron':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'frontDeskSlot', ref: item.ref, slotIndex: item.slotIndex, height: PERSON_TOP });
+          break;
+        case 'fines-patron':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'finesSlot', ref: item.ref, slotIndex: item.slotIndex, height: PERSON_TOP });
+          break;
+        case 'return-cart-book':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'returnCartBook', ref: item.ref, height: stationTop('return-cart') });
+          break;
+        case 'ambient-staff':
+          entities.push({ id: item.id, x: item.x, y: item.y, entityKind: 'ambientStaff', ref: item.ref, staffKey: item.staffKey, interactable: isHelpfulStaff(item.staffKey), height: item.staffKey === 'minjun' ? meshTop(characterMesh({ design: findStaffDesign('minjun') })) * UNIT_SCALE : PERSON_TOP });
+          break;
+      }
     }
     return entities;
   }
@@ -1224,22 +1225,29 @@ export function init(canvas, elements) {
       fpScene = { projected: [], interactTarget: null };
       return;
     }
-    const fov = DEFAULT_FOV_DEGREES + (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight) ? FP_SPRINT_FOV_EXTRA : 0);
+    const fov = DEFAULT_FOV_DEGREES + fpSprintBlend * FP_SPRINT_FOV_EXTRA;
     const projected = projectScene(
       { x: player.x, y: player.y, facing: playerFacing },
       buildFirstPersonEntities(),
       { canvasWidth: CANVAS_WIDTH, fovDegrees: fov },
     );
-    fpScene = { projected, interactTarget: findInteractTarget(projected), fov };
+    fpScene = { projected, interactTarget: findInteractTarget(projected, { pitch: fpPitch, eyeHeight: BASE_EYE }), fov };
   }
 
   function updateFirstPersonMovement(deltaSeconds) {
     if (cameraMode !== 'first-person') return;
+    if (fpHelpSeconds > 0) fpHelpSeconds = Math.max(0, fpHelpSeconds - deltaSeconds);
+    const sprinting = !fpTransition && heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
+    fpSprintBlend = easeSprintBlend(fpSprintBlend, sprinting, deltaSeconds);
     if (fpTransition) return; // input is frozen while an elevator/stair transition plays
     let turnDirection = 0;
     if (heldFP.turnLeft) turnDirection -= 1;
     if (heldFP.turnRight) turnDirection += 1;
     if (turnDirection !== 0) playerFacing = turnFacing(playerFacing, turnDirection, deltaSeconds);
+    let lookDirection = 0;
+    if (heldFP.lookUp) lookDirection += 1;
+    if (heldFP.lookDown) lookDirection -= 1;
+    if (lookDirection !== 0) fpPitch = stepPitch(fpPitch, lookDirection, deltaSeconds);
 
     const sanityMultiplier = walkSpeedMultiplierForSanity(shiftState ? shiftState.sanity : SANITY_MAX);
     const sprintMultiplier = heldFP.sprint ? FP_SPRINT_MULTIPLIER : 1;
@@ -1247,37 +1255,16 @@ export function init(canvas, elements) {
     let moveDirection = 0;
     if (heldFP.forward) moveDirection += 1;
     if (heldFP.back) moveDirection -= 1;
-    if (moveDirection !== 0) {
-      const distance = MOVE_SPEED_PIXELS_PER_SECOND * sanityMultiplier * sprintMultiplier * deltaSeconds;
-      const next = stepForward(player.x, player.y, playerFacing, moveDirection, distance);
-      const clamped = clampToCanvas(next.x, next.y);
-      player.x = clamped.x;
-      player.y = clamped.y;
-    }
-
     let strafeDir = 0;
     if (heldFP.strafeLeft) strafeDir -= 1;
     if (heldFP.strafeRight) strafeDir += 1;
-    if (strafeDir !== 0) {
-      const distance = FP_STRAFE_SPEED * sanityMultiplier * sprintMultiplier * deltaSeconds;
-      const next = stepStrafe(player.x, player.y, playerFacing, strafeDir, distance);
-      const clamped = clampToCanvas(next.x, next.y);
+    if (moveDirection !== 0 || strafeDir !== 0) {
+      const speed = sanityMultiplier * sprintMultiplier * deltaSeconds;
+      const { dx, dy } = moveStep(moveDirection, strafeDir, playerFacing, MOVE_SPEED_PIXELS_PER_SECOND * speed, FP_STRAFE_SPEED * speed);
+      const clamped = clampToCanvas(player.x + dx, player.y + dy);
       player.x = clamped.x;
       player.y = clamped.y;
     }
-
-    const isMoving = moveDirection !== 0 || strafeDir !== 0;
-    if (isMoving) {
-      const bobSpeed = heldFP.sprint ? FP_HEAD_BOB_FREQ * 1.3 : FP_HEAD_BOB_FREQ;
-      fpHeadBobT += deltaSeconds * bobSpeed;
-    } else {
-      fpHeadBobT *= Math.max(0, 1 - deltaSeconds * 6);
-      if (fpHeadBobT < 0.01) fpHeadBobT = 0;
-    }
-
-    // Camera tilt when strafing
-    const targetTilt = strafeDir * -FP_TILT_MAX;
-    fpTiltAngle += (targetTilt - fpTiltAngle) * Math.min(1, deltaSeconds * FP_TILT_EASE);
 
     // Dust particles
     for (const d of fpDust) {
@@ -1302,12 +1289,30 @@ export function init(canvas, elements) {
   function commitFpTransition() {
     if (!fpTransition) return;
     const cam = transitionCamera(fpTransition, { x: player.x, y: player.y, facing: playerFacing });
-    if (cam.floorSwitched) switchFloor(fpTransition.targetFloor);
-    if (fpTransition.phase === 'done') fpTransition = null;
+    const car = fpTransition.kind === 'elevator' ? stations.find((s) => s.kind === 'elevator' && s.floor === fpTransition.targetFloor) : null;
+    if (cam.floorSwitched) switchFloor(fpTransition.targetFloor, { viaElevator: Boolean(car) });
+    if (fpTransition.phase === 'done') {
+      if (car) fpHeldDoors = { id: car.id, open: 1 };
+      fpTransition = null;
+    }
+  }
+
+  /** How far open a station's elevator doors are in FP: the ride's own doorOpen, or the held doors after it. */
+  function fpElevatorDoorOpen(station) {
+    if (fpTransition) {
+      return fpTransition.kind === 'elevator' && station.floor === currentFloor ? transitionCamera(fpTransition).doorOpen : 0;
+    }
+    return fpHeldDoors && fpHeldDoors.id === station.id ? fpHeldDoors.open : 0;
   }
 
   /** Per-frame transition advance: step the state machine, then commit once. */
   function updateFpTransition(deltaSeconds) {
+    if (!fpTransition && fpHeldDoors) {
+      const car = stations.find((s) => s.id === fpHeldDoors.id);
+      const inside = cameraMode === 'first-person' && car && car.floor === currentFloor && isInElevatorCar(car, player, UNIT_SCALE);
+      fpHeldDoors.open = stepHeldDoors(fpHeldDoors.open, inside, deltaSeconds);
+      if (fpHeldDoors.open <= 0) fpHeldDoors = null;
+    }
     if (!fpTransition) return;
     fpTransition = updateTransition(fpTransition, deltaSeconds);
     commitFpTransition();
@@ -1349,6 +1354,11 @@ export function init(canvas, elements) {
       }
     } else if (target.entityKind === 'station') {
       handleArrival(target.ref);
+    } else if (target.entityKind === 'ambientStaff') {
+      // Top-Down walks Eun-mi over first; here being the interact target
+      // (within DEFAULT_INTERACT_MAX_DISTANCE) already means she's beside them.
+      waitingAtBossOffice = false;
+      askStaffForHelp(target.staffKey);
     }
   }
 
@@ -1413,7 +1423,12 @@ export function init(canvas, elements) {
     const f = Math.max(0, Math.min(1, fraction));
     const y = slot.y + 30;
     drawRoundRect(ctx, slot.x - 18, y, 36, 5, 2.5, 'rgba(58,42,42,0.25)');
-    drawRoundRect(ctx, slot.x - 18, y, 36 * f, 5, 2.5, f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b'));
+    drawRoundRect(ctx, slot.x - 18, y, 36 * f, 5, 2.5, patienceColor(f));
+  }
+
+  /** A patience bar's fill colour at `f` (0..1), green -> amber -> red; both cameras. */
+  function patienceColor(f) {
+    return f > 0.5 ? '#7fd68a' : (f > 0.25 ? '#e0a83a' : '#e06a5b');
   }
 
   function isPointOnQueuedPatron(slot, x, y) {
@@ -1882,6 +1897,9 @@ export function init(canvas, elements) {
 
   const WHISPERS = ['shhh…', 'overdue…', "they're watching", 'you missed one', 'turn around', 'quiet…', 'it was due yesterday', 'who left the lights on?'];
   let halluc = { figures: [], whispers: [], ghosts: [], flicker: 0, scare: 0, ghostCounter: 0 };
+  // Test hooks: how each camera drew the shadow figures on the last frame.
+  let lastFrameTopDownShadowFigures = 0;
+  let lastFrameFpShadowFigures = [];
 
   function currentIntensity() {
     return shiftState && shiftState.phase === 'playing' ? hallucinationIntensity(shiftState.sanity) : 0;
@@ -1952,12 +1970,17 @@ export function init(canvas, elements) {
 
   function drawHallucinations() {
     const i = currentIntensity();
+    lastFrameTopDownShadowFigures = 0;
     if (i <= 0) return;
     const t = performance.now() / 1000;
 
-    for (const f of halluc.figures) {
-      const fade = Math.sin((f.age / f.life) * Math.PI);
-      drawShadowFigure(f.x, f.y, 0.55 * fade * (0.7 + 0.3 * Math.sin(t * 30)));
+    // The figures stand at world coordinates: First Person places them in its
+    // 3D scene (drawFirstPersonView), so only Top-Down paints them here (P7).
+    if (cameraMode !== 'first-person') {
+      for (const f of halluc.figures) {
+        drawShadowFigure(f.x, f.y, shadowFigureAlpha(f, t));
+        lastFrameTopDownShadowFigures++;
+      }
     }
 
     ctx.save();
@@ -2224,7 +2247,7 @@ export function init(canvas, elements) {
 
   function handleArrival(station) {
     if (station.kind === 'stairs' || station.kind === 'elevator') {
-      switchFloor(station.targetFloor);
+      switchFloor(station.targetFloor, { viaElevator: station.kind === 'elevator' });
       return;
     }
     if (!shiftState) return;
@@ -2519,9 +2542,12 @@ export function init(canvas, elements) {
     hoverStation = null;
   }
 
-  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', a: 'turnLeft', d: 'turnRight', A: 'turnLeft', D: 'turnRight' };
-  const FP_MOVE_KEYS = { ArrowUp: 'forward', ArrowDown: 'back', w: 'forward', s: 'back', W: 'forward', S: 'back' };
-  const FP_STRAFE_KEYS = { q: 'strafeLeft', Q: 'strafeLeft', e: 'strafeRight', E: 'strafeRight' };
+  // WASD moves in four directions (any two held together walk diagonally);
+  // the arrows only rotate the camera: ←/→ turn and ↑/↓ look up/down. Q/E,
+  // the mouse and the on-screen ◀ ▶ turn too.
+  const FP_TURN_KEYS = { ArrowLeft: 'turnLeft', ArrowRight: 'turnRight', ArrowUp: 'lookUp', ArrowDown: 'lookDown', q: 'turnLeft', Q: 'turnLeft', e: 'turnRight', E: 'turnRight' };
+  const FP_MOVE_KEYS = { w: 'forward', s: 'back', W: 'forward', S: 'back' };
+  const FP_STRAFE_KEYS = { a: 'strafeLeft', A: 'strafeLeft', d: 'strafeRight', D: 'strafeRight' };
 
   function onKeyDown(e) {
     if (overlay?.kind === 'boss-cutscene' && [' ', 'Enter', 'Escape'].includes(e.key)) {
@@ -2603,18 +2629,30 @@ export function init(canvas, elements) {
     // on-screen buttons.
     if (cameraMode === 'first-person' && running && !overlay) {
       if (e.key === 'Shift') { heldFP.sprint = true; return; }
+      if ((e.key === 'h' || e.key === 'H') && !e.repeat) {
+        e.preventDefault();
+        const showing = fpHelpPinned || fpHelpSeconds > 0;
+        fpHelpPinned = !showing;
+        fpHelpSeconds = 0;
+        return;
+      }
       if (e.key in FP_TURN_KEYS || e.key in FP_MOVE_KEYS || e.key in FP_STRAFE_KEYS) {
         e.preventDefault();
         heldFP[FP_TURN_KEYS[e.key] ?? FP_MOVE_KEYS[e.key] ?? FP_STRAFE_KEYS[e.key]] = true;
         return;
       }
-      if (e.key === ' ' || e.key === 'Enter') {
+      // Enter is THE interact key (the user: "make 'enter' key the button for
+      // interaction"); Space only jumps. They used to share both jobs
+      // (interact with a target centred, jump without one), so Space could
+      // interact by accident and Enter could jump.
+      if (e.key === 'Enter') {
         e.preventDefault();
-        if (fpScene.interactTarget) {
-          attemptInteract();
-        } else if (!e.repeat && !fpTransition) {
-          fpJump = startJump(fpJump);
-        }
+        if (!e.repeat) attemptInteract();
+        return;
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (!e.repeat && !fpTransition) fpJump = startJump(fpJump);
         return;
       }
     }
@@ -2664,16 +2702,10 @@ export function init(canvas, elements) {
     player = { ...PLAYER_START };
     resetAmbient();
     playerFacing = defaultFacingTowardCenter(player.x, player.y, CANVAS_WIDTH, CANVAS_HEIGHT);
-    heldFP.turnLeft = false;
-    heldFP.turnRight = false;
-    heldFP.forward = false;
-    heldFP.back = false;
-    heldFP.strafeLeft = false;
-    heldFP.strafeRight = false;
-    heldFP.sprint = false;
+    for (const k of Object.keys(heldFP)) heldFP[k] = false;
     fpJump = createJumpState();
-    fpHeadBobT = 0;
-    fpTiltAngle = 0;
+    fpPitch = 0;
+    fpSprintBlend = 0;
     currentFloor = FLOOR_1;
     updateFloorButton();
     moveTarget = null;
@@ -2857,9 +2889,9 @@ export function init(canvas, elements) {
   // afternoon sunbeams, a cream-to-blush back wall with a pink rail, a
   // glossy sign button (Korean and English — the user asked for a Korean
   // library), a painted sakura branch, a little wall shelf of books, and the
-  // pink bell clock. The HUD bars sit on the wall band.
-  const TILE = 40;
-  const WALL_BAND_HEIGHT = 58;
+  // pink bell clock. The HUD bars sit on the wall band. TILE, WALL_BAND_HEIGHT,
+  // the palettes and the wall painters live in library/floor-dressing.js, which
+  // First Person's room builds from too.
 
   /** Set dressing from Hospital Shift's decor kit (hospital/anime-furniture.js's drawDecor). */
   const LIBRARY_DECOR = [
@@ -2872,44 +2904,40 @@ export function init(canvas, elements) {
     { kind: 'plant', floor: FLOOR_2, x: 40, y: 420, w: 30, h: 46 },
   ];
 
-  function drawFloor() {
-    if (currentFloor === FLOOR_1) {
-      drawAnimeTiles('#e6f6f0', '#d8efe7', 'rgba(143,211,255,0.10)');
-      drawSunbeams();
-      // Pastel guide stripes: the aisle under the Front Desk's queue, and the lower aisle.
-      drawRoundRect(ctx, 190, 252, 720, 7, 3.5, 'rgba(255,138,122,0.28)');
-      drawRoundRect(ctx, 190, 500, 620, 7, 3.5, 'rgba(63,181,143,0.26)');
-      drawBackWall();
-      sakuraBranch(ctx, 672, 28, 1.1);
-      drawWallBookShelf();
-      drawLibrarySign('도서관 · LIBRARY 1F', ANIME.coral, ANIME.coralDeep);
-      // Break-room rug under the coffee machine: soft pink, stitched border.
-      const coffee = stations.find((st) => st.kind === 'coffee-machine');
-      if (coffee) drawStitchedRug(Math.min(coffee.x - 70, CANVAS_WIDTH - 196), coffee.y - 62, 190, 120, 'rgba(255,194,218,0.55)', 'rgba(232,85,143,0.55)');
-    } else {
-      drawAnimeTiles('#f6efe4', '#efe5d6', 'rgba(255,255,255,0.18)');
-      drawSunbeams();
-      drawBackWall();
-      sakuraBranch(ctx, 672, 28, 1.1);
-      drawWallBookShelf();
-      drawLibrarySign('열람실 · READING 2F', ANIME.lavender, ANIME.lavenderDeep);
-      const nook = stations.find((st) => st.kind === 'reading-nook');
-      if (nook) drawStitchedRug(nook.x - 110, nook.y - 62, 220, 124, 'rgba(201,184,255,0.4)', 'rgba(143,122,224,0.55)');
-    }
-    for (const d of LIBRARY_DECOR) if (d.floor === currentFloor) drawDecor(ctx, d);
-    drawWallClock();
+  function inventoryOpts() {
+    return {
+      stations,
+      frontDeskSlots: currentFloor === FLOOR_1 ? frontDeskSlots : () => [],
+      finesCounterSlots: currentFloor === FLOOR_1 ? finesCounterSlots : () => [],
+      returnCartSlots: currentFloor === FLOOR_1 ? returnCartSlots : () => [],
+      ambient,
+      decorItems: LIBRARY_DECOR,
+      halluc,
+      bossOfficeLocked: bossOfficeLocked(),
+      coffeeOutOfOrder: coffeeOutOfOrder(),
+    };
   }
 
-  function drawStitchedRug(x, y, w, h, fill, stitch) {
-    drawRoundRect(ctx, x, y, w, h, 22, fill);
-    ctx.save();
-    ctx.setLineDash([5, 4]);
-    ctx.strokeStyle = stitch;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x + 7, y + 7, w - 14, h - 14, 17);
-    ctx.stroke();
-    ctx.restore();
+  function getWorldInventory(floor) {
+    return worldInventory(floor ?? currentFloor, inventoryOpts());
+  }
+
+  function drawFloor() {
+    const tiles = FLOOR_TILES[currentFloor];
+    drawAnimeTiles(tiles.light, tiles.dark, tiles.sheen);
+    drawSunbeams();
+    // Pastel guide stripes (1F): the aisle under the Front Desk's queue, and the lower aisle.
+    for (const stripe of GUIDE_STRIPES[currentFloor]) drawGuideStripe(ctx, stripe);
+    drawBackWall(ctx);
+    drawWallSakura(ctx);
+    drawWallBookShelf(ctx);
+    const sign = LIBRARY_SIGNS[currentFloor];
+    drawLibrarySign(ctx, sign.text, sign.color, sign.colorDeep);
+    // 1F's break-room rug under the coffee machine (soft pink), 2F's under the Reading Nook.
+    const rug = floorRug(currentFloor, stations);
+    if (rug) drawStitchedRug(ctx, rug.x, rug.y, rug.w, rug.h, rug.fill, rug.stitch);
+    for (const d of LIBRARY_DECOR) if (d.floor === currentFloor) drawDecor(ctx, d);
+    if (shiftState) drawWallClock(ctx, inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds));
   }
 
   /** Hospital Shift's floor: big pastel checker tiles with a glossy sheen. */
@@ -2964,113 +2992,6 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
-  /** The back wall: cream to blush, a pink wainscot rail and plum trim. */
-  function drawBackWall() {
-    const g = ctx.createLinearGradient(0, 0, 0, WALL_BAND_HEIGHT);
-    g.addColorStop(0, '#fffaf3');
-    g.addColorStop(1, '#fdeef3');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, WALL_BAND_HEIGHT);
-    ctx.fillStyle = '#ffd1e3';
-    ctx.fillRect(0, 48, CANVAS_WIDTH, 7);
-    ctx.fillStyle = ANIME.ink;
-    ctx.fillRect(0, 55, CANVAS_WIDTH, 2.5);
-    ctx.fillStyle = 'rgba(59,42,74,0.12)';
-    ctx.fillRect(0, 57.5, CANVAS_WIDTH, 4);
-  }
-
-  /** The floor's sign, where Hospital Shift has its EMERGENCY button. */
-  function drawLibrarySign(text, color, colorDeep) {
-    animeButton(ctx, { x: 744, y: 12, w: 190, h: 32 }, '', color, colorDeep);
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    outlinedText(ctx, text, 839, 29, '#ffffff', tint(colorDeep, -0.45), 3.2);
-    sparkle(ctx, 750, 14, 5, '#ffffff');
-  }
-
-  /** A little wall shelf of books between the clock and the sakura branch. */
-  function drawWallBookShelf() {
-    const x = 566;
-    const y = 40;
-    const colors = [ANIME.pink, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.coral];
-    colors.forEach((color, i) => {
-      const h = 18 + ((i * 5) % 7);
-      const w = 7;
-      const bx = x + i * 8;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.roundRect(bx, y - h, w, h, 1.5);
-      ctx.fill();
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillRect(bx + 1.5, y - h + 3, w - 3, 1.5);
-    });
-    drawRoundRect(ctx, x - 6, y, 62, 4, 2, '#c9a77a');
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x - 6, y, 62, 4, 2);
-    ctx.stroke();
-  }
-
-  /**
-   * Hospital Shift's pastel wall clock — pink rim, plum line art, two
-   * little bells. The authoritative reading is `#library-hud-clock`'s
-   * `inGameTimeLabel` text; hands are derived by parsing that same label so
-   * the two displays never drift apart.
-   */
-  function drawWallClock() {
-    if (!shiftState) return;
-    const label = inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds);
-    const match = /^(\d+):(\d+)\s(AM|PM)$/.exec(label);
-    if (!match) return;
-    const hour = Number(match[1]) % 12;
-    const minute = Number(match[2]);
-    const cx = 520;
-    const cy = 29;
-    for (const dir of [-1, 1]) {
-      ctx.fillStyle = ANIME.gold;
-      ctx.beginPath();
-      ctx.arc(cx + dir * 13, cy - 16, 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
-    }
-    ctx.fillStyle = ANIME.pink;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 21, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#fffaf3';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 16.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    const hand = (angle, len, width) => {
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.sin(angle) * len, cy - Math.cos(angle) * len);
-      ctx.stroke();
-    };
-    ctx.strokeStyle = ANIME.ink;
-    ctx.lineCap = 'round';
-    hand(((hour + minute / 60) / 12) * Math.PI * 2, 9, 2.5);
-    hand((minute / 60) * Math.PI * 2, 13, 1.5);
-    ctx.lineCap = 'butt';
-    ctx.fillStyle = ANIME.pinkDeep;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   // -- Station art: Hospital Shift's anime furniture kit -----------------------
   // Library's own fixtures live in library/anime-furniture.js; Stairs and
   // the Elevator are Hospital Shift's own (hospital/anime-furniture.js).
@@ -3081,7 +3002,6 @@ export function init(canvas, elements) {
   /** Korean genre names for the bookcase signs (the Korean-library theme). */
   const GENRE_SIGNS_KO = { mystery: '추리', romance: '로맨스', scifi: 'SF', kids: '어린이', reference: '참고' };
 
-  /** The Boss's Office as a hanok door: a timber frame around hanji-papered lattice panels, a brass ring pull and a name plaque. */
   /** drawBookcase's options for a shelf: the same for Top-Down and First Person's art, so both views show the same books. */
   function bookcaseDrawOpts(station) {
     const genre = findGenre(station.genreId);
@@ -3118,6 +3038,13 @@ export function init(canvas, elements) {
       h: ELEVATOR_ART.h * ELEVATOR_ART_SCALE,
       paint: (c, station) => paintElevatorArt(c, station),
     },
+    // The door greys out and wears the padlock while the office is locked, as Top-Down's does.
+    'boss-office': {
+      w: BOSS_OFFICE_ART.w * BOSS_OFFICE_ART_SCALE,
+      h: BOSS_OFFICE_ART.h * BOSS_OFFICE_ART_SCALE,
+      paint: (c, station) => paintBossOfficeArt(c, station, { locked: bossOfficeLocked() }),
+      stateKey: () => (bossOfficeLocked() ? 'locked' : ''),
+    },
     // The stairs' arrow badge (up or down: per station, and stations are keyed by id).
     stairs: {
       w: STAIRS_BADGE_ART.w * BADGE_ART_SCALE,
@@ -3140,6 +3067,92 @@ export function init(canvas, elements) {
       fpArtCache.set(key, art);
     }
     return art;
+  }
+
+  // A Return Cart book's cover (drawReturnCartCover, the one Top-Down draws),
+  // painted once per book, title and Coin Hunt flag. Books come and go, so
+  // the cache is cleared once it outgrows a few cartloads.
+  const fpBookArtCache = new Map();
+  function fpBookArtFor(book) {
+    const key = `${book.id}|${book.title ?? ''}|${book.isCoinHunt ? 1 : 0}|${book.color}`;
+    let art = fpBookArtCache.get(key);
+    if (!art) {
+      if (fpBookArtCache.size >= 64) fpBookArtCache.clear();
+      art = document.createElement('canvas');
+      art.width = BOOK_ART.w * BOOK_ART_SCALE;
+      art.height = BOOK_ART.h * BOOK_ART_SCALE;
+      paintReturnCartBookArt(art.getContext('2d'), book);
+      fpBookArtCache.set(key, art);
+    }
+    return art;
+  }
+
+  // First Person's room art (floor-dressing.js's paintRoomArt, Top-Down's own
+  // painters): the rug and the back-wall sign, sakura, wall shelf and clock,
+  // one canvas per floor and piece, painted once. The clock's canvas is
+  // repainted in place only when the label it shows (the HUD's minute)
+  // changes, so the scene's room mesh never rebuilds for it.
+  // Min-jun's First Person art (three-d/meshes/minjun.js): his 2D body, head
+  // and props painted into three canvases his mesh wears. The body and props
+  // are painted once; the head is repainted in place when his face changes
+  // (a blink, his mouth while he talks or hums), so the mesh never rebuilds
+  // for it; only his pose picks another (memoised) mesh.
+  let fpMinjunArt = null; // {art: {body, head, props}, faceKey, headPaints, pose}
+  function fpMinjunFor(a) {
+    if (!fpMinjunArt) {
+      const canvas = ({ w, h }) => Object.assign(document.createElement('canvas'), { width: w, height: h });
+      const art = { body: canvas(MINJUN_ART_SIZE.body), head: canvas(MINJUN_ART_SIZE.head), props: canvas(MINJUN_ART_SIZE.props) };
+      paintMinjunBodyArt(art.body.getContext('2d'));
+      paintMinjunPropsArt(art.props.getContext('2d'));
+      fpMinjunArt = { art, faceKey: null, headPaints: 0, pose: null };
+    }
+    // Walking and his clock exactly as drawAmbient draws him in Top-Down.
+    const walking = a.pause <= 0 && moveTarget?.staffKey !== a.key;
+    const t = performance.now() / 1000 + a.phase;
+    const { face, key } = minjunFace({ t, walking, action: a.action, actionT: a.actionT });
+    if (fpMinjunArt.faceKey !== key) {
+      paintMinjunHeadArt(fpMinjunArt.art.head.getContext('2d'), face);
+      fpMinjunArt.faceKey = key;
+      fpMinjunArt.headPaints += 1;
+    }
+    fpMinjunArt.pose = minjunPoseFor({ walking, action: a.action });
+    return { pose: fpMinjunArt.pose, art: fpMinjunArt.art };
+  }
+
+  const fpRoomArtCache = new Map(); // `${floor}|${id}` -> {canvas, stateKey}
+  function fpRoomArtFor(id) {
+    const rect = roomArtRect(currentFloor, id, stations);
+    if (!rect) return null;
+    const key = `${currentFloor}|${id}`;
+    const stateKey = id === 'clock' && shiftState ? inGameTimeLabel(shiftState.clockSeconds, shiftState.totalClockSeconds) : '';
+    let entry = fpRoomArtCache.get(key);
+    if (!entry) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(rect.w * ROOM_ART_SCALE);
+      canvas.height = Math.ceil(rect.h * ROOM_ART_SCALE);
+      entry = { canvas, stateKey: null, paints: 0 };
+      fpRoomArtCache.set(key, entry);
+    }
+    if (entry.stateKey !== stateKey) {
+      const c = entry.canvas.getContext('2d');
+      c.clearRect(0, 0, entry.canvas.width, entry.canvas.height);
+      paintRoomArt(c, currentFloor, id, { stations, clockLabel: stateKey });
+      entry.stateKey = stateKey;
+      entry.paints += 1;
+    }
+    return entry.canvas;
+  }
+
+  /** Whether the Boss's Office is locked: all shift and through the closing wait. */
+  function bossOfficeLocked() {
+    return Boolean(shiftState
+      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState))));
+  }
+
+  function fpOptsFor(station) {
+    if (station.kind === 'boss-office') return { locked: bossOfficeLocked() };
+    if (station.kind === 'elevator') return elevatorDoorOpts(fpElevatorDoorOpen(station));
+    return undefined;
   }
 
   const STATION_DETAIL_DRAWERS = {
@@ -3171,8 +3184,7 @@ export function init(canvas, elements) {
     // Locked all shift and through the closing wait — v2.13: it used to
     // *look* unlocked during the 20 s closing wait while arriving did
     // nothing (user: "when i want to get into the bosses office i cannot").
-    const locked = station.kind === 'boss-office' && shiftState
-      && (shiftState.phase === 'playing' || (shiftState.phase === 'closing-wait' && !isBossOfficeReady(shiftState)));
+    const locked = station.kind === 'boss-office' && bossOfficeLocked();
     const cx = opts.centerX ?? station.x;
     const cy = opts.centerY ?? station.y;
 
@@ -3181,16 +3193,7 @@ export function init(canvas, elements) {
     ctx.scale(scale, scale);
     animeTile(ctx, -hw, -hh, hw * 2, hh * 2, 12, locked ? '#cfc8d8' : (STATION_COLORS[station.kind] || '#f2e6d0'));
     STATION_DETAIL_DRAWERS[station.kind]?.(box);
-    if (locked) {
-      // A padlock badge over the (greyed) office door.
-      drawRoundRect(ctx, -14, -12, 28, 28, 14, 'rgba(255,251,246,0.92)');
-      ctx.strokeStyle = '#5a5060';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, -2, 5.5, Math.PI, 0);
-      ctx.stroke();
-      drawRoundRect(ctx, -7.5, 1, 15, 11, 3, '#5a5060');
-    }
+    if (locked) drawBossLock(ctx); // a padlock badge over the (greyed) office door
     ctx.strokeStyle = ANIME.ink;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -3240,6 +3243,11 @@ export function init(canvas, elements) {
     return Boolean(daily?.twist.effect.noCoffee);
   }
 
+  /** The Coffee Machine's "OUT OF ORDER" chip on a Coffee Machine Broken day, else null (both cameras). */
+  function coffeeOutOfOrderChip() {
+    return coffeeOutOfOrder() ? { text: 'OUT OF ORDER', font: 'bold 10px sans-serif', fill: '#e06a5b', ink: '#ffffff' } : null;
+  }
+
   /** The Coffee Machine taped off with an "OUT OF ORDER" sign (the Coffee Machine Broken twist). */
   function drawCoffeeOutOfOrder() {
     if (!coffeeOutOfOrder() || currentFloor !== FLOOR_1) return;
@@ -3249,7 +3257,29 @@ export function init(canvas, elements) {
     ctx.translate(coffee.x, coffee.y);
     drawOutOfOrderTape(ctx);
     ctx.restore();
-    drawLabelChip(ctx, coffee.x, coffee.y - 50, 'OUT OF ORDER', 'bold 10px sans-serif', '#e06a5b', '#ffffff');
+    drawChip(ctx, coffeeOutOfOrderChip(), coffee.x, coffee.y - 50);
+  }
+
+  /**
+   * The Return Cart's chips (both cameras): "+N more" past the five covers
+   * shown, then the pulsing messy-cart warning. `dy` is Top-Down's offset
+   * below the cart's centre.
+   */
+  function returnCartChips() {
+    const chips = [];
+    if (shiftState && shiftState.returnCart.length > 5) {
+      chips.push({ text: `+${shiftState.returnCart.length - 5} more`, font: 'bold 10px sans-serif', dy: 78 });
+    }
+    // v2.18: a messy cart drains Mood — say so, pulsing red.
+    if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
+      chips.push({ text: 'Messy cart! Mood dropping', font: 'bold 10px sans-serif', fill: ANIME.coralDeep, ink: '#ffffff', pulse: true, dy: 100 }); // below the covers and the "+N more" chip
+    }
+    return chips;
+  }
+
+  /** The messy-cart chip's pulse, as both cameras paint it. */
+  function chipPulse() {
+    return 0.85 + 0.15 * Math.sin(performance.now() / 200);
   }
 
   function drawReturnCartBooks() {
@@ -3258,33 +3288,17 @@ export function init(canvas, elements) {
       const genre = findGenre(book.genreId);
       const color = genre ? genre.color : '#8a6a4a';
       const { x: coverX, y: coverY, w: coverW, h: coverH } = returnCartCoverRect(book);
-      // Anime book cover: a soft drop shadow, plum line art, a spine band and a shine.
-      drawRoundRect(ctx, coverX + 1.5, coverY + 2.5, coverW, coverH, 3, 'rgba(59,42,74,0.2)');
-      drawRoundRect(ctx, coverX, coverY, coverW, coverH, 3, color);
-      ctx.fillStyle = 'rgba(255,251,246,0.5)';
-      ctx.fillRect(coverX + 1, coverY + 1, 3, coverH - 2);
-      ctx.strokeStyle = ANIME.ink;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.roundRect(coverX, coverY, coverW, coverH, 3);
-      ctx.stroke();
-      // Full title on the front cover (user: "add the title names on each
-      // books") — wrapped and shrunk to fit rather than v1.4's first-four-
-      // words-then-crop, which cut titles off at the cover's edges.
-      if (book.title) drawCoverTitle(ctx, book.title, coverX + 3, coverY, coverW - 3, coverH, color, { maxFont: 7.5, minFont: 5 });
-      if (book.isCoinHunt) animeStar(ctx, coverX + coverW - 2, coverY + 1, 6, 2.6, 1);
+      drawReturnCartCover(ctx, coverX, coverY, coverW, coverH, color, book.title, book.isCoinHunt);
     }
     const cart = stations.find((s) => s.kind === 'return-cart');
-    if (shiftState && shiftState.returnCart.length > 5) {
-      drawLabelChip(ctx, cart.x, cart.y + cart.size / 2 + 78, `+${shiftState.returnCart.length - 5} more`, 'bold 10px sans-serif');
-    }
-    // v2.18: a messy cart drains Mood — say so, pulsing red.
-    if (shiftState && shiftState.phase === 'playing' && shiftState.returnCart.length > MESSY_CART_THRESHOLD) {
-      const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 200);
+    for (const chip of returnCartChips()) {
+      if (!chip.pulse) {
+        drawChip(ctx, chip, cart.x, cart.y + cart.size / 2 + chip.dy);
+        continue;
+      }
       ctx.save();
-      ctx.globalAlpha = pulse;
-      const warnY = cart.y + cart.size / 2 + 100; // below the covers and the "+N more" chip
-      drawLabelChip(ctx, cart.x, warnY, 'Messy cart! Mood dropping', 'bold 10px sans-serif', ANIME.coralDeep, '#ffffff');
+      ctx.globalAlpha = chipPulse();
+      drawChip(ctx, chip, cart.x, cart.y + cart.size / 2 + chip.dy);
       ctx.restore();
     }
   }
@@ -3297,20 +3311,78 @@ export function init(canvas, elements) {
     return SLOT_PERSONALITY_CACHE.get(slot.id);
   }
 
+  /**
+   * What a queued patron's chips say, for both cameras (P5): `chip` (the
+   * one under them, or null), `sub` (the English title line under a borrow
+   * chip, or null) and `patience` (their bar's 0..1 fill, null for no bar).
+   */
+  function queueSlotChips(slot) {
+    const none = { chip: null, sub: null, patience: null };
+    switch (slot.kind) {
+      case 'ghost': return { ...none, chip: { text: '???', font: 'bold 9px sans-serif' } };
+      case 'fine': return { ...none, chip: { text: `${slot.amountGard}g`, font: 'bold 9px sans-serif' }, patience: slot.waitFraction };
+      case 'borrow-active': {
+        const searching = slot.stage === 'searching';
+        return { ...none, chip: { text: searching ? 'Waiting' : 'Check out!', font: 'bold 9px sans-serif' }, patience: searching ? slot.patienceFraction : null };
+      }
+      case 'borrow': {
+        const title = bookCatalog.get(slot.bookId)?.title;
+        if (!title) return { ...none, patience: slot.waitFraction };
+        // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
+        // title's label chip (drawLabelChip auto-sizes to text width, no
+        // wrapping) can run wider than that and spill into the
+        // neighboring slot's own chip, same class of overflow bug as the
+        // Return Cart covers above. Truncated to a short, single-word-ish
+        // snippet that reliably stays inside one slot's width instead.
+        // The Korean title on the chip, its English meaning just below
+        // (under the patience bar), both cut to the slot's SLOT_PITCH.
+        const { ko, en } = splitTitle(title);
+        return {
+          chip: { text: ko, font: 'bold 9px sans-serif', maxWidth: SLOT_PITCH - 6 },
+          sub: en ? { text: en, font: 'bold 7.5px sans-serif', maxWidth: SLOT_PITCH - 2 } : null,
+          patience: slot.waitFraction,
+        };
+      }
+      case 'karen': return { ...none, chip: { text: 'Karen!', font: 'bold 10px sans-serif' } };
+      case 'recommend': {
+        const regular = slot.patronKey === RECOMMEND_REGULAR_PATRON;
+        return { ...none, chip: { text: regular ? '단골 ★' : '추천?', font: 'bold 10px sans-serif', fill: regular ? ANIME.lavenderDeep : ANIME.pink, ink: '#ffffff' }, patience: slot.waitFraction };
+      }
+      default: return none;
+    }
+  }
+
+  /**
+   * The "+N waiting" chip beside a Front Desk / Fines Counter line longer
+   * than it shows, with where it stands (`x`, and `y` the line's own y; Top-Down
+   * draws it 20 px lower, under the patrons), or null. Both cameras.
+   */
+  function queueOverflowChip(stationKind) {
+    const fines = stationKind === 'fines-counter';
+    const total = (fines ? shiftState?.finesQueue.length : shiftState?.borrowQueue.length) || 0;
+    if (total <= SLOT_VISIBLE_MAX) return null;
+    const station = stations.find((s) => s.kind === stationKind);
+    // Beside the line rather than under it: the Elevator sits below the
+    // Fines Counter, a bookcase below the Front Desk.
+    return {
+      text: `+${total - SLOT_VISIBLE_MAX} waiting`,
+      font: 'bold 10px sans-serif',
+      x: station.x + SLOT_PITCH * 2 + (fines ? 4 : 6),
+      y: station.y + stationExtents(station).hh + QUEUE_SLOT_OFFSET_Y,
+    };
+  }
+
   function drawFinesCounterSlots() {
     if (currentFloor !== FLOOR_1) return;
     finesCounterSlots().forEach((slot, i) => {
       drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personalityForSlot(slot, i), scale: LIBRARY_PERSON_SCALE });
       drawStar(ctx, slot.x + 24, slot.y - PERSON_HEIGHT + 14, 6, 2.5, '#f2d98a'); // beside the head, clear of the counter's name chip
-      drawPatienceBar(slot, slot.waitFraction);
-      drawLabelChip(ctx, slot.x, slot.y + 20, `${slot.amountGard}g`, 'bold 9px sans-serif');
+      const { chip, patience } = queueSlotChips(slot);
+      drawPatienceBar(slot, patience);
+      drawChip(ctx, chip, slot.x, slot.y + 20);
     });
-    const waiting = shiftState?.finesQueue.length || 0;
-    if (waiting > SLOT_VISIBLE_MAX) {
-      const counter = stations.find((s) => s.kind === 'fines-counter');
-      // Beside the line rather than under it: the Elevator sits below.
-      drawLabelChip(ctx, counter.x + SLOT_PITCH * 2 + 4, counter.y + stationExtents(counter).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${waiting - SLOT_VISIBLE_MAX} waiting`, 'bold 10px sans-serif');
-    }
+    const overflow = queueOverflowChip('fines-counter');
+    if (overflow) drawChip(ctx, overflow, overflow.x, overflow.y + 20);
   }
 
   function drawFrontDeskSlots() {
@@ -3318,62 +3390,34 @@ export function init(canvas, elements) {
     const slots = frontDeskSlots();
     slots.forEach((slot, i) => {
       const personality = personalityForSlot(slot, i);
+      const { chip, sub, patience } = queueSlotChips(slot);
       if (slot.kind === 'ghost') {
         ctx.save();
         ctx.globalAlpha = 0.35 + 0.2 * Math.sin(performance.now() / 90);
         drawLibraryPerson(ctx, slot.x + Math.sin(performance.now() / 140) * 2, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE });
         ctx.restore();
-        drawLabelChip(ctx, slot.x, slot.y + 20, '???', 'bold 9px sans-serif');
+        drawChip(ctx, chip, slot.x, slot.y + 20);
         return;
       }
       drawLibraryPerson(ctx, slot.x, slot.y, { personalityKey: personality, scale: LIBRARY_PERSON_SCALE, angryTint: slot.kind === 'karen' });
-      if (slot.kind === 'borrow-active') {
-        if (slot.stage === 'searching') {
-          // Patience bar over their head, green -> amber -> red.
-          drawPatienceBar(slot, slot.patienceFraction);
-          drawLabelChip(ctx, slot.x, slot.y + 20, 'Waiting', 'bold 9px sans-serif');
-        } else {
-          drawLabelChip(ctx, slot.x, slot.y + 20, 'Check out!', 'bold 9px sans-serif');
-        }
-      } else if (slot.kind === 'borrow') {
-        drawPatienceBar(slot, slot.waitFraction);
+      // Patience bar under the chip, green -> amber -> red.
+      drawPatienceBar(slot, patience);
+      if (slot.kind === 'borrow') {
         const entry = bookCatalog.get(slot.bookId);
         const genre = entry ? findGenre(entry.genreId) : null;
         drawRoundRect(ctx, slot.x + 20, slot.y - PERSON_HEIGHT + 4, 10, 14, 1, genre ? genre.color : '#8a6a4a'); // beside the head
-        // Front-desk slots sit only SLOT_PITCH apart (frontDeskSlots) — a full
-        // title's label chip (drawLabelChip auto-sizes to text width, no
-        // wrapping) can run wider than that and spill into the
-        // neighboring slot's own chip, same class of overflow bug as the
-        // Return Cart covers above. Truncated to a short, single-word-ish
-        // snippet that reliably stays inside one slot's width instead.
-        if (entry?.title) {
-          // The Korean title on the chip, its English meaning just below
-          // (under the patience bar), both cut to the slot's SLOT_PITCH.
-          const { ko, en } = splitTitle(entry.title);
-          drawLabelChip(ctx, slot.x, slot.y + 20, truncateForChip(ctx, ko, SLOT_PITCH - 6, 'bold 9px sans-serif'), 'bold 9px sans-serif');
-          if (en) {
-            ctx.font = 'bold 7.5px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            outlinedText(ctx, truncateForChip(ctx, en, SLOT_PITCH - 2, 'bold 7.5px sans-serif'), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
-          }
-        }
-      } else if (slot.kind === 'karen') {
-        drawLabelChip(ctx, slot.x, slot.y + 20, 'Karen!', 'bold 10px sans-serif');
-      } else if (slot.kind === 'recommend') {
-        drawPatienceBar(slot, slot.waitFraction);
-        const regular = slot.patronKey === RECOMMEND_REGULAR_PATRON;
-        drawLabelChip(ctx, slot.x, slot.y + 20, regular ? '단골 ★' : '추천?', 'bold 10px sans-serif', regular ? ANIME.lavenderDeep : ANIME.pink, '#ffffff');
-        drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
       }
+      if (chip) drawChip(ctx, chip, slot.x, slot.y + 20);
+      if (sub) {
+        ctx.font = sub.font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        outlinedText(ctx, chipText(ctx, sub), slot.x, slot.y + 42, ANIME.ink, '#ffffff', 2.4);
+      }
+      if (slot.kind === 'recommend') drawRecommendBubble(slot.x + 22, slot.y - PERSON_HEIGHT + 8);
     });
-    const total = shiftState?.borrowQueue.length || 0;
-    const shown = Math.min(total, SLOT_VISIBLE_MAX);
-    if (total > shown) {
-      const desk = stations.find((s) => s.kind === 'front-desk');
-      // Beside the line, clear of the bookcase below it.
-      drawLabelChip(ctx, desk.x + SLOT_PITCH * 2 + 6, desk.y + stationExtents(desk).hh + QUEUE_SLOT_OFFSET_Y + 20, `+${total - shown} waiting`, 'bold 10px sans-serif');
-    }
+    const overflow = queueOverflowChip('front-desk');
+    if (overflow) drawChip(ctx, overflow, overflow.x, overflow.y + 20);
   }
 
   /** A little speech bubble with a book and a "?" beside a patron who wants a recommendation. */
@@ -4914,11 +4958,14 @@ export function init(canvas, elements) {
     if (hasTarget) {
       const label = target.entityKind === 'station'
         ? (target.ref.label || target.ref.kind)
-        : target.entityKind === 'returnCartBook' ? 'Book' : 'Patron';
+        : target.entityKind === 'returnCartBook' ? 'Book'
+          : target.entityKind === 'ambientStaff' ? target.ref.name : 'Patron';
       ctx.fillStyle = 'rgba(224,168,58,0.9)';
       ctx.font = 'bold 12px "Caprasimo", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(label, cx, cy + armLength + 16);
+      // A staff member's name wears Top-Down's name chip (`drawAmbient`), readable over a face.
+      if (target.entityKind === 'ambientStaff') drawLabelChip(ctx, cx, cy + armLength + 11, label, 'bold 11px sans-serif');
+      else ctx.fillText(label, cx, cy + armLength + 16);
       // Distance bar
       const maxD = 150;
       const pct = Math.max(0, 1 - target.distance / maxD);
@@ -4930,6 +4977,10 @@ export function init(canvas, elements) {
       ctx.fillRect(barX, barY, barW, barH);
       ctx.fillStyle = `rgba(224,168,58,${0.5 + pct * 0.4})`;
       ctx.fillRect(barX, barY, barW * pct, barH);
+      // A staff target's help/busy line, as the chip under its Top-Down name
+      // (`drawAmbient`): the DOM hint above the canvas is hidden in fullscreen.
+      const hint = target.entityKind === 'ambientStaff' ? ambientHint(target.ref) : null;
+      if (hint) drawLabelChip(ctx, cx, barY + 16, hint, 'bold 11px sans-serif', hint.startsWith('busy') ? null : '#2f9a78', hint.startsWith('busy') ? undefined : '#ffffff');
     }
     // Sprint indicator
     if (heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight)) {
@@ -4983,21 +5034,51 @@ export function init(canvas, elements) {
     ctx.restore();
   }
 
+  const FP_HELP_LINES = [
+    'W A S D  walk  ·  two at once: diagonal',
+    '← →  turn  ·  ↑ ↓  look  ·  or the mouse',
+    'Shift sprint · Space jump · Enter interact',
+    'H  show / hide these controls',
+  ];
+
+  /** The controls card's opacity: full while pinned or showing, fading over its last second. */
+  function fpHelpAlpha() {
+    if (fpHelpPinned) return 1;
+    return Math.min(1, fpHelpSeconds);
+  }
+
+  // Drawn on the canvas (not the DOM), so it shows in fullscreen too.
+  function drawFpControlsHelp() {
+    const alpha = fpHelpAlpha();
+    if (alpha <= 0) return;
+    const w = 330;
+    const h = 18 + FP_HELP_LINES.length * 17;
+    const x = (CANVAS_WIDTH - w) / 2;
+    const y = 64;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawRoundRect(ctx, x, y, w, h, 10, 'rgba(30,22,40,0.72)');
+    ctx.fillStyle = '#fffaf2';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    FP_HELP_LINES.forEach((line, i) => ctx.fillText(line, CANVAS_WIDTH / 2, y + 17 + i * 17));
+    ctx.restore();
+  }
+
   /**
-   * Camera params for the 3D renderer, derived from the live effect state:
-   * head-bob -> a small eye-height bob, jump -> eye-height lift, strafe tilt ->
-   * camera roll, sprint -> a slightly wider vertical FOV. `extraEyeY` folds in
-   * an active transition's vertical camera offset.
+   * Camera params for the 3D renderer: jump -> eye-height lift, ↑/↓ -> pitch,
+   * sprint -> a slightly wider vertical FOV. No head-bob and no roll, so the
+   * horizon stays level and still while walking or strafing. `extraEyeY` folds
+   * in an active transition's vertical camera offset.
    */
   function fpCameraParams(extraEyeY) {
-    const bobOffset = fpHeadBobT > 0 ? Math.sin(fpHeadBobT) * FP_HEAD_BOB_AMP : 0;
-    const sprinting = heldFP.sprint && (heldFP.forward || heldFP.back || heldFP.strafeLeft || heldFP.strafeRight);
-    const fovDeg = FP_BASE_VFOV_DEGREES + (sprinting ? FP_SPRINT_VFOV_EXTRA : 0);
+    const fovDeg = FP_BASE_VFOV_DEGREES + fpSprintBlend * FP_SPRINT_VFOV_EXTRA;
     return {
-      bobOffset,
+      bobOffset: 0,
       jumpOffset: fpJump.offset + extraEyeY,
-      pitch: 0,
-      roll: fpTiltAngle,
+      pitch: fpPitch,
+      roll: 0,
       fov: (fovDeg * Math.PI) / 180,
     };
   }
@@ -5013,6 +5094,91 @@ export function init(canvas, elements) {
     return findLibraryDesign(personalityKey);
   }
 
+  // -- First Person world-anchored labels (camera parity P5) ----------------
+  // Each entity's chips come from the same function Top-Down's chips use
+  // (labelForStation, queueSlotChips, staffChips, returnCartChips,
+  // coffeeOutOfOrderChip, queueOverflowChip); library/three-d/labels.js
+  // projects, fades and declutters them.
+
+  /** This frame's laid-out labels (window.__libraryGameTestHooks.getFirstPersonLabels). */
+  let fpLabels = [];
+
+  function measureChipText(text, font) {
+    ctx.save();
+    ctx.font = font;
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+    return w;
+  }
+
+  const chipLine = (chip) => ({ type: 'chip', text: chipText(ctx, chip), font: chip.font, fill: chip.fill ?? null, ink: chip.ink ?? LABEL_TEXT_COLOR, pulse: Boolean(chip.pulse) });
+
+  /** The crosshair target's label stack id: a Return Cart book reads as its cart, as the hover hint does. */
+  function fpLabelTargetId() {
+    const target = fpScene.interactTarget;
+    if (!target) return null;
+    if (target.entityKind === 'returnCartBook') return stations.find((s) => s.kind === 'return-cart')?.id ?? null;
+    return target.id;
+  }
+
+  /** One label stack per labelled entity in the world inventory, lines top to bottom. */
+  function fpLabelStacks(inv) {
+    const stacks = [];
+    for (const item of inv) {
+      if (item.kind === 'station') {
+        const lines = [];
+        if (item.stationKind === 'coffee-machine' && coffeeOutOfOrderChip()) lines.push(chipLine(coffeeOutOfOrderChip()));
+        if (item.stationKind === 'return-cart') returnCartChips().forEach((c) => lines.push(chipLine(c)));
+        const text = labelForStation(item.ref);
+        if (text) lines.push(chipLine({ text, font: 'bold 11px sans-serif' }));
+        if (lines.length) stacks.push({ id: item.id, x: item.x, y: item.y, height: stationAnchorHeight(item.stationKind), lines });
+      } else if (item.kind === 'front-desk-patron' || item.kind === 'karen' || item.kind === 'ghost-patron' || item.kind === 'fines-patron') {
+        const { chip, sub, patience } = queueSlotChips(item.ref);
+        const lines = [];
+        if (chip) lines.push(chipLine(chip));
+        if (sub) lines.push({ type: 'sub', text: chipText(ctx, sub), font: sub.font });
+        if (patience != null) lines.push({ type: 'bar', fraction: Math.max(0, Math.min(1, patience)) });
+        const design = fpDesignFor(personalityForSlot(item.ref, item.slotIndex ?? 0));
+        if (lines.length) stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(buildCharacter(design, { angry: item.kind === 'karen' })), lines });
+      } else if (item.kind === 'ambient-staff') {
+        const design = findStaffDesign(item.staffKey);
+        // characterMesh: Min-jun's own (taller) mesh puts his chips over his own crown.
+        stacks.push({ id: item.id, x: item.x, y: item.y, height: characterAnchorHeight(design ? characterMesh({ design }) : null), lines: staffChips(item.ref).map(chipLine) });
+      }
+    }
+    if (currentFloor === FLOOR_1) {
+      for (const kind of ['front-desk', 'fines-counter']) {
+        const overflow = queueOverflowChip(kind);
+        if (overflow) stacks.push({ id: `${kind}-waiting`, x: overflow.x, y: overflow.y, height: characterAnchorHeight(null), lines: [chipLine(overflow)] });
+      }
+    }
+    return stacks;
+  }
+
+  function drawFpLabels(labels) {
+    for (const label of labels) {
+      for (const line of label.lines) {
+        ctx.save();
+        ctx.globalAlpha = label.alpha * (line.pulse ? chipPulse() : 1);
+        if (line.type === 'bar') {
+          const f = line.fraction;
+          const x = line.cx - line.w / 2;
+          const y = line.cy - line.h / 2;
+          drawRoundRect(ctx, x, y, line.w, line.h, 2.5, 'rgba(58,42,42,0.25)');
+          drawRoundRect(ctx, x, y, line.w * f, line.h, 2.5, patienceColor(f));
+        } else if (line.type === 'sub') {
+          ctx.font = line.font;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          outlinedText(ctx, line.text, line.cx, line.cy, ANIME.ink, '#ffffff', 2.4);
+        } else {
+          drawLabelChip(ctx, line.cx, line.cy, line.text, line.font, line.fill, line.ink);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
   function drawFirstPersonView() {
     // The bob/jump/tilt/sprint effects now move into the 3D camera (vs. the
     // old canvas transforms); a running transition adds its own camera offset.
@@ -5023,18 +5189,43 @@ export function init(canvas, elements) {
       offY = tcam.posOffset.y * UNIT_SCALE;
       offZ = tcam.posOffset.z * UNIT_SCALE;
     }
-    // Characters + Return Cart books mirror what the old billboard path drew:
-    // the Front Desk / Fines Counter queues (1st Floor only).
+    // Characters, Return Cart books and decor from the world inventory
+    // (P1: one list, two renderers).
+    const inv = getWorldInventory();
     const characters = [];
     const books = [];
-    if (currentFloor === FLOOR_1) {
-      for (const e of buildFirstPersonEntities()) {
-        if (e.entityKind === 'frontDeskSlot' || e.entityKind === 'finesSlot') {
-          const personality = personalityForSlot(e.ref, e.slotIndex ?? 0);
-          characters.push({ x: e.x, y: e.y, design: fpDesignFor(personality), angry: e.ref.kind === 'karen' });
-        } else if (e.entityKind === 'returnCartBook') {
-          books.push(e);
-        }
+    const decor = [];
+    const shadows = [];
+    for (const item of inv) {
+      if (item.kind === 'front-desk-patron' || item.kind === 'karen' || item.kind === 'fines-patron' || item.kind === 'ghost-patron') {
+        const personality = personalityForSlot(item.ref, item.slotIndex ?? 0);
+        const stationKind = item.kind === 'fines-patron' ? 'fines-counter' : 'front-desk';
+        const desk = stations.find((s) => s.kind === stationKind);
+        const yaw = desk ? Math.atan2(desk.x - item.x, desk.y - item.y) : 0;
+        // Ghosts shimmer and drift exactly as drawFrontDeskSlots paints them.
+        const ghost = item.kind === 'ghost-patron';
+        const now = performance.now();
+        characters.push({
+          x: item.x + (ghost ? Math.sin(now / 140) * 2 : 0),
+          y: item.y,
+          yaw,
+          design: fpDesignFor(personality),
+          angry: item.ref.kind === 'karen',
+          alpha: ghost ? 0.35 + 0.2 * Math.sin(now / 90) : 1,
+        });
+      } else if (item.kind === 'ambient-staff') {
+        const design = findStaffDesign(item.staffKey);
+        // Min-jun wears his own 2D art, posed as Top-Down draws him.
+        const own = item.staffKey === 'minjun' ? fpMinjunFor(item.ref) : {};
+        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design, ...own });
+      } else if (item.kind === 'return-cart-book') {
+        // Coloured as drawReturnCartBooks colours its cover.
+        const genre = findGenre(item.ref.genreId);
+        books.push({ id: item.ref.id, title: item.ref.title, isCoinHunt: Boolean(item.ref.isCoinHunt), color: genre ? genre.color : '#8a6a4a' });
+      } else if (item.kind === 'decor') {
+        decor.push(item);
+      } else if (item.kind === 'hallucination-figure') {
+        shadows.push(item);
       }
     }
     const viewport = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -5043,17 +5234,22 @@ export function init(canvas, elements) {
       floor: currentFloor,
       stations,
       characters,
+      decor,
+      cartBooks: books,
+      bookArtFor: fpBookArtFor,
       cameraParams: fpCameraParams(offY),
       viewport,
       artFor: fpArtFor,
+      optsFor: fpOptsFor,
+      roomArtFor: fpRoomArtFor,
     });
-    for (const e of books) {
-      const genre = findGenre(e.ref.genreId);
-      placed.push({
-        mesh: buildStationBox({ width: 18, depth: 10, height: 26, color: genre ? genre.color : '#8a6a4a' }),
-        placement: { pos: [e.x, 0, e.y], yaw: 0, scale: 1 },
-      });
-    }
+    // Hallucination shadow figures stand in the room (P7), facing the camera;
+    // updateHallucinations still owns where they are and how long they last.
+    const figures = currentIntensity() > 0
+      ? shadowFigurePlacements(shadows, { x: player.x + offX, y: player.y + offZ }, performance.now() / 1000)
+      : [];
+    placed.push(...figures);
+    lastFrameFpShadowFigures = figures.map((p) => ({ x: p.placement.pos[0], y: p.placement.pos[2], yaw: p.placement.yaw, alpha: p.placement.alpha }));
     drawScene(ctx, camera, placed, { viewport, light: FP_LIGHT, fog: FP_FOG });
     drawFpDust();
     // Vignette (screen-space, like the rest of the HUD)
@@ -5070,17 +5266,21 @@ export function init(canvas, elements) {
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.restore();
     }
+    fpLabels = layoutLabels(fpLabelStacks(inv), { camera, viewport, measure: measureChipText, targetId: fpLabelTargetId(), occluders: stationsOnFloor(stations, currentFloor).map(stationOccluder) });
+    drawFpLabels(fpLabels);
     drawFirstPersonCrosshair();
     drawFpMinimap();
-    // Pointer lock hint
+    drawFpControlsHelp();
+    // Pointer lock hint — top centre, above the controls card (y 64), so the
+    // DOM Jump/Interact cluster at the bottom centre never covers it.
     if (!fpPointerLocked) {
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      drawRoundRect(ctx, CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT - 38, 200, 24, 8, 'rgba(0,0,0,0.35)');
+      drawRoundRect(ctx, CANVAS_WIDTH / 2 - 100, 14, 200, 24, 8, 'rgba(0,0,0,0.35)');
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Click to enable mouse look', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Click to enable mouse look', CANVAS_WIDTH / 2, 26);
       ctx.restore();
     }
   }
@@ -5105,6 +5305,7 @@ export function init(canvas, elements) {
   }
 
   function render() {
+    renderedFrames += 1;
     syncBackingStore();
     // Start every frame from a known state. Done outside the shake transform
     // below so a shaken frame can't leave an unpainted strip at the edge.
@@ -5242,8 +5443,15 @@ export function init(canvas, elements) {
     }
   }
 
+  // A key released while the window is unfocused never sends its keyup (nor do
+  // keys let go while Cmd is held on macOS), so drop every held FP key on blur.
+  function onWindowBlur() {
+    for (const k of Object.keys(heldFP)) heldFP[k] = false;
+  }
+
   // -- Event wiring ---------------------------------------------------------
 
+  window.addEventListener('blur', onWindowBlur);
   canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
   window.addEventListener('pointerup', onWindowPointerUp);
@@ -5262,7 +5470,9 @@ export function init(canvas, elements) {
   canvas.addEventListener('mousemove', (e) => {
     if (!fpPointerLocked || cameraMode !== 'first-person') return;
     const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
     playerFacing = normalizeAngle(playerFacing + dx * FP_MOUSE_SENSITIVITY);
+    fpPitch = clampPitch(fpPitch - dy * FP_MOUSE_SENSITIVITY); // mouse up looks up, as ↑ does
   });
   elements.floorButton?.addEventListener('click', () => switchFloor(currentFloor === FLOOR_1 ? FLOOR_2 : FLOOR_1));
   elements.cameraButton?.addEventListener('click', () => setCameraMode(cameraMode === 'top-down' ? 'first-person' : 'top-down'));
@@ -5324,6 +5534,7 @@ export function init(canvas, elements) {
     document.removeEventListener('keyup', onKeyUp);
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('blur', onWindowBlur);
     document.body.removeEventListener('htmx:beforeSwap', teardown);
     if (teardownActiveInstance === teardown) teardownActiveInstance = null;
   }
@@ -5350,6 +5561,7 @@ export function init(canvas, elements) {
       isPlayerMoving: () => moveTarget !== null,
       getCurrentFloor: () => currentFloor,
       getStations: () => stations.map((s) => ({ ...s })),
+      getWorldInventory: (floor) => getWorldInventory(floor),
       getFrontDeskSlots: () => frontDeskSlots(),
       getFinesCounterSlots: () => finesCounterSlots(),
       getFinesStartShift: () => finesStartShiftNumber,
@@ -5365,13 +5577,31 @@ export function init(canvas, elements) {
       getCameraMode: () => cameraMode,
       setCameraMode: (mode) => setCameraMode(mode),
       getPlayerFacing: () => playerFacing,
+      /** The First Person camera's live params: `{bobOffset, jumpOffset, pitch, roll, fov}` (radians). */
+      getFpCameraParams: () => fpCameraParams(0),
+      /** The First Person controls card: `{alpha, pinned, secondsLeft}` (alpha 0 = hidden). */
+      getFpHelp: () => ({ alpha: fpHelpAlpha(), pinned: fpHelpPinned, secondsLeft: fpHelpSeconds }),
+      /** Sets the First Person pitch directly (clamped like the keys and mouse). */
+      setFpPitch: (pitch) => { fpPitch = clampPitch(pitch); },
+      /** How many frames have been drawn, so a test can wait for a real repaint (e.g. after the fullscreen transition holds frames back). */
+      getFrameCount: () => renderedFrames,
       setPlayerFacing: (facing) => { playerFacing = facing; },
       getFirstPersonScene: () => JSON.parse(JSON.stringify(fpScene)),
+      getFpRoomArt: () => [...fpRoomArtCache].map(([key, e]) => ({ key, stateKey: e.stateKey, paints: e.paints })),
+      /** Min-jun's First Person look: his pose, face key and how often his face canvas was painted (null before First Person has drawn him). */
+      getFpMinjun: () => (fpMinjunArt ? { pose: fpMinjunArt.pose, faceKey: fpMinjunArt.faceKey, headPaints: fpMinjunArt.headPaints } : null),
+      /** This frame's First Person world-anchored labels, in draw order: `{id, x, y, alpha, target, rect, lines}` (screen px). */
+      getFirstPersonLabels: () => (cameraMode === 'first-person' ? JSON.parse(JSON.stringify(fpLabels)) : []),
       attemptInteractNow: () => attemptInteract(),
       // Elevator/stair transition hooks: inspect the active ride/climb and
       // force it to complete (commits the floor switch now and clears it), so
       // specs never block on the ~1.5-2s animation.
       getActiveTransition: () => (fpTransition ? { kind: fpTransition.kind, phase: fpTransition.phase, targetFloor: fpTransition.targetFloor } : null),
+      // The doorOpen this floor's elevator mesh is built with (0 shut .. 1).
+      getElevatorDoorOpen: () => {
+        const car = stations.find((s) => s.kind === 'elevator' && s.floor === currentFloor);
+        return car ? (elevatorDoorOpts(fpElevatorDoorOpen(car))?.doorOpen ?? 0) : 0;
+      },
       forceCompleteTransition: () => {
         if (!fpTransition) return;
         fpTransition = forceComplete(fpTransition);
@@ -5391,6 +5621,17 @@ export function init(canvas, elements) {
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');
         return mj ? { x: mj.x, y: mj.y, floor: mj.floor, scale: mj.scale ?? 1, action: mj.action } : null;
+      },
+      /**
+       * Stops Min-jun to do `action` (one of MINJUN_ACTIONS), or with null
+       * sets him walking; pair with freezeStaff(true) so it holds.
+       */
+      setMinjunAction(action) {
+        const mj = ambient.find((a) => a.key === 'minjun');
+        if (!mj) return;
+        mj.action = action ?? null;
+        mj.actionT = 0;
+        mj.pause = action ? 999 : 0;
       },
       isBossOfficeReady: () => shiftState && isBossOfficeReady(shiftState),
       spawnBookNow(isCoinHunt) { if (shiftState?.phase === 'playing') spawnBook(Boolean(isCoinHunt)); },
@@ -5420,6 +5661,14 @@ export function init(canvas, elements) {
       getGardPops: () => gardPops.map((pop) => ({ ...pop })),
       getHallucinations: () => ({ intensity: currentIntensity(), ghosts: halluc.ghosts.map((g) => ({ ...g })), figures: halluc.figures.length, whispers: halluc.whispers.length }),
       spawnGhostPatronNow() { halluc.ghosts.push({ id: `ghost-${halluc.ghostCounter++}`, age: 0, life: 60 }); },
+      /** Adds a shadow figure at (x, y), mid-life (fully faded in) for about a minute. */
+      spawnShadowFigureNow(x, y) { halluc.figures.push({ x, y, age: 30, life: 60 }); },
+      /** The live figures, how many Top-Down painted as 2D last frame, and First Person's scene placements for them. */
+      getShadowFigures: () => ({
+        figures: halluc.figures.map((f) => ({ ...f })),
+        topDownDrawn: lastFrameTopDownShadowFigures,
+        fpPlaced: cameraMode === 'first-person' ? lastFrameFpShadowFigures.map((p) => ({ ...p })) : [],
+      }),
       setCoffeePourFill(fill) { if (overlay?.kind === 'coffee-pour' && !overlay.grade) overlay.fill = fill; },
       /** Stops (true) or resumes (false) the simulation; input handlers still run, so a press/release while frozen acts on exactly the values a test set. */
       freeze(on) { testFrozen = Boolean(on); },

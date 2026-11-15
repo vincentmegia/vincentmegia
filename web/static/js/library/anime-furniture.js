@@ -517,16 +517,73 @@ export function drawFinesRoom(ctx, st) {
   sparkle(ctx, hw - 12, -hh + 30, 4, '#ffffff');
 }
 
-/** The Boss's Office: Hospital Shift's pastel door (round window, panels, plaque, heart note), labelled BOSS. */
-export function drawBossDoor(ctx, st) {
-  const hw = st.w / 2;
-  const hh = st.h / 2;
+/** drawBossDoor's colours (and the tile Top-Down draws it on), for First Person's flat fallback. */
+export const BOSS_DOOR_COLORS = {
+  tile: '#e6dcf5',
+  tileLocked: '#cfc8d8',
+  frame: '#c9a0d8',
+  door: '#f2e2ff',
+  plaque: ANIME.gold,
+  knob: ANIME.gold,
+  lock: '#5a5060',
+};
+
+/**
+ * Where drawBossDoor puts each part, in its centered px (y down), for a box
+ * `st.w` wide and `height` (default `st.h`) tall: the frame, the door inside
+ * it, the gold plaque over it, the knob's square and the padlock badge
+ * (drawBossLock). First Person's mesh maps its faces onto these regions
+ * (docs/skills/2d-to-3d/SKILL.md).
+ */
+export function bossDoorLayout(st, height = st.h) {
+  const hh = height / 2;
   const dw = st.w - 30;
   const dx = -dw / 2;
   const dy = -hh + 14;
-  const dh = st.h - 18;
-  block(ctx, dx - 4, dy - 4, dw + 8, dh + 4, 6, '#c9a0d8', 1.4);
-  block(ctx, dx, dy, dw, dh, 4, '#f2e2ff', 1.4);
+  const dh = height - 18;
+  const knob = { x: dx + dw - 8, y: dy + dh * 0.55, r: 3 };
+  return {
+    hw: st.w / 2,
+    hh,
+    door: { x0: dx, y0: dy, x1: dx + dw, y1: dy + dh, w: dw, h: dh },
+    frame: { x0: dx - 4, y0: dy - 4, x1: dx + dw + 4, y1: dy + dh },
+    plaque: { x0: -30, y0: -hh + 2, x1: 30, y1: -hh + 13 },
+    knob,
+    knobBox: { x0: knob.x - 4, y0: knob.y - 4, x1: knob.x + 4, y1: knob.y + 4 },
+    lock: { x0: -14, y0: -12, x1: 14, y1: 16 },
+  };
+}
+
+/** The padlock badge over the locked (greyed) Boss's Office door, centered on the station. */
+export function drawBossLock(ctx) {
+  ctx.fillStyle = 'rgba(255,251,246,0.92)';
+  ctx.beginPath();
+  ctx.roundRect(-14, -12, 28, 28, 14);
+  ctx.fill();
+  ctx.strokeStyle = BOSS_DOOR_COLORS.lock;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, -2, 5.5, Math.PI, 0);
+  ctx.stroke();
+  ctx.fillStyle = BOSS_DOOR_COLORS.lock;
+  ctx.beginPath();
+  ctx.roundRect(-7.5, 1, 15, 11, 3);
+  ctx.fill();
+}
+
+/**
+ * The Boss's Office: Hospital Shift's pastel door (round window, panels,
+ * plaque, heart note), labelled BOSS. `opts.height` draws it into a taller
+ * box than the tile (First Person's door, at a real door's aspect);
+ * Top-Down leaves it at `st.h`.
+ */
+export function drawBossDoor(ctx, st, opts = {}) {
+  const L = bossDoorLayout(st, opts.height);
+  const { hw, hh } = L;
+  const { x0: dx, y0: dy, w: dw, h: dh } = L.door;
+  const C = BOSS_DOOR_COLORS;
+  block(ctx, L.frame.x0, L.frame.y0, L.frame.x1 - L.frame.x0, L.frame.y1 - L.frame.y0, 6, C.frame, 1.4);
+  block(ctx, dx, dy, dw, dh, 4, C.door, 1.4);
   ctx.strokeStyle = 'rgba(59,42,74,0.35)';
   ctx.lineWidth = 1;
   path(ctx, dx + 6, dy + 32, dw - 12, 16, 3);
@@ -539,13 +596,13 @@ export function drawBossDoor(ctx, st) {
   ctx.beginPath();
   ctx.arc(0, dy + 18, 5, Math.PI * 1.1, Math.PI * 1.5);
   ctx.stroke();
-  flat(ctx, -30, -hh + 2, 60, 11, 3, ANIME.gold, 1.2);
+  flat(ctx, L.plaque.x0, L.plaque.y0, L.plaque.x1 - L.plaque.x0, L.plaque.y1 - L.plaque.y0, 3, C.plaque, 1.2);
   ctx.fillStyle = INK;
   ctx.font = 'bold 6.5px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('관장 · BOSS', 0, -hh + 7.8);
-  circle(ctx, dx + dw - 8, dy + dh * 0.55, 3, ANIME.gold, 1.1);
+  circle(ctx, L.knob.x, L.knob.y, L.knob.r, C.knob, 1.1);
   flat(ctx, dx + 7, dy + 36, 13, 10, 1.5, '#ffe3ee', 0.9);
   heart(ctx, dx + 13.5, dy + 41, 3.2);
   sparkle(ctx, hw - 10, -hh + 22, 3.5, '#ffffff');

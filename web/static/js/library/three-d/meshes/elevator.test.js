@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildElevator, paintElevatorArt, ELEVATOR_ART, ELEVATOR_ART_SCALE, ELEVATOR_SIZE,
-  ELEVATOR_DOOR_COLOR, ELEVATOR_HALF_DOORWAY,
+  ELEVATOR_DOOR_COLOR, ELEVATOR_HALF_DOORWAY, ELEVATOR_DOOR_STEPS, ELEVATOR_CAR_STAND_Z,
+  elevatorDoorOpts, elevatorRiderPose, isInElevatorCar,
 } from './elevator.js';
 import { elevatorLayout, ELEVATOR_COLORS } from '../../../hospital/anime-furniture.js';
 
@@ -104,10 +105,17 @@ test('with art, every front is a textured, unlit -Z face whose uv stays on the i
 });
 
 test('each front maps exactly its own region of elevatorLayout, the right way round', () => {
-  for (const open of [0, 1]) {
+  // A door half open shows the inner half of its own region (see the slide test).
+  const halfDoors = { doorLeft: { ...D0, x0: D0.x0 + D0.w / 2 }, doorRight: { ...D1, x1: D1.x1 - D1.w / 2 } };
+  for (const open of [0, 0.5, 1]) {
     const m = buildElevator({ art: ART, doorOpen: open });
-    for (const [name, r] of Object.entries(REGIONS)) {
+    for (const [name, region] of Object.entries(REGIONS)) {
+      const r = open === 0.5 && halfDoors[name] ? halfDoors[name] : region;
       const f = faceFor(m, r);
+      if (open === 1 && (r === D0 || r === D1)) {
+        assert.equal(f, undefined, `${name}: fully open, the door is behind its post`);
+        continue;
+      }
       assert.ok(f, `${name} at doorOpen ${open}`);
       // Seen from -Z, art x runs toward model -X, and art y down while model y
       // goes up: along every edge, u falls as x rises and v falls as y rises.
@@ -129,32 +137,101 @@ test('each front maps exactly its own region of elevatorLayout, the right way ro
   near(Math.min(...xs(m, faceFor(m, D1))), -(D1.x1) * S);
 });
 
-test('the doors carry their own art as they slide: shut leaves the 2D seam, open clears the doorway', () => {
-  const inner = (open) => {
+test('the doors slide away behind the posts, clipped to the doorway, each showing the inner part of its own art', () => {
+  const at = (open) => {
     const m = buildElevator({ art: ART, doorOpen: open });
-    const [l, r] = doorFaces(m);
-    // Art-left door is model +X, so its inner edge is its smallest x.
-    return { left: Math.min(...xs(m, l)), right: Math.max(...xs(m, r)), m, l, r };
+    const doors = textured(m).filter((f) => {
+      const b = uvBox(f);
+      return b.y0 === D0.y0 && b.y1 === D0.y1 && b.x0 >= D0.x0 - 1e-9 && b.x1 <= D1.x1 + 1e-9 && !(b.x0 <= D0.x0 + 1e-9 && b.x1 >= D1.x1 - 1e-9);
+    });
+    // Art-left door is model +X: its inner edge is its smallest x.
+    const l = doors.find((f) => uvBox(f).x1 <= 0);
+    const r = doors.find((f) => uvBox(f).x0 >= 0);
+    return { m, l, r, ext: (f) => [Math.min(...xs(m, f)), Math.max(...xs(m, f))] };
   };
-  const shut = inner(0);
-  near(shut.left, -D0.x1 * S);
-  near(shut.right, -D1.x0 * S);
-  near(shut.left - shut.right, (D1.x0 - D0.x1) * S); // the drawer's 1 px seam
-  const open = inner(1);
-  near(open.left, ELEVATOR_HALF_DOORWAY);
-  near(open.right, -ELEVATOR_HALF_DOORWAY);
+  // Shut: the drawer's 1 px seam, each door its whole region.
+  const shut = at(0);
+  assert.deepEqual(shut.ext(shut.l).map((v) => +v.toFixed(9)), [-D0.x1 * S, -D0.x0 * S].map((v) => +v.toFixed(9)));
+  assert.deepEqual(shut.ext(shut.r).map((v) => +v.toFixed(9)), [-D1.x1 * S, -D1.x0 * S].map((v) => +v.toFixed(9)));
+  near(shut.ext(shut.l)[0] - shut.ext(shut.r)[1], (D1.x0 - D0.x1) * S);
+  // Half open: each inner edge halfway to its post; the outer edge stays on the post.
+  const half = at(0.5);
+  near(half.ext(half.l)[0], (-D0.x1 * S + ELEVATOR_HALF_DOORWAY) / 2);
+  near(half.ext(half.l)[1], ELEVATOR_HALF_DOORWAY);
+  near(half.ext(half.r)[1], (-D1.x0 * S - ELEVATOR_HALF_DOORWAY) / 2);
+  near(half.ext(half.r)[0], -ELEVATOR_HALF_DOORWAY);
+  // ... showing the inner half of its own art (the art moves with the panel).
+  assert.ok(sameRect(uvBox(half.l), { ...D0, x0: D0.x0 + D0.w / 2 }));
+  assert.ok(sameRect(uvBox(half.r), { ...D1, x1: D1.x1 - D1.w / 2 }));
   near(ELEVATOR_HALF_DOORWAY, (F.w / 2 - (D0.x0 - F.x0)) * S); // the posts' inner edges
-  const half = inner(0.5);
-  near(half.left, (shut.left + open.left) / 2);
-  // Same uv at every doorOpen: the art moves with the panel.
-  assert.deepEqual(open.l.texture.uv, shut.l.texture.uv);
-  assert.deepEqual(open.r.texture.uv, shut.r.texture.uv);
+  // Fully open: both doors are gone behind the posts, so the doorway is clear.
+  const open = at(1);
+  assert.equal(open.l, undefined);
+  assert.equal(open.r, undefined);
+  assert.ok(!open.m.faces.some((f) => f.color === ELEVATOR_DOOR_COLOR), 'no door faces left at all');
   // doorOpen is clamped.
   assert.deepEqual(buildElevator({ art: ART, doorOpen: 3 }), open.m);
   assert.deepEqual(buildElevator({ art: ART, doorOpen: -1 }), shut.m);
   // Door faces keep the door colour (the flat fallback and the side faces).
   assert.ok(buildElevator().faces.some((f) => f.color === ELEVATOR_DOOR_COLOR));
   assert.equal(ELEVATOR_DOOR_COLOR, ELEVATOR_COLORS.door);
+});
+
+test('at every doorOpen the doors stay inside the doorway: never over the call panel, indicator or posts', () => {
+  for (let k = 0; k <= ELEVATOR_DOOR_STEPS; k++) {
+    const open = k / ELEVATOR_DOOR_STEPS;
+    const m = buildElevator({ art: ART, doorOpen: open });
+    const doorVerts = m.faces.filter((f) => f.color === ELEVATOR_DOOR_COLOR || (f.texture && uvBox(f).y0 === D0.y0 && uvBox(f).y1 === D0.y1 && uvBox(f).x0 >= D0.x0 - 1e-9 && uvBox(f).x1 <= D1.x1 + 1e-9 && uvBox(f).x1 - uvBox(f).x0 < D0.w + 1e-9))
+      .flatMap((f) => pts(m, f));
+    if (open < 1) assert.ok(doorVerts.length > 0, `doors at ${open}`);
+    for (const [x, y] of doorVerts) {
+      assert.ok(Math.abs(x) <= ELEVATOR_HALF_DOORWAY + 1e-9, `door x ${x} outside the doorway at ${open}`);
+      assert.ok(y <= (F.y1 - D0.y0) * S + 1e-9, 'below the lintel, so under the indicator');
+    }
+    // The call panel (model -X, viewer's right) is wholly outside the doorway.
+    for (const r of [L.panel, L.button, L.indicator]) {
+      const f = faceFor(m, r);
+      const px = xs(m, f);
+      const py = pts(m, f).map((p) => p[1]);
+      const overlapsX = Math.min(...px) < ELEVATOR_HALF_DOORWAY && Math.max(...px) > -ELEVATOR_HALF_DOORWAY;
+      const overlapsY = Math.min(...py) < (F.y1 - D0.y0) * S;
+      assert.ok(!(overlapsX && overlapsY), 'no door can reach a fitting');
+    }
+  }
+});
+
+test('a rider stands in the car facing out, and sees the doors\' backs until they open', async () => {
+  const { buildDrawList, cameraFromPose } = await import('../core.js');
+  const U = 40;
+  const station = { x: 80, y: 540 };
+  const pose = elevatorRiderPose(station, U);
+  assert.deepEqual(pose, { x: 80, y: 540 + ELEVATOR_CAR_STAND_Z * U, facing: 0 });
+  assert.ok(ELEVATOR_CAR_STAND_Z > 0 && ELEVATOR_CAR_STAND_Z < ELEVATOR_SIZE.depth - 0.1 - 0.05, 'between the doors and the car\'s back wall');
+  assert.ok(isInElevatorCar(station, pose, U));
+  assert.ok(isInElevatorCar(station, { x: 80, y: 540 - 0.2 * U }, U), 'the doorway counts');
+  assert.ok(!isInElevatorCar(station, { x: 80, y: 540 - 90 }, U), 'the approach does not');
+  assert.ok(!isInElevatorCar(station, { x: 80 + U, y: pose.y }, U));
+  const env = { viewport: { width: 400, height: 400 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 } };
+  const cam = cameraFromPose(pose, { eyeHeight: 60, fov: Math.PI / 3, aspect: 1, near: 1, far: 2000 });
+  const seen = (open) => buildDrawList(cam, [{ mesh: buildElevator({ art: ART, doorOpen: open }), placement: { pos: [station.x, 0, station.y], yaw: 0, scale: U } }], env);
+  const shut = seen(0);
+  const open = seen(1);
+  assert.equal(shut.filter((p) => p.image).length, 0, 'no art is seen from inside (it faces the room)');
+  assert.ok(shut.length >= open.length + 2, 'the two door backs close the doorway');
+  assert.ok(open.length > 0, 'the car\'s own walls and the frame\'s back are still there');
+});
+
+test('elevatorDoorOpts quantises doorOpen and leaves a shut door with no options', () => {
+  assert.equal(elevatorDoorOpts(0), undefined);
+  assert.equal(elevatorDoorOpts(undefined), undefined);
+  assert.equal(elevatorDoorOpts(0.01), undefined, 'rounds to shut');
+  assert.deepEqual(elevatorDoorOpts(1), { doorOpen: 1 });
+  assert.deepEqual(elevatorDoorOpts(2), { doorOpen: 1 });
+  assert.deepEqual(elevatorDoorOpts(0.5), { doorOpen: 0.5 });
+  assert.deepEqual(elevatorDoorOpts(0.52), { doorOpen: 0.5 });
+  const seen = new Set();
+  for (let i = 0; i <= 1000; i++) seen.add(JSON.stringify(elevatorDoorOpts(i / 1000)));
+  assert.equal(seen.size, ELEVATOR_DOOR_STEPS + 1, 'shut plus one key per step');
 });
 
 test('depth: frame proud of the wall, doors proud of the frame, fittings proud of the wall', () => {
@@ -164,7 +241,9 @@ test('depth: frame proud of the wall, doors proud of the frame, fittings proud o
   assert.equal(z(REGIONS.wallRight), wall);
   assert.equal(z(REGIONS.header), wall);
   for (const r of [REGIONS.postLeft, REGIONS.postRight, REGIONS.lintel, REGIONS.sill]) assert.ok(z(r) < wall - 0.02, 'frame proud of the wall');
-  for (const r of [D0, D1]) assert.ok(z(r) < z(REGIONS.lintel) - 0.01, 'doors proud of the frame');
+  // The doors sit in the doorway, behind the frame's face and in front of the
+  // wall, so they can slide away behind the posts.
+  for (const r of [D0, D1]) assert.ok(z(r) > z(REGIONS.lintel) + 0.01 && z(r) < wall, 'doors recessed behind the frame');
   assert.ok(z(L.indicator) < wall && z(L.panel) < wall, 'indicator and call panel stand on the wall');
   assert.ok(z(L.button) < z(L.panel), 'the button stands proud of its panel');
   // Behind the doorway is a car you can see into: its back wall faces the doors.
@@ -173,7 +252,7 @@ test('depth: frame proud of the wall, doors proud of the frame, fittings proud o
 });
 
 test('no untextured face is coplanar with a textured front (no painter-sort ties)', () => {
-  for (const open of [0, 1]) {
+  for (const open of [0, 0.5, 1]) {
     const m = buildElevator({ art: ART, doorOpen: open });
     const texZ = new Set(textured(m).map((f) => zOf(m, f).toFixed(6)));
     for (const f of m.faces.filter((x) => !x.texture)) {

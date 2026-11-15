@@ -61,18 +61,50 @@ handling, in place of Kitchen Shift's cooking and serving.
   the station under the cursor). It also has a First Person camera
   (`#library-camera-button`): a true software-3D view (see
   **First Person Mode** below and `library-first-person-3d.md`) with its
-  own turn/move/interact controls (`library/first-person.js`).
+  own turn/move/interact controls (`library/first-person.js`):
+  * **Move:** W/S walk forward/back and A/D strafe, so any two held together
+    walk diagonally (`moveStep` scales a diagonal by 1/√2, never faster than
+    straight ahead). The on-screen W▲ S▼ and A← →D buttons do the same.
+  * **Rotate the camera:** the arrow keys never move Eun-mi. ←/→ turn (as do
+    Q/E and the on-screen Q◀ ▶E); ↑/↓ look up/down. Once the canvas has
+    locked the pointer the mouse does both (up looks up); until then a
+    "Click to enable mouse look" chip sits at the top centre of the canvas
+    (clear of the bottom-centre Jump/Interact buttons). Pitch is held
+    within ±0.35 rad (`clampPitch`, `PITCH_MAX_RADIANS`) and resets to level
+    on entering First Person.
+  * **The crosshair follows the pitch:** `findInteractTarget` takes the pitch
+    and each entity's height (`stationTop` for stations, `PERSON_TOP` for
+    people), so looking up past the top of a desk, or down past the foot of
+    something, no longer targets it. Level, it targets exactly as before.
+  * **Steady view:** walking and strafing neither roll nor bob the camera, so
+    the horizon stays level and the eye height fixed; only turning, looking,
+    jumping and sprinting change the view. Sprinting widens the FOV over
+    about a quarter second (`easeSprintBlend`) rather than in one frame.
+  * **Controls card:** entering First Person shows a short controls card on
+    the canvas (so it shows in fullscreen) for 6 s, fading over its last
+    second; H shows or hides it at any time.
+  * Shift sprints, Space jumps, Enter interacts (Enter is the one interact
+    key: Space never interacts and Enter never jumps). Every held key is
+    released when the window loses focus, so movement can't stick after
+    Cmd+Tab.
 * **First Person Mode** is a software-3D renderer on the same 2D canvas
   (no WebGL, no dependencies) under `web/static/js/library/three-d/`: a
   pure `core.js` (matrices, camera, painter-sorted draw list, flat
   shading and fog), `room.js` (room shell), `scene.js` (per-frame
   assembly), `transitions.js`, and per-object builders in `meshes/` (one
-  parameterized `buildCharacter` humanoid for every FP character, built
-  from the same patron design the top-down art draws, plus bookshelf,
-  coffee machine, stairs, elevator and generic station box). The bookshelf,
+  parameterized `buildCharacter` humanoid for every FP character but
+  Min-jun, built from the same patron design the top-down art draws;
+  Min-jun's own mesh, measured off `minjun.js` and wearing its drawing on
+  his front, posed and with his face from what Top-Down draws him doing;
+  plus bookshelf, coffee machine, stairs, elevator and generic station
+  box). The bookshelf,
   coffee machine and elevator wear their own Top-Down drawer's art as a
   texture, and the stairs are built from `drawStairs`' colours with its
-  arrow badge (`library-first-person-3d.md`). Top-Down keeps its detailed
+  arrow badge (`library-first-person-3d.md`). The room wears each floor's
+  own Top-Down floor and back wall: the mint (1F) or cream (2F) checker,
+  guide stripes and rugs, and the sign, sakura branch, wall shelf and live
+  wall clock on the back wall, all from `library/floor-dressing.js`, which
+  Top-Down's `drawFloor` paints from too. Top-Down keeps its detailed
   2D art, unchanged. Interaction and targeting are
   unchanged: `first-person.js` still projects entities for
   `findInteractTarget` (the crosshair); the 3D renderer only draws. The 2D
@@ -80,14 +112,29 @@ handling, in place of Kitchen Shift's cooking and serving.
   a frame that is cleared and backdrop-filled first, since the 3D scene
   paints polygons rather than a full-canvas background like Top-Down's
   `drawFloor`.
-  Head-bob, jump, strafe tilt and sprint FOV move the 3D camera
-  (`fpCameraParams` in `library-game.js`). The Stairs and Elevator play an
+  Jump, ↑/↓ pitch and sprint FOV move the 3D camera (`fpCameraParams` in
+  `library-game.js`); the earlier head-bob and strafe roll were removed so
+  the view holds still while walking. The Stairs and Elevator play an
   animated climb (1.5 s) or ride (doors-close, rise, doors-open; 2.0 s)
   with movement input frozen; the floor switches at the commit point, and
-  Top-Down still switches instantly. Only the Front Desk / Fines Counter
-  queues (1st Floor) and Return Cart books are drawn as characters/props;
-  the ambient staff are not drawn in FP, and the elevator door-open
-  animation isn't wired into the scene yet (the camera ride is).
+  Top-Down still switches instantly. Switching to Top-Down mid-ride cancels
+  it on whichever floor it had committed to. The FP scene draws the queues,
+  the ambient staff, decor, the per-floor floor and back wall, hallucination
+  shadow figures and the Return Cart books (standing on the cart's top tray
+  wearing their Top-Down cover: genre colour, title and Coin Hunt star), and
+  the chips Top-Down shows (station names and countdowns, patron chips and
+  patience bars, staff names and help hints, "+N waiting", "+N more", the
+  messy-cart warning, OUT OF ORDER) float over their entities as
+  world-anchored labels: every label within 520 px, fading with distance and
+  hidden behind a station, the crosshair target's at full opacity; patience
+  bars within 300 px. What is still missing is listed under Known gaps in
+  `library-first-person-3d.md`. The elevator lands Eun-mi in the new
+  floor's car facing out in either camera (the stairs and the HUD floor
+  button land her at the floor's entry point); in FP its doors open in
+  front of her and close once she steps out. **Requirement:** the two cameras are views of one world, so a flip
+  must never lose a person, prop, label or interaction — see "Camera
+  parity" in `library-first-person-3d.md` for the rules (P1–P7), audit and
+  work breakdown.
 * A 30-shift month in three 10-shift tiers. The clock gets shorter and
   volumes grow with each tier. Progress is saved to `localStorage`.
 * Two floors on one canvas, switched with the Stairs, the Elevator or the
@@ -241,7 +288,8 @@ handling, in place of Kitchen Shift's cooking and serving.
 * A changed Hospital module also changes this game.
 * The page uses Hospital's anime page kit, re-tinted by `.library-anime`
   in `app.css`.
-* There is a decorative wall clock on the 1st Floor (`drawWallClock`). The
+* There is a decorative wall clock on each floor's back wall
+  (`drawWallClock` in `library/floor-dressing.js`), in both cameras. The
   HUD's `#library-hud-clock` is the clock that actually counts.
 
 ---
@@ -470,8 +518,11 @@ Look values up there rather than relying on this doc.
   | Storyteller (`libStoryteller`) | 2nd | +15 s to every waiting patron's timer and the searcher's patience | 75 s |
   | Kang Min-jun (`minjun`) | 2nd | Shelves the book Eun-mi is carrying (`minjunShelveCarriedBook`) | 60 s (`MINJUN_HELP_COOLDOWN_SECONDS`) |
 
-  Staff help is not available in First Person Mode, where a canvas click
-  is the interact action.
+  In First Person Mode, aim the crosshair at a staff member within
+  interact range (the same range as stations) and interact (Enter,
+  the Interact button, or a click once the mouse is captured): the same
+  help runs, with the same toasts and cooldowns, without the walk over. The crosshair shows their name chip
+  and the same "click: …" / "busy Ns" hint as Top-Down.
 * **Library Mood** (0–100):
   * Starts each shift at 100.
   * −25 per mistake. Also drained by Karen and a messy cart.
@@ -495,7 +546,10 @@ Look values up there rather than relying on this doc.
     (`READING_CHOSEN_SANITY_RESTORE`). The book then goes onto the Return
     Cart.
   * **Below 25 Sanity**, hallucinations start (`hallucinationIntensity`):
-    * Scare visuals.
+    * Scare visuals. Shadow figures stand on the floor; in First Person
+      they are dark silhouettes standing in the room, always facing you.
+      The vignette, whispers and jump scare are screen effects in both
+      cameras.
     * Shaky hands: the skill-check zone shrinks to as little as 50% and
       the sweep runs up to 1.6× faster.
     * Carried books can slip back onto the cart.
@@ -1327,7 +1381,9 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   branch, a little wall shelf of books, and Hospital's pink bell clock;
   stitched pastel rugs under the Coffee Machine and Reading Nook; and
   decor from `hospital/anime-furniture.js`'s `drawDecor` (plants, a water
-  cooler, a library ladder, reading chairs).
+  cooler, a library ladder, reading chairs). The palettes, placements and
+  wall painters live in `library/floor-dressing.js`; First Person builds
+  its floor and back wall from the same ones.
 * **Stations**: every station is an `animeTile` with plum line art and
   Hospital's pink (hover) / gold (target) glow ring. Library's fixtures
   are drawn by the new `web/static/js/library/anime-furniture.js` in the
@@ -2096,8 +2152,8 @@ assets exist or are generatable in this environment):
 * **A visible clock**: the 8:00 AM-11:00 PM in-game time
   (`inGameTimeLabel`) is shown two ways — the HUD's `#library-hud-clock`
   text (already wired by the backend template) for at-a-glance tracking,
-  and a diegetic **wall clock** drawn as floor decoration on the 1st
-  Floor (analog clock face, hands positioned per the current in-game
+  and a diegetic **wall clock** drawn on the back wall of both floors,
+  in both cameras (analog clock face, hands positioned per the current in-game
   time) purely for scene flavor — the HUD text is the actual source of
   truth a player tracks time by, the wall clock is not a second
   interactive/authoritative display, just set dressing.

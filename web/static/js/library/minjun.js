@@ -182,7 +182,7 @@ export function drawMinjun(ctx, x, y, opts = {}) {
  *
  * @returns {{mouth: number|null, round?: boolean, eyesClosed?: boolean}}
  */
-function faceForAction(action, at) {
+export function faceForAction(action, at) {
   if (action === 'hum') return { mouth: 0.6 + 0.4 * Math.abs(Math.sin(at * 3.2)), round: true, eyesClosed: true };
   if (action === 'read' || action === 'wave' || action === 'help') {
     return { mouth: 0.25 + 0.75 * Math.abs(Math.sin(at * 9)) };
@@ -244,10 +244,7 @@ function drawReadingArm(ctx) {
 
 /** The open book in his free hand, a page turning every couple of seconds. */
 function drawOpenBook(ctx, at) {
-  const cx = -1.2;
-  const cy = -27.6;
-  const w = 6; // half width
-  const h = 7.4;
+  const { cx, cy, w, h } = MINJUN_OPEN_BOOK; // w is the half width
   // Cover peeking out round the pages.
   rr(ctx, cx - w - 0.5, cy - h / 2 - 0.4, (w + 0.5) * 2, h + 0.9, 0.5);
   fillPath(ctx, '#4fa8e0', 0.4);
@@ -1751,14 +1748,38 @@ function drawBookArm(ctx, stride) {
   ctx.beginPath();
   ctx.ellipse(10.4, -23, 1.1, 7.2, 0, 0, Math.PI * 2);
   ctx.fill();
+  drawBookSpines(ctx, sway);
+  // The arm wrapped around them: upper arm down, forearm across the front.
+  const shoulder = [10.6, -38];
+  const elbow = [12.8, -27.6];
+  const wrist = [17.2 + sway * 0.2, -21.4];
+  drawBookArmOnly(ctx, shoulder, elbow, wrist);
+}
+
+/**
+ * The three books he carries under his left arm, standing with their spines
+ * out (x, width and height in art px; the top is MINJUN_BOOK_TOP minus the
+ * height difference to the tallest). First Person stands a box on each.
+ */
+export const MINJUN_BOOK_SPINES = [
+  { x: 10.4, w: 3, h: 15.4, color: P.books[0] },
+  { x: 13.4, w: 2.6, h: 14, color: P.books[1] },
+  { x: 16, w: 3.2, h: 16.2, color: P.books[2] },
+];
+
+/** The tallest spine's top (art px); every book stands on -31.4 + 16.2. */
+export const MINJUN_BOOK_TOP = -31.4;
+
+/** A spine's top edge (art px) at stride sway `sway`. */
+export function minjunBookTop(b, sway = 0) {
+  return MINJUN_BOOK_TOP + (16.2 - b.h) + sway * 0.3;
+}
+
+function drawBookSpines(ctx, sway) {
   // The books, standing with their spines out, Korean titles running down.
-  const spines = [
-    { x: 10.4, w: 3, h: 15.4, color: P.books[0] },
-    { x: 13.4, w: 2.6, h: 14, color: P.books[1] },
-    { x: 16, w: 3.2, h: 16.2, color: P.books[2] },
-  ];
+  const spines = MINJUN_BOOK_SPINES;
   spines.forEach((b, i) => {
-    const top = -31.4 + (16.2 - b.h) + sway * 0.3;
+    const top = minjunBookTop(b, sway);
     rr(ctx, b.x, top, b.w, b.h, 0.6);
     fillPath(ctx, b.color, 0.45);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -1820,10 +1841,10 @@ function drawBookArm(ctx, stride) {
     ctx.fillRect(b.x + 0.7, ly + 0.75, b.w - 1.4, 0.25);
     ctx.fillRect(b.x + 0.7, ly + 1.25, (b.w - 1.4) * 0.6, 0.25);
   });
-  // The arm wrapped around them: upper arm down, forearm across the front.
-  const shoulder = [10.6, -38];
-  const elbow = [12.8, -27.6];
-  const wrist = [17.2 + sway * 0.2, -21.4];
+}
+
+/** The arm wrapped around the books, with its bracelet, scrunchie, hand and doodle. */
+function drawBookArmOnly(ctx, shoulder, elbow, wrist) {
   drawArm(ctx, shoulder, elbow, wrist);
   // A beaded bracelet in violets, matching his eyes, just above the hand.
   {
@@ -2098,7 +2119,9 @@ function drawHead(ctx, t, stride, face = { mouth: null }) {
     ctx.ellipse(dir * 4.8, EYE_Y + 1.8, 2, 0.45, dir * -0.1, 0, Math.PI * 2);
     ctx.fill();
   }
-  drawEyes(ctx, face.eyesClosed ? 'happy' : isBlinkingAt(t));
+  // `face.blink` lets First Person's face canvas pick the blink itself
+  // (Top-Down never passes it, so its blink still follows `t`).
+  drawEyes(ctx, face.eyesClosed ? 'happy' : (face.blink ?? isBlinkingAt(t)));
 
   // Brows: relaxed — nearly level with a soft arch, thicker at the inner
   // end and tapering out (they used to slope down toward the nose, which
@@ -2616,3 +2639,65 @@ function drawHair(ctx, t, stride) {
   ctx.closePath();
   fillPath(ctx, P.hairMid, 0.35);
 }
+
+// -- First Person art ----------------------------------------------------------
+//
+// First Person (library/three-d/meshes/minjun.js) builds Min-jun as real 3D
+// geometry and wears this file's own drawing on the front of it, projected
+// straight along the view axis (docs/skills/2d-to-3d/SKILL.md). These paint
+// his parts at rest (t 0, no stride, no breath), in the art's own
+// coordinates; the caller sets up the transform and the opaque backing.
+
+/**
+ * His landmarks in the art's coordinates (y down, feet line at 0). The
+ * sneaker's sole reaches `ground` below the feet line (drawSneaker's sole at
+ * y0 + 4.3 + 1.8 with y0 = 2.2), and his ground shadow sits there too.
+ */
+export const MINJUN_FRAME = {
+  ground: 8.3,
+  hem: 2.4, // the slacks' cuffs (drawLegs)
+  hip: -19, // where the legs start under the vest (drawLegs)
+  waist: -15.6, // the shirt tail's lowest point (torsoPath)
+  shoulder: -38, // the arms' shoulder joint (drawArm callers), x = ±10.6
+  shoulderX: 10.6,
+  neckTop: -46.5, // drawNeckAndPhones' neck
+  chin: HEAD_Y + 12.3, // facePath's chin
+  eye: EYE_Y,
+  head: HEAD_Y,
+  crown: HEAD_Y - 21.6, // drawHair's tallest tuft
+};
+
+/** Legs, torso, the tote's strap, the trinkets, neck and headphones: everything but the arms, tote, books and head. */
+export function paintMinjunBody(ctx) {
+  drawLegs(ctx, 0);
+  drawTorso(ctx, 0, 0);
+  drawToteStrap(ctx, 0);
+  drawKeychain(ctx, 0, 0);
+  drawWalletChain(ctx, 0, 0);
+  drawPhotocard(ctx, 0, 0);
+  drawNeckAndPhones(ctx, 0);
+  drawCollarPin(ctx);
+}
+
+/**
+ * The head: ears, face, features and hair. `face` is faceForAction's, plus
+ * `blink` (true, or false for open eyes) chosen by the caller.
+ */
+export function paintMinjunHead(ctx, face = { mouth: null, blink: false }) {
+  drawHead(ctx, 0, 0, face);
+}
+
+/** The tote bag (at TOTE), the three book spines (MINJUN_BOOK_SPINES) and the open book (MINJUN_OPEN_BOOK). */
+export function paintMinjunProps(ctx) {
+  drawTote(ctx, 0, 0);
+  drawBookSpines(ctx, 0);
+  // The open book he reads from, pages still (its page turns at under 0.6 s)
+  // and his hand on its edge; clear of the tote and the spines.
+  drawOpenBook(ctx, 1);
+}
+
+/** drawOpenBook's book: its centre and half-width, height (art px), cover included. */
+export const MINJUN_OPEN_BOOK = { cx: -1.2, cy: -27.6, w: 6, h: 7.4 };
+
+/** Where the tote hangs (art px): `l`/`r` its sides, `top`/`bottom` its edges. */
+export const MINJUN_TOTE = TOTE;

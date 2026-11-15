@@ -17,6 +17,14 @@ import {
   turnFacing,
   stepForward,
   stepStrafe,
+  moveStep,
+  stepPitch,
+  clampPitch,
+  easeSprintBlend,
+  pitchHitsEntity,
+  DEFAULT_EYE_HEIGHT,
+  PITCH_MAX_RADIANS,
+  PITCH_SPEED_RADIANS_PER_SECOND,
   DEFAULT_FOV_DEGREES,
   createJumpState,
   updateJump,
@@ -278,6 +286,15 @@ describe('findInteractTarget', () => {
     ];
     assert.equal(findInteractTarget(projected).id, 'near');
   });
+
+  test('skips an entity flagged interactable: false, so the one behind it is targeted', () => {
+    const projected = [
+      { id: 'set-dressing', angleOffset: 0, distance: 40, interactable: false },
+      { id: 'staff', angleOffset: 0.01, distance: 90, interactable: true },
+    ];
+    assert.equal(findInteractTarget(projected).id, 'staff');
+    assert.equal(findInteractTarget([projected[0]]), null);
+  });
 });
 
 describe('turnFacing', () => {
@@ -338,6 +355,115 @@ describe('stepStrafe', () => {
     const { x, y } = stepStrafe(100, 100, Math.PI / 2, 1, 50);
     assert.ok(Math.abs(x - 100) < 1e-9);
     assert.ok(Math.abs(y - 150) < 1e-9);
+  });
+});
+
+describe('stepPitch', () => {
+  test('up raises the pitch, down lowers it, at the pitch speed', () => {
+    assert.ok(Math.abs(stepPitch(0, 1, 0.1) - PITCH_SPEED_RADIANS_PER_SECOND * 0.1) < 1e-9);
+    assert.ok(Math.abs(stepPitch(0, -1, 0.1) + PITCH_SPEED_RADIANS_PER_SECOND * 0.1) < 1e-9);
+  });
+
+  test('holding it never tilts past the limit either way', () => {
+    assert.equal(stepPitch(0, 1, 10), PITCH_MAX_RADIANS);
+    assert.equal(stepPitch(0, -1, 10), -PITCH_MAX_RADIANS);
+  });
+
+  test('no direction leaves it as it is', () => {
+    assert.equal(stepPitch(0.2, 0, 1), 0.2);
+  });
+});
+
+describe('clampPitch', () => {
+  test('passes a pitch inside the limit and clamps one outside it', () => {
+    assert.equal(clampPitch(0.1), 0.1);
+    assert.equal(clampPitch(5), PITCH_MAX_RADIANS);
+    assert.equal(clampPitch(-5), -PITCH_MAX_RADIANS);
+  });
+});
+
+describe('easeSprintBlend', () => {
+  test('eases toward 1 while sprinting, without jumping there in one frame', () => {
+    const b = easeSprintBlend(0, true, 1 / 60);
+    assert.ok(b > 0 && b < 0.5);
+  });
+
+  test('reaches the target after holding long enough, and eases back out', () => {
+    let b = 0;
+    for (let i = 0; i < 120; i++) b = easeSprintBlend(b, true, 1 / 60);
+    assert.equal(b, 1);
+    const out = easeSprintBlend(b, false, 1 / 60);
+    assert.ok(out < 1 && out > 0.5);
+    for (let i = 0; i < 120; i++) b = easeSprintBlend(b, false, 1 / 60);
+    assert.equal(b, 0);
+  });
+});
+
+describe('findInteractTarget with pitch', () => {
+  const desk = { id: 'desk', angleOffset: 0, distance: 100, height: 36 };
+  const shelf = { id: 'shelf', angleOffset: 0, distance: 100, height: 80 };
+
+  test('at pitch 0 an entity below eye height is still targeted (unchanged flat behaviour)', () => {
+    assert.equal(findInteractTarget([desk], { pitch: 0 })?.id, 'desk');
+  });
+
+  test('looking up past the top of a low entity misses it', () => {
+    assert.equal(findInteractTarget([desk], { pitch: 0.3 }), null);
+  });
+
+  test('looking up still hits an entity tall enough to reach the crosshair', () => {
+    assert.equal(findInteractTarget([shelf], { pitch: 0.3 })?.id, 'shelf');
+  });
+
+  test('looking down at a low entity hits it', () => {
+    assert.equal(findInteractTarget([desk], { pitch: -0.3 })?.id, 'desk');
+  });
+
+  test('looking up past a nearer low desk targets the taller shelf behind it', () => {
+    assert.equal(findInteractTarget([desk, { ...shelf, distance: 120 }], { pitch: 0.3 })?.id, 'shelf');
+  });
+
+  test('pitchHitsEntity treats a missing height as eye level', () => {
+    const e = { distance: 100 };
+    assert.ok(pitchHitsEntity(0.1, e, DEFAULT_EYE_HEIGHT, 0.157));
+    assert.ok(!pitchHitsEntity(0.3, e, DEFAULT_EYE_HEIGHT, 0.157));
+  });
+});
+
+describe('moveStep', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+  test('a single axis matches stepForward / stepStrafe', () => {
+    const f = moveStep(1, 0, 0.7, 50, 40);
+    const sf = stepForward(0, 0, 0.7, 1, 50);
+    close(f.dx, sf.x); close(f.dy, sf.y);
+    const s = moveStep(0, -1, 0.7, 50, 40);
+    const ss = stepStrafe(0, 0, 0.7, -1, 40);
+    close(s.dx, ss.x); close(s.dy, ss.y);
+  });
+
+  test('forward + strafe left while facing north moves north-west, each axis scaled by 1/√2', () => {
+    const { dx, dy } = moveStep(1, -1, 0, 50, 50);
+    close(dx, -50 * Math.SQRT1_2);
+    close(dy, -50 * Math.SQRT1_2);
+    close(Math.hypot(dx, dy), 50);
+  });
+
+  test('a diagonal is never faster than walking straight ahead', () => {
+    for (const [f, s] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const { dx, dy } = moveStep(f, s, 1.1, 50, 40);
+      assert.ok(Math.hypot(dx, dy) <= 50 + 1e-9);
+    }
+  });
+
+  test('back + strafe right while facing east moves south-west', () => {
+    const { dx, dy } = moveStep(-1, 1, Math.PI / 2, 50, 50);
+    assert.ok(dx < 0 && dy > 0);
+  });
+
+  test('no input, no movement', () => {
+    const { dx, dy } = moveStep(0, 0, 2, 50, 40);
+    close(dx, 0); close(dy, 0);
   });
 });
 

@@ -63,20 +63,22 @@
        #library-fp-turn-left-button
        #library-fp-turn-right-button  Press-and-hold to turn the camera
                                      left/right (same effect as holding the
-                                     Left/Right arrow keys or A/D).
+                                     Left/Right arrow keys or Q/E, or moving
+                                     the mouse once it's locked; the Up/Down
+                                     arrows look up/down).
        #library-fp-strafe-left-button
        #library-fp-strafe-right-button Press-and-hold to strafe sideways
-                                     (same effect as Q/E keys).
+                                     (same effect as A/D; held with
+                                     forward/back it walks diagonally).
        #library-fp-forward-button
        #library-fp-back-button        Press-and-hold to move forward/back
                                      along the current facing (same effect
-                                     as holding the Up/Down arrow keys or
-                                     W/S).
+                                     as holding W/S).
        #library-fp-jump-button        Triggers a cosmetic camera jump
-                                     (Space/Enter also jump when no
-                                     interact target is centered).
+                                     (Space jumps too; Enter never
+                                     jumps).
        #library-fp-interact-button    Same action as the interact key
-                                     (Enter/Space) or a canvas click while
+                                     (Enter; Space only jumps) or a canvas click while
                                      in First Person — interacts with
                                      whichever station is centered in view
                                      within range, via the exact same
@@ -231,12 +233,12 @@
 						<div id="library-fp-controls" class="hidden pointer-events-none absolute inset-x-0 bottom-2 flex items-end justify-between gap-2 px-3">
 							<div class="pointer-events-auto flex touch-none select-none flex-col gap-1">
 								<div class="flex gap-2">
-									<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9664;</button>
-									<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;</button>
+									<button type="button" id="library-fp-turn-left-button" aria-label="Turn left" class="ha-btn ha-btn--soft px-3 py-2 text-base">Q&#9664;</button>
+									<button type="button" id="library-fp-turn-right-button" aria-label="Turn right" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9654;E</button>
 								</div>
 								<div class="flex gap-2">
-									<button type="button" id="library-fp-strafe-left-button" aria-label="Strafe left" class="ha-btn ha-btn--soft px-3 py-1 text-xs">Q&#8592;</button>
-									<button type="button" id="library-fp-strafe-right-button" aria-label="Strafe right" class="ha-btn ha-btn--soft px-3 py-1 text-xs">&#8594;E</button>
+									<button type="button" id="library-fp-strafe-left-button" aria-label="Strafe left" class="ha-btn ha-btn--soft px-3 py-1 text-xs">A&#8592;</button>
+									<button type="button" id="library-fp-strafe-right-button" aria-label="Strafe right" class="ha-btn ha-btn--soft px-3 py-1 text-xs">&#8594;D</button>
 								</div>
 							</div>
 							<div class="pointer-events-auto flex touch-none select-none flex-col items-center gap-1">
@@ -244,8 +246,8 @@
 								<button type="button" id="library-fp-interact-button" class="ha-btn px-4 py-2 text-sm">Interact</button>
 							</div>
 							<div class="pointer-events-auto flex touch-none select-none gap-2">
-								<button type="button" id="library-fp-back-button" aria-label="Move back" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9660;</button>
-								<button type="button" id="library-fp-forward-button" aria-label="Move forward" class="ha-btn ha-btn--soft px-3 py-2 text-base">&#9650;</button>
+								<button type="button" id="library-fp-back-button" aria-label="Move back" class="ha-btn ha-btn--soft px-3 py-2 text-base">S&#9660;</button>
+								<button type="button" id="library-fp-forward-button" aria-label="Move forward" class="ha-btn ha-btn--soft px-3 py-2 text-base">W&#9650;</button>
 							</div>
 						</div>
 
