@@ -5,10 +5,24 @@ import {
   bookcaseLayout,
   drawBookcase,
   drawFrontDesk,
+  drawFrontDeskCounter,
+  frontDeskLayout,
   drawReturnCart,
+  drawReturnCartTray,
+  drawReturnCartTag,
+  returnCartLayout,
+  returnCartDecorBooks,
+  RETURN_CART_COLORS,
   drawFinesRoom,
+  drawFinesPlaque,
+  drawFinesCounterBase,
+  drawFinesDisplay,
+  drawFinesRegister,
+  finesRoomLayout,
+  FINES_ROOM_COLORS,
   drawBossDoor,
   drawReadingNook,
+  READING_NOOK_COLORS,
   coffeeMachineLayout,
   drawCoffeeMachine,
   drawOutOfOrderTape,
@@ -17,6 +31,7 @@ import {
 } from './anime-furniture.js';
 import { buildStations, stationExtents } from './floor-plan.js';
 import { GENRES } from './rules.js';
+import { ANIME, tint } from '../hospital/anime-ui.js';
 
 /** A canvas 2D context stand-in: every method is a no-op that counts calls. */
 function fakeContext() {
@@ -114,7 +129,9 @@ describe('library anime furniture', () => {
     return {
       calls,
       ctx: new Proxy({}, {
-        get: (_, k) => (k === 'measureText' ? () => ({ width: 5 }) : (...a) => calls.push([k, a])),
+        get: (_, k) => (k === 'measureText' ? () => ({ width: 5 })
+          : (k === 'createLinearGradient' || k === 'createRadialGradient') ? (...a) => { calls.push([k, a]); return { addColorStop: (...s) => calls.push(['addColorStop', s]) }; }
+            : (...a) => calls.push([k, a])),
         set: (_, k, v) => { calls.push(['set:' + k, [v]]); return true; },
       }),
     };
@@ -165,6 +182,176 @@ describe('library anime furniture', () => {
     assert.equal(b.body.y1 - b.cup.y1, a.body.y1 - a.cup.y1);
     assert.equal(b.bay.y1 - b.bay.y0, a.bay.y1 - a.bay.y0 + 20);
     assert.equal(b.body.x1 - b.body.x0, a.body.x1 - a.body.x0);
+  });
+
+  // The First Person front desk maps its faces onto these regions, so the
+  // layout must keep Top-Down's own numbers (the 124 x 84 station).
+  test('frontDeskLayout keeps the Top-Down front desk geometry', () => {
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    assert.deepEqual(L.body, { x0: -56, y0: 2, x1: 56, y1: 38 });
+    assert.deepEqual(L.top, { x0: -60, y0: -6, x1: 60, y1: 4 });
+    assert.deepEqual(L.monitor, { x0: -40, y0: -36, x1: 2, y1: -6 });
+    assert.deepEqual(L.screen, { x0: -36, y0: -32, x1: -2, y1: -10 });
+    assert.deepEqual(L.books[2], { x0: 4, y0: -26, x1: 28, y1: -19.5 });
+    assert.deepEqual(L.pot, { x0: -55, y0: -18, x1: -43, y1: -5 });
+    assert.equal(L.floor, 38);
+  });
+
+  test('drawFrontDesk draws its parts from frontDeskLayout', () => {
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    const { ctx, calls } = recordingContext();
+    drawFrontDesk(ctx, { w: 124, h: 84 });
+    const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    for (const r of [L.body, L.top, L.stand, L.monitor, L.screen, ...L.books, L.bellBase, L.pot]) {
+      assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
+    }
+  });
+
+  test('drawFrontDeskCounter is a contiguous run of drawFrontDesk\'s own calls', () => {
+    const whole = recordingContext();
+    drawFrontDesk(whole.ctx, { w: 124, h: 84 });
+    const part = recordingContext();
+    drawFrontDeskCounter(part.ctx, { w: 124, h: 84 });
+    const L = frontDeskLayout({ w: 124, h: 84 });
+    const rounds = part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    assert.deepEqual(rounds, [L.body, L.top]);
+    const a = JSON.stringify(whole.calls);
+    const b = JSON.stringify(part.calls).slice(1, -1);
+    assert.ok(part.calls.length > 0 && a.includes(b), 'the counter\'s calls appear in order, unbroken, in drawFrontDesk');
+  });
+
+  // The First Person fines counter maps its faces onto these regions, so the
+  // layout must keep Top-Down's own numbers (the 130 x 130 room).
+  test('finesRoomLayout keeps the Top-Down fines counter geometry', () => {
+    const L = finesRoomLayout({ w: 130, h: 130 });
+    assert.deepEqual(L.plaque, { x0: -36, y0: -57, x1: 36, y1: -40 });
+    assert.deepEqual(L.body, { x0: -53, y0: 12, x1: 53, y1: 55 });
+    assert.deepEqual(L.top, { x0: -57, y0: 6, x1: 57, y1: 15 });
+    assert.deepEqual(L.housing, { x0: -8, y0: -22, x1: 22, y1: -13 });
+    assert.deepEqual(L.display, { x0: -5, y0: -20.5, x1: 13, y1: -15 });
+    assert.deepEqual(L.register, { x0: -14, y0: -14, x1: 26, y1: 6 });
+    assert.deepEqual(L.coins, [{ x: -34, n: 4 }, { x: -25, n: 2 }]);
+    assert.equal(L.coinBase, 4);
+    assert.equal(L.coinPitch, 3.6);
+    assert.equal(L.coinR, 5);
+    assert.equal(L.floor, 55);
+  });
+
+  test('drawFinesRoom draws its parts from finesRoomLayout', () => {
+    const L = finesRoomLayout({ w: 130, h: 130 });
+    const { ctx, calls } = recordingContext();
+    drawFinesRoom(ctx, { w: 130, h: 130 });
+    const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    for (const r of [L.plaque, L.body, L.top, L.housing, L.display, L.register]) {
+      assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
+    }
+    const coins = calls.filter(([k]) => k === 'ellipse').map(([, a]) => [a[0], a[1], a[2]]);
+    const want = L.coins.flatMap(({ x, n }) => Array.from({ length: n }, (_, i) => [x, L.coinBase - i * L.coinPitch, L.coinR]));
+    assert.deepEqual(coins, want);
+    assert.equal(coins.length, 6);
+    // The flat fills of the parts are FINES_ROOM_COLORS' (the blocks' are gradients of them).
+    const fills = new Set(calls.filter(([k]) => k === 'set:fillStyle').map(([, [v]]) => v));
+    for (const c of ['display', 'keys', 'coin', 'coinDeep']) assert.ok(fills.has(FINES_ROOM_COLORS[c]), c);
+  });
+
+  // First Person repaints each textured part alone, clipped to its region, so
+  // each helper must be exactly the drawer's own unbroken run of calls.
+  test('the fines part helpers are contiguous runs of drawFinesRoom\'s own calls', () => {
+    const st = { w: 130, h: 130 };
+    const L = finesRoomLayout(st);
+    const whole = JSON.stringify((() => { const r = recordingContext(); drawFinesRoom(r.ctx, st); return r.calls; })());
+    for (const [draw, parts] of [
+      [drawFinesPlaque, [L.plaque]],
+      [drawFinesCounterBase, [L.body, L.top]],
+      [drawFinesDisplay, [L.housing, L.display]],
+      [drawFinesRegister, [L.register]],
+    ]) {
+      const part = recordingContext();
+      draw(part.ctx, st);
+      assert.deepEqual(part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a)), parts, draw.name);
+      assert.ok(part.calls.length > 0 && whole.includes(JSON.stringify(part.calls).slice(1, -1)), `${draw.name} is unbroken in drawFinesRoom`);
+    }
+  });
+
+  // The First Person return cart maps its faces onto these regions, so the
+  // layout must keep Top-Down's own numbers (the 84 x 84 station).
+  test('returnCartLayout keeps the Top-Down return cart geometry', () => {
+    const L = returnCartLayout({ w: 84, h: 84 });
+    assert.deepEqual(L, {
+      trays: [{ x0: -33, y0: -3, x1: 33, y1: 2 }, { x0: -33, y0: 17, x1: 33, y1: 22 }],
+      tag: { x0: -26, y0: -37, x1: 26, y1: -23 },
+      bookX0: -28,
+      bookPitch: 9,
+      bookW: 7.5,
+      posts: [-32, 32],
+      wheels: [{ x: -26, y: 32, r: 5 }, { x: 26, y: 32, r: 5 }],
+      hubR: 1.8,
+    });
+  });
+
+  test('returnCartDecorBooks: 6 on the upper tray, 5 on the lower in the 2D\'s colour order and stepped heights', () => {
+    const B = RETURN_CART_COLORS.books;
+    assert.deepEqual(RETURN_CART_COLORS.books, [ANIME.coral, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.pink]);
+    assert.deepEqual(returnCartDecorBooks(0).map((b) => b.color), B);
+    const lower = returnCartDecorBooks(1);
+    assert.equal(lower.length, 5);
+    assert.deepEqual(lower.map((b) => b.color), [2, 3, 4, 5, 0].map((i) => B[i]));
+    assert.deepEqual(lower.map((b) => b.h), [13, 15, 17, 14, 16]);
+  });
+
+  test('drawReturnCart draws its trays and tag from returnCartLayout, and the RETURNS lettering', () => {
+    const st = { w: 84, h: 84 };
+    const L = returnCartLayout(st);
+    const { ctx, calls } = recordingContext();
+    drawReturnCart(ctx, st);
+    const rounds = calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a));
+    for (const r of [...L.trays, L.tag]) {
+      assert.ok(rounds.some((q) => ['x0', 'y0', 'x1', 'y1'].every((k) => Math.abs(q[k] - r[k]) < 1e-9)), JSON.stringify(r));
+    }
+    assert.ok(calls.some(([k, a]) => k === 'fillText' && a[0] === 'RETURNS'));
+    const fills = new Set(calls.filter(([k]) => k === 'set:fillStyle').map(([, [v]]) => v));
+    for (const c of ['tag', 'tagInk', 'wheel', 'hub']) assert.ok(fills.has(RETURN_CART_COLORS[c]), c);
+  });
+
+  // First Person repaints each textured part alone, clipped to its region, so
+  // each helper must be exactly the drawer's own unbroken run of calls.
+  test('the return cart part helpers are contiguous runs of drawReturnCart\'s own calls', () => {
+    const st = { w: 84, h: 84 };
+    const L = returnCartLayout(st);
+    const whole = JSON.stringify((() => { const r = recordingContext(); drawReturnCart(r.ctx, st); return r.calls; })());
+    for (const [draw, parts] of [
+      [(c) => drawReturnCartTray(c, st, 0), [L.trays[0]]],
+      [(c) => drawReturnCartTray(c, st, 1), [L.trays[1]]],
+      [(c) => drawReturnCartTag(c, st), [L.tag]],
+    ]) {
+      const part = recordingContext();
+      draw(part.ctx);
+      assert.deepEqual(part.calls.filter(([k]) => k === 'roundRect').map(([, a]) => rectOf(a)), parts);
+      assert.ok(part.calls.length > 0 && whole.includes(JSON.stringify(part.calls).slice(1, -1)), `${JSON.stringify(parts)} is unbroken in drawReturnCart`);
+    }
+  });
+
+  // The First Person Reading Nook builds in these colours, so the drawer must
+  // paint with exactly them: its flat fills and strokes are table values, and
+  // its blocks' gradients are block()'s two tints of one. The heart on the
+  // chair (ANIME.pinkDeep) and the lamp's glow (rgba stops) are overlays the
+  // mesh doesn't model.
+  test('drawReadingNook draws in READING_NOOK_COLORS', () => {
+    const C = READING_NOOK_COLORS;
+    assert.deepEqual(C, {
+      rug: ANIME.lavender, chair: ANIME.pink, arm: tint(ANIME.pink, -0.12), cushion: tint(ANIME.pink, 0.2),
+      leg: '#8a6a4a', book: '#ffffff', pole: ANIME.ink, base: '#5a5a78', shade: ANIME.gold,
+    });
+    const palette = new Set(Object.values(C));
+    const { ctx, calls } = recordingContext();
+    drawReadingNook(ctx, { w: 84, h: 84 });
+    const styles = calls.filter(([k]) => k === 'set:fillStyle' || k === 'set:strokeStyle').map(([, [v]]) => v);
+    const flatStyles = styles.filter((v) => typeof v === 'string');
+    assert.ok(styles.length - flatStyles.length >= 5, 'the blocks and the glow are gradients');
+    for (const v of flatStyles) assert.ok(palette.has(v) || v === ANIME.pinkDeep, v);
+    const tints = new Set(Object.values(C).flatMap((c) => [tint(c, 0.22), tint(c, -0.06)]));
+    for (const [, [, c]] of calls.filter(([k]) => k === 'addColorStop')) assert.ok(tints.has(c) || c.startsWith('rgba('), c);
+    for (const c of ['rug', 'leg', 'book', 'pole', 'base', 'shade']) assert.ok(flatStyles.includes(C[c]), c);
   });
 
   test('drawOutOfOrderTape draws two crossed, clipped yellow strips of black stripes', () => {

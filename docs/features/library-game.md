@@ -1403,7 +1403,35 @@ drawn with Hospital Shift's own anime kit rather than a copy of it:
   `rows` (Top-Down draws 2): First Person's bookshelf paints this same
   drawer at its own 1:2 shape with 4 rows and wears it as a texture
   (`library-first-person-3d.md`), so a change to the bookcase art shows
-  in both cameras.
+  in both cameras. `drawFrontDesk` draws from `frontDeskLayout` and
+  `FRONT_DESK_COLORS` (exported beside it), starting with
+  `drawFrontDeskCounter` (body, shine, slab, heart), which First Person
+  repaints over its slab's region to keep the slab's front clean; First Person's Front Desk
+  wears that same drawing on its counter, slab and monitor and places its
+  books, bell and plant from the layout, so a change to the desk's art
+  shows in both cameras. `drawFinesRoom` likewise draws from
+  `finesRoomLayout` and `FINES_ROOM_COLORS` through four exported helpers,
+  each its own unbroken run of calls: `drawFinesPlaque` (plaque and
+  lettering), `drawFinesCounterBase` (body, top, heart), `drawFinesDisplay`
+  (housing and display) and `drawFinesRegister` (register and keypad).
+  First Person's Fines Counter wears that drawing on its body, top,
+  register, housing and plaque (repainting each part clipped to its own
+  region so it shows nothing else) and places its coin stacks from the
+  layout, so a change to the counter's art shows in both cameras.
+  `drawReturnCart` draws from `returnCartLayout` (the two trays, the
+  RETURNS tag, the decorative books' left edge, pitch and width, the posts'
+  x, the wheels and the hubs' radius), `RETURN_CART_COLORS` and
+  `returnCartDecorBooks(tray)` (each tray's books, colour and height; the
+  lower tray's colours start two along), all exported, through two helpers
+  that are its own unbroken runs of calls: `drawReturnCartTray(ctx, st,
+  tray)` and `drawReturnCartTag` (tag and lettering). First Person's Return
+  Cart wears that drawing on both trays and its tag (each repainted clipped
+  to its own region) and stands the lower tray's books from the same
+  colours and heights, so a change to the cart's art shows in both cameras.
+  `drawReadingNook` draws from `READING_NOOK_COLORS` (exported: rug, chair,
+  arm, cushion, leg, book, pole, base, shade; its heart and the lamp's glow
+  are overlays outside it), the colours First Person's Reading Nook is built
+  in, so a change to the nook's colours shows in both cameras.
 * **Layout** (`floor-plan.js`): mirrors the ER. Stations can be
   rectangles: every station has `w`/`h` (defaulting to `size`), read
   through `stationExtents` by hit-testing, the walk-up standoff, the

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack, tube, loft, faceNormal, projectFront } from './geom.js';
+import { box, prism, quad, translate, scaleMesh, scaleAbout, emptyMesh, merge, boxWithout, artFrontUV, textureFront, artBackUV, textureBack, tube, loft, faceNormal, projectFront, supportTop } from './geom.js';
 
 function normal(mesh, face) {
   const [a, b, c] = face.indices.map((i) => mesh.vertices[i]);
@@ -239,4 +239,13 @@ test('tube side/squash: a flattened tube, wide along `side` (made square to the 
     const c = faceCentre(m, f);
     assert.ok(n[0] * (c[0] - mid[0]) + n[1] * (c[1] - mid[1]) + n[2] * (c[2] - mid[2]) > 0, 'outward');
   }
+});
+
+test('supportTop marks only the box top as a supporting surface, wherever boxWithout left it', () => {
+  const part = supportTop(boxWithout([-1, 0, -0.5], [1, 1, 0.5], '#abcdef', ['bottom', 'back']));
+  const under = part.faces.filter((f) => f.under);
+  assert.equal(under.length, 1);
+  assert.ok(under[0].indices.every((i) => part.vertices[i][1] === 1));
+  assert.ok(faceNormal(part, under[0])[1] > 0.999);
+  assert.equal(part.faces.length, 4);
 });

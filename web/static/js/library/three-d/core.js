@@ -250,34 +250,132 @@ function modelPoint(p, pl) {
   return [x * c + z * sn + pl.pos[0], y + pl.pos[1], -x * sn + z * c + pl.pos[2]];
 }
 
+const UNDER_EPS = 1e-6;
+
+/** Whether two convex screen polygons overlap with positive area (separating axes; touching edges do not count). */
+export function screenOverlap(a, b) {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const [x0, y0] = poly[i];
+      const [x1, y1] = poly[(i + 1) % poly.length];
+      const nx = y1 - y0, ny = x0 - x1;
+      const len = Math.hypot(nx, ny);
+      if (len < 1e-9) continue;
+      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
+      for (const [x, y] of a) { const d = (x * nx + y * ny) / len; if (d < amin) amin = d; if (d > amax) amax = d; }
+      for (const [x, y] of b) { const d = (x * nx + y * ny) / len; if (d < bmin) bmin = d; if (d > bmax) bmax = d; }
+      if (Math.min(amax, bmax) - Math.max(amin, bmin) < 1e-3) return false;
+    }
+  }
+  return true;
+}
+
+const bounds = (screen) => {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of screen) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return { x0, x1, y0, y1 };
+};
+
+/**
+ * The `under` rule, a local fix-up after the mean-depth sort. A face marked
+ * `under: true` (and `cull: true`) is a supporting surface: a counter top
+ * that things stand on. It is drawn only when the eye is above its plane, and
+ * from there nothing on or above that plane can be hidden by it, so any
+ * polygon of the same placed mesh lying on or above the plane that the sort
+ * put before it, and that overlaps it on screen, is out of order: mean depth
+ * puts a big top's centre nearer than what stands on its far half, and,
+ * looking up, nearer than anything taller than it. Each such polygon S is
+ * moved to just after the top polygon T (the movers keep their relative
+ * order). T never moves, nor does any other mesh's polygon or this mesh's
+ * faces below the plane, so the top keeps its mean-depth place against
+ * everything else. The residual: a moved S is now drawn after any polygon P
+ * that sat between S and T, which is wrong only where P is truly in front of
+ * S and overlaps it on screen, so it is bounded by the standing objects' own
+ * screen area. `meshes` holds, per hinted placed mesh, its faces' polygons
+ * and world vertices.
+ */
+function settleUnderFaces(list, meshes) {
+  for (const { spans } of meshes) {
+    const spanOf = new Map();
+    for (const s of spans) for (const p of s.polys) spanOf.set(p, s);
+    const tops = new Map();
+    for (const s of spans) {
+      if (!s.face.under) continue;
+      const [a, b, c] = s.verts;
+      const n = normalize(cross(sub(b, a), sub(c, a)));
+      const top = { span: s, a, n, above: new Map() };
+      for (const p of s.polys) tops.set(p, top);
+    }
+    // Whether span r lies on or above top u's plane (another face of the same surface does not count).
+    const isAbove = (r, u) => {
+      let v = u.above.get(r);
+      if (v === undefined) {
+        const d = r.verts.map((w) => dot(u.n, sub(w, u.a)));
+        v = r !== u.span && d.every((x) => x >= -UNDER_EPS) && !(r.face.under && d.every((x) => x <= UNDER_EPS));
+        u.above.set(r, v);
+      }
+      return v;
+    };
+    // Movers only ever go later, so a few passes settle stacked supports (a
+    // tray on a tray); the scan picks up a moved top where it lands.
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      for (let i = 0; i < list.length; i++) {
+        const u = tops.get(list[i]);
+        if (!u) continue;
+        const T = list[i];
+        const tb = bounds(T.screen);
+        const movers = [];
+        for (let k = 0; k < i; k++) {
+          const r = spanOf.get(list[k]);
+          if (!r || !isAbove(r, u)) continue;
+          const sb = bounds(list[k].screen);
+          if (sb.x1 <= tb.x0 || sb.x0 >= tb.x1 || sb.y1 <= tb.y0 || sb.y0 >= tb.y1) continue;
+          if (screenOverlap(list[k].screen, T.screen)) movers.push(k);
+        }
+        if (!movers.length) continue;
+        const ms = movers.map((k) => list[k]);
+        for (let j = movers.length - 1; j >= 0; j--) list.splice(movers[j], 1);
+        i -= movers.length;
+        list.splice(i + 1, 0, ...ms);
+        moved = true;
+      }
+      if (!moved) break;
+    }
+  }
+  return list;
+}
+
 export function buildDrawList(camera, placed, opts) {
   const { viewport, light, fog } = opts;
   const cullView = opts.cullOffscreen ? viewport : null;
   const ld = normalize(light.dir);
   const out = [];
+  const hinted = [];
   for (const { mesh, placement } of placed) {
     const alpha = placement.alpha ?? 1;
     const world = mesh.vertices.map((v) => modelPoint(v, placement));
     const clip = world.map((w) => transformPoint(camera.viewProj, w));
-    for (const face of mesh.faces) {
+    // One face's polygons, pushed onto `out` (none when culled or clipped away).
+    const pushFace = (face) => {
       const idx = face.indices;
-      if (idx.length < 3) continue;
+      if (idx.length < 3) return;
       if (face.cull) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
-        if (dot(cross(sub(b, a), sub(c, a)), sub(camera.position, a)) <= 0) continue;
+        if (dot(cross(sub(b, a), sub(c, a)), sub(camera.position, a)) <= 0) return;
       }
       if (face.texture && idx.length === 4) {
         const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
         const n = normalize(cross(sub(b, a), sub(c, a)));
         const intensity = face.unlit ? 1 : light.ambient + Math.max(0, dot(n, ld));
         pushTexturedFace(out, face, world, camera, viewport, fog, intensity, alpha, cullView);
-        continue;
+        return;
       }
       // Clip against the near plane; a face entirely behind it yields nothing.
       // Shading still comes from the unclipped world vertices, so a face looks
       // the same whether or not the camera happens to cut it.
       const poly = clipNear(idx.map((i) => clip[i]));
-      if (poly.length < 3) continue;
+      if (poly.length < 3) return;
       let depthSum = 0;
       for (const p of poly) depthSum += p[3];
       const a = world[idx[0]], b = world[idx[1]], c = world[idx[2]];
@@ -288,11 +386,24 @@ export function buildDrawList(camera, placed, opts) {
         (cx / cw * 0.5 + 0.5) * viewport.width,
         (1 - (cy / cw * 0.5 + 0.5)) * viewport.height,
       ]);
-      if (offscreen(screen, cullView)) continue;
+      if (offscreen(screen, cullView)) return;
       out.push({
         screen, color: shadeColor(face.color, intensity, fog, depth), depth, ground: Boolean(face.ground), decal: Boolean(face.decal), alpha,
       });
+    };
+    // A mesh with a supporting surface (`under`, see settleUnderFaces) keeps
+    // each face's polygons and world vertices for the fix-up after the sort.
+    // An `under` face must also `cull`: drawn from below its plane it would
+    // be in front of what stands on it, so without `cull` it is left plain.
+    const spans = mesh.faces.some((f) => f.under && f.cull) ? [] : null;
+    for (const face of mesh.faces) {
+      const from = out.length;
+      pushFace(face);
+      if (spans && out.length > from) {
+        spans.push({ face: face.cull ? face : { ...face, under: false }, polys: out.slice(from), verts: face.indices.map((i) => world[i]) });
+      }
     }
+    if (spans) hinted.push({ spans });
   }
   // Ground is its own layer, painted first and farthest-first within itself.
   // The floor is the shell's lowest surface and everything in the room rests on
@@ -304,7 +415,8 @@ export function buildDrawList(camera, placed, opts) {
   // that are also `decal` (the floor's stripes and rugs) are a second ground
   // pass, over every tile: they lie on the tiles, so no tile may cover them.
   const layer = (p) => (p.ground ? (p.decal ? 1 : 0) : 2);
-  return out.sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth);
+  out.sort((p, q) => (layer(p) - layer(q)) || q.depth - p.depth);
+  return hinted.length ? settleUnderFaces(out, hinted) : out;
 }
 
 export function drawScene(ctx, camera, placed, opts) {

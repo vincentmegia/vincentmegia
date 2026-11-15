@@ -4,6 +4,7 @@ import {
   identityMat4, multiplyMat4, transformPoint, cameraFromPose, projectPoint,
   buildDrawList, drawScene, shadeColor,
 } from './core.js';
+import { box } from './meshes/geom.js';
 
 const VP = { width: 800, height: 600 };
 const OPTS = { eyeHeight: 1.6, fov: Math.PI / 3, aspect: 800 / 600, near: 0.1, far: 100 };
@@ -399,4 +400,130 @@ test('cullOffscreen drops faces wholly outside the viewport, flat or textured', 
       'an on-screen face is untouched',
     );
   }
+});
+
+// Plain mean-depth order, re-implemented independently of buildDrawList:
+// every face that survives culling, keyed (layer, depth, push index), with
+// the push index as an explicit tie-break. Flat faces only, and cameras far
+// enough that nothing is near-clipped.
+function referenceOrder(camera, placed) {
+  const rows = [];
+  placed.forEach(({ mesh, placement }, mi) => {
+    const c = Math.cos(placement.yaw), sn = Math.sin(placement.yaw), k = placement.scale;
+    // Scale, then turn about Y, then move: the same arithmetic as placing a mesh, so depths match to the bit.
+    const world = mesh.vertices.map(([x0, y0, z0]) => {
+      const x = x0 * k, y = y0 * k, z = z0 * k;
+      return [x * c + z * sn + placement.pos[0], y + placement.pos[1], -x * sn + z * c + placement.pos[2]];
+    });
+    mesh.faces.forEach((f, fi) => {
+      const [a, b, d] = f.indices.slice(0, 3).map((i) => world[i]);
+      const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const e2 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      const v = [camera.position[0] - a[0], camera.position[1] - a[1], camera.position[2] - a[2]];
+      if (f.cull && n[0] * v[0] + n[1] * v[1] + n[2] * v[2] <= 0) return;
+      const depth = f.indices.reduce((s, i) => s + transformPoint(camera.viewProj, world[i])[3], 0) / f.indices.length;
+      rows.push({ id: `${mi}:${fi}`, layer: f.ground ? (f.decal ? 1 : 0) : 2, depth, at: rows.length });
+    });
+  });
+  rows.sort((p, q) => p.layer - q.layer || q.depth - p.depth || p.at - q.at);
+  return rows.map((r) => r.id);
+}
+
+test('without `under` faces the draw list is exactly plain mean-depth order, ties in push order (checked against an independent re-implementation)', async () => {
+  const { buildBookshelf } = await import('./meshes/bookshelf.js');
+  const { buildCoffeeMachine } = await import('./meshes/coffee-machine.js');
+  const { buildCharacter } = await import('./meshes/character.js');
+  const twin = box([-0.5, 0, -0.5], [0.5, 1, 0.5], '#000000');
+  twin.faces.forEach((f) => { f.cull = true; });
+  // The twin box is placed twice at the same spot: every face of it ties exactly.
+  const meshes = [buildBookshelf(), buildCoffeeMachine(), buildCharacter(null), twin, twin];
+  assert.ok(meshes.every((m) => !m.faces.some((f) => f.under || f.texture)));
+  const pos = [[-60, 0, 0], [0, 0, 40], [60, 0, -30], [0, 0, -80], [0, 0, -80]];
+  let n = 0;
+  const tagged = meshes.map((m) => ({ vertices: m.vertices, faces: m.faces.map((f) => ({ ...f, unlit: true, color: '#' + (++n).toString(16).padStart(6, '0') })) }));
+  const ids = [];
+  meshes.forEach((m, mi) => m.faces.forEach((_, fi) => ids.push(`${mi}:${fi}`)));
+  const placed = tagged.map((mesh, i) => ({ mesh, placement: { pos: pos[i], yaw: i * 0.6, scale: 40 } }));
+  const env = { viewport: { width: 400, height: 300 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 } };
+  let ties = 0;
+  for (let k = 0; k < 12; k++) {
+    const a = k * 0.53;
+    const cam = cameraFromPose({ x: Math.sin(a) * 420, y: Math.cos(a) * 420, facing: -a }, { eyeHeight: 60, pitch: ((k % 3) - 1) * 0.3, fov: Math.PI / 3, aspect: 4 / 3, near: 1, far: 3000 });
+    const list = buildDrawList(cam, placed, env);
+    const got = list.map((p) => { const [r, g, b] = p.color.match(/\d+/g).map(Number); return ids[((r << 16) | (g << 8) | b) - 1]; });
+    assert.deepEqual(got, referenceOrder(cam, placed));
+    for (let i = 1; i < list.length; i++) if (list[i].depth === list[i - 1].depth) ties++;
+  }
+  assert.ok(ties > 0, 'the twin boxes do tie');
+});
+
+test('an `under` face is drawn before every face of its mesh on or above its plane, and keeps its depth against other meshes', () => {
+  // A wide slab whose top (its own colour) has a tall thin post standing on
+  // its far edge: by mean depth the top's centre is nearer than the post, so
+  // it would be drawn over it. A cube stands far behind, another in front.
+  const slab = (under) => {
+    const m = { vertices: [], faces: [] };
+    const add = (part) => { const b = m.vertices.length; m.vertices.push(...part.vertices); for (const f of part.faces) m.faces.push({ ...f, indices: f.indices.map((i) => i + b), cull: true, unlit: true }); };
+    const top = box([-2, 0.9, -1], [2, 1, 1], '#aa0000', { top: '#ff0000' });
+    if (under) top.faces[4].under = true;
+    add(top);
+    add(box([-0.1, 1, -1], [0.1, 3, -0.8], '#00aa00'));
+    return m;
+  };
+  const cube = box([-0.5, 0, -0.5], [0.5, 1, 0.5], '#0000aa');
+  cube.faces = cube.faces.map((f) => ({ ...f, cull: true, unlit: true }));
+  const env = { viewport: { width: 400, height: 400 }, light: { dir: [0, 1, 0], ambient: 1 } };
+  const cam = cameraFromPose({ x: 0, y: 160, facing: 0 }, { eyeHeight: 90, pitch: 0.3, fov: Math.PI / 3, aspect: 1, near: 1, far: 2000 });
+  const run = (under) => buildDrawList(cam, [
+    { mesh: slab(under), placement: { pos: [0, 0, 0], yaw: 0, scale: 40 } },
+    { mesh: cube, placement: { pos: [0, 0, -400], yaw: 0, scale: 40 } },
+    { mesh: cube, placement: { pos: [0, 0, 120], yaw: 0, scale: 40 } },
+  ], env);
+  const idx = (list, color, keep = () => true) => list.map((p, i) => (p.color === shadeColor(color, 1) && keep(p) ? i : -1)).filter((i) => i >= 0);
+  for (const under of [false, true]) {
+    const list = run(under);
+    const [top] = idx(list, '#ff0000');
+    const post = idx(list, '#00aa00');
+    assert.ok(top >= 0 && post.length > 0);
+    if (under) assert.ok(post.every((i) => i > top), 'with `under` the top is drawn before the post');
+    else assert.ok(post.some((i) => i < top), 'by mean depth alone the post is drawn first (the bug)');
+    // The far cube is drawn before the whole slab and the near one after it, either way.
+    const slabAll = [...idx(list, '#ff0000'), ...idx(list, '#aa0000'), ...post];
+    const far = idx(list, '#0000aa', (p) => p.depth > 300);
+    const nearCube = idx(list, '#0000aa', (p) => p.depth < 100);
+    assert.ok(far.length > 0 && nearCube.length > 0);
+    assert.ok(Math.max(...far) < Math.min(...slabAll), 'the far cube first');
+    assert.ok(Math.min(...nearCube) > Math.max(...slabAll), 'the near cube last');
+  }
+});
+
+test('an `under` face without `cull` is an ordinary face: the mesh keeps plain mean-depth order', () => {
+  // The slab of the test above, but its top is `under` without `cull`. The
+  // mesh is still hinted, because a small separate top far off to the side
+  // is a proper `under` + `cull` one (it overlaps nothing on screen). Were
+  // the demotion in buildDrawList missing, the slab's top would act as a
+  // supporting surface and pull the post after it; it must not.
+  const mesh = (under) => {
+    const m = { vertices: [], faces: [] };
+    const add = (part, cull) => { const b = m.vertices.length; m.vertices.push(...part.vertices); for (const f of part.faces) m.faces.push({ ...f, indices: f.indices.map((i) => i + b), unlit: true, cull }); };
+    const top = box([-2, 0.9, -1], [2, 1, 1], '#aa0000', { top: '#ff0000' });
+    top.faces[4].under = under;
+    add(top, false);
+    add(box([-0.1, 1, -1], [0.1, 3, -0.8], '#00aa00'), false);
+    const side = box([29, 0, -1], [31, 0.2, 1], '#0000aa', { top: '#00ffff' });
+    side.faces[4].under = under;
+    add(side, true);
+    return m;
+  };
+  const env = { viewport: { width: 400, height: 400 }, light: { dir: [0, 1, 0], ambient: 1 } };
+  const cam = cameraFromPose({ x: 0, y: 160, facing: 0 }, { eyeHeight: 90, pitch: 0.3, fov: Math.PI / 3, aspect: 1, near: 1, far: 2000 });
+  const run = (under) => buildDrawList(cam, [{ mesh: mesh(under), placement: { pos: [0, 0, 0], yaw: 0, scale: 40 } }], env)
+    .map((p) => `${p.color}@${p.depth}`);
+  const withUnder = run(true);
+  const plain = run(false);
+  assert.deepEqual(withUnder, plain);
+  const post = (l) => l.map((s, i) => (s.startsWith(shadeColor('#00aa00', 1)) ? i : -1)).filter((i) => i >= 0);
+  const top = plain.findIndex((s) => s.startsWith(shadeColor('#ff0000', 1)));
+  assert.ok(top >= 0 && post(plain).some((i) => i < top), 'by mean depth the post is drawn before the top, so the guard is what keeps it so');
 });

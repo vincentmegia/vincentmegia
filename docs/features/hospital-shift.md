@@ -1262,7 +1262,8 @@ area are unchanged; only the drawing moved to an anime game-UI style.
   `drawElevator` draws from `elevatorLayout` and `ELEVATOR_COLORS`, with
   optional `height`/`pulse` that Hospital never passes; `drawStairs` draws
   from `STAIRS_COLORS`, `STAIRS_RAIL`, `stairStepColor` and
-  `drawStairsBadge`; Hospital's drawing is byte-identical to before, by
+  `drawStairsBadge`; the waiting chairs, water cooler, plant and ladder draw
+  from `DECOR_COLORS`, which Library's First Person decor meshes read; Hospital's drawing is byte-identical to before, by
   call-trace diff, and a change to either shows in both games); a pastel
   supply cart with outlined bandage rolls. The Coffee Machine keeps its
   original Library Shift art (the user: "i want the old coffee machine

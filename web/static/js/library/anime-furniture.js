@@ -396,84 +396,314 @@ export function drawOutOfOrderTape(ctx) {
   }
 }
 
-/** The Front Desk: a peach counter with a monitor of book covers, a stack of books, a bell and a plant. */
+/** The Front Desk's own colours: its counter, monitor, cover and book swatches, bell and plant. */
+export const FRONT_DESK_COLORS = {
+  counter: '#ffcfa8',
+  top: '#e8b58a',
+  stand: '#8a8aa0',
+  monitor: '#5a5a78',
+  screen: '#d6ecff',
+  covers: [ANIME.pink, ANIME.mint, ANIME.gold],
+  books: [ANIME.sky, ANIME.coral, ANIME.lavender],
+  bell: ANIME.gold,
+  bellBase: ANIME.goldDeep,
+  pot: '#f2a98a',
+  leaf: ANIME.mint,
+};
+
+/**
+ * Where drawFrontDesk puts its parts, in the station's centered px: the
+ * counter body and its top slab, the monitor (stand, case, screen), the
+ * stack of books (bottom first), the service bell (dome centre and radius,
+ * its base and button), the plant's pot and leaf circles, and `floor`, the
+ * body's bottom edge the desk stands on. Widths and the pot follow `st.w`,
+ * the body's height `st.h`; the rest is fixed px. Top-Down's box is 124 x 84.
+ * First Person's front-desk mesh maps its faces onto these same regions
+ * (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function frontDeskLayout(st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  return {
+    body: { x0: -hw + 6, y0: 2, x1: -hw + 6 + (st.w - 12), y1: 2 + (hh - 6) },
+    top: { x0: -hw + 2, y0: -6, x1: -hw + 2 + (st.w - 4), y1: 4 },
+    stand: { x0: -24, y0: -6, x1: -14, y1: -2 },
+    monitor: { x0: -40, y0: -36, x1: 2, y1: -6 },
+    screen: { x0: -36, y0: -32, x1: -2, y1: -10 },
+    books: [0, 1, 2].map((i) => ({ x0: 6 - i, y0: -12 - i * 7, x1: 6 - i + 24, y1: -12 - i * 7 + 6.5 })),
+    bell: { x: 46, y: -6, r: 8 },
+    bellBase: { x0: 36, y0: -7, x1: 56, y1: -4 },
+    bellButton: { x: 46, y: -15, r: 1.8 },
+    pot: { x0: -hw + 7, y0: -18, x1: -hw + 7 + 12, y1: -18 + 13 },
+    leaves: [[-hw + 13, -24, 5], [-hw + 9, -27, 3.5], [-hw + 17, -28, 3.5]].map(([x, y, r]) => ({ x, y, r })),
+    floor: 2 + (hh - 6),
+  };
+}
+
+/** A rect's x, y, w, h, the way the drawer's primitives take it. */
+const xywh = (r) => [r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0];
+
+/**
+ * The Front Desk's counter alone: the body with its shine band, the top slab
+ * and the heart, the first thing drawFrontDesk draws. First Person repaints
+ * it clipped to the slab so the slab's front shows none of the things the 2D
+ * draws over its edge (they stand on the slab in 3D).
+ */
+export function drawFrontDeskCounter(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const L = frontDeskLayout(st);
+  const C = FRONT_DESK_COLORS;
+  block(ctx, ...xywh(L.body), 8, C.counter, 1.5);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(-hw + 7, 12, st.w - 14, 6);
+  block(ctx, ...xywh(L.top), 5, C.top, 1.5);
+  heart(ctx, 0, hh - 14, 4.5, 'rgba(232,85,143,0.7)');
+}
+
+/**
+ * The Front Desk: a peach counter with a monitor of book covers, a stack of
+ * books, a bell and a plant. Drawn from frontDeskLayout and FRONT_DESK_COLORS.
+ */
 export function drawFrontDesk(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  block(ctx, -hw + 6, 2, st.w - 12, hh - 6, 8, '#ffcfa8', 1.5);
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillRect(-hw + 7, 12, st.w - 14, 6);
-  block(ctx, -hw + 2, -6, st.w - 4, 10, 5, '#e8b58a', 1.5);
-  heart(ctx, 0, hh - 14, 4.5, 'rgba(232,85,143,0.7)');
+  const L = frontDeskLayout(st);
+  const C = FRONT_DESK_COLORS;
+  drawFrontDeskCounter(ctx, st);
   // Monitor with the catalogue on screen.
-  flat(ctx, -24, -6, 10, 4, 1, '#8a8aa0', 1);
-  block(ctx, -40, -36, 42, 30, 5, '#5a5a78', 1.5);
-  flat(ctx, -36, -32, 34, 22, 3, '#d6ecff', 1);
-  [ANIME.pink, ANIME.mint, ANIME.gold].forEach((c, i) => flat(ctx, -33 + i * 10, -29, 8, 12, 1.5, c, 0.8));
+  flat(ctx, ...xywh(L.stand), 1, C.stand, 1);
+  block(ctx, ...xywh(L.monitor), 5, C.monitor, 1.5);
+  flat(ctx, ...xywh(L.screen), 3, C.screen, 1);
+  C.covers.forEach((c, i) => flat(ctx, -33 + i * 10, -29, 8, 12, 1.5, c, 0.8));
   ctx.fillStyle = 'rgba(59,42,74,0.35)';
   ctx.fillRect(-33, -14, 28, 1.4);
   // A stack of books.
-  [[ANIME.sky, 0], [ANIME.coral, 1], [ANIME.lavender, 2]].forEach(([c, i]) => block(ctx, 6 - i, -12 - i * 7, 24, 6.5, 2, c, 1.1));
+  L.books.forEach((b, i) => block(ctx, ...xywh(b), 2, C.books[i], 1.1));
   // Service bell.
-  ctx.fillStyle = ANIME.gold;
+  ctx.fillStyle = C.bell;
   ctx.beginPath();
-  ctx.arc(46, -6, 8, Math.PI, 0);
+  ctx.arc(L.bell.x, L.bell.y, L.bell.r, Math.PI, 0);
   ctx.fill();
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.2;
   ctx.stroke();
-  flat(ctx, 36, -7, 20, 3, 1.5, ANIME.goldDeep, 1);
-  circle(ctx, 46, -15, 1.8, ANIME.goldDeep, 0.9);
+  flat(ctx, ...xywh(L.bellBase), 1.5, C.bellBase, 1);
+  circle(ctx, L.bellButton.x, L.bellButton.y, L.bellButton.r, C.bellBase, 0.9);
   // A little potted plant.
-  flat(ctx, -hw + 7, -18, 12, 13, 3, '#f2a98a', 1.1);
-  for (const [dx, dy, r] of [[-hw + 13, -24, 5], [-hw + 9, -27, 3.5], [-hw + 17, -28, 3.5]]) circle(ctx, dx, dy, r, ANIME.mint, 1);
+  flat(ctx, ...xywh(L.pot), 3, C.pot, 1.1);
+  for (const { x, y, r } of L.leaves) circle(ctx, x, y, r, C.leaf, 1);
   sparkle(ctx, hw - 10, -hh + 10, 3.5, '#ffffff');
 }
 
-/** The Return Cart: a wooden cart with two trays of pastel books and wheels, under a RETURNS tag. */
-export function drawReturnCart(ctx, st) {
+/** The Return Cart's own colours: its wooden trays, plum frame, RETURNS tag, wheels and the pastel book swatches. */
+export const RETURN_CART_COLORS = {
+  wood: '#d9a877',
+  frame: ANIME.ink,
+  tag: '#ffffff',
+  tagInk: ANIME.coralDeep,
+  wheel: '#5a5a78',
+  hub: '#d6ecff',
+  books: [ANIME.coral, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.pink],
+};
+
+/**
+ * The decorative books drawReturnCart stands on tray `tray` (0 the upper, 1
+ * the lower), left to right: each its colour and its height in px. The upper
+ * tray holds 6, the lower 5, its colours shifted two along the swatches.
+ * @param {0|1} tray
+ * @returns {{color: string, h: number}[]}
+ */
+export function returnCartDecorBooks(tray) {
+  const books = RETURN_CART_COLORS.books;
+  const n = tray === 0 ? 6 : 5;
+  const shift = tray === 0 ? 0 : 2;
+  return Array.from({ length: n }, (_, i) => ({ color: books[(i + shift) % books.length], h: 13 + ((i * 7) % 5) }));
+}
+
+/**
+ * Where drawReturnCart puts its parts, in the station's centered px: the two
+ * trays (upper first), the RETURNS tag, the decorative books' left edge,
+ * pitch and width (each tray's books stand on its `y0`), the frame posts'
+ * x, the wheels (centre and radius) and their hubs' radius. The trays, posts
+ * and wheels follow `st.w`/`st.h`; the rest is fixed px. Top-Down's box is
+ * 84 x 84. First Person's return-cart mesh maps its faces onto these same
+ * regions (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function returnCartLayout(st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  const books = [ANIME.coral, ANIME.sky, ANIME.gold, ANIME.mint, ANIME.lavender, ANIME.pink];
-  for (const [ty, n] of [[-3, 6], [17, 5]]) {
-    for (let i = 0; i < n; i++) {
-      const h = 13 + ((i * 7) % 5);
-      flat(ctx, -hw + 14 + i * 9, ty - h, 7.5, h, 1.5, books[(i + (ty > 0 ? 2 : 0)) % books.length], 0.9);
-    }
-    block(ctx, -hw + 9, ty, st.w - 18, 5, 2.5, '#d9a877', 1.2);
-  }
-  // Frame posts and handle.
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(-hw + 10, -8);
-  ctx.lineTo(-hw + 10, hh - 14);
-  ctx.moveTo(hw - 10, -8);
-  ctx.lineTo(hw - 10, hh - 14);
-  ctx.moveTo(hw - 10, -8);
-  ctx.lineTo(hw - 2, -12);
-  ctx.stroke();
-  // RETURNS tag, drawn last so the books never cover it.
-  flat(ctx, -26, -hh + 5, 52, 14, 7, '#ffffff', 1.2);
+  return {
+    trays: [-3, 17].map((ty) => ({ x0: -hw + 9, y0: ty, x1: -hw + 9 + (st.w - 18), y1: ty + 5 })),
+    tag: { x0: -26, y0: -hh + 5, x1: 26, y1: -hh + 5 + 14 },
+    bookX0: -hw + 14,
+    bookPitch: 9,
+    bookW: 7.5,
+    posts: [-hw + 10, hw - 10],
+    wheels: [-hw + 16, hw - 16].map((x) => ({ x, y: hh - 10, r: 5 })),
+    hubR: 1.8,
+  };
+}
+
+/**
+ * One of the Return Cart's trays (0 the upper, 1 the lower), as drawReturnCart
+ * draws it. First Person repaints it clipped to its region, so the tray's
+ * front shows none of the books and posts the 2D draws over it.
+ */
+export function drawReturnCartTray(ctx, st, tray) {
+  const r = returnCartLayout(st).trays[tray];
+  block(ctx, ...xywh(r), 2.5, RETURN_CART_COLORS.wood, 1.2);
+}
+
+/** The Return Cart's RETURNS tag and its lettering, as drawReturnCart draws it. */
+export function drawReturnCartTag(ctx, st) {
+  const hh = st.h / 2;
+  const L = returnCartLayout(st);
+  flat(ctx, ...xywh(L.tag), 7, RETURN_CART_COLORS.tag, 1.2);
   ctx.font = 'bold 8px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = ANIME.coralDeep;
+  ctx.fillStyle = RETURN_CART_COLORS.tagInk;
   ctx.fillText('RETURNS', 0, -hh + 12.5);
-  for (const wx of [-hw + 16, hw - 16]) {
-    circle(ctx, wx, hh - 10, 5, '#5a5a78', 1.2);
-    circle(ctx, wx, hh - 10, 1.8, '#d6ecff', 0.8);
+}
+
+/**
+ * The Return Cart: a wooden cart with two trays of pastel books and wheels,
+ * under a RETURNS tag. Drawn from returnCartLayout and RETURN_CART_COLORS.
+ */
+export function drawReturnCart(ctx, st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  const L = returnCartLayout(st);
+  const C = RETURN_CART_COLORS;
+  L.trays.forEach((tray, t) => {
+    returnCartDecorBooks(t).forEach(({ color, h }, i) => {
+      flat(ctx, L.bookX0 + i * L.bookPitch, tray.y0 - h, L.bookW, h, 1.5, color, 0.9);
+    });
+    drawReturnCartTray(ctx, st, t);
+  });
+  // Frame posts and handle.
+  const [p0, p1] = L.posts;
+  ctx.strokeStyle = C.frame;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(p0, -8);
+  ctx.lineTo(p0, hh - 14);
+  ctx.moveTo(p1, -8);
+  ctx.lineTo(p1, hh - 14);
+  ctx.moveTo(p1, -8);
+  ctx.lineTo(hw - 2, -12);
+  ctx.stroke();
+  // RETURNS tag, drawn last so the books never cover it.
+  drawReturnCartTag(ctx, st);
+  for (const { x, y, r } of L.wheels) {
+    circle(ctx, x, y, r, C.wheel, 1.2);
+    circle(ctx, x, y, L.hubR, C.hub, 0.8);
+  }
+}
+
+/** The Fines Counter's own colours: its plaque, counter, register, display and coins. */
+export const FINES_ROOM_COLORS = {
+  plaque: ANIME.coral,
+  counter: '#ffcfa8',
+  top: '#e8b58a',
+  housing: '#5a5a78',
+  display: '#bff2e0',
+  register: ANIME.lavender,
+  keys: '#ffffff',
+  coin: ANIME.gold,
+  coinDeep: ANIME.goldDeep,
+};
+
+/**
+ * Where drawFinesRoom puts its parts, in the station's centered px: the
+ * plaque, the counter body and its top slab, the register's display housing
+ * and display, the register itself, the coin stacks (each an x and a count,
+ * the lowest coin's centre at `coinBase`, each next one `coinPitch` higher,
+ * `coinR` wide), and `floor`, the body's bottom edge the counter stands on.
+ * The plaque and counter follow `st.w`/`st.h`; the register and coins are
+ * fixed px. Top-Down's box is 130 x 130. First Person's fines-counter mesh
+ * maps its faces onto these same regions (docs/skills/2d-to-3d/SKILL.md).
+ *
+ * @param {{w: number, h: number}} st
+ */
+export function finesRoomLayout(st) {
+  const hw = st.w / 2;
+  const hh = st.h / 2;
+  return {
+    plaque: { x0: -36, y0: -hh + 8, x1: 36, y1: -hh + 8 + 17 },
+    body: { x0: -hw + 12, y0: 12, x1: -hw + 12 + (st.w - 24), y1: 12 + (hh - 22) },
+    top: { x0: -hw + 8, y0: 6, x1: -hw + 8 + (st.w - 16), y1: 15 },
+    housing: { x0: -8, y0: -22, x1: 22, y1: -13 },
+    display: { x0: -5, y0: -20.5, x1: 13, y1: -15 },
+    register: { x0: -14, y0: -14, x1: 26, y1: 6 },
+    coins: [{ x: -34, n: 4 }, { x: -25, n: 2 }],
+    coinBase: 4,
+    coinPitch: 3.6,
+    coinR: 5,
+    floor: 12 + (hh - 22),
+  };
+}
+
+/**
+ * The Fines Counter's plaque with its lettering, as drawFinesRoom draws it.
+ * First Person repaints it clipped to its region, so the plaque's front shows
+ * only the plaque (not the room's tiles and glow at its rounded corners).
+ */
+export function drawFinesPlaque(ctx, st) {
+  const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.plaque), 8, FINES_ROOM_COLORS.plaque, 1.3);
+  plaqueText(ctx, '벌금 · FINES', 0, -hh + 16.8, 'bold 9.5px sans-serif', '#ffffff', ANIME.coralDeep, 2.2);
+}
+
+/**
+ * The Fines Counter's counter alone: the body, the top slab and the heart,
+ * as drawFinesRoom draws them. First Person repaints it clipped to the body
+ * and slab, so their fronts show none of what the 2D draws over the slab's
+ * edge (the register and coins stand on the slab in 3D).
+ */
+export function drawFinesCounterBase(ctx, st) {
+  const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  const C = FINES_ROOM_COLORS;
+  block(ctx, ...xywh(L.body), 8, C.counter, 1.5);
+  block(ctx, ...xywh(L.top), 4.5, C.top, 1.4);
+  heart(ctx, 0, hh - 20, 4, 'rgba(232,85,143,0.7)');
+}
+
+/** The register's display housing and its display, as drawFinesRoom draws them. */
+export function drawFinesDisplay(ctx, st) {
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.housing), 2, FINES_ROOM_COLORS.housing, 1.2);
+  flat(ctx, ...xywh(L.display), 1, FINES_ROOM_COLORS.display, 0.8);
+}
+
+/** The register's body and its keypad, as drawFinesRoom draws them. */
+export function drawFinesRegister(ctx, st) {
+  const L = finesRoomLayout(st);
+  block(ctx, ...xywh(L.register), 4, FINES_ROOM_COLORS.register, 1.3);
+  ctx.fillStyle = FINES_ROOM_COLORS.keys;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) ctx.fillRect(-9 + c * 6.5, -10 + r * 4.6, 4.2, 3);
   }
 }
 
 /**
  * The Fines Counter as a small room, the way Hospital Shift draws its
  * Operating Room: its own pastel tiles and lamp glow inside the box, a
- * plaque, and the counter with a register and coin stacks.
+ * plaque, and the counter with a register and coin stacks. Drawn from
+ * finesRoomLayout and FINES_ROOM_COLORS.
  */
 export function drawFinesRoom(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
+  const L = finesRoomLayout(st);
+  const C = FINES_ROOM_COLORS;
   ctx.save();
   path(ctx, -hw, -hh, st.w, st.h, 12);
   ctx.clip();
@@ -487,27 +717,17 @@ export function drawFinesRoom(ctx, st) {
   ctx.fillStyle = glow;
   ctx.fillRect(-hw, -hh, st.w, st.h);
   ctx.restore();
-  // Plaque.
-  block(ctx, -36, -hh + 8, 72, 17, 8, ANIME.coral, 1.3);
-  plaqueText(ctx, '벌금 · FINES', 0, -hh + 16.8, 'bold 9.5px sans-serif', '#ffffff', ANIME.coralDeep, 2.2);
-  // Counter.
-  block(ctx, -hw + 12, 12, st.w - 24, hh - 22, 8, '#ffcfa8', 1.5);
-  block(ctx, -hw + 8, 6, st.w - 16, 9, 4.5, '#e8b58a', 1.4);
-  heart(ctx, 0, hh - 20, 4, 'rgba(232,85,143,0.7)');
-  // Register: display, body, keypad, drawer.
-  block(ctx, -8, -22, 30, 9, 2, '#5a5a78', 1.2);
-  flat(ctx, -5, -20.5, 18, 5.5, 1, '#bff2e0', 0.8);
-  block(ctx, -14, -14, 40, 20, 4, ANIME.lavender, 1.3);
-  ctx.fillStyle = '#ffffff';
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 4; c++) ctx.fillRect(-9 + c * 6.5, -10 + r * 4.6, 4.2, 3);
-  }
+  drawFinesPlaque(ctx, st);
+  drawFinesCounterBase(ctx, st);
+  // Register: display, body, keypad.
+  drawFinesDisplay(ctx, st);
+  drawFinesRegister(ctx, st);
   // Coin stacks.
-  for (const [cx, n] of [[-34, 4], [-25, 2]]) {
+  for (const { x: cx, n } of L.coins) {
     for (let i = 0; i < n; i++) {
-      ctx.fillStyle = i % 2 ? ANIME.goldDeep : ANIME.gold;
+      ctx.fillStyle = i % 2 ? C.coinDeep : C.coin;
       ctx.beginPath();
-      ctx.ellipse(cx, 4 - i * 3.6, 5, 2.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, L.coinBase - i * L.coinPitch, L.coinR, 2.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = INK;
       ctx.lineWidth = 0.8;
@@ -608,25 +828,39 @@ export function drawBossDoor(ctx, st, opts = {}) {
   sparkle(ctx, hw - 10, -hh + 22, 3.5, '#ffffff');
 }
 
+/** The Reading Nook's own colours: its lavender rug, the pink armchair (darker arms, lighter cushion) on wooden legs, the open book, and the floor lamp's plum pole, slate base and gold shade. */
+export const READING_NOOK_COLORS = {
+  rug: ANIME.lavender,
+  chair: ANIME.pink,
+  arm: tint(ANIME.pink, -0.12),
+  cushion: tint(ANIME.pink, 0.2),
+  leg: '#8a6a4a',
+  book: '#ffffff',
+  pole: ANIME.ink,
+  base: '#5a5a78',
+  shade: ANIME.gold,
+};
+
 /** The Reading Nook: a round rug, a plump pastel armchair with an open book, and a glowing floor lamp. */
 export function drawReadingNook(ctx, st) {
   const hw = st.w / 2;
   const hh = st.h / 2;
-  ctx.fillStyle = ANIME.lavender;
+  const C = READING_NOOK_COLORS;
+  ctx.fillStyle = C.rug;
   ctx.beginPath();
   ctx.ellipse(0, hh - 14, hw - 8, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = INK;
+  ctx.strokeStyle = C.pole;
   ctx.lineWidth = 1.1;
   ctx.stroke();
   // Armchair.
-  block(ctx, -26, -16, 40, 28, 10, ANIME.pink, 1.4);
-  block(ctx, -32, -4, 11, 26, 5, tint(ANIME.pink, -0.12), 1.3);
-  block(ctx, 9, -4, 11, 26, 5, tint(ANIME.pink, -0.12), 1.3);
-  block(ctx, -22, 4, 32, 15, 6, tint(ANIME.pink, 0.2), 1.3);
-  for (const lx of [-27, 14]) flat(ctx, lx, 21, 3.5, 6, 1, '#8a6a4a', 0.8);
+  block(ctx, -26, -16, 40, 28, 10, C.chair, 1.4);
+  block(ctx, -32, -4, 11, 26, 5, C.arm, 1.3);
+  block(ctx, 9, -4, 11, 26, 5, C.arm, 1.3);
+  block(ctx, -22, 4, 32, 15, 6, C.cushion, 1.3);
+  for (const lx of [-27, 14]) flat(ctx, lx, 21, 3.5, 6, 1, C.leg, 0.8);
   // Open book on the seat.
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = C.book;
   ctx.beginPath();
   ctx.moveTo(-14, 6);
   ctx.quadraticCurveTo(-9, 3, -6, 6);
@@ -648,14 +882,14 @@ export function drawReadingNook(ctx, st) {
   ctx.beginPath();
   ctx.arc(28, -26, 24, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = INK;
+  ctx.strokeStyle = C.pole;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(28, -22);
   ctx.lineTo(28, 22);
   ctx.stroke();
-  flat(ctx, 21, 21, 14, 3.5, 1.5, '#5a5a78', 1);
-  ctx.fillStyle = ANIME.gold;
+  flat(ctx, 21, 21, 14, 3.5, 1.5, C.base, 1);
+  ctx.fillStyle = C.shade;
   ctx.beginPath();
   ctx.moveTo(20, -22);
   ctx.lineTo(36, -22);

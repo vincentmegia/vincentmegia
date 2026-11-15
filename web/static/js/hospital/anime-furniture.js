@@ -1153,8 +1153,16 @@ export function drawWetFloor(ctx, x, y, radius, alpha = 1) {
 // Decor (world coordinates; floor-plan.js's buildDecor)
 // ---------------------------------------------------------------------------
 
+/** The decor drawers' colours, shared with Library's First Person meshes. */
+export const DECOR_COLORS = {
+  waterCooler: { bottle: '#bfe6ff', body: '#ffffff', tapCold: ANIME.skyDeep, tapHot: ANIME.coralDeep, cups: '#fff6d6' },
+  plant: { leaf: '#8fd6a4', flower: '#ffd1e3', pot: '#e8956a', rim: '#f2a882' },
+  ladder: { rail: '#e8b58a', rung: '#f2c8a0' },
+  waitingChairs: { backs: ['#ffc2da', '#d8c9ff', '#bfeedd'], seatTint: -0.05, leg: ANIME.ink },
+};
+
 function drawWaitingChairs(ctx, d) {
-  const colors = ['#ffc2da', '#d8c9ff', '#bfeedd'];
+  const colors = DECOR_COLORS.waitingChairs.backs;
   const cw = d.w / 3 - 4;
   colors.forEach((c, i) => {
     const x = d.x - d.w / 2 + i * (cw + 6);
@@ -1168,7 +1176,7 @@ function drawWaitingChairs(ctx, d) {
     ctx.lineTo(x + cw - 4, y + d.h);
     ctx.stroke();
     block(ctx, x, y, cw, d.h * 0.55, 6, c, 1.3); // back
-    block(ctx, x - 1, y + d.h * 0.5, cw + 2, d.h * 0.32, 5, tint(c, -0.05), 1.3); // seat
+    block(ctx, x - 1, y + d.h * 0.5, cw + 2, d.h * 0.32, 5, tint(c, DECOR_COLORS.waitingChairs.seatTint), 1.3); // seat
   });
 }
 
@@ -1176,16 +1184,16 @@ function drawWaterCooler(ctx, d) {
   const x = d.x;
   const top = d.y - d.h / 2;
   // Bottle with a shine and bubbles.
-  block(ctx, x - 10, top, 20, d.h * 0.42, 7, '#bfe6ff', 1.3);
+  block(ctx, x - 10, top, 20, d.h * 0.42, 7, DECOR_COLORS.waterCooler.bottle, 1.3);
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.fillRect(x - 6, top + 3, 3, d.h * 0.3);
   circle(ctx, x + 3, top + 10, 1.5, 'rgba(255,255,255,0.8)', 0);
   circle(ctx, x + 5, top + 15, 1, 'rgba(255,255,255,0.8)', 0);
   // Body, taps and a stack of cups.
-  block(ctx, x - d.w / 2, top + d.h * 0.4, d.w, d.h * 0.6, 4, '#ffffff', 1.3);
-  circle(ctx, x - 5, top + d.h * 0.55, 2.2, ANIME.skyDeep, 0.9);
-  circle(ctx, x + 5, top + d.h * 0.55, 2.2, ANIME.coralDeep, 0.9);
-  flat(ctx, x - 6, top + d.h * 0.72, 12, 8, 1.5, '#fff6d6', 0.9);
+  block(ctx, x - d.w / 2, top + d.h * 0.4, d.w, d.h * 0.6, 4, DECOR_COLORS.waterCooler.body, 1.3);
+  circle(ctx, x - 5, top + d.h * 0.55, 2.2, DECOR_COLORS.waterCooler.tapCold, 0.9);
+  circle(ctx, x + 5, top + d.h * 0.55, 2.2, DECOR_COLORS.waterCooler.tapHot, 0.9);
+  flat(ctx, x - 6, top + d.h * 0.72, 12, 8, 1.5, DECOR_COLORS.waterCooler.cups, 0.9);
 }
 
 function drawPlant(ctx, d) {
@@ -1193,10 +1201,10 @@ function drawPlant(ctx, d) {
   const base = d.y + d.h / 2;
   // Leafy clumps first, then the pot over their stems.
   const leaves = [[-9, -30, 9], [8, -31, 9], [0, -38, 10], [-4, -24, 8], [6, -24, 8]];
-  for (const [lx, ly, r] of leaves) circle(ctx, x + lx, base + ly, r, '#8fd6a4', 1.2);
+  for (const [lx, ly, r] of leaves) circle(ctx, x + lx, base + ly, r, DECOR_COLORS.plant.leaf, 1.2);
   for (const [lx, ly, r] of leaves.slice(0, 3)) circle(ctx, x + lx - r * 0.3, base + ly - r * 0.3, r * 0.35, 'rgba(255,255,255,0.35)', 0);
-  circle(ctx, x + 2, base - 41, 3, '#ffd1e3', 0.9);
-  ctx.fillStyle = '#e8956a';
+  circle(ctx, x + 2, base - 41, 3, DECOR_COLORS.plant.flower, 0.9);
+  ctx.fillStyle = DECOR_COLORS.plant.pot;
   ctx.beginPath();
   ctx.moveTo(x - 11, base - 18);
   ctx.lineTo(x + 11, base - 18);
@@ -1207,7 +1215,7 @@ function drawPlant(ctx, d) {
   ctx.strokeStyle = INK;
   ctx.lineWidth = 1.3;
   ctx.stroke();
-  flat(ctx, x - 12.5, base - 21, 25, 5, 2, '#f2a882', 1.2);
+  flat(ctx, x - 12.5, base - 21, 25, 5, 2, DECOR_COLORS.plant.rim, 1.2);
 }
 
 function drawVendingMachine(ctx, d) {
@@ -1285,7 +1293,7 @@ function drawLadder(ctx, d) {
     ctx.moveTo(x0, top);
     ctx.lineTo(x1, base);
     ctx.stroke();
-    ctx.strokeStyle = '#e8b58a';
+    ctx.strokeStyle = DECOR_COLORS.ladder.rail;
     ctx.lineWidth = 3;
     ctx.stroke();
   }
@@ -1293,9 +1301,9 @@ function drawLadder(ctx, d) {
     const f = i / 4;
     const y = top + f * d.h;
     const spread = 6 + f * 6;
-    flat(ctx, x - spread, y - 2, spread * 2, 4, 1.5, '#f2c8a0', 1);
+    flat(ctx, x - spread, y - 2, spread * 2, 4, 1.5, DECOR_COLORS.ladder.rung, 1);
   }
-  flat(ctx, x - 8, top - 3, 16, 5, 2, '#f2c8a0', 1.1);
+  flat(ctx, x - 8, top - 3, 16, 5, 2, DECOR_COLORS.ladder.rung, 1.1);
   ctx.lineCap = 'butt';
 }
 

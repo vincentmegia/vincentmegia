@@ -58,6 +58,7 @@ HTMX + Tailwind + PostgreSQL.
 | Landing page, carousel | `/` | `landing-page.md`, `landing-carousel.md` |
 | Landing content authoring / API | `/settings/content`, `/api/internal/v1/landing/*` | `landing-content-authoring.md`, `landing-content-api.md` |
 | Projects grid | `/projects` | `projects.md` |
+| About, donate by QR | `/about` | `about.md` |
 | Resume, export, authoring | `/resume`, `/resume/download.{pdf,docx}`, `/settings/resume` | `resume.md`, `resume-export.md`, `resume-content-authoring.md` |
 | Fishing Game | `/fishing-game` | `fishing-game.md` |
 | Kitchen Shift | `/kitchen-shift` | `cooking-game*.md` |
@@ -89,10 +90,12 @@ HTMX + Tailwind + PostgreSQL.
   so a change to his 2D drawers shows in both cameras; Top-Down keeps the
   detailed 2D art. Changing a `three-d/` mesh
   or the core affects only the FP camera, but the FP props wear their 2D
-  drawers' own art: `drawBookcase` and `drawCoffeeMachine` (library), and
-  Hospital Shift's `drawElevator`/`drawStairs` (via their layout/colour
-  exports). A change to any of those drawers shows in both cameras, and the
-  Hospital ones in both games. Doc: `library-first-person-3d.md`.
+  drawers' own art: `drawBookcase`, `drawCoffeeMachine`, `drawFrontDesk`,
+  `drawFinesRoom` and `drawReturnCart` (library), and Hospital Shift's
+  `drawElevator`/`drawStairs` (via their layout/colour exports); the decor
+  meshes read `DECOR_COLORS` from Hospital's `anime-furniture.js`. A change
+  to any of those shows in both cameras, and the Hospital ones in both
+  games. Doc: `library-first-person-3d.md`.
 - **Vendored code**: `web/static/easydiagram/vendor/` is upstream draw.io
   (commit in `vendor/NOTICE`); don't edit it.
 - **Resume PDF/DOCX are pure Go** (`fpdf`/`go-docx`, not headless Chrome):
@@ -126,7 +129,9 @@ HTMX + Tailwind + PostgreSQL.
   via its **session** pooler (not the transaction pooler or direct
   connection — see `landing-content-api.md`).
 - The cutover from vincentmegia.onrender.com (DNS/redirects) isn't planned yet.
-- Blogs and About are placeholders. The visual system is "Organic" (cream
+- Blogs is a placeholder; About's donate QR images
+  (`web/static/images/about/{paynow,paypal}-qr.png`) are added at deployment
+  and the section shows "coming soon" until then. The visual system is "Organic" (cream
   ground, terracotta/sage, Caprasimo + Figtree — `tailwind-ui/SKILL.md`); a
   restyle of page-specific components to it is still open.
 
