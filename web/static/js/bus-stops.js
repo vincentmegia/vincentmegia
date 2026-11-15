@@ -83,14 +83,42 @@ function roundTo3(n) {
 
 // --- Location ---------------------------------------------------------
 
-function setLocating(busy) {
+// phase: 'idle' | 'permission' | 'locating'
+function setLocating(phase) {
+  const busy = phase !== 'idle';
   document.querySelectorAll('.bus-locate-button').forEach((button) => {
     button.disabled = busy;
     const label = button.querySelector('.bus-locate-label');
-    if (label) label.textContent = busy ? label.dataset.busy : label.dataset.idle;
+    if (label) {
+      if (phase === 'permission') label.textContent = label.dataset.permission || 'Allow location…';
+      else if (phase === 'locating') label.textContent = label.dataset.busy;
+      else label.textContent = label.dataset.idle;
+    }
   });
   const results = byId('bus-stop-results');
   if (results) results.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+function requestPosition(s) {
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const lat = roundTo3(position.coords.latitude);
+      const lng = roundTo3(position.coords.longitude);
+      s.coords = { lat, lng };
+      show(byId('bus-explainer'), false);
+      show(byId('bus-location-off'), false);
+      window.htmx.ajax('GET', `${NEARBY_URL}?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
+        target: '#bus-stop-results',
+        swap: 'innerHTML',
+      }).finally(() => setLocating('idle'));
+    },
+    (error) => {
+      setLocating('idle');
+      const type = error && error.code === 1 ? 'denied' : error && error.code === 3 ? 'timeout' : 'unavailable';
+      showLocationOff(type);
+    },
+    GEO_OPTIONS,
+  );
 }
 
 function locate() {
@@ -100,31 +128,35 @@ function locate() {
     showLocationOff('unsupported');
     return;
   }
-  setLocating(true);
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const lat = roundTo3(position.coords.latitude);
-      const lng = roundTo3(position.coords.longitude);
-      s.coords = { lat, lng };
-      show(byId('bus-explainer'), false);
-      show(byId('bus-location-off'), false);
-      // No hx-push-url: coordinates never reach the address bar.
-      window.htmx.ajax('GET', `${NEARBY_URL}?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
-        target: '#bus-stop-results',
-        swap: 'innerHTML',
-      }).finally(() => setLocating(false));
-    },
-    (error) => {
-      setLocating(false);
-      const type = error && error.code === 1 ? 'denied' : error && error.code === 3 ? 'timeout' : 'unavailable';
-      showLocationOff(type);
-    },
-    GEO_OPTIONS,
-  );
+
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+      if (result.state === 'denied') {
+        showLocationOff('denied');
+        return;
+      }
+      if (result.state === 'prompt') {
+        setLocating('permission');
+        result.addEventListener('change', function onChange() {
+          result.removeEventListener('change', onChange);
+          if (result.state === 'granted') setLocating('locating');
+        });
+      } else {
+        setLocating('locating');
+      }
+      requestPosition(s);
+    }).catch(() => {
+      setLocating('locating');
+      requestPosition(s);
+    });
+  } else {
+    setLocating('locating');
+    requestPosition(s);
+  }
 }
 
 function showLocationOff(type) {
-  setLocating(false);
+  setLocating('idle');
   const panel = byId('bus-location-off');
   const title = byId('bus-location-off-title');
   if (panel && title) {
@@ -155,7 +187,7 @@ function cards() {
 function onResultsSwapped() {
   const s = currentState();
   if (!s) return;
-  setLocating(false);
+  setLocating('idle');
   const root = byId('bus-stop-results').firstElementChild;
   const resultState = root ? root.dataset.busState : '';
   const mode = root ? root.dataset.mode : '';

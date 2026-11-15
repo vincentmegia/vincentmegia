@@ -113,7 +113,7 @@
 					data-bus-action="locate"
 					class="bus-locate-button inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-white transition-opacity duration-150 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-70 dark:text-paper"
 				>
-					<span class="bus-locate-label" data-idle="Use my location" data-busy="Finding you…">Use my location</span>
+					<span class="bus-locate-label" data-idle="Use my location" data-busy="Finding you…" data-permission="Allow location…">Use my location</span>
 				</button>
 				<button
 					type="button"
@@ -145,7 +145,7 @@
 				type="button"
 				data-bus-action="locate"
 				class="bus-locate-button inline-flex min-h-11 items-center rounded-full border-2 border-primary px-5 text-sm font-bold text-primary hover:bg-primary hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-70"
-			><span class="bus-locate-label" data-idle="Try again" data-busy="Finding you…">Try again</span></button>
+			><span class="bus-locate-label" data-idle="Try again" data-busy="Finding you…" data-permission="Allow location…">Try again</span></button>
 		</div>
 
 		<p id="bus-stop-loading" class="htmx-indicator px-3 text-sm text-muted" role="status">Finding stops…</p>
@@ -245,7 +245,7 @@
 		class="bus-locate-button inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-70 dark:text-paper"
 	>
 		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="h-5 w-5" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
-		<span class="bus-locate-label sr-only" data-idle="Locate me" data-busy="Finding you…">Locate me</span>
+		<span class="bus-locate-label sr-only" data-idle="Locate me" data-busy="Finding you…" data-permission="Allow location…">Locate me</span>
 	</button>
 </form>
 {{end}}
