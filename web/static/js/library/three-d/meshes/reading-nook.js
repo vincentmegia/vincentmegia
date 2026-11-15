@@ -131,7 +131,6 @@ function panel(points, color, normal) {
 }
 /** A vertical quad in the plane x = `x` over z0..z1, y0..y1, facing `side` (+1 +X, -1 -X). */
 const xPanel = (x, z0, z1, y0, y1, color, side) => panel([[x, y0, z0], [x, y0, z1], [x, y1, z1], [x, y1, z0]], color, [side, 0, 0]);
-/** A vertical quad in the plane z = `z` over x0..x1, y0..y1, facing `side` (+1 +Z, -1 -Z). */
 /** A triangle through `points`, wound to face along `normal`. */
 function triangle(points, color, normal) {
   const t = { vertices: points.map((p) => [...p]), faces: [{ indices: [0, 1, 2], color }] };
@@ -139,7 +138,8 @@ function triangle(points, color, normal) {
   if (n[0] * normal[0] + n[1] * normal[1] + n[2] * normal[2] < 0) t.faces[0].indices.reverse();
   return t;
 }
-const zPanel = (z, x0, x1, y0, y1, color, side) => panel([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, [0, 0, side]);
+/** A vertical quad in the plane z = `z` over x0..x1, y0..y1, facing `side` (+1 +Z, -1 -Z). */
+const zPanel =(z, x0, x1, y0, y1, color, side) => panel([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, [0, 0, side]);
 
 /** One page of the open book: from the spine at x = BOOK.x out to `side` (-1 left, +1 right), rising BOOK.tilt to its outer edge. */
 function page(side, y) {

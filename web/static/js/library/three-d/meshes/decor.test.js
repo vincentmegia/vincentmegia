@@ -113,7 +113,7 @@ test('no cooler body face is drawn after a tap or cup face it overlaps, at obliq
   const tagged = { vertices: mesh.vertices, faces: mesh.faces.map((f, i) => ({ ...f, unlit: true, color: '#' + (i + 1).toString(16).padStart(6, '0') })) };
   const isFixture = (i) => fixture.has(mesh.faces[i].color);
   const env = { viewport: { width: 400, height: 400 }, light: { dir: [0.35, 1, 0.25], ambient: 0.5 } };
-  for (const deg of [-75, -60, -35, -15, 0, 15, 35, 60, 75]) {
+  for (let deg = -75; deg <= 75; deg += 5) {
     for (const radius of [1.5, 2.5, 3.5]) {
       const { cam } = cameraAt(deg, 0, radius, 0.6);
       const list = buildDrawList(cam, [{ mesh: tagged, placement: { pos: [0, 0, 0], yaw: 0, scale: UNIT_SCALE } }], env);

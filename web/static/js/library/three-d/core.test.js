@@ -497,3 +497,33 @@ test('an `under` face is drawn before every face of its mesh on or above its pla
     assert.ok(Math.min(...nearCube) > Math.max(...slabAll), 'the near cube last');
   }
 });
+
+test('an `under` face without `cull` is an ordinary face: the mesh keeps plain mean-depth order', () => {
+  // The slab of the test above, but its top is `under` without `cull`. The
+  // mesh is still hinted, because a small separate top far off to the side
+  // is a proper `under` + `cull` one (it overlaps nothing on screen). Were
+  // the demotion in buildDrawList missing, the slab's top would act as a
+  // supporting surface and pull the post after it; it must not.
+  const mesh = (under) => {
+    const m = { vertices: [], faces: [] };
+    const add = (part, cull) => { const b = m.vertices.length; m.vertices.push(...part.vertices); for (const f of part.faces) m.faces.push({ ...f, indices: f.indices.map((i) => i + b), unlit: true, cull }); };
+    const top = box([-2, 0.9, -1], [2, 1, 1], '#aa0000', { top: '#ff0000' });
+    top.faces[4].under = under;
+    add(top, false);
+    add(box([-0.1, 1, -1], [0.1, 3, -0.8], '#00aa00'), false);
+    const side = box([29, 0, -1], [31, 0.2, 1], '#0000aa', { top: '#00ffff' });
+    side.faces[4].under = under;
+    add(side, true);
+    return m;
+  };
+  const env = { viewport: { width: 400, height: 400 }, light: { dir: [0, 1, 0], ambient: 1 } };
+  const cam = cameraFromPose({ x: 0, y: 160, facing: 0 }, { eyeHeight: 90, pitch: 0.3, fov: Math.PI / 3, aspect: 1, near: 1, far: 2000 });
+  const run = (under) => buildDrawList(cam, [{ mesh: mesh(under), placement: { pos: [0, 0, 0], yaw: 0, scale: 40 } }], env)
+    .map((p) => `${p.color}@${p.depth}`);
+  const withUnder = run(true);
+  const plain = run(false);
+  assert.deepEqual(withUnder, plain);
+  const post = (l) => l.map((s, i) => (s.startsWith(shadeColor('#00aa00', 1)) ? i : -1)).filter((i) => i >= 0);
+  const top = plain.findIndex((s) => s.startsWith(shadeColor('#ff0000', 1)));
+  assert.ok(top >= 0 && post(plain).some((i) => i < top), 'by mean depth the post is drawn before the top, so the guard is what keeps it so');
+});

@@ -106,7 +106,10 @@ The bookshelf (`meshes/bookshelf.js`) is the reference implementation.
    top itself never moves, so it keeps its depth order against other meshes
    and its own lower faces. The residual: a moved polygon is drawn after
    whatever sat between it and the top, wrong only where that is truly in
-   front of it, within the standing objects' own screen area. Seat what
+   front of it, within the standing objects' own screen area. The rule only
+   orders faces within one placed mesh, so anything standing on a top must
+   be part of that mesh (as scene.js's `cartWithBooks` merges the cart's
+   books). Seat what
    stands on a top exactly on it, mark a box on the top (a register) as a
    support too if things stand on it, and keep solids apart: two that
    interpenetrate cannot be painted in order. `meshes/standing-order.test-helper.js`

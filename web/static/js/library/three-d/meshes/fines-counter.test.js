@@ -248,10 +248,10 @@ test('from every yaw, pitch and range, nothing standing on the top is painted ov
 });
 
 test('the top keeps its mean-depth place: with a character at each of six positions, everything but what stands on it is drawn in plain order', async () => {
-  const { orderAudit } = await import('./standing-order.test-helper.js');
+  const { orderAudit, PIXEL_SWEEP } = await import('./standing-order.test-helper.js');
   const { buildCharacter } = await import('./character.js');
-  const { checked, mismatches } = orderAudit(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE, buildCharacter(null));
-  assert.ok(checked > 3000, `${checked} cameras`);
+  const { checked, mismatches } = orderAudit(buildFinesCounter({ art: ART }), (L.floor - L.top.y0) * K, FINES_COUNTER_SIZE, buildCharacter(null), PIXEL_SWEEP);
+  assert.ok(checked > 300, `${checked} cameras`);
   assert.deepEqual(mismatches, []);
 });
 
