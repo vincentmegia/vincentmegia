@@ -35,7 +35,11 @@ secret, a nightly batch sync, a short-TTL cache, and live HTMX polling.
 **In scope:**
 
 * Pre-permission explainer, then `navigator.geolocation` with granted /
-  denied / unavailable / timeout states.
+  denied / unavailable / timeout / insecure-connection states. The page
+  reads the geolocation permission (Permissions API) on load and follows
+  its changes: already granted → locate at once; already denied → the
+  "Location is off" panel; not yet given → explainer until the visitor
+  asks.
 * The 5 nearest stops within 500 m (straight-line distance), nearest one
   selected and expanded automatically.
 * Google Map with the visitor's position and a pin per stop. Pin and list
@@ -85,16 +89,25 @@ secret, a nightly batch sync, a short-TTL cache, and live HTMX polling.
 1. Visitor opens /projects and clicks "Open" on the Bus Stop Finder card.
    This is a full page load, not an HTMX swap (see Security: the page has
    its own CSP, which only applies on a real navigation).
-2. /bus-stops shows the explainer card: why location is needed, that it
+2. /bus-stops checks the geolocation permission. If the visitor granted it
+   on an earlier visit, the page locates them straight away (3a without the
+   prompt); if they denied it, it opens on the "Location is off" panel.
+   Otherwise it shows the explainer card: why location is needed, that it
    isn't stored, a "Use my location" button and a "Search by stop code"
    link. Nothing is requested from the browser or Google yet.
-3a. Visitor clicks "Use my location" → browser prompt → granted:
-    coordinates are rounded to 3 decimals in the browser and sent to
-    GET /bus-stops/nearby. The list renders; the nearest stop is expanded;
-    the Google Maps script loads now (only now) and draws pins.
+3a. Visitor clicks "Use my location" → browser prompt (the button reads
+    "Allow location…" while it's open, "Finding you…" once allowed) →
+    granted: coordinates are rounded to 3 decimals in the browser and sent
+    to GET /bus-stops/nearby. The list renders; the nearest stop is
+    expanded; the Google Maps script loads now (only now) and draws pins.
 3b. Denied / unavailable / timed out: the explainer is replaced by the
     "Location is off" panel (how to re-enable, Try again) plus the search
-    box.
+    box. Try again with the permission denied doesn't re-ask (browsers
+    won't re-prompt); re-allowing in site settings while the page is open
+    locates at once, without a click.
+3c. Plain http other than localhost (e.g. a phone opening a dev server by
+    LAN IP): browsers refuse geolocation without prompting, so the panel
+    says "Location needs a secure connection" instead of "turned off".
 4. Visitor clicks another card or pin → that stop becomes selected and
    expanded, the previous one collapses (its polling stops).
 5. While a card is expanded its arrivals refresh every 20 s. "Updated Ns
@@ -139,8 +152,12 @@ styles. Top to bottom:
 
 | State | Behavior |
 | ----- | -------- |
-| Default (first visit) | Explainer card with "Use my location" + "Search by stop code" |
+| Default (permission not yet given) | Explainer card with "Use my location" + "Search by stop code" |
+| Permission granted earlier | Locates on load, no click |
+| Permission denied earlier | "Location is off" panel on load |
+| Browser prompt open | Button disabled, "Allow location…" text, `aria-busy` on the list |
 | Locating | Button disabled, "Finding you…" text, `aria-busy` on the list |
+| Not a secure context (http, not localhost) | "Location needs a secure connection" panel + search box |
 | Granted, results | Map (if key) + list of ≤5 cards, nearest expanded |
 | Granted, none within 500 m | Empty state: "No bus stops within 500 m" + search box |
 | Denied / unavailable / timeout | "Location is off" panel with steps + Try again + search box |
@@ -497,8 +514,12 @@ Config (wired in `cmd/server`): `LTA_ACCOUNT_KEY`, `LTA_BASE_URL`
       (`TestBusStopsArrivals_Errors`); route caching headers
       (`TestBusStopsRoute`).
 * [x] Playwright (`e2e/bus-stops.spec.js`, Chromium + WebKit, real server
-      + fake LTA via `make run-e2e`, bus tables in `bus_e2e`): explainer
-      first; granted geolocation → 5 cards, nearest expanded, arrival rows,
+      + fake LTA via `make run-e2e`, bus tables in `bus_e2e`): permission
+      state (stubbed Permissions API, since headless browsers can't show
+      a prompt): explainer first when not yet given, "Allow location…" →
+      "Finding you…" → results, blocked at the prompt, denied on load
+      without re-asking, re-allowed live, insecure context; already
+      granted → locates on load, 5 cards, nearest expanded, arrival rows,
       "Arr", crowding aria-labels, both status messages; selecting another
       card swaps expansion; keyboard-operable cards; phone width without
       horizontal scroll; denied/timeout panels + search; postal search

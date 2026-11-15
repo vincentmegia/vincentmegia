@@ -48,22 +48,48 @@ async function forceGeolocationError(page, code) {
 	}, code);
 }
 
+// Replaces navigator.permissions.query's geolocation answer with a status
+// the test controls (window.__geoPermission(state) changes it and fires
+// "change", as the browser does when the visitor answers the prompt or
+// edits site settings). Headless browsers can't show a real prompt, and
+// Chromium headless reports "prompt" even for a denied override.
+// With hold: true, getCurrentPosition waits — the prompt is "open" — until
+// the test grants the permission, then asks the real (granted) API.
+async function stubPermission(page, initial, { hold = false } = {}) {
+	await page.addInitScript(({ initial, hold }) => {
+		const status = new EventTarget();
+		status.state = initial;
+		navigator.permissions.query = async () => status;
+		const real = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+		window.__geoAsked = 0;
+		window.__geoPermission = (state) => {
+			status.state = state;
+			status.dispatchEvent(new Event('change'));
+		};
+		navigator.geolocation.getCurrentPosition = (ok, fail, opts) => {
+			window.__geoAsked++;
+			if (!hold || status.state === 'granted') return real(ok, fail, opts);
+			status.addEventListener('change', function answered() {
+				status.removeEventListener('change', answered);
+				if (status.state === 'granted') setTimeout(() => real(ok, fail, opts), 300);
+				else fail({ code: 1, message: 'denied by test' });
+			});
+		};
+	}, { initial, hold });
+}
+
 test.describe('granted location', () => {
 	test.use({ geolocation: VICTORIA_ST, permissions: ['geolocation'] });
 
-	test('explainer first, then 5 nearest stops with the nearest expanded and live arrivals', async ({ page }) => {
+	test('already granted: locates on load, 5 nearest stops with the nearest expanded and live arrivals', async ({ page }) => {
 		const cspViolations = await watchCSP(page);
-		await page.goto('/bus-stops');
-
-		await expect(page.getByRole('heading', { name: 'Bus Stop Finder', level: 1 })).toBeVisible();
-		await expect(page.locator('#bus-explainer')).toBeVisible();
-		await expect(page.getByRole('heading', { name: 'Find the stops around you' })).toBeVisible();
-		await expect(page.locator('.bus-stop-card')).toHaveCount(0);
 		const headers = (await page.request.get('/bus-stops')).headers();
 		expect(headers['permissions-policy']).toBe('geolocation=(self)');
 
+		// No click: permission was given before, so the page uses it at once.
 		const nearbyRequest = page.waitForRequest((r) => r.url().includes('/bus-stops/nearby'));
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
+		await page.goto('/bus-stops');
+		await expect(page.getByRole('heading', { name: 'Bus Stop Finder', level: 1 })).toBeVisible();
 		const url = new URL((await nearbyRequest).url());
 		// Rounded to 3 decimals in the browser before sending.
 		expect(url.searchParams.get('lat')).toBe('1.297');
@@ -124,7 +150,6 @@ test.describe('granted location', () => {
 
 	test('selecting another stop expands it and collapses the previous one', async ({ page }) => {
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		const cards = page.locator('.bus-stop-card');
 		await expect(cards).toHaveCount(5);
 		await expect(page.locator('#bus-arrivals-01012')).toHaveAttribute('data-state', 'live');
@@ -150,7 +175,6 @@ test.describe('granted location', () => {
 
 	test('keyboard: stop cards are buttons reachable and operable by keyboard', async ({ page }) => {
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await expect(page.locator('.bus-stop-card')).toHaveCount(5);
 		const toggle = page.locator('.bus-stop-card').nth(2).locator('.bus-stop-toggle');
 		await toggle.focus();
@@ -161,10 +185,73 @@ test.describe('granted location', () => {
 	test('fits a phone screen without horizontal scrolling', async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await expect(page.locator('#bus-arrivals-01012')).toHaveAttribute('data-state', 'live');
 		const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 		expect(overflow).toBeLessThanOrEqual(0);
+	});
+});
+
+test.describe('location permission state', () => {
+	// The browser itself would answer with these coordinates once allowed.
+	test.use({ geolocation: VICTORIA_ST, permissions: ['geolocation'] });
+
+	test('not yet provided: explainer first, asks on click, shows the status, then locates', async ({ page }) => {
+		await stubPermission(page, 'prompt', { hold: true });
+		await page.goto('/bus-stops');
+		const explainer = page.locator('#bus-explainer');
+		await expect(explainer).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Find the stops around you' })).toBeVisible();
+		await page.waitForTimeout(300);
+		expect(await page.evaluate(() => window.__geoAsked)).toBe(0); // nothing asked before a click
+		await expect(page.locator('.bus-stop-card')).toHaveCount(0);
+
+		await explainer.getByRole('button', { name: 'Use my location' }).click();
+		expect(await page.evaluate(() => window.__geoAsked)).toBe(1);
+		const button = explainer.locator('.bus-locate-button');
+		await expect(button).toHaveText('Allow location…');
+		await expect(button).toBeDisabled();
+
+		await page.evaluate(() => window.__geoPermission('granted'));
+		await expect(button).toHaveText('Finding you…');
+		await expect(page.locator('.bus-stop-card')).toHaveCount(5);
+		await expect(explainer).toBeHidden();
+	});
+
+	test('not yet provided, then blocked at the prompt: the "Location is off" panel', async ({ page }) => {
+		await stubPermission(page, 'prompt', { hold: true });
+		await page.goto('/bus-stops');
+		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
+		await page.evaluate(() => window.__geoPermission('denied'));
+		await expect(page.getByRole('heading', { name: 'Location is turned off' })).toBeVisible();
+		await expect(page.locator('#bus-search')).toBeVisible();
+	});
+
+	test('denied earlier: "Location is off" on load, and Try again doesn\'t re-ask', async ({ page }) => {
+		await stubPermission(page, 'denied');
+		await page.goto('/bus-stops');
+		await expect(page.getByRole('heading', { name: 'Location is turned off' })).toBeVisible();
+		await expect(page.locator('#bus-explainer')).toBeHidden();
+		await page.locator('#bus-location-off').getByRole('button', { name: 'Try again' }).click();
+		await expect(page.getByRole('heading', { name: 'Location is turned off' })).toBeFocused();
+		expect(await page.evaluate(() => window.__geoAsked)).toBe(0);
+	});
+
+	test('re-allowed in site settings while the page is open: locates without a click', async ({ page }) => {
+		await stubPermission(page, 'denied');
+		await page.goto('/bus-stops');
+		await expect(page.locator('#bus-location-off')).toBeVisible();
+		await page.evaluate(() => window.__geoPermission('granted'));
+		await expect(page.locator('.bus-stop-card')).toHaveCount(5);
+		await expect(page.locator('#bus-location-off')).toBeHidden();
+	});
+
+	test('plain http (not a secure context): says why instead of "turned off"', async ({ page }) => {
+		await page.addInitScript(() => Object.defineProperty(window, 'isSecureContext', { get: () => false }));
+		await page.goto('/bus-stops');
+		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
+		await expect(page.getByRole('heading', { name: 'Location needs a secure connection' })).toBeVisible();
+		await expect(page.locator('#bus-location-off')).toContainText('only share location over https');
+		await expect(page.locator('.bus-stop-card')).toHaveCount(0);
 	});
 });
 
@@ -226,7 +313,6 @@ test.describe('where this bus goes', () => {
 
 	test('Route shows the onward stops, survives an arrivals refresh, and closes', async ({ page }) => {
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		const row = page.locator('#bus-arrivals-01012 .bus-service-row[data-service="7"]');
 		await expect(row).toBeVisible();
 		const btn = row.getByRole('button', { name: 'Route of bus 7' });
@@ -316,7 +402,6 @@ test.describe('outside Singapore', () => {
 
 	test('shows the Singapore-only message and offers search', async ({ page }) => {
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await expect(page.locator('#bus-stop-results')).toContainText('Bus Stop Finder only covers Singapore');
 		await expect(page.locator('[data-bus-state="outside-sg"]')).toBeVisible();
 		await expect(page.locator('#bus-search')).toBeVisible();
@@ -329,7 +414,6 @@ test.describe('in Singapore but nowhere near a stop', () => {
 
 	test('shows the empty state and offers search', async ({ page }) => {
 		await page.goto('/bus-stops');
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await expect(page.locator('#bus-stop-results')).toContainText('No bus stops within 500 m');
 		await expect(page.locator('#bus-search')).toBeVisible();
 	});
@@ -367,16 +451,14 @@ test.describe('map', () => {
 			if (/googleapis\.com|gstatic\.com/.test(r.url())) googleRequests.push(r.url());
 		});
 		await expect(page.locator('#bus-map-panel')).toHaveCount(0);
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await expect(page.locator('.bus-stop-card')).toHaveCount(5);
 		await expect(page.locator('#bus-arrivals-01012')).toHaveAttribute('data-state', 'live');
 		expect(googleRequests).toEqual([]);
 	});
 
 	test('with a Maps key: loads only after location, one marker per card, plain-text titles, selection synced', async ({ page }) => {
-		await page.goto('/bus-stops');
-		const key = await page.locator('#bus-stops-app').getAttribute('data-maps-key');
-		test.skip(!key, 'server has no GOOGLE_MAPS_API_KEY; map is disabled');
+		const html = await (await page.request.get('/bus-stops')).text();
+		test.skip(!/data-maps-key="[^"]+"/.test(html), 'server has no GOOGLE_MAPS_API_KEY; map is disabled');
 
 		const cspViolations = await watchCSP(page);
 		let mapsLoads = 0;
@@ -384,11 +466,14 @@ test.describe('map', () => {
 			mapsLoads++;
 			await route.fulfill({ contentType: 'application/javascript', body: FAKE_MAPS_SCRIPT });
 		});
-		await page.reload();
+		// Not yet provided, so nothing happens until the visitor allows it.
+		await stubPermission(page, 'prompt', { hold: true });
+		await page.goto('/bus-stops');
+		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
 		await page.waitForTimeout(300);
 		expect(mapsLoads).toBe(0); // nothing loaded before location is granted
 
-		await page.locator('#bus-explainer').getByRole('button', { name: 'Use my location' }).click();
+		await page.evaluate(() => window.__geoPermission('granted'));
 		await expect(page.locator('.bus-stop-card')).toHaveCount(5);
 		await expect.poll(() => page.evaluate(() => (window.__fakeMaps ? window.__fakeMaps.markers.filter((m) => !/^Bus /.test(m.opts.title)).length : 0))).toBe(6); // 5 stops + "You are here" (live-bus markers counted separately below)
 		expect(mapsLoads).toBe(1);

@@ -54,6 +54,9 @@ function currentState() {
       // from the DOM once applied), from any nonce-bearing script.
       nonce: (document.querySelector('script[nonce]') || {}).nonce || '',
       coords: null,
+      permission: null, // PermissionStatus for geolocation, when the API exists
+      permissionWatched: false,
+      locating: false,
       selected: null,
       mapsPromise: null,
       map: null,
@@ -86,6 +89,7 @@ function roundTo3(n) {
 // phase: 'idle' | 'permission' | 'locating'
 function setLocating(phase) {
   const busy = phase !== 'idle';
+  if (state) state.locating = busy;
   document.querySelectorAll('.bus-locate-button').forEach((button) => {
     button.disabled = busy;
     const label = button.querySelector('.bus-locate-label');
@@ -121,52 +125,74 @@ function requestPosition(s) {
   );
 }
 
+// Browsers refuse geolocation outright, without prompting, on plain-http
+// origins other than localhost (e.g. a phone opening the dev server by LAN IP).
+function geoBlocked() {
+  if (!('geolocation' in navigator)) return 'unsupported';
+  if (!window.isSecureContext) return 'insecure';
+  return '';
+}
+
 function locate() {
   const s = currentState();
   if (!s) return;
-  if (!('geolocation' in navigator)) {
-    showLocationOff('unsupported');
+  const blocked = geoBlocked();
+  if (blocked) {
+    showLocationOff(blocked);
     return;
   }
-
-  if (navigator.permissions && navigator.permissions.query) {
-    navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-      if (result.state === 'denied') {
-        showLocationOff('denied');
-        return;
-      }
-      if (result.state === 'prompt') {
-        setLocating('permission');
-        result.addEventListener('change', function onChange() {
-          result.removeEventListener('change', onChange);
-          if (result.state === 'granted') setLocating('locating');
-        });
-      } else {
-        setLocating('locating');
-      }
-      requestPosition(s);
-    }).catch(() => {
-      setLocating('locating');
-      requestPosition(s);
-    });
-  } else {
-    setLocating('locating');
-    requestPosition(s);
+  const state = s.permission ? s.permission.state : '';
+  if (state === 'denied') {
+    showLocationOff('denied');
+    return;
   }
+  setLocating(state === 'prompt' ? 'permission' : 'locating');
+  requestPosition(s);
 }
 
-function showLocationOff(type) {
+// Reads the geolocation permission once per mounted page and follows its
+// changes: already granted → locate without a click; denied → the off panel;
+// granted while the prompt is up → "Finding you…".
+function watchPermission() {
+  const s = currentState();
+  if (!s || s.permissionWatched || geoBlocked()) return;
+  s.permissionWatched = true;
+  if (!navigator.permissions || !navigator.permissions.query) return;
+  navigator.permissions.query({ name: 'geolocation' }).then((status) => {
+    if (currentState() !== s) return;
+    s.permission = status;
+    if (status.state === 'granted') locate();
+    else if (status.state === 'denied') showLocationOff('denied', { focus: false });
+    status.addEventListener('change', () => {
+      if (currentState() !== s) return;
+      if (status.state === 'granted') {
+        if (s.coords) return;
+        if (s.locating) setLocating('locating');
+        else locate();
+      } else if (status.state === 'denied') {
+        if (!s.locating) showLocationOff('denied', { focus: false });
+      } else if (!s.coords) {
+        show(byId('bus-location-off'), false);
+        show(byId('bus-explainer'), true);
+      }
+    });
+  }).catch(() => {});
+}
+
+function showLocationOff(type, { focus = true } = {}) {
   setLocating('idle');
   const panel = byId('bus-location-off');
   const title = byId('bus-location-off-title');
   if (panel && title) {
     const key = 'title' + type.charAt(0).toUpperCase() + type.slice(1);
     title.textContent = panel.dataset[key] || panel.dataset.titleDenied;
+    const body = byId('bus-location-off-body');
+    if (body) body.textContent = type === 'insecure' ? panel.dataset.bodyInsecure : panel.dataset.bodyDefault;
   }
   show(byId('bus-explainer'), false);
   show(panel, true);
   show(byId('bus-search'), true);
-  if (title) title.focus();
+  if (title && focus) title.focus();
 }
 
 function showSearch() {
@@ -663,4 +689,9 @@ document.addEventListener('htmx:beforeRequest', (event) => {
   }
 });
 
-currentState();
+// A page swapped in by htmx navigation gets its permission watch here.
+document.addEventListener('htmx:afterSettle', () => {
+  if (getApp()) watchPermission();
+});
+
+watchPermission();
