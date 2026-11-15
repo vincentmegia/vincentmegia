@@ -21,7 +21,8 @@
      `hidden` attribute and data-* state on elements rendered here — every
      piece of copy lives in this template, never in JS. Initial state:
      explainer visible, everything else hidden. Nothing is requested from
-     the browser (geolocation) or Google until the visitor acts. */}}
+     the browser (geolocation) or Google until the visitor acts, unless
+     they granted location on an earlier visit (then it locates on load). */}}
 {{define "bus-stops-content"}}
 <main id="main-content" class="mx-auto max-w-7xl px-4 py-6 sm:py-8">
 	<div
@@ -132,6 +133,9 @@
 			data-title-unavailable="We couldn't find your location"
 			data-title-timeout="Finding your location took too long"
 			data-title-unsupported="This browser can't share your location"
+			data-title-insecure="Location needs a secure connection"
+			data-body-default="Allow location for this site in your browser's settings and try again, or search on the map."
+			data-body-insecure="Browsers only share location over https (or localhost). Open this page over https, or search on the map."
 			hidden
 		>
 			<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary" aria-hidden="true">
@@ -139,7 +143,7 @@
 			</span>
 			<div class="min-w-[14rem] flex-1">
 				<h2 id="bus-location-off-title" class="font-body text-base font-bold text-ink" tabindex="-1">Location is turned off</h2>
-				<p class="text-sm text-muted">Allow location for this site in your browser's settings and try again, or search on the map.</p>
+				<p id="bus-location-off-body" class="text-sm text-muted">Allow location for this site in your browser's settings and try again, or search on the map.</p>
 			</div>
 			<button
 				type="button"
