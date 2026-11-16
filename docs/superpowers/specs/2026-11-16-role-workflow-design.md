@@ -29,6 +29,7 @@ works — and no stage started before the one above it was approved.
 | Where role output lives | One folder per feature, one numbered doc per role. |
 | When the Tester works | Test plan before code; verification after. |
 | Which work uses the flow | Everything; small fixes take a light track. |
+| Superpowers | Always apply in every role; each role has a fixed set of skills (section 2), whose output goes into the role docs. |
 | Mechanism | Tool-neutral role definitions in `docs/workflow/`, thin Claude skills as entry points, a Workflow section in CLAUDE.md and AGENTS.md (approach A; subagent-per-role and rules-only were rejected — subagents can't interview the owner, rules alone don't enforce order). |
 
 ### Out of scope
@@ -93,11 +94,32 @@ records intent and changes only when requirements change.
 
 ## 2. Roles
 
-Each role is defined once in `docs/workflow/roles/<role>.md` with four
+Each role is defined once in `docs/workflow/roles/<role>.md` with five
 parts: **Reads**, **Writes** (with its template in
-`docs/workflow/templates/`), **Behaviour**, **Exit checklist**. A role runs
-its exit checklist and fixes failures before asking for approval, then sets
-its stage to `In review` and stops.
+`docs/workflow/templates/`), **Superpowers**, **Behaviour**, **Exit
+checklist**. A role runs its exit checklist and fixes failures before
+asking for approval, then sets its stage to `In review` and stops.
+
+### Superpowers in every role
+
+Superpowers skills always apply: every role invokes the skills listed for
+it before doing its work, follows them, and treats the workflow as the
+user preference that sets *where* their output goes — into the role docs
+in the feature folder, never a separate `docs/superpowers/specs|plans`
+file. Where a skill and the workflow both define a gate, both apply (the
+stricter wins).
+
+| Role | Superpowers skills | Output lands in |
+| ---- | ------------------ | --------------- |
+| Business | `brainstorming` — its discovery part: classify the request (maps to light vs full), one question at a time, write back understanding for correction. Stops before design. | `1-business.md` / change file *Business* |
+| Architect | `brainstorming` — approaches with trade-offs, sectioned design approval, spec self-review; `systematic-debugging` for a bug's root cause before any design | `2-architecture.md`, `3-stories.md` / *Design* |
+| Tester (plan) | `test-driven-development` — every TC is written so it can be seen failing first | `4-test-plan.md` / *Test cases* |
+| Developer | `writing-plans` (the task list); `using-git-worktrees` when work runs beside other sessions; `test-driven-development`; `executing-plans` or `subagent-driven-development` (owner picks, as writing-plans asks); `systematic-debugging` on any failure; `requesting-code-review` before the as-built approval; `finishing-a-development-branch` at the end | `5-implementation.md` / *Implementation* |
+| Tester (verify) | `verification-before-completion` — no pass claimed without fresh evidence; `systematic-debugging` to triage failures before routing them | `4-test-plan.md` results / *Verification* |
+
+`using-superpowers` stays the session-level rule (check for skills before
+any action); the table names which ones each role must use, so none is
+skipped.
 
 ### 2.1 Business → `1-business.md`
 
@@ -227,8 +249,10 @@ those writes or places the files.
   full, and a pointer to `docs/workflow/`. "Read before working in an
   area" says each feature has a folder (or a legacy single doc not yet
   migrated); the feature table links folders as they appear. CLAUDE.md
-  also states that feature work uses this workflow instead of
-  `docs/superpowers/specs|plans` (those stay as history).
+  also states that superpowers skills apply in every role (section 2
+  table) and that their specs and plans are written into the role docs,
+  so `docs/superpowers/specs|plans` holds only work outside a feature
+  (like this design) plus history.
 * **`docs/features/template.md`** is deleted; its sections live in the
   role templates.
 
@@ -265,6 +289,8 @@ Diagram's existing `easy-diagram/BUILD.md` becomes its
 No code to unit-test; acceptance is the dry run:
 
 * `/business` interviews rather than designs, and proposes a track.
+* Each role invokes its superpowers skills from the section 2 table, and
+  their output lands in the role doc, not `docs/superpowers/`.
 * `/architect` (and each later role) refuses to start while an earlier
   stage isn't `Approved`, naming the blocking stage.
 * Status rows change only on owner approval; a change request re-opens the
