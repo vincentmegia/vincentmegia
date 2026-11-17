@@ -276,7 +276,7 @@ test('decal ground polys are painted after every floor tile and before standing 
   }
 });
 
-// ---- textured faces (docs/skills/2d-to-3d/SKILL.md) ----
+// ---- textured faces (docs/skills/convert-2d-to-3d/SKILL.md) ----
 // A face may carry `texture: {image, uv, div?}`: the 2D drawer's own art,
 // painted onto the face. uv is one [u, v] (texture px) per index.
 const IMAGE = { width: 64, height: 32 };

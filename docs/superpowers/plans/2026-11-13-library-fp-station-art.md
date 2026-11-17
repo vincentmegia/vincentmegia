@@ -8,7 +8,7 @@
 
 **Tech Stack:** Plain ES modules, canvas 2D, the software 3D painter in `web/static/js/library/three-d/`, `node --test`, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-11-13-library-fp-station-art-design.md`. Read it and `docs/skills/2d-to-3d/SKILL.md` first; `meshes/bookshelf.js` and `meshes/bookshelf.test.js` are the reference implementation and test.
+**Spec:** `docs/superpowers/specs/2026-11-13-library-fp-station-art-design.md`. Read it and `docs/skills/convert-2d-to-3d/SKILL.md` first; `meshes/bookshelf.js` and `meshes/bookshelf.test.js` are the reference implementation and test.
 
 ## Global Constraints
 

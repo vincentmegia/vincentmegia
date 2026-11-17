@@ -1,5 +1,5 @@
 // First Person Boss's Office, referenced to Top-Down's drawBossDoor
-// (library/anime-furniture.js; docs/skills/2d-to-3d/SKILL.md). The geometry
+// (library/anime-furniture.js; docs/skills/convert-2d-to-3d/SKILL.md). The geometry
 // is real-world size and gives the depth: the office is a small room built
 // against the back wall, its front a wall section (the Top-Down tile) with
 // the door frame standing proud of it, the door recessed in the frame, and

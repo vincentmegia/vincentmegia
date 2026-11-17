@@ -2644,7 +2644,7 @@ function drawHair(ctx, t, stride) {
 //
 // First Person (library/three-d/meshes/minjun.js) builds Min-jun as real 3D
 // geometry and wears this file's own drawing on the front of it, projected
-// straight along the view axis (docs/skills/2d-to-3d/SKILL.md). These paint
+// straight along the view axis (docs/skills/convert-2d-to-3d/SKILL.md). These paint
 // his parts at rest (t 0, no stride, no breath), in the art's own
 // coordinates; the caller sets up the transform and the opaque backing.
 

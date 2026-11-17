@@ -1,6 +1,6 @@
 // First Person elevator, referenced to Top-Down's drawElevator (Hospital
 // Shift's hospital/anime-furniture.js, which Library Shift draws with too;
-// docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// docs/skills/convert-2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: a 1.4 x 2.2 frame (posts, lintel, sill) standing proud of a wall
 // section, two door panels recessed just behind the frame's face (opening,
 // they slide away behind the posts, clipped to the doorway), an indicator

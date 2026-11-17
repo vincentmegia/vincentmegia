@@ -1,3 +1,8 @@
+---
+name: go-backend
+description: Build reliable, idiomatic Go backend services for this project — routing, middleware, configuration, error handling, testing and security conventions. Use when adding or changing any server-side Go code.
+---
+
 # Go Backend Skill
 
 ## Purpose
@@ -137,50 +142,10 @@ Adjust `WriteTimeout` upward for endpoints that legitimately stream long respons
 ## Middleware
 
 Compose cross-cutting concerns as middleware rather than repeating them in every
-handler. At minimum:
+handler: Recover, Request ID, Logging, Timeout, Body cap, Cross-origin writes.
+This app's chain is `cmd/server/main.go`'s `newHandlerChain`.
 
-* **Recover** — catch panics so one handler failure doesn't crash the process.
-* **Request ID** — generate/propagate an ID for correlating logs across a request.
-* **Logging** — log method, path, status, duration for every request.
-* **Timeout** — bound handler execution with a context deadline below
-  `WriteTimeout` (`middleware.Deadline`, 8 s against the 10 s
-  `WriteTimeout`), not `http.TimeoutHandler`, which buffers every response.
-  Every DB and outbound HTTP call must take the request's `ctx` so the
-  deadline actually stops it.
-* **Body cap** — `middleware.LimitRequestBody` caps POST/PUT/PATCH/DELETE
-  bodies at 1 MiB (413 on a declared `Content-Length` over it); the JSON API
-  under `/api/` keeps its own 64 KiB cap and envelope.
-* **Cross-origin writes** — `middleware.CrossOriginProtection` (the
-  stdlib's `http.CrossOriginProtection`) returns 403 for an unsafe-method
-  request whose `Sec-Fetch-Site` is anything but `same-origin`/`none`
-  (`same-site` too — no sibling subdomain posts here), or, without that
-  header, whose `Origin` doesn't match the host. Requests with neither
-  header (curl, home-admin's bearer-token calls) pass, so this stops
-  browser-based CSRF only; it is not authentication and doesn't replace
-  per-route auth, validation or rate limits.
-
-```go
-func Recover(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        defer func() {
-            if err := recover(); err != nil {
-                slog.Error("panic recovered", "error", err)
-                http.Error(w, "internal server error", http.StatusInternalServerError)
-            }
-        }()
-        next.ServeHTTP(w, r)
-    })
-}
-```
-
-Order middleware deliberately (recover outermost, then request ID, then logging).
-This app's chain is `cmd/server/main.go`'s `newHandlerChain`: Recover →
-RequestID → ClientIP → Logging → SecurityHeaders → CrossOriginProtection →
-LimitRequestBody → Deadline.
-
-Per-caller rate limiters key on `middleware.LimiterKey(middleware.ClientKey(r))`
-(IPv6 collapsed to its /64) and must evict expired windows, or their maps
-grow with every address ever seen.
+See `references/middleware.md` for the full chain, examples and rate-limiter rules.
 
 ---
 
@@ -378,130 +343,20 @@ Do not create background goroutines from request handlers without understanding 
 
 ## External Commands
 
-Device-management features may require OS commands.
+Never pass arbitrary user input directly to command execution. Prefer controlled
+arguments derived from validated configuration, with context and error checking.
 
-Never pass arbitrary user input directly to command execution.
-
-Bad:
-
-```go
-exec.Command("shutdown", userInput)
-```
-
-Prefer controlled arguments derived from validated configuration:
-
-```go
-exec.CommandContext(
-    ctx,
-    "shutdown",
-    "/s",
-    "/t",
-    "0",
-)
-```
-
-Command execution must be:
-
-* Explicit
-* Auditable
-* Validated
-* Timeout-aware
-* Error-checked
-
-Never expose arbitrary command execution through an HTTP API.
+See `references/external-commands.md` for examples and rules.
 
 ---
 
 ## Configuration
 
-Use a layered approach: a YAML file for structured, non-secret settings, a
-`.env` file for local-dev secrets, and real environment variables for
-everything in production. This is standard practice for Go services (the
-same layering popular libraries like Viper implement) without pulling in a
-large configuration framework — a small YAML library, a small dotenv
-library, and `internal/config`'s own merge logic covers it.
+Layered: defaults → `config.yaml` → `.env` → real environment variables.
+Never put secrets in the YAML file. Fail fast on missing required values.
 
-Precedence, lowest to highest:
-
-1. Defaults hard-coded in `internal/config`.
-2. Values from the YAML file, if present.
-3. Values from `.env`, if present.
-4. Real environment variables (however they're set — shell export,
-   `docker run -e`, a hosting platform's own config) — always win, even
-   over a value `.env` also sets.
-
-```yaml
-# config.yaml — structural, non-secret settings only
-port: "8080"
-log_level: INFO
-db:
-  max_open_conns: 10
-trust_proxy_headers: false
-```
-
-```dotenv
-# .env — secrets and anything else you'd rather not export by hand locally
-DATABASE_URL=postgres://user:password@localhost:5432/app
-```
-
-Both files are entirely optional and independently gitignored: a missing
-file is not an error, since real environment variables alone must remain
-sufficient to run the app (e.g. in a container with no file mounted).
-`.env` does not get loaded into the real process environment (no
-`os.Setenv`) — it's read into a plain map that only gets consulted when a
-key isn't already set in the real environment, so a real env var can never
-be silently shadowed by a stray `.env` file. Each file's own path is itself
-configurable via an environment variable (`CONFIG_FILE`, defaulting to
-`config.yaml`; `ENV_FILE`, defaulting to `.env`) — `ENV_FILE` must be a raw
-environment variable, since resolving it *from* `.env` would be circular.
-
-Check in a `config.example.yaml` and an `.env.example` documenting the
-available keys in each; the real `config.yaml`/`.env` a deployment actually
-uses are both gitignored.
-
-**Never put secrets in the YAML file** — it may be committed to version
-control or baked into a container image. `config.yaml` has no key for a
-secret at all (not even absent-by-convention — the loader shouldn't
-recognize a `database_url` YAML key in the first place, so one can't
-accidentally end up there); `.env` is the file that's allowed to hold them,
-precisely because it's understood project-wide as the one that's never
-committed.
-
-What belongs in the YAML file (non-secret, structural):
-
-```text
-port
-log_level
-db.max_open_conns
-trust_proxy_headers
-```
-
-What belongs in `.env` or a real environment variable (secrets,
-per-deployment endpoints):
-
-```text
-DATABASE_URL
-```
-
-Do not hard-code:
-
-* Passwords
-* API keys
-* Tokens
-* Private keys
-* Production endpoints
-
-Fail fast when required configuration is missing or invalid — whether that
-requirement is unmet by the YAML file, `.env`, the real environment, or all
-three.
-
-Use small, well-maintained libraries rather than hand-rolling parsers — the
-standard library has no YAML or dotenv support, so this is a case where a
-dependency provides concrete value: `gopkg.in/yaml.v3` for the YAML file,
-`github.com/joho/godotenv` for `.env` — specifically its `Read` function,
-which parses into a plain map, not `Load`, which would mutate the real
-process environment via `os.Setenv` and undermine the "real env always
-wins, `.env` is never silently shadowed" guarantee above.
+See `references/configuration.md` for the full layering convention, examples
+and library choices.
 
 ---
 

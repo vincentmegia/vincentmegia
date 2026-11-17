@@ -1,5 +1,5 @@
 // First Person Front Desk, referenced to Top-Down's drawFrontDesk
-// (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// (docs/skills/convert-2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: the counter body, the top slab standing proud of it, and on the
 // slab the monitor, a stack of books, the service bell and the potted plant,
 // each where frontDeskLayout puts it. The flat fronts wear the 2D art itself:

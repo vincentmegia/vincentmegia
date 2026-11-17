@@ -88,7 +88,7 @@ describe('library anime furniture', () => {
   });
 
   // The First Person bookshelf maps its faces onto these same regions of the
-  // art (docs/skills/2d-to-3d/SKILL.md), so the layout is the one contract
+  // art (docs/skills/convert-2d-to-3d/SKILL.md), so the layout is the one contract
   // between the two renderers.
   test('bookcaseLayout keeps the Top-Down bookcase geometry', () => {
     const L = bookcaseLayout({ w: 124, h: 100 });

@@ -108,7 +108,7 @@ export const BOOKCASE_COLORS = { case: '#e3b98a', back: '#fff3e6', plank: '#c992
  * Where drawBookcase puts its parts, in the station's centered px: the case,
  * the sign, the back panel the spines stand on, and each shelf (its spine
  * baseline `y` + 3 and its plank). First Person's bookshelf mesh maps its faces
- * onto these same regions of the drawn art (docs/skills/2d-to-3d/SKILL.md),
+ * onto these same regions of the drawn art (docs/skills/convert-2d-to-3d/SKILL.md),
  * so this is the one contract between the two renderers: move a part here and
  * both views follow.
  *
@@ -251,7 +251,7 @@ export const COFFEE_MACHINE_COLORS = {
  * `-st.h / 2` and the bay's contents stand on `st.h / 2`, so a taller box
  * (First Person's) only makes the bay taller. Top-Down's box is square
  * (84 x 84). First Person's coffee-machine mesh maps its faces onto these
- * same regions (docs/skills/2d-to-3d/SKILL.md).
+ * same regions (docs/skills/convert-2d-to-3d/SKILL.md).
  *
  * @param {{w: number, h: number}} st
  */
@@ -419,7 +419,7 @@ export const FRONT_DESK_COLORS = {
  * body's bottom edge the desk stands on. Widths and the pot follow `st.w`,
  * the body's height `st.h`; the rest is fixed px. Top-Down's box is 124 x 84.
  * First Person's front-desk mesh maps its faces onto these same regions
- * (docs/skills/2d-to-3d/SKILL.md).
+ * (docs/skills/convert-2d-to-3d/SKILL.md).
  *
  * @param {{w: number, h: number}} st
  */
@@ -530,7 +530,7 @@ export function returnCartDecorBooks(tray) {
  * x, the wheels (centre and radius) and their hubs' radius. The trays, posts
  * and wheels follow `st.w`/`st.h`; the rest is fixed px. Top-Down's box is
  * 84 x 84. First Person's return-cart mesh maps its faces onto these same
- * regions (docs/skills/2d-to-3d/SKILL.md).
+ * regions (docs/skills/convert-2d-to-3d/SKILL.md).
  *
  * @param {{w: number, h: number}} st
  */
@@ -627,7 +627,7 @@ export const FINES_ROOM_COLORS = {
  * `coinR` wide), and `floor`, the body's bottom edge the counter stands on.
  * The plaque and counter follow `st.w`/`st.h`; the register and coins are
  * fixed px. Top-Down's box is 130 x 130. First Person's fines-counter mesh
- * maps its faces onto these same regions (docs/skills/2d-to-3d/SKILL.md).
+ * maps its faces onto these same regions (docs/skills/convert-2d-to-3d/SKILL.md).
  *
  * @param {{w: number, h: number}} st
  */
@@ -753,7 +753,7 @@ export const BOSS_DOOR_COLORS = {
  * `st.w` wide and `height` (default `st.h`) tall: the frame, the door inside
  * it, the gold plaque over it, the knob's square and the padlock badge
  * (drawBossLock). First Person's mesh maps its faces onto these regions
- * (docs/skills/2d-to-3d/SKILL.md).
+ * (docs/skills/convert-2d-to-3d/SKILL.md).
  */
 export function bossDoorLayout(st, height = st.h) {
   const hh = height / 2;

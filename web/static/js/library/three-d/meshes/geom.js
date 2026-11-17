@@ -107,7 +107,7 @@ const BOX_FACE_NAMES = ['front', 'back', 'right', 'left', 'top', 'bottom']; // b
 /**
  * A box without the faces named in `drop` ('front', 'back', 'right', 'left',
  * 'top', 'bottom'). Hidden faces would only tie in the painter's sort
- * (docs/skills/2d-to-3d/SKILL.md, step 7). The front (+Z), when kept, stays faces[0].
+ * (docs/skills/convert-2d-to-3d/SKILL.md, step 7). The front (+Z), when kept, stays faces[0].
  */
 export function boxWithout(min, max, color, drop = []) {
   const b = box(min, max, color);

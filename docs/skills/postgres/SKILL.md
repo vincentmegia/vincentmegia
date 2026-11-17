@@ -1,3 +1,8 @@
+---
+name: postgres
+description: Design and operate PostgreSQL persistence — schema design, migrations, queries, transactions, connection management and security. Use when adding or changing any database schema, migration or query.
+---
+
 # PostgreSQL Skill
 
 ## Purpose

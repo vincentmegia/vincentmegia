@@ -13,9 +13,9 @@ renderer is canvas-2D painting with flat shading; photoreal would need
 WebGL).
 
 Parent docs: `docs/features/library-first-person-3d.md`,
-`docs/skills/2d-to-3d/SKILL.md`,
+`docs/skills/convert-2d-to-3d/SKILL.md`,
 `docs/superpowers/specs/2026-11-05-library-fp-character-art-design.md`.
-The reusable procedure this wave produced: `docs/skills/2d-character-to-3d/SKILL.md`.
+The reusable procedure this wave produced: `docs/skills/convert-2d-character-to-3d/SKILL.md`.
 
 ## The problem, measured
 

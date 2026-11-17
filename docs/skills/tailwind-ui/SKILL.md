@@ -1,3 +1,8 @@
+---
+name: tailwind-ui
+description: Build consistent, responsive UI with Tailwind CSS using the Organic design system — tokens, typography, layout, cards, buttons, dark mode and accessibility. Use when adding or changing any visual styling or Tailwind markup.
+---
+
 # Tailwind UI Skill
 
 ## Purpose

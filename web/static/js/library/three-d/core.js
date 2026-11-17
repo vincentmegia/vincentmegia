@@ -102,7 +102,7 @@ export function projectPoint(camera, world, viewport) {
  * @typedef {[number, number, number]} Vec3
  * @typedef {{indices: number[], color: string, unlit?: boolean, cull?: boolean, texture?: Texture}} Face   unlit: skip scene lighting (fog still applies). cull: drop the face when it is turned away from the camera (opt in only where the winding is tested). color: '#rgb' | '#rrggbb' | 'rgb(r,g,b)'
  * @typedef {{image: CanvasImageSource, uv: [number, number][], div?: [number, number]}} Texture
- *   A quad face's surface art (docs/skills/2d-to-3d/SKILL.md): `image` is the 2D
+ *   A quad face's surface art (docs/skills/convert-2d-to-3d/SKILL.md): `image` is the 2D
  *   drawer's own output, `uv` one [u, v] in image px per face index, `div` the
  *   [nu, nv] cells it is cut into (default [1, 1]). The mapped region must be
  *   opaque: shading and fog are painted over each triangle as overlays.

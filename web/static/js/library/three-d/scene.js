@@ -153,7 +153,7 @@ export function characterMesh(c) {
 /**
  * @param {object} input
  * @param {(station: object) => (CanvasImageSource | null | undefined)} [input.artFor]
- *   a station's 2D art for its mesh to wear (docs/skills/2d-to-3d/SKILL.md);
+ *   a station's 2D art for its mesh to wear (docs/skills/convert-2d-to-3d/SKILL.md);
  *   asked only for stations on this floor that have their own mesh.
  * @param {(station: object) => (object | undefined)} [input.optsFor]
  *   extra build options a station's kind needs (the Boss's Office's

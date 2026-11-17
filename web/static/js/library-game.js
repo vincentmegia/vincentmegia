@@ -3016,7 +3016,7 @@ export function init(canvas, elements) {
     };
   }
 
-  // First Person art (docs/skills/2d-to-3d/SKILL.md): a station's own 2D
+  // First Person art (docs/skills/convert-2d-to-3d/SKILL.md): a station's own 2D
   // drawer, painted into a canvas its 3D mesh wears. One entry per station
   // kind whose mesh wears art: `w`/`h` are the canvas size in image px,
   // `paint(ctx, station)` paints it, and the optional `stateKey(station)`

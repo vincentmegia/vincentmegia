@@ -1,5 +1,5 @@
 // First Person stairs, referenced to Top-Down's drawStairs
-// (hospital/anime-furniture.js; docs/skills/2d-to-3d/SKILL.md). drawStairs
+// (hospital/anime-furniture.js; docs/skills/convert-2d-to-3d/SKILL.md). drawStairs
 // is a plan view, so it can't be a front texture: the flight is built as
 // geometry from the drawer's own exports instead. Each step takes the 2D
 // colour ramp (stairStepColor) on its tread, and its riser is that colour

@@ -1,3 +1,8 @@
+---
+name: htmx-ui
+description: Build server-driven interfaces with HTMX and Go templates — layout architecture, fragment rendering, component boundaries, swap transitions and accessibility. Use when adding or changing any HTMX-driven page or interaction.
+---
+
 # HTMX UI Skill
 
 ## Purpose
@@ -248,38 +253,10 @@ components and make targets unpredictable.
 
 ## Fragment vs Full-Page Rendering
 
-The same handler often needs to serve both a full page (direct navigation, reload)
-and a fragment (HTMX request). Decide which to render based on the `HX-Request`
-header, and reuse one templating call for both — do not maintain two copies of the
-page logic.
+Branch on `HX-Request` to serve a full page or just the fragment, reusing one
+handler code path. Use out-of-band swaps sparingly for secondary updates.
 
-```go
-func (h *DevicesHandler) List(w http.ResponseWriter, r *http.Request) {
-    devices := h.service.List(r.Context())
-
-    if r.Header.Get("HX-Request") == "true" {
-        h.tmpl.ExecuteTemplate(w, "devices-list", devices) // fragment only
-        return
-    }
-    h.tmpl.ExecuteTemplate(w, "base", pageData{Content: "devices", Devices: devices})
-}
-```
-
-For an interaction that only ever happens via HTMX (e.g. `POST /devices/123/wake`),
-render the fragment directly — there is no full-page equivalent to branch on.
-
-Use out-of-band swaps (`hx-swap-oob`) when one request needs to update a secondary
-region alongside the primary target — e.g. a device action that also updates a
-notification count in the header:
-
-```html
-<div id="device-123" hx-swap-oob="outerHTML">...</div>
-<span id="nav-notification-count" hx-swap-oob="true">3</span>
-```
-
-Keep OOB usage limited to genuinely secondary updates. If a single interaction
-regularly needs to update three or more unrelated regions, that's a signal the
-page should be restructured rather than stitched together with OOB swaps.
+See `references/fragment-rendering.md` for examples and OOB swap guidelines.
 
 ---
 
@@ -315,51 +292,12 @@ Avoid blocking the entire application for a small request.
 
 ## CSS for Swaps
 
-HTMX adds and removes a small set of classes during a swap lifecycle. Style around
-them instead of hand-rolling JavaScript transitions:
+Style around HTMX's swap lifecycle classes (`.htmx-indicator`, `.htmx-swapping`,
+`.htmx-settling`) instead of hand-rolling JavaScript transitions. Keep transitions
+short, respect `prefers-reduced-motion`, and avoid layout shift.
 
-```text
-.htmx-indicator   hidden by default, shown while a request is in flight
-.htmx-request     present on the element (or hx-indicator target) during a request
-.htmx-added       present briefly on new content right after it's inserted
-.htmx-swapping    present on the old content during the swap-out
-.htmx-settling    present on the new content during the settle phase
-```
-
-```css
-.htmx-indicator { display: none; }
-.htmx-request .htmx-indicator,
-.htmx-request.htmx-indicator { display: inline-flex; }
-
-#device-list-item.htmx-swapping { opacity: 0; transition: opacity 150ms ease-out; }
-#device-list-item.htmx-settling { opacity: 0; }
-#device-list-item { opacity: 1; transition: opacity 150ms ease-in; }
-```
-
-Use `hx-swap` timing modifiers to give CSS transitions time to run before the DOM
-is actually swapped:
-
-```html
-<div hx-swap="outerHTML swap:150ms settle:150ms">
-```
-
-Guidelines:
-
-* Give a swapped element an explicit min-height or skeleton state if its content
-  size varies, so the layout doesn't jump (CLS) while the new fragment loads.
-* Keep transitions short (100–200ms) and only on `opacity`/`transform` — animating
-  `height` or `width` is expensive and often unnecessary.
-* Respect `prefers-reduced-motion` by disabling swap transitions for users who
-  request it:
-
-  ```css
-  @media (prefers-reduced-motion: reduce) {
-      .htmx-swapping, .htmx-settling { transition: none; }
-  }
-  ```
-* If using the View Transitions API (`hx-swap="... transition:true"`), scope
-  `view-transition-name` to the same predictable IDs used for `hx-target`, and keep
-  the transition to the element that actually changed — not its whole container.
+See `references/swap-transitions.md` for the class reference, CSS examples and
+View Transitions guidance.
 
 ---
 

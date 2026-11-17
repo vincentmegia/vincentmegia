@@ -1,5 +1,5 @@
 // First Person Return Cart, referenced to Top-Down's drawReturnCart
-// (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// (docs/skills/convert-2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: two wooden trays on plum posts, the push handle, the RETURNS tag
 // hung at the back between the back posts (high enough to clear the books on
 // the top tray), the lower tray's five pastel books and four round wheels

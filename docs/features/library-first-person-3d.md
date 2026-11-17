@@ -10,7 +10,7 @@
 Library Shift's First Person camera is a software-3D renderer that draws
 flat-shaded, painter-sorted polygons onto the existing 2D canvas (no WebGL,
 no dependencies). Its objects are referenced to their Top-Down 2D art
-(`docs/skills/2d-to-3d/SKILL.md`): characters are built from the same design
+(`docs/skills/convert-2d-to-3d/SKILL.md`): characters are built from the same design
 the 2D draws; Min-jun has his own mesh measured off his 2D renderer and wearing
 its drawing on the front; the bookshelf, coffee machine and elevator wear their 2D
 drawer's own art as a texture; and the stairs (whose 2D is a plan view) are
@@ -154,7 +154,7 @@ renderer (`library/minjun.js`) is far more detailed than the patron design
 **2.5 heads tall** against a patron's 3.36, so the shared patron frame
 can't carry him. Design: `docs/superpowers/specs/2026-11-13-library-fp-minjun-design.md`.
 The procedure, for the next character built this way:
-`docs/skills/2d-character-to-3d/SKILL.md`.
+`docs/skills/convert-2d-character-to-3d/SKILL.md`.
 
 `scene.js`'s `characterMesh(c)` picks the builder: `c.design.key ===
 'minjun'` goes to `buildMinjun({pose: c.pose, art: c.art})`, everyone else to
@@ -218,7 +218,7 @@ Chromium.
 ### The prop meshes
 
 A prop with a flat, readable front wears **its own Top-Down drawer's art**
-(`docs/skills/2d-to-3d/SKILL.md`; design:
+(`docs/skills/convert-2d-to-3d/SKILL.md`; design:
 `docs/superpowers/specs/2026-11-07-library-fp-prop-art-design.md`): the
 bookshelf, the coffee machine, the elevator and the Boss's Office. The stairs' 2D (`drawStairs`)
 is a plan view, which can't be worn as a front, so the stairs are geometry
@@ -532,7 +532,7 @@ returns the `doorOpen` this floor's elevator mesh is built with.
 
 ## How to add a new object mesh
 
-Follow `docs/skills/2d-to-3d/SKILL.md` first: it decides whether the object
+Follow `docs/skills/convert-2d-to-3d/SKILL.md` first: it decides whether the object
 gets the 2D art as a texture (flat-fronted props) or measured geometry
 (characters), and lists what the tests must pin.
 
@@ -581,7 +581,7 @@ work item below removes a row from the audit table when it ships.
   lands on whichever floor the transition had committed to.
 * **P4 — Same look, referenced to the 2D.** People are built from the design
   their 2D renderer draws; props wear their 2D drawer's art or colours
-  (`docs/skills/2d-to-3d/SKILL.md`). State-dependent looks carry over: Boss's
+  (`docs/skills/convert-2d-to-3d/SKILL.md`). State-dependent looks carry over: Boss's
   Office locked/unlocked, Coffee Machine out of order, ghost patrons
   translucent, Karen angry, Min-jun's current action.
 * **P5 — Same information.** What a Top-Down chip tells the player (station

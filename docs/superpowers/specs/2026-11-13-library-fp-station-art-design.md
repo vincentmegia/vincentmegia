@@ -6,7 +6,7 @@ Status: Implemented
 ## Goal
 
 Bring the last First Person meshes that do not follow
-`docs/skills/2d-to-3d/SKILL.md` up to it, so that every object in the FP
+`docs/skills/convert-2d-to-3d/SKILL.md` up to it, so that every object in the FP
 camera reads as the same object as its Top-Down art. This continues
 `2026-11-07-library-fp-prop-art-design.md`, which left these stations out.
 

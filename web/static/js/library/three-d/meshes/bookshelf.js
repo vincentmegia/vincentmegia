@@ -1,5 +1,5 @@
 // First Person bookshelf, referenced to Top-Down's drawBookcase
-// (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// (docs/skills/convert-2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: a case of crown, plinth and two sides, a recessed bay, and plank
 // lips standing proud. The surface is the 2D art itself: the game paints
 // drawBookcase into a canvas (paintBookshelfArt) and each box's front face

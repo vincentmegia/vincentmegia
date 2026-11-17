@@ -1,5 +1,5 @@
 // First Person Reading Nook, referenced to Top-Down's drawReadingNook
-// (docs/skills/2d-to-3d/SKILL.md). Its 2D is a small scene of rounded
+// (docs/skills/convert-2d-to-3d/SKILL.md). Its 2D is a small scene of rounded
 // pastel shapes, not a flat front, so it is geometry in the drawer's own
 // colours (READING_NOOK_COLORS): a lavender oval rug; a pink armchair facing
 // +Z on four wooden legs, its back behind the seat and a darker arm either

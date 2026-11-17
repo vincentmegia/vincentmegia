@@ -1,5 +1,5 @@
 // First Person decor, referenced to Top-Down's drawDecor
-// (hospital/anime-furniture.js; docs/skills/2d-to-3d/SKILL.md). Each drawer
+// (hospital/anime-furniture.js; docs/skills/convert-2d-to-3d/SKILL.md). Each drawer
 // is a 3/4 sprite rather than a plan view, so these are geometry in the
 // drawers' own colours at real-world size, not front textures.
 

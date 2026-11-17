@@ -248,7 +248,7 @@ test('a patron at interact range keeps its legs and feet on screen', () => {
     `${swallowed.length}/${N + 1} leg rows are entirely floor, at screen y ${swallowed}`);
 });
 
-// ---- prop art (docs/skills/2d-to-3d/SKILL.md) ----
+// ---- prop art (docs/skills/convert-2d-to-3d/SKILL.md) ----
 const shelfMeshes = (scene) => scene.placed.filter((p) => p.mesh.faces.some((f) => f.texture));
 
 test('artFor hands each station its 2D art; the bookshelf wears it', () => {

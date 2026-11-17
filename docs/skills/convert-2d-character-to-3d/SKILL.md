@@ -1,3 +1,8 @@
+---
+name: convert-2d-character-to-3d
+description: Give a character with its own detailed 2D renderer its own First Person 3D mesh — geometry measured off the renderer, wearing its drawing projected onto the front. Use before building or changing a character-specific mesh or its 2D renderer.
+---
+
 # 2D Character to 3D Skill
 
 ## Purpose
@@ -12,7 +17,7 @@ the staff on `staff-kit.js`).
 Read this before building or changing such a mesh, and before changing a 2D
 character renderer a mesh wears (the change shows in First Person too).
 
-This is a companion to `docs/skills/2d-to-3d/SKILL.md`, which holds the
+This is a companion to `docs/skills/convert-2d-to-3d/SKILL.md`, which holds the
 general rule and the prop procedure; read that first. Feature doc:
 `docs/features/library-first-person-3d.md` ("Min-jun's own mesh"). Design:
 `docs/superpowers/specs/2026-11-13-library-fp-minjun-design.md`.

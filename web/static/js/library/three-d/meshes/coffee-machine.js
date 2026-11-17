@@ -1,5 +1,5 @@
 // First Person coffee machine, referenced to Top-Down's drawCoffeeMachine
-// (docs/skills/2d-to-3d/SKILL.md). The geometry is real-world size and gives
+// (docs/skills/convert-2d-to-3d/SKILL.md). The geometry is real-world size and gives
 // the depth: a 0.4 x 0.5 x 0.4 machine standing on a counter-height wooden
 // stand (so it reads at the 1.5 m eye height), its brewing bay recessed into
 // the body, the group head and spouts hanging inside the bay, the drip tray

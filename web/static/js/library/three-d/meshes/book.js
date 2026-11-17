@@ -1,5 +1,5 @@
 // First Person Return Cart book, referenced to Top-Down's drawReturnCartCover
-// (library/book-cover.js; docs/skills/2d-to-3d/SKILL.md). The geometry is a
+// (library/book-cover.js; docs/skills/convert-2d-to-3d/SKILL.md). The geometry is a
 // real-size book standing on the cart's top tray; the cover is the 2D cover
 // itself: the game paints drawReturnCartCover into a canvas
 // (paintReturnCartBookArt) and the book's +Z front wears exactly its cover

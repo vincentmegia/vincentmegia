@@ -8,7 +8,7 @@ Status: Bookshelf, coffee machine, elevator and stairs implemented
 Make Library Shift's First Person props read as the *same objects* as their
 Top-Down 2D art, as the characters now do
 (`2026-11-05-library-fp-character-art-design.md`). The procedure is written
-up as a convention in `docs/skills/2d-to-3d/SKILL.md`.
+up as a convention in `docs/skills/convert-2d-to-3d/SKILL.md`.
 
 ## Decisions (confirmed with the user)
 

@@ -39,10 +39,10 @@ HTMX + Tailwind + PostgreSQL.
 
 ## Read before working in an area
 
-- Conventions: `docs/skills/{go-backend,postgres,htmx-ui,tailwind-ui}/SKILL.md`;
-  `docs/skills/2d-to-3d/SKILL.md` before building or changing a First Person
+- Conventions: `docs/skills/{go-backend,postgres,htmx-ui,tailwind-ui,javascript}/SKILL.md`;
+  `docs/skills/convert-2d-to-3d/SKILL.md` before building or changing a First Person
   mesh, or a 2D drawer one is referenced to; and
-  `docs/skills/2d-character-to-3d/SKILL.md` before giving a character with
+  `docs/skills/convert-2d-character-to-3d/SKILL.md` before giving a character with
   its own 2D renderer its own First Person mesh (Min-jun is the reference).
 - Every feature has `docs/features/<feature>.md` (new ones start from
   `docs/features/template.md`). Read it before touching that feature, and

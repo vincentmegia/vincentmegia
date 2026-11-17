@@ -329,7 +329,7 @@ export function drawOperatingRoom(ctx, st, opts = {}) {
 
 /**
  * The Stairs' colours, shared with First Person's stairs mesh
- * (library/three-d/meshes/stairs.js, docs/skills/2d-to-3d/SKILL.md): the step
+ * (library/three-d/meshes/stairs.js, docs/skills/convert-2d-to-3d/SKILL.md): the step
  * base the ramp tints, its plum edge line, the shadow line under each step,
  * the handrail's ink core and its wood top, and the arrow badge.
  */
@@ -435,7 +435,7 @@ function elevatorRect(x, y, w, h) {
  * ({cx, cy, r} plus its bounding rect). `opts.height` is the drawing's height
  * (default `st.w`, the square Top-Down box); only the vertical runs follow it,
  * and the call panel stays on the centre line. Library Shift's First Person
- * elevator maps its faces onto these rects (docs/skills/2d-to-3d/SKILL.md).
+ * elevator maps its faces onto these rects (docs/skills/convert-2d-to-3d/SKILL.md).
  */
 export function elevatorLayout(st, opts = {}) {
   const h = opts.height ?? st.w;
