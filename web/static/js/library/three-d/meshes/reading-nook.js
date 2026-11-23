@@ -25,6 +25,17 @@ const C = READING_NOOK_COLORS;
 /** The rug's radii (units), the chair back's and the lamp shade's tops. */
 export const READING_NOOK_SIZE = { rugRx: 1.2, rugRz: 0.8, chairTop: 1.3, lampTop: 1.5 };
 
+/**
+ * The nook's floor footprint (mesh units), for `library/collision.js`: the
+ * armchair and its lamp, which stand on the floor — not the rug, which is
+ * floor-level and must not be something you bump into.
+ *
+ * Measured off the mesh rather than derived: no single constant here spans the
+ * chamfered chair and the lamp beside it. `reading-nook.test.js` holds it to
+ * the mesh's own standing extents, so a reshaped chair fails that test.
+ */
+export const READING_NOOK_FOOTPRINT = { width: 1.986, depth: 0.8 };
+
 const RUG_TOP = 0.03;
 const LEG_TOP = 0.15; // the chair's underside
 /** Each block's top chamfer: its height, how far its flat top sits in from an exposed edge, and the corner cut in plan. */

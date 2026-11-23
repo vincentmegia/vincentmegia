@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReadingNook, READING_NOOK_SIZE, READING_NOOK_ROUND } from './reading-nook.js';
+import { buildReadingNook, READING_NOOK_SIZE, READING_NOOK_ROUND , READING_NOOK_FOOTPRINT } from './reading-nook.js';
 import { faceNormal } from './geom.js';
 import { READING_NOOK_COLORS } from '../../anime-furniture.js';
 import { stationTop } from '../labels.js';
@@ -228,4 +228,15 @@ test('face budget and determinism', () => {
   assert.deepEqual(buildReadingNook(), buildReadingNook());
   // No art: the builder takes the scene's options and ignores them.
   assert.deepEqual(buildReadingNook({ art: { width: 1, height: 1 } }), buildReadingNook());
+});
+
+// Collision needs the nook's standing footprint (the chair and lamp, not the
+// rug), and it must track the mesh rather than being retyped beside it.
+test('READING_NOOK_FOOTPRINT matches the mesh it is built from', () => {
+  const mesh = buildReadingNook();
+  const standing = mesh.vertices.filter((v) => v[1] > 0.1);
+  const hw = Math.max(...standing.map((v) => Math.abs(v[0])));
+  const hd = Math.max(...standing.map((v) => Math.abs(v[2])));
+  assert.ok(Math.abs(READING_NOOK_FOOTPRINT.width / 2 - hw) < 0.01, `width ${READING_NOOK_FOOTPRINT.width} vs mesh ${2 * hw}`);
+  assert.ok(Math.abs(READING_NOOK_FOOTPRINT.depth / 2 - hd) < 0.01, `depth ${READING_NOOK_FOOTPRINT.depth} vs mesh ${2 * hd}`);
 });

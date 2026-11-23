@@ -36,6 +36,18 @@
 //   * `{x, y, halfWidth, halfHeight}` — an axis-aligned rectangle (furniture)
 //   * `{x, y, radius}`                — a circle (people)
 
+import { stationExtents } from './floor-plan.js';
+import { UNIT_SCALE } from './three-d/scene.js';
+import { BOOKSHELF_SIZE } from './three-d/meshes/bookshelf.js';
+import { FRONT_DESK_SIZE } from './three-d/meshes/front-desk.js';
+import { FINES_COUNTER_SIZE } from './three-d/meshes/fines-counter.js';
+import { COFFEE_MACHINE_STAND } from './three-d/meshes/coffee-machine.js';
+import { RETURN_CART_SIZE } from './three-d/meshes/return-cart.js';
+import { STAIRS_SIZE } from './three-d/meshes/stairs.js';
+import { READING_NOOK_FOOTPRINT } from './three-d/meshes/reading-nook.js';
+import { ELEVATOR_SIZE } from './three-d/meshes/elevator.js';
+import { DECOR_FOOTPRINTS } from './three-d/meshes/decor.js';
+
 /** Eun-mi's collision footprint (px). Roughly her body's own width, so being stopped reads as the body rather than an invisible bubble; matches Kitchen Shift's player radius. */
 export const PLAYER_COLLISION_RADIUS = 14;
 
@@ -188,4 +200,148 @@ export function slideMove(x, y, dx, dy, radius, obstacles) {
   }
 
   return { x: cx, y: cy, blocked };
+}
+
+// -- Obstacles --------------------------------------------------------------
+
+/**
+ * Each station kind's First Person footprint, taken from the mesh module's own
+ * exported size so a resized mesh moves its footprint with it. Top-Down uses
+ * the stylised sprite tile instead (`stationExtents`), which is up to 3x
+ * bigger — a bookshelf tile is 124 x 100 px where its mesh is 40 x 14.
+ *
+ * Measuring footprints from built meshes' vertex bounds instead was
+ * considered and rejected: it is DRYer, but it would couple this pure module
+ * to the whole mesh-building stack (art canvases included), and it still needs
+ * the two exceptions below plus a floor-height threshold to keep the Reading
+ * Nook's rug out of its footprint. The mesh modules' own tests hold each
+ * constant to its mesh.
+ */
+const FIRST_PERSON_FOOTPRINTS = {
+  bookshelf: BOOKSHELF_SIZE,
+  'front-desk': FRONT_DESK_SIZE,
+  'fines-counter': FINES_COUNTER_SIZE,
+  'coffee-machine': COFFEE_MACHINE_STAND,
+  'return-cart': RETURN_CART_SIZE,
+  stairs: STAIRS_SIZE,
+  'reading-nook': READING_NOOK_FOOTPRINT,
+};
+
+/** Inventory kinds that are drawn but never physical. */
+const NEVER_SOLID_KINDS = new Set([
+  // Sanity hallucinations. One that blocked Eun-mi — or that spawned beside
+  // her and shoved her sprite — would be a bug, not a scare.
+  'ghost-patron',
+  'hallucination-figure',
+  // Books lying in the Return Cart: part of the cart's own footprint.
+  'return-cart-book',
+]);
+
+/** Inventory kinds drawn as people, and so collided as circles. */
+const PERSON_KINDS = new Set(['ambient-staff', 'front-desk-patron', 'fines-patron', 'karen']);
+
+/** A rectangle obstacle from a `{width, depth}` mesh size, in game px. */
+function meshRect(x, y, size) {
+  return {
+    x,
+    y,
+    halfWidth: (size.width / 2) * UNIT_SCALE,
+    halfHeight: (size.depth / 2) * UNIT_SCALE,
+  };
+}
+
+/**
+ * The elevator's two solid wall sections, flanking the doorway Eun-mi rides
+ * through.
+ *
+ * The whole tile cannot be solid: `elevatorRiderPose` stands her inside the
+ * car after a ride and `isInElevatorCar` holds the doors open while she is
+ * there. But exempting the kind outright would leave the visible wall either
+ * side of the door walk-through-able, in the very change that exists to stop
+ * that. So the doorway — the same `ELEVATOR_SIZE.width` opening
+ * `isInElevatorCar` tests — stays open, and the tile's remaining width is
+ * wall.
+ */
+function elevatorWalls(item) {
+  const { hw } = stationExtents(item.ref);
+  const doorHalf = (ELEVATOR_SIZE.width / 2) * UNIT_SCALE;
+  const wallHalf = (hw - doorHalf) / 2;
+  if (wallHalf <= 0) return [];
+  const halfHeight = (ELEVATOR_SIZE.depth / 2) * UNIT_SCALE;
+  return [-1, 1].map((side) => ({
+    x: item.x + side * (doorHalf + wallHalf),
+    y: item.y,
+    halfWidth: wallHalf,
+    halfHeight,
+  }));
+}
+
+/**
+ * This frame's obstacle list for one floor, from `worldInventory(floor, …)`
+ * output (`library/world-inventory.js` — already floor-filtered, and already
+ * carrying each item's `ref`, `stationKind` and `decorKind`).
+ *
+ * The returned obstacles carry no kind tag, so a caller that wants only
+ * furniture says `people: false` here rather than filtering afterwards.
+ *
+ * @param {object[]} items - worldInventory items.
+ * @param {object} opts
+ * @param {'top-down'|'first-person'} opts.camera - which art to collide against.
+ * @param {string} [opts.exclude] - an inventory id to leave out (the entity being resolved).
+ * @param {boolean} [opts.people=true] - false for furniture and decor only.
+ * @returns {({x: number, y: number, radius: number}|{x: number, y: number, halfWidth: number, halfHeight: number})[]}
+ */
+export function obstaclesFor(items, { camera, exclude, people = true } = {}) {
+  const firstPerson = camera === 'first-person';
+  const obstacles = [];
+
+  for (const item of items) {
+    if (exclude !== undefined && item.id === exclude) continue;
+    if (NEVER_SOLID_KINDS.has(item.kind)) continue;
+
+    if (PERSON_KINDS.has(item.kind)) {
+      if (people) obstacles.push({ x: item.x, y: item.y, radius: PERSON_COLLISION_RADIUS });
+      continue;
+    }
+
+    if (item.kind === 'station') {
+      if (firstPerson) {
+        // The Boss's Office is a door *in* the north wall, running backwards
+        // away from the room, so nothing of it stands on the floor — the room
+        // shell already stops her there.
+        if (item.stationKind === 'boss-office') continue;
+        if (item.stationKind === 'elevator') {
+          obstacles.push(...elevatorWalls(item));
+          continue;
+        }
+        const size = FIRST_PERSON_FOOTPRINTS[item.stationKind];
+        if (size) {
+          obstacles.push(meshRect(item.x, item.y, size));
+          continue;
+        }
+        // A kind with no mesh footprint yet falls through to its tile: solid
+        // and a little oversized beats silently walk-through-able.
+      }
+      const { hw, hh } = stationExtents(item.ref);
+      obstacles.push({ x: item.x, y: item.y, halfWidth: hw, halfHeight: hh });
+      continue;
+    }
+
+    if (item.kind === 'decor') {
+      const size = firstPerson ? DECOR_FOOTPRINTS[item.decorKind] : null;
+      if (size) {
+        obstacles.push(meshRect(item.x, item.y, size));
+        continue;
+      }
+      // Top-Down: a square from `w` alone. `h` is the sprite's drawn height,
+      // measured from its ground contact at `d.y + d.h / 2`, so using it as a
+      // floor depth would give the ladder a 62 px-deep box centred half a
+      // sprite north of where it stands.
+      const half = item.w / 2;
+      obstacles.push({ x: item.x, y: item.y, halfWidth: half, halfHeight: half });
+      continue;
+    }
+  }
+
+  return obstacles;
 }
