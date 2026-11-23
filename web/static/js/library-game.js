@@ -2135,7 +2135,8 @@ export function init(canvas, elements) {
   const COFFEE_SPLASH_SECONDS = 6;
   let coffeeSplashSeconds = 0;
 
-  function drawCoffeeSplash() {
+  /** Stains and steam on Eun-mi after a spill — drawn from her draw pose (`currentPlayerDrawPose`), not `player.x/y`, so they stay on the sprite when collision has nudged it. */
+  function drawCoffeeSplash(pose) {
     if (coffeeSplashSeconds <= 0) return;
     const s = LIBRARY_PERSON_SCALE * PLAYER_SIZE_RATIO;
     ctx.save();
@@ -2143,7 +2144,7 @@ export function init(canvas, elements) {
     ctx.fillStyle = 'rgba(106,74,48,0.85)';
     for (const [dx, dy, r] of [[-5, -19, 4.2], [3, -14, 3.4], [6, -21, 2.6], [-2, -10, 2.4], [-8, -13, 2], [9, -9, 1.8]]) {
       ctx.beginPath();
-      ctx.arc(player.x + dx * s, player.y + dy * s, r * s, 0, Math.PI * 2);
+      ctx.arc(pose.x + dx * s, pose.y + dy * s, r * s, 0, Math.PI * 2);
       ctx.fill();
     }
     // Steam curling off the stain.
@@ -2152,8 +2153,8 @@ export function init(canvas, elements) {
     const t = performance.now() / 300;
     for (const dx of [-6, 4]) {
       ctx.beginPath();
-      ctx.moveTo(player.x + dx * s, player.y - 24 * s);
-      ctx.quadraticCurveTo(player.x + (dx - 3 + Math.sin(t)) * s, player.y - 30 * s, player.x + dx * s, player.y - 36 * s);
+      ctx.moveTo(pose.x + dx * s, pose.y - 24 * s);
+      ctx.quadraticCurveTo(pose.x + (dx - 3 + Math.sin(t)) * s, pose.y - 30 * s, pose.x + dx * s, pose.y - 36 * s);
       ctx.stroke();
     }
     ctx.restore();
@@ -3531,18 +3532,63 @@ export function init(canvas, elements) {
   // rather than inferring it from pixel sampling.
   let lastFrameDrewPlayerSprite = false;
 
+  /**
+   * The station Eun-mi is *at*, which is not an obstacle to her own drawn
+   * pose: standing at a counter should read as contact, not as a slide.
+   *
+   * Without this, every arrival nudges her visibly, because the approach
+   * circle `commitStationTarget` walks her to clears the furniture by less
+   * than her 14 px footprint — 10.4 px at a bookcase, 10.6 at a square
+   * station, and 1.1 px at the Fines Counter room, whose diagonal approach is
+   * the most-walked in the game.
+   */
+  function stationUnderPlayer() {
+    const candidates = moveTarget?.station ? [moveTarget.station] : stationsOnFloor(stations, currentFloor);
+    for (const s of candidates) {
+      // Contact is exempt; being *inside* the box is not. Top-Down can put her
+      // there (a staff walk parks her 46 px beside a walker, a decor click
+      // walks her onto the prop), and a sprite drawn inside the furniture is
+      // the thing this change exists to stop.
+      if (stationAtPoint(player.x, player.y, [s])) continue;
+      const { hw, hh } = stationExtents(s);
+      const standoff = Math.max(hw, hh) + PLAYER_STOP_MARGIN;
+      if (Math.hypot(player.x - s.x, player.y - s.y) <= standoff + 0.5) return s.id;
+    }
+    return null;
+  }
+
+  /**
+   * Where Eun-mi's sprite is DRAWN this frame: her position resolved out of
+   * furniture and decor, rounded so her edges stay crisp.
+   *
+   * `player.x/y` is deliberately left alone — see the collision notes above
+   * `collisionObstacles`. People are not obstacles here either: pushes are
+   * one-way, and the walkers resolve against her instead (`staffDrawPose`), so
+   * a shared push cannot separate a 14 px overlap into 56 px of gap.
+   *
+   * Everything attached to her reads this one pose, the way Kitchen Shift's
+   * `currentPlayerDrawPose` does, so the body, chip, badge and coffee stains
+   * can never drift apart.
+   */
+  function currentPlayerDrawPose() {
+    const obstacles = collisionObstacles('top-down', { people: false, exclude: stationUnderPlayer() ?? undefined });
+    const at = resolveCollisions(player.x, player.y, PLAYER_COLLISION_RADIUS, obstacles);
+    return { x: Math.round(at.x), y: Math.round(at.y) };
+  }
+
   function drawPlayer() {
     lastFrameDrewPlayerSprite = true;
     const sanity = shiftState ? shiftState.sanity : SANITY_MAX;
     const stress = sanity < HALLUCINATION_START_SANITY ? (HALLUCINATION_START_SANITY - sanity) / HALLUCINATION_START_SANITY : 0;
-    drawLibraryPerson(ctx, player.x, player.y, { personalityKey: 'librarian', scale: 1, stress, walking: moveTarget !== null });
-    drawCoffeeSplash();
-    drawLabelChip(ctx, player.x, player.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
+    const pose = currentPlayerDrawPose();
+    drawLibraryPerson(ctx, pose.x, pose.y, { personalityKey: 'librarian', scale: 1, stress, walking: moveTarget !== null });
+    drawCoffeeSplash(pose);
+    drawLabelChip(ctx, pose.x, pose.y + 24, PLAYER_NAME, 'bold 10px sans-serif');
     const badge = currentPlayerBadge();
     if (badge) {
       const r = PLAYER_SIZE_RATIO;
-      if (badge.kind === 'book') drawRoundRect(ctx, player.x + 16 * r, player.y - 86 * r, 12, 16, 2, badge.color);
-      else drawStar(ctx, player.x + 20 * r, player.y - 82 * r, 7, 3, badge.color);
+      if (badge.kind === 'book') drawRoundRect(ctx, pose.x + 16 * r, pose.y - 86 * r, 12, 16, 2, badge.color);
+      else drawStar(ctx, pose.x + 20 * r, pose.y - 82 * r, 7, 3, badge.color);
     }
   }
 
@@ -5631,6 +5677,8 @@ export function init(canvas, elements) {
   if (typeof window !== 'undefined') {
     window.__libraryGameTestHooks = {
       getPlayerPosition: () => ({ ...player }),
+      /** Where her sprite is actually drawn: Top-Down resolves it out of furniture while `player.x/y` stays put. */
+      getPlayerDrawPose: () => currentPlayerDrawPose(),
       setPlayerPosition: (x, y) => { player.x = x; player.y = y; },
       isPlayerMoving: () => moveTarget !== null,
       getCurrentFloor: () => currentFloor,

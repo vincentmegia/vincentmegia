@@ -2447,3 +2447,44 @@ test.describe('object collision (First Person)', () => {
 		expect(pos.y).toBeLessThanOrEqual(576);
 	});
 });
+
+// Top-Down's half of object collision: the DRAWN position is resolved out of
+// furniture, while player.x/y — which handleArrival and every distance check
+// read — is never touched. See docs/features/library-game.md's "Object
+// collision" for why the two cameras differ.
+test.describe('object collision (Top-Down)', () => {
+	test('Eun-mi is never drawn with her footprint inside a bookshelf', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const shelf = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			return h.getStations().find((s) => s.kind === 'bookshelf' && s.floor === h.getCurrentFloor());
+		});
+		const seen = await page.evaluate((st) => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(st.x, st.y);
+			h.step(1 / 60);
+			return { pose: h.getPlayerDrawPose(), raw: h.getPlayerPosition() };
+		}, shelf);
+		// The simulated position is untouched: arrival and timing depend on it.
+		expect(seen.raw).toEqual({ x: shelf.x, y: shelf.y });
+		// The drawn one is clear of the tile (62 x 50 half-extents) plus her 14 px footprint.
+		const clear = Math.abs(seen.pose.x - shelf.x) >= 76 - 1 || Math.abs(seen.pose.y - shelf.y) >= 64 - 1;
+		expect(clear, `drawn at ${seen.pose.x},${seen.pose.y} inside the shelf at ${shelf.x},${shelf.y}`).toBe(true);
+	});
+
+	test('arriving at the Fines Counter does not slide her off the counter', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await walkToStation(page, 'fines-counter');
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			return { pose: h.getPlayerDrawPose(), raw: h.getPlayerPosition() };
+		});
+		// Standing at a counter should read as contact. Its approach circle
+		// clears the room by 1.1 px, so without the arrival exemption she would
+		// visibly slide ~13 px the moment she arrived.
+		expect(seen.pose).toEqual({ x: Math.round(seen.raw.x), y: Math.round(seen.raw.y) });
+	});
+});

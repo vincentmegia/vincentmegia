@@ -196,7 +196,13 @@ and the two cameras use it differently **on purpose**:
   First Person also resolves her out of anything Top-Down parked her inside.
 * **Top-Down only resolves at draw time.** `currentPlayerDrawPose` and
   `staffDrawPose` push the *drawn* position out of furniture; `player.x/y` and
-  each walker's `x/y` are never written. That is not timidity: `handleArrival`
+  each walker's `x/y` are never written. Her body, name chip, carry badge and
+  coffee stains (`drawCoffeeSplash`) all draw from that one pose, so nothing
+  attached to her can drift off the sprite. The station she is **at** is
+  exempt from her own resolve — standing at a counter should read as contact,
+  and without it every arrival would nudge her visibly (1.1 px of clearance at
+  the Fines Counter against a 14 px footprint). Being *inside* a station's box
+  is not exempt: that is the case this change exists to stop. That is not timidity: `handleArrival`
   fires off `player.x/y`, and `commitStationTarget`'s approach circle clears
   the furniture by as little as 1.1 px (the Fines Counter room) against a 14 px
   footprint, so pushing the real position would shove her off the very point
