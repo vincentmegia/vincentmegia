@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DECOR_BUILDERS, meshForDecorKind, buildPlant, buildWaitingChairs, buildWaterCooler } from './decor.js';
+import { DECOR_BUILDERS, DECOR_FOOTPRINTS, meshForDecorKind, buildPlant, buildWaitingChairs, buildWaterCooler } from './decor.js';
 import { buildDrawList, screenOverlap } from '../core.js';
 import { cameraAt } from './standing-order.test-helper.js';
 import { UNIT_SCALE } from '../scene.js';
@@ -127,4 +127,25 @@ test('no cooler body face is drawn after a tap or cup face it overlaps, at obliq
       });
     }
   }
+});
+
+// Collision (library/collision.js) needs each decor kind's floor footprint,
+// derived from the builder's own geometry rather than retyped beside it.
+// `standing` drops floor-level geometry so a rug or decal never becomes a
+// thing you bump into.
+test('DECOR_FOOTPRINTS matches the meshes they are built from', () => {
+  for (const kind of LIBRARY_DECOR_KINDS) {
+    const mesh = meshForDecorKind(kind)();
+    const standing = mesh.vertices.filter((v) => v[1] > 0.1);
+    const hw = Math.max(...standing.map((v) => Math.abs(v[0])));
+    const hd = Math.max(...standing.map((v) => Math.abs(v[2])));
+    const fp = DECOR_FOOTPRINTS[kind];
+    assert.ok(fp, `${kind} has no footprint`);
+    assert.ok(Math.abs(fp.width / 2 - hw) < 0.01, `${kind} width ${fp.width} vs mesh ${2 * hw}`);
+    assert.ok(Math.abs(fp.depth / 2 - hd) < 0.01, `${kind} depth ${fp.depth} vs mesh ${2 * hd}`);
+  }
+});
+
+test('every decor kind Library places has a footprint', () => {
+  assert.deepEqual(Object.keys(DECOR_FOOTPRINTS).sort(), [...LIBRARY_DECOR_KINDS].sort());
 });

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildReturnCart, paintReturnCartArt, RETURN_CART_ART, RETURN_CART_ART_SCALE, RETURN_CART_TAG,
-  RETURN_CART_BOOK_SLOTS, RETURN_CART_VISIBLE_BOOKS,
+  RETURN_CART_BOOK_SLOTS, RETURN_CART_VISIBLE_BOOKS, RETURN_CART_SIZE,
 } from './return-cart.js';
 import { BOOK_SIZE } from './book.js';
 import { returnCartLayout, returnCartDecorBooks, RETURN_CART_COLORS } from '../../anime-furniture.js';
@@ -354,4 +354,16 @@ test('exact pixels: the rule never worsens the lower tray against its own faces 
     // And the tray no longer paints over what stands on it (plain order: 254-292 samples per position).
     assert.equal(r.hinted.topOverStand, 0, pos);
   }
+});
+
+// Collision (library/collision.js) needs the cart's floor footprint, and it
+// must track the mesh rather than being retyped beside it: `standing` drops
+// floor-level geometry (a rug, a decal) the way the collision footprints do.
+test('RETURN_CART_SIZE matches the mesh it is built from', () => {
+  const mesh = buildReturnCart();
+  const standing = mesh.vertices.filter((v) => v[1] > 0.1);
+  const hw = Math.max(...standing.map((v) => Math.abs(v[0])));
+  const hd = Math.max(...standing.map((v) => Math.abs(v[2])));
+  near(RETURN_CART_SIZE.width / 2, hw, 0.01);
+  near(RETURN_CART_SIZE.depth / 2, hd, 0.01);
 });

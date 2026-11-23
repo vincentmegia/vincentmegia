@@ -157,6 +157,29 @@ export function buildWaitingChairs() {
   return mesh;
 }
 
+/**
+ * Each decor kind's floor footprint (mesh units), for `library/collision.js`
+ * — the First Person half of its footprint table, where Top-Down uses the
+ * stylised sprite tile instead.
+ *
+ * Each is the mesh's own standing extents (everything above ankle height, so
+ * a floor rug or decal never becomes something you bump into), and
+ * `decor.test.js` holds every entry to the mesh it belongs to: a resized prop
+ * fails that test rather than quietly leaving an invisible wall or a prop you
+ * walk through. The two irregular ones are measured rather than derived —
+ * there is no single constant in this module that spans a leaf blob.
+ */
+export const DECOR_FOOTPRINTS = {
+  // The body is 0.34 square; the taps and cup stack stand 0.03 proud of its front.
+  'water-cooler': { width: 2 * COOLER_HALF, depth: 2 * (COOLER_HALF + 0.03) },
+  // The leaves, not the pot: you do not walk through foliage either.
+  plant: { width: 0.578, depth: 0.467 },
+  // The rails at their widest splay, plus their thickness; a ladder is nearly flat.
+  ladder: { width: 0.66, depth: 0.1 },
+  // Three seats at 0.56 pitch, each 0.44 wide, and the seat pan's depth.
+  'waiting-chairs': { width: 1.56, depth: 0.44 },
+};
+
 export const DECOR_BUILDERS = {
   'water-cooler': buildWaterCooler,
   plant: buildPlant,

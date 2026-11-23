@@ -50,6 +50,16 @@ const ARM = { h: 0.04, depth: 0.02 }; // the tag's arms, inside the board's thic
 // (it meets them only along their edges: a box lying on a post's face could
 // not be painted in order against it).
 const HANDLE = { x0: POST_X + POST_HALF, x1: 0.95, y0: 1.05, y1: 1.12, z: 0.45 - POST_HALF };
+
+/**
+ * The cart's floor footprint (mesh units), for `library/collision.js`.
+ *
+ * Width is set by the push handle, the widest thing standing on the cart, and
+ * depth by the trays. `return-cart.test.js` holds it to the mesh's own
+ * standing extents, so a resized tray or handle fails that test rather than
+ * silently leaving a footprint that disagrees with the art.
+ */
+export const RETURN_CART_SIZE = { width: 2 * HANDLE.x1, depth: 2 * TRAY.z };
 const BOOK = { w: 0.2, pitch: 0.24, depth: 0.3, perPx: 0.02 }; // the lower tray's books
 // Four wheels, a front pair and a back pair, their axles along z and their
 // outer caps (with the hub) 0.06 inside the tray's front and back edges, so
