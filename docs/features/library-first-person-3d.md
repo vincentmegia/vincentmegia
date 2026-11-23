@@ -29,6 +29,22 @@ animated elevator ride (with its doors) and stair climb in First Person.
 targeting (still `library/first-person.js`); textures other than a 2D
 drawer's own art; z-buffer, lighting beyond one directional light plus ambient.
 
+**Collision (Nov 2026).** Movement in this camera is blocked, not just
+clamped to the canvas: `updateFirstPersonMovement` runs `slideMove`
+(`library/collision.js`) against this floor's obstacles, so furniture, decor
+and people stop her and a surface met at an angle slides instead of sticking.
+The footprints are **mesh-sized** — each from the mesh module's own exported
+size constant (`BOOKSHELF_SIZE`, `FRONT_DESK_SIZE`, `FINES_COUNTER_SIZE`,
+`COFFEE_MACHINE_STAND`, `RETURN_CART_SIZE`, `STAIRS_SIZE`,
+`READING_NOOK_FOOTPRINT`, `DECOR_FOOTPRINTS`) times `UNIT_SCALE` — so she
+stops at the face she can see rather than at the much larger Top-Down tile.
+The Boss's Office has no footprint (it is a door in the room's own north wall)
+and the elevator is two wall sections flanking the doorway, so the car stays
+rideable. Entering this camera resolves her out of anything Top-Down left her
+standing inside. A stair climb or elevator ride is unaffected: the
+`fpTransition` early return still moves her freely. See
+`library-game.md`'s "Object collision".
+
 **Required, not yet built:** full parity with Top-Down — every person,
 prop, decor item, label and interaction Top-Down has, in FP too (ambient
 staff included). See Camera parity for the requirements and work

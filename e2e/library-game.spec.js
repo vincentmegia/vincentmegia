@@ -2350,3 +2350,100 @@ test('no console errors on load and during play, including no CSP violations', a
 
 	expect(errors).toEqual([]);
 });
+
+// Object collision (docs/features/library-game.md's "Object collision";
+// design in docs/superpowers/specs/2026-11-23-library-object-collision-design.md).
+// First Person blocks the real position against each prop's MESH footprint —
+// a bookshelf's mesh is 40 x 14 px where its Top-Down tile is 124 x 100, and
+// colliding against the tile would leave a 57 px invisible wall in front of
+// every shelf. Frozen + stepped throughout, like the other First Person specs.
+test.describe('object collision (First Person)', () => {
+	// A 14 px footprint against a bookshelf mesh half-depth of 7: blocked
+	// closer than 21 px from its centre line, so y 379 is the contact point
+	// for the shelf at [580, 400].
+	const SHELF = { x: 580, y: 400 };
+	const CONTACT_Y = 379;
+
+	async function enterFirstPersonAt(page, { x, y, facing = 0 }) {
+		await page.locator('#library-camera-button').click();
+		await page.evaluate(([px, py, f]) => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(px, py);
+			h.setPlayerFacing(f);
+		}, [x, y, facing]);
+	}
+
+	async function holdAndStep(page, keys, frames) {
+		for (const k of keys) await page.keyboard.down(k);
+		const pos = await page.evaluate((n) => {
+			const h = window.__libraryGameTestHooks;
+			for (let i = 0; i < n; i++) h.step(1 / 60);
+			return h.getPlayerPosition();
+		}, frames);
+		for (const k of keys) await page.keyboard.up(k);
+		return pos;
+	}
+
+	test('walking into a bookshelf is blocked at its face', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		// Facing south (PI), 19 px above the shelf's contact line.
+		await enterFirstPersonAt(page, { x: SHELF.x, y: 360, facing: Math.PI });
+		const pos = await holdAndStep(page, ['w'], 60);
+		// 60 frames at 200 px/s would have carried her 200 px through it.
+		expect(pos.y).toBeLessThanOrEqual(CONTACT_Y);
+		expect(pos.y).toBeGreaterThan(CONTACT_Y - 5);
+	});
+
+	test('a bookshelf face slides instead of sticking', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await enterFirstPersonAt(page, { x: SHELF.x, y: 376, facing: Math.PI });
+		// Forward into the face plus a strafe along it: the strafe survives.
+		const pos = await holdAndStep(page, ['w', 'd'], 10);
+		expect(pos.y).toBeLessThanOrEqual(CONTACT_Y);
+		expect(Math.abs(pos.x - SHELF.x)).toBeGreaterThan(10);
+	});
+
+	test("the elevator's doorway admits her but its side walls do not", async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const car = await getStation(page, 'elevator');
+		// Facing north (0), on the floor's lowest reachable line.
+		await enterFirstPersonAt(page, { x: car.x, y: 576, facing: 0 });
+		const throughDoor = await holdAndStep(page, ['w'], 20);
+		expect(throughDoor.y).toBeLessThan(576 - 30);
+
+		// 35 px along the tile is wall, not doorway.
+		await page.evaluate(([x]) => {
+			const h = window.__libraryGameTestHooks;
+			h.setPlayerPosition(x, 576);
+			h.setPlayerFacing(0);
+		}, [car.x + 35]);
+		const intoWall = await holdAndStep(page, ['w'], 20);
+		expect(intoWall.y).toBeGreaterThan(576 - 1);
+	});
+
+	test('entering First Person inside a decor item pushes her out, and onto the floor', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		// The 1F water cooler at (200, 120): Top-Down can park her on it,
+		// since decor is not in stationAtPoint's list. Stand there in Top-Down
+		// FIRST, so entering First Person is what has to get her out.
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.setPlayerPosition(200, 120);
+		});
+		await page.locator('#library-camera-button').click();
+		const pos = await page.evaluate(() => window.__libraryGameTestHooks.getPlayerPosition());
+		// Clear of the cooler's mesh footprint (6.8 x 8 half-extents + 14).
+		const clear = Math.abs(pos.x - 200) >= 20.8 - 1e-6 || Math.abs(pos.y - 120) >= 22 - 1e-6;
+		expect(clear, `still inside the cooler at ${pos.x},${pos.y}`).toBe(true);
+		expect(pos.x).toBeGreaterThanOrEqual(24);
+		expect(pos.y).toBeGreaterThanOrEqual(24);
+		expect(pos.x).toBeLessThanOrEqual(936);
+		expect(pos.y).toBeLessThanOrEqual(576);
+	});
+});

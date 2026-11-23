@@ -181,6 +181,56 @@ handling, in place of Kitchen Shift's cooking and serving.
 * Server-side per-player state and score anti-cheat (see Security
   Considerations).
 
+### Object collision
+
+"The objects should not collide" (the user, Nov 2026). Before this, the only
+constraint on Eun-mi's position was `clampToCanvas` — the canvas edge — so she
+walked through bookcases, desks, decor and people in both cameras. The
+geometry now lives in one pure module, `web/static/js/library/collision.js`
+(design: `docs/superpowers/specs/2026-11-23-library-object-collision-design.md`),
+and the two cameras use it differently **on purpose**:
+
+* **First Person blocks the real position.** `updateFirstPersonMovement` moves
+  her with `slideMove`, which walks as far as the obstacles allow and slides
+  along a surface she hits at an angle instead of sticking to it. Entering
+  First Person also resolves her out of anything Top-Down parked her inside.
+* **Top-Down only resolves at draw time.** `currentPlayerDrawPose` and
+  `staffDrawPose` push the *drawn* position out of furniture; `player.x/y` and
+  each walker's `x/y` are never written. That is not timidity: `handleArrival`
+  fires off `player.x/y`, and `commitStationTarget`'s approach circle clears
+  the furniture by as little as 1.1 px (the Fines Counter room) against a 14 px
+  footprint, so pushing the real position would shove her off the very point
+  arrival is tested against. Kitchen Shift's `updatePlayer` JSDoc records what
+  that did there: two customers at one standoff point shoving each other back
+  forever.
+
+**Each camera collides against the art it draws.** The game draws its
+furniture at two sizes — a bookshelf tile is 124 x 100 px, its First Person
+mesh 40 x 14 — so `obstaclesFor` takes the camera and answers with that
+camera's footprints. Colliding First Person against the tiles would leave a
+57 px invisible wall in front of every shelf, and you could never stand close
+enough to read its spines. First Person footprints come from each mesh
+module's own exported size constant, so a resized mesh moves its footprint
+with it.
+
+Two deliberate exceptions, both with tests: the **Boss's Office** has no First
+Person footprint (its mesh is a door *in* the north wall, running away from the
+room, so nothing of it stands on the floor — the room shell stops her), and the
+**elevator** is two wall sections flanking its doorway rather than one solid
+box, because `elevatorRiderPose` stands her inside the car and
+`isInElevatorCar` holds the doors open while she is there.
+
+Never solid: the Sanity hallucinations (`ghost-patron`,
+`hallucination-figure`) and the books lying in the Return Cart. Queued patrons
+and Karen are obstacles, but their own drawn positions are never resolved —
+the queue line would visibly bend.
+
+**What this guarantees is footprints, not pixels.** A character's footprint is
+a 14 px circle, but they are drawn ~52 px wide and ~86 px tall above their
+feet, so two people standing as close as collision allows still *draw*
+overlapped, and someone stopped outside a bookcase still has her head drawn
+over its tile. Kitchen Shift shipped the same deal.
+
 ---
 
 ## User Flow

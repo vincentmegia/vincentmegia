@@ -75,6 +75,13 @@ HTMX + Tailwind + PostgreSQL.
   always returns false, so every `/settings/*` page redirects to a `/login`
   that doesn't exist yet. `/api/internal/v1/*` authenticates by bearer token
   instead and must never use `requireOwnerAuth` (it redirects, not 401).
+- **Library collision**: `web/static/js/library/collision.js` is the one
+  source of the collision geometry, and it holds a footprint set per camera
+  (tile-sized for Top-Down, mesh-sized for First Person — the game draws the
+  same furniture at both sizes). First Person blocks the real `player.x/y`;
+  Top-Down resolves at **draw time only** and must never write a position,
+  because arrival reads `player.x/y`. Doc: `library-game.md`'s "Object
+  collision".
 - **Shared art**: Kitchen Shift and Bus Rush draw people with
   `web/static/js/shared/people.js`; Library Shift reuses Hospital Shift's
   `kimono-himura.js` (Eun-mi), `anime-furniture.js` and `anime-ui.js`

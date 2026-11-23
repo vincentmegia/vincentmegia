@@ -199,6 +199,13 @@ import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
 } from './library/floor-plan.js';
+import {
+  resolveCollisions,
+  slideMove,
+  obstaclesFor,
+  PLAYER_COLLISION_RADIUS,
+  PERSON_COLLISION_RADIUS,
+} from './library/collision.js';
 import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import { drawCoverTitle, drawReturnCartCover } from './library/book-cover.js';
@@ -1163,6 +1170,17 @@ export function init(canvas, elements) {
       fpHelpSeconds = FP_HELP_SECONDS;
       hoverStation = null;
       moveTarget = null; // stop any in-flight Top-Down walk — First Person has its own movement
+      // Top-Down can legitimately park her simulated position inside
+      // furniture: decor isn't in stationAtPoint's list, so clicking a plant
+      // walks her onto it, and a staff walk parks her "46 px beside" a walker,
+      // which can be inside a shelf. Step out of whatever she's in before the
+      // camera that would show it from the inside takes over. The move is at
+      // most PLAYER_COLLISION_RADIUS, and the one slack-based read of her
+      // position (isPlayerAtBossOffice) has 30 px of slack.
+      const stepped = resolveCollisions(player.x, player.y, PLAYER_COLLISION_RADIUS, collisionObstacles('first-person'));
+      const onFloor = clampToCanvas(stepped.x, stepped.y);
+      player.x = onFloor.x;
+      player.y = onFloor.y;
     } else {
       for (const k of Object.keys(heldFP)) heldFP[k] = false;
       fpJump = createJumpState();
@@ -1264,7 +1282,12 @@ export function init(canvas, elements) {
     if (moveDirection !== 0 || strafeDir !== 0) {
       const speed = sanityMultiplier * sprintMultiplier * deltaSeconds;
       const { dx, dy } = moveStep(moveDirection, strafeDir, playerFacing, MOVE_SPEED_PIXELS_PER_SECOND * speed, FP_STRAFE_SPEED * speed);
-      const clamped = clampToCanvas(player.x + dx, player.y + dy);
+      // Blocked, not clamped-only: furniture, decor and people stop her, and a
+      // surface she walks into at an angle slides rather than sticking. The
+      // obstacles are mesh-sized here, so she stops at the face she can see.
+      // Resolve first, clamp second, so a push can never put her off the floor.
+      const moved = slideMove(player.x, player.y, dx, dy, PLAYER_COLLISION_RADIUS, collisionObstacles('first-person'));
+      const clamped = clampToCanvas(moved.x, moved.y);
       player.x = clamped.x;
       player.y = clamped.y;
     }
@@ -2923,6 +2946,38 @@ export function init(canvas, elements) {
 
   function getWorldInventory(floor) {
     return worldInventory(floor ?? currentFloor, inventoryOpts());
+  }
+
+  // -- Collision (library/collision.js) ---------------------------------------
+  // "The objects should not collide." First Person BLOCKS: `slideMove` moves
+  // the real player.x/y, since in that camera the position IS the camera.
+  // Top-Down only RESOLVES AT DRAW TIME (currentPlayerDrawPose,
+  // staffDrawPose) and never writes a position, because arrival detection
+  // reads player.x/y and the approach circle clears furniture by as little as
+  // 1.1 px — Kitchen Shift's updatePlayer JSDoc records what pushing the real
+  // position there did. Each camera collides against the footprints of the art
+  // it actually draws; see collision.js.
+
+  // The world inventory is rebuilt at most once per frame (`invalidateFrame`
+  // below drops it): Eun-mi and all eight walkers ask for obstacles every
+  // frame, each with their own `exclude`, and `obstaclesFor` over ~25 cached
+  // items is far cheaper than rebuilding the inventory nine times.
+  let itemCache = { floor: null, items: null };
+
+  function invalidateFrame() {
+    itemCache = { floor: null, items: null };
+  }
+
+  function collisionItems() {
+    if (itemCache.floor === currentFloor && itemCache.items) return itemCache.items;
+    const items = getWorldInventory(currentFloor);
+    itemCache = { floor: currentFloor, items };
+    return items;
+  }
+
+  /** This frame's obstacles for `camera` — see `obstaclesFor` for the options. */
+  function collisionObstacles(camera, opts = {}) {
+    return obstaclesFor(collisionItems(), { camera, ...opts });
   }
 
   function drawFloor() {
@@ -5378,13 +5433,14 @@ export function init(canvas, elements) {
     const deltaSeconds = Math.min(0.1, (timestamp - lastTimestamp) / 1000);
     lastTimestamp = timestamp;
 
-    if (testFrozen) render();
+    if (testFrozen) { invalidateFrame(); render(); }
     else stepSimulation(deltaSeconds);
 
     rafHandle = window.requestAnimationFrame(loop);
   }
 
   function stepSimulation(deltaSeconds) {
+    invalidateFrame(); // this frame's collision obstacles are rebuilt on first ask
     if (!overlay) {
       updatePlayer(deltaSeconds);
       updateFirstPersonMovement(deltaSeconds);
