@@ -22,20 +22,14 @@ const TORSO_HEM_Y = artY(20.6);
 /** Half-width of the flat front face of the torso octagon at half-width `half`. */
 const frontHalf = (half) => Math.tan(Math.PI / SIDES) * half;
 
-function shoes(palette, legX, legHalf) {
-  const mesh = emptyMesh();
-  for (const dir of [-1, 1]) {
-    const half = legHalf + 0.15 * PX;
-    merge(
-      mesh,
-      box(
-        [dir * legX - half, FRAME.foot, -legHalf],
-        [dir * legX + half, FRAME.shoeTop, legHalf + 3 * PX],
-        palette.shoes,
-      ),
-    );
-  }
-  return mesh;
+/** One side's shoe (`dir` -1 left, 1 right) — built per side so a leg joint's vertices stay contiguous. */
+function shoe(palette, legX, legHalf, dir) {
+  const half = legHalf + 0.15 * PX;
+  return box(
+    [dir * legX - half, FRAME.foot, -legHalf],
+    [dir * legX + half, FRAME.shoeTop, legHalf + 3 * PX],
+    palette.shoes,
+  );
 }
 
 /**
@@ -43,18 +37,14 @@ function shoes(palette, legX, legHalf) {
  * tone (bare legs under a skirt or shorts): see the note on buildBody. The 2D
  * paints a bare leg as one flat fill with a thin crease, so flat is faithful.
  */
-function legs(colour, legX, legHalf, bakedSkin) {
-  const mesh = emptyMesh();
-  for (const dir of [-1, 1]) {
-    const part = box(
-      [dir * legX - legHalf, FRAME.shoeTop, -legHalf],
-      [dir * legX + legHalf, FRAME.hem, legHalf],
-      colour,
-    );
-    if (bakedSkin) for (const f of part.faces) f.unlit = true;
-    merge(mesh, part);
-  }
-  return mesh;
+function leg(colour, legX, legHalf, bakedSkin, dir) {
+  const part = box(
+    [dir * legX - legHalf, FRAME.shoeTop, -legHalf],
+    [dir * legX + legHalf, FRAME.hem, legHalf],
+    colour,
+  );
+  if (bakedSkin) for (const f of part.faces) f.unlit = true;
+  return part;
 }
 
 function skirt(design, palette, metrics) {
@@ -169,13 +159,14 @@ function frontLayers(palette, metrics) {
 // torsoNarrowest accounts for.
 const SLEEVE_BANDS = [28, 38, 40, 41.5, 43];
 
-function arms(palette, metrics) {
+/** One side's sleeve bands and hand (`dir` -1 left, 1 right), and the shoulder x its joint pivots about. */
+function arm(palette, metrics, dir) {
   const mesh = emptyMesh();
   const armW = 3 * PX;
   const armZ = 2.4 * PX;
   const tuck = 0.02 * PX; // tucked into the torso, so no seam shows
   const rows = torsoRings(metrics);
-  for (const dir of [-1, 1]) {
+  {
     for (let i = 0; i < SLEEVE_BANDS.length - 1; i++) {
       const [yb, yt] = [SLEEVE_BANDS[i], SLEEVE_BANDS[i + 1]];
       const inner = torsoNarrowest(rows, yb, yt) - tuck;
@@ -195,7 +186,7 @@ function arms(palette, metrics) {
     for (const f of hand.faces) f.unlit = true; // baked skin: see buildBody
     merge(mesh, { vertices: hand.vertices.map((v) => [v[0] + cx, v[1], v[2]]), faces: hand.faces });
   }
-  return mesh;
+  return { mesh, shoulderX: dir * (torsoNarrowest(rows, SLEEVE_BANDS[0], SLEEVE_BANDS[1]) - tuck + armW / 2) };
 }
 
 /**
@@ -220,15 +211,40 @@ export function buildBody(design, palette, metrics) {
   const legsAreSkin = legColour === palette.skin.skin;
 
   const mesh = emptyMesh();
-  merge(mesh, shoes(palette, legX, legHalf));
-  merge(mesh, legs(legColour, legX, legHalf, legsAreSkin));
+  // Each limb is merged in one call per side and its vertex range recorded, so
+  // walk-3d.js can swing it about a joint (core.js's `joints`). A face never
+  // spans two limbs, because `merge` gives every call its own vertices.
+  const joints = [];
+  const span = (name, pivot, build) => {
+    const from = mesh.vertices.length;
+    merge(mesh, build());
+    joints.push({ name, pivot, from, to: mesh.vertices.length });
+  };
+
+  // A leg joint covers that side's shoe and leg together: the ankle does not
+  // bend in the 2D art either (staff-kit.js's legPoses bends hip and knee).
+  for (const [name, dir] of [['leg.left', -1], ['leg.right', 1]]) {
+    span(name, [dir * legX, FRAME.hem, 0], () => {
+      const part = emptyMesh();
+      merge(part, shoe(palette, legX, legHalf, dir));
+      merge(part, leg(legColour, legX, legHalf, legsAreSkin, dir));
+      return part;
+    });
+  }
+
   if (palette.skirt) merge(mesh, skirt(design, palette, metrics));
   else merge(mesh, bare ? shortsGarment(palette, metrics) : hips(palette, metrics));
   merge(mesh, torso(palette, metrics));
   merge(mesh, frontLayers(palette, metrics));
-  merge(mesh, arms(palette, metrics));
+
+  for (const [name, dir] of [['arm.left', -1], ['arm.right', 1]]) {
+    const built = arm(palette, metrics, dir);
+    span(name, [built.shoulderX, FRAME.shoulder, 0], () => built.mesh);
+  }
+
   const neck = box([-2.2 * PX, FRAME.shoulder, -2 * PX], [2.2 * PX, FRAME.chin, 2 * PX], palette.skin.deep);
   for (const f of neck.faces) f.unlit = true; // baked skin, and it meets the unlit chin
   merge(mesh, neck);
+  mesh.joints = joints;
   return mesh;
 }

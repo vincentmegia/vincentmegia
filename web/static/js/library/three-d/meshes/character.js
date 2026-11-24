@@ -3,6 +3,7 @@
 // (3.36 heads tall). Pure and deterministic.
 // Model space: X right, Y up, Z depth; feet at y=0, centered on x/z, facing +Z.
 
+import { indexJoints } from '../core.js';
 import { emptyMesh, merge, scaleMesh } from './geom.js';
 import { metricsFor } from './character-frame.js';
 import { paletteFor } from './character-palette.js';
@@ -38,10 +39,21 @@ export function buildCharacter(design, opts = {}) {
   const metrics = metricsFor(design);
   const palette = paletteFor(design);
   const mesh = emptyMesh();
-  merge(mesh, buildBody(design, palette, metrics));
+  const body = buildBody(design, palette, metrics);
+  // The body is merged first, so its joint ranges are already this mesh's
+  // indices; `merge` and `scaleMesh` both copy only vertices and faces, so the
+  // ranges and their pivots are carried over by hand below.
+  merge(mesh, body);
   merge(mesh, buildHead(design, palette, metrics, { angry }));
   // The only place age scaling happens.
   const built = scaleMesh(mesh, metrics.ageScale);
+  built.joints = body.joints.map((j) => ({
+    name: j.name,
+    pivot: j.pivot.map((c) => c * metrics.ageScale),
+    from: j.from,
+    to: j.to,
+  }));
+  indexJoints(built);
 
   if (design !== null && typeof design === 'object') {
     const next = slot ?? {};

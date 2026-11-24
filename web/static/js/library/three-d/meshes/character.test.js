@@ -266,3 +266,65 @@ test('buildCharacter memoises per design object and per mood, without colliding'
   assert.notDeepEqual(buildCharacter(repainted), buildCharacter(d),
     'a different skin under the same key must build a different mesh');
 });
+
+// -- Joints (walk animation) -------------------------------------------------
+// The humanoid declares its limbs as vertex ranges so walk-3d.js can swing
+// them (docs/features/library-first-person-3d.md's "Walk animation").
+
+const JOINT_NAMES = ['leg.left', 'leg.right', 'arm.left', 'arm.right'];
+
+test('a built character declares a joint per limb', () => {
+  const mesh = buildCharacter(adult);
+  assert.deepEqual(mesh.joints.map((j) => j.name).sort(), [...JOINT_NAMES].sort());
+  for (const j of mesh.joints) {
+    assert.ok(j.to > j.from, `${j.name} has an empty vertex range`);
+    assert.equal(j.pivot.length, 3);
+  }
+});
+
+test('legs pivot at the hip and arms at the shoulder, after age scaling', () => {
+  const mesh = buildCharacter(adult);
+  const scale = metricsFor(adult).ageScale;
+  const pivotOf = (name) => mesh.joints.find((j) => j.name === name).pivot;
+  for (const name of ['leg.left', 'leg.right']) {
+    assert.ok(Math.abs(pivotOf(name)[1] - FRAME.hem * scale) < 1e-9, `${name} y`);
+  }
+  for (const name of ['arm.left', 'arm.right']) {
+    assert.ok(Math.abs(pivotOf(name)[1] - FRAME.shoulder * scale) < 1e-9, `${name} y`);
+  }
+  // Left is -x, right is +x, as character-body builds each side.
+  assert.ok(pivotOf('leg.left')[0] < 0 && pivotOf('leg.right')[0] > 0);
+  assert.ok(pivotOf('arm.left')[0] < 0 && pivotOf('arm.right')[0] > 0);
+});
+
+test('no face spans two joints', () => {
+  for (const design of [adult, KAREN_DESIGN, ...LIBRARY_PATRON_DESIGNS.slice(0, 6)]) {
+    const mesh = buildCharacter(design);
+    for (const face of mesh.faces) {
+      const groups = new Set(face.indices.map((i) => mesh.vertexJoint[i]));
+      assert.equal(groups.size, 1, `a face of ${design.key} spans ${groups.size} joints`);
+    }
+  }
+});
+
+test("every vertex below the hip belongs to a leg joint, and the torso's to none", () => {
+  const mesh = buildCharacter(adult);
+  const scale = metricsFor(adult).ageScale;
+  const hip = FRAME.hem * scale;
+  const legs = mesh.joints.filter((j) => j.name.startsWith('leg.'));
+  mesh.vertices.forEach((v, i) => {
+    if (v[1] >= hip - 1e-9) return; // at or above the hem: garment, torso, arms
+    const ji = mesh.vertexJoint[i];
+    assert.notEqual(ji, null, `vertex ${i} at y=${v[1]} is below the hip but unjointed`);
+    assert.ok(legs.includes(mesh.joints[ji]), `vertex ${i} below the hip is in ${mesh.joints[ji].name}`);
+  });
+  // The neck is the last thing merged and belongs to nobody.
+  assert.equal(mesh.vertexJoint[mesh.vertices.length - 1], null);
+});
+
+test('the joints survive the mesh cache', () => {
+  const once = buildCharacter(adult);
+  const twice = buildCharacter(adult);
+  assert.equal(twice, once);
+  assert.equal(twice.vertexJoint.length, twice.vertices.length);
+});
