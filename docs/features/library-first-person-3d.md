@@ -74,6 +74,15 @@ would turn a 3D mesh inside out and invert its back-face culling, so she gets a
 real yaw spin (`yawSpin`) instead. A character standing still is posed not at
 all, so every queued patron and ghost places exactly as before.
 
+Min-jun walks on the same joints. His legs and sneakers are one joint per side,
+pivoted at his own hip (`LEG.hip`), named exactly as the generic humanoid names
+them, so one gait table drives him and everyone else — including the check that
+no textured face spans two joints, which matters for him alone, since his legs
+wear his 2D drawing. His arms stay with `MINJUN_POSES`, which already places
+them per action; a walk swing on top would fight that. He is also the one
+walker with no `walk-styles.js` entry, because his renderer owns his whole
+cycle, so his frequency (8) and bob (1.1 art px) sit in `GAIT_3D` instead.
+
 **Required, not yet built:** full parity with Top-Down — every person,
 prop, decor item, label and interaction Top-Down has, in FP too (ambient
 staff included). See Camera parity for the requirements and work

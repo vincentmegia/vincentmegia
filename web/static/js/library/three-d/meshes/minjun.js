@@ -8,6 +8,7 @@ import { buildMinjunBody } from './minjun-body.js';
 import { buildMinjunHead } from './minjun-head.js';
 import { MINJUN_ART, artSize } from './minjun-frame.js';
 import { MINJUN_PALETTE as P, MINJUN_FRAME, faceForAction, isBlinkingAt, paintMinjunBody, paintMinjunHead, paintMinjunProps } from '../../minjun.js';
+import { indexJoints } from '../core.js';
 
 export { MINJUN_POSES } from './minjun-body.js';
 
@@ -62,8 +63,13 @@ export function buildMinjun({ pose = 'idle', art } = {}) {
   const hit = slot.get(pose);
   if (hit) return hit;
   const m = emptyMesh();
-  merge(m, buildMinjunBody(pose, art));
+  const body = buildMinjunBody(pose, art);
+  // The body is merged first, so its joint ranges are already this mesh's
+  // indices; `merge` copies only vertices and faces.
+  merge(m, body);
   merge(m, buildMinjunHead(art));
+  m.joints = body.joints;
+  indexJoints(m);
   slot.set(pose, m);
   return m;
 }

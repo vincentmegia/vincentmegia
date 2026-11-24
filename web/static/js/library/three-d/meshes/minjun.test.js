@@ -6,6 +6,8 @@ import {
 } from './minjun.js';
 import { MINJUN_ART, MINJUN_EYE_PX, MINJUN_K, S, modelY, toArt, toModel, uvIn } from './minjun-frame.js';
 import { HEAD_RINGS } from './minjun-head.js';
+import { LEG } from './minjun-body.js';
+import { posedVertices } from '../core.js';
 import { TORSO_RINGS, buildHand, HAND, POCKET, BOOK_ARM } from './minjun-body.js';
 import { faceNormal } from './geom.js';
 import { buildCharacter } from './character.js';
@@ -290,4 +292,52 @@ test('the head canvas shows the face asked for: a blink and an open mouth draw d
   assert.notEqual(draw({ mouth: null, blink: true }), open);
   assert.notEqual(draw({ mouth: 2 / 3, blink: false }), open);
   assert.equal(draw({ mouth: null, blink: false }), open);
+});
+
+// -- Walk animation ----------------------------------------------------------
+// He walks on the same joints as the generic humanoid, so one gait table
+// (three-d/walk-3d.js) drives him and everyone else. His arms are left to his
+// own pose system (MINJUN_POSES), which already places them per action.
+
+test('Min-jun declares a leg joint per side, pivoted at his hip', () => {
+  const mesh = buildMinjun({ pose: 'idle' });
+  assert.deepEqual(mesh.joints.map((j) => j.name).sort(), ['leg.left', 'leg.right']);
+  for (const j of mesh.joints) {
+    assert.ok(j.to > j.from, `${j.name} has an empty range`);
+    assert.ok(Math.abs(j.pivot[1] - modelY(LEG.hip.y)) < 1e-9, `${j.name} pivots at the hip`);
+  }
+  const x = (name) => mesh.joints.find((j) => j.name === name).pivot[0];
+  assert.ok(x('leg.left') < 0 && x('leg.right') > 0);
+});
+
+test('his legs and sneakers move together', () => {
+  const mesh = buildMinjun({ pose: 'idle' });
+  // The sneaker sits below the cuff; every vertex under it belongs to a leg.
+  const legs = mesh.joints.map((j) => j.name);
+  const cuff = modelY(LEG.cuff.y);
+  mesh.vertices.forEach((v, i) => {
+    if (v[1] > cuff) return;
+    const ji = mesh.vertexJoint[i];
+    assert.notEqual(ji, null, `vertex ${i} at y=${v[1]} is below the cuff but unjointed`);
+    assert.ok(legs.includes(mesh.joints[ji].name));
+  });
+});
+
+test('no textured face spans two joints', () => {
+  const art = { body: { width: 10, height: 10 }, head: { width: 10, height: 10 }, props: { width: 10, height: 10 } };
+  for (const pose of Object.keys(MINJUN_POSES)) {
+    const mesh = buildMinjun({ pose, art });
+    for (const face of mesh.faces) {
+      const groups = new Set(face.indices.map((i) => mesh.vertexJoint[i]));
+      assert.equal(groups.size, 1, `a ${face.texture ? 'textured ' : ''}face in pose ${pose} spans ${groups.size} joints`);
+    }
+  }
+});
+
+test('posing him never rewrites a face uv', () => {
+  const art = { body: { width: 10, height: 10 }, head: { width: 10, height: 10 }, props: { width: 10, height: 10 } };
+  const mesh = buildMinjun({ pose: 'idle', art });
+  const before = JSON.stringify(mesh.faces.map((f) => f.uv ?? null));
+  posedVertices(mesh, { 'leg.left': { rotX: 0.3 } });
+  assert.equal(JSON.stringify(mesh.faces.map((f) => f.uv ?? null)), before);
 });

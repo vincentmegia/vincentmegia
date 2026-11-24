@@ -61,6 +61,12 @@ export const GAIT_3D = {
   // legPoses, so the stride is legPoses' own default.
   libDirector: { freq: 6, swing: 0.3, bend: 0.42 },
   libArchivist: { freq: 2.2, swing: 0.14, bend: 0.3 }, // archivist.js
+  // Min-jun is the one walker with no walk-styles.js entry: his renderer owns
+  // his whole cycle (minjun.js: `stride = sin(t * 8)`, `bob = |sin(t * 8)| *
+  // 1.1`), so his bob comes from `bob` below rather than from that table. The
+  // stride amplitude is this module's call — his 2D draws legs straight from
+  // `stride` rather than through legPoses' swing.
+  minjun: { freq: 8, swing: 0.22, bend: 0.4, bob: 1.1 },
 };
 
 /** Anyone with no 2D walk style of their own — a queued patron, Karen — walks like patron.js does. */
@@ -101,7 +107,12 @@ export function walk3dPose(key, { t, walking, dir = 1 }) {
   }
 
   const style = WALK_STYLES[key];
-  if (!style) return { jointPose, lift: 0, roll: 0, lean: 0, squash: [1, 1], yawSpin: 0 };
+  if (!style) {
+    // No whole-body style: a flat body, apart from a `bob` the character's own
+    // renderer defines (Min-jun). His bob is in art px, like his mesh.
+    const bob = gait.bob ? Math.abs(Math.sin(phase)) * gait.bob * PX : 0;
+    return { jointPose, lift: bob, roll: 0, lean: 0, squash: [1, 1], yawSpin: 0 };
+  }
 
   const body = style.pose(t, dir);
   // The 2D's dy is a canvas offset with +y down, so an upward lift is negative

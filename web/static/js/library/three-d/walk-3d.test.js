@@ -26,7 +26,20 @@ test('a standing character has no pose at all', () => {
 });
 
 test('every 2D walk style has a 3D gait', () => {
-  assert.deepEqual(Object.keys(GAIT_3D).sort(), Object.keys(WALK_STYLES).sort());
+  for (const key of Object.keys(WALK_STYLES)) assert.ok(GAIT_3D[key], `${key} has no 3D gait`);
+});
+
+test('Min-jun has a gait too, though his 2D cycle lives in his own renderer', () => {
+  // minjun.js: stride = sin(t * 8), bob = |sin(t * 8)| * 1.1. He is the one
+  // walker with no walk-styles.js entry, because his renderer owns his whole
+  // cycle rather than layering one on top.
+  assert.equal(GAIT_3D.minjun.freq, 8);
+  assert.ok(GAIT_3D.minjun.bob > 0);
+  const p = walk3dPose('minjun', { t: 0.05, walking: true, dir: 1 });
+  assert.ok(p.jointPose['leg.left'].rotX !== 0, 'his legs should swing');
+  assert.ok(p.lift > 0, 'and he should bob');
+  assert.equal(p.roll, 0);
+  assert.equal(p.yawSpin, 0);
 });
 
 test('each gait keeps its 2D leg frequency', () => {

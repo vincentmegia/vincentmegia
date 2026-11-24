@@ -48,12 +48,13 @@ export const LEG = {
   cuff: { y: 2.4, cx: 3.8, hw: 3.25, hd: 3.0 },
 };
 
-function buildLegs(art) {
+/** One side's slack leg (`dir` -1 his left, 1 his right) — built per side so its walk joint's vertices stay contiguous. */
+function buildLeg(art, dir) {
   const m = emptyMesh();
-  for (const dir of [-1, 1]) {
-    const r = (k) => ({ ...LEG[k], cx: dir * LEG[k].cx, color: P.slacks });
-    merge(m, stack([r('cuff'), r('knee'), r('hip')], 8, null, P.slacksShade));
-  }
+  const r = (k) => ({ ...LEG[k], cx: dir * LEG[k].cx, color: P.slacks });
+  merge(m, stack([r('cuff'), r('knee'), r('hip')], 8, null, P.slacksShade));
+  // Projected per side: projectFront maps each face from its own vertices, so
+  // two calls give exactly the uv one call over both legs gave.
   return projectFront(m, { image: art?.body, toUV: uvIn(MINJUN_ART.body) });
 }
 
@@ -271,8 +272,18 @@ function buildTote(art) {
  */
 export function buildMinjunBody(pose, art) {
   const m = emptyMesh();
-  merge(m, buildLegs(art));
-  for (const dir of [-1, 1]) merge(m, buildSneaker(dir));
+  // Each leg and its sneaker are one walk joint (core.js's `joints`), named as
+  // the generic humanoid names them so three-d/walk-3d.js drives him through
+  // the same path. His arms are left to MINJUN_POSES, which already places
+  // them per action — a walk swing on top would fight that.
+  const joints = [];
+  for (const [name, dir] of [['leg.left', -1], ['leg.right', 1]]) {
+    const from = m.vertices.length;
+    merge(m, buildLeg(art, dir));
+    merge(m, buildSneaker(dir));
+    joints.push({ name, pivot: [dir * LEG.hip.cx * S, modelY(LEG.hip.y), 0], from, to: m.vertices.length });
+  }
+  m.joints = joints;
   merge(m, buildTorso(art));
   merge(m, buildNeck(art));
   merge(m, buildArms(pose, art));
@@ -280,5 +291,6 @@ export function buildMinjunBody(pose, art) {
   merge(m, buildTote(art));
   // The material rule (library-first-person-3d.md): every skin-toned face is unlit.
   for (const f of m.faces) if (SKIN.has(f.color)) f.unlit = true;
+  m.joints = joints;
   return m;
 }
