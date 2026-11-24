@@ -18,6 +18,7 @@ import { buildBossOffice } from './meshes/boss-office.js';
 import { buildReadingNook } from './meshes/reading-nook.js';
 import { meshForDecorKind } from './meshes/decor.js';
 import { FLOOR_TILE, tileColor, floorDecals, WALL_ART_IDS, roomArtRect } from '../floor-dressing.js';
+import { walk3dPose } from './walk-3d.js';
 
 export const ROOM_HEIGHT = 300;
 export const BASE_EYE = 60;
@@ -208,10 +209,22 @@ export function buildFirstPersonScene({ player, floor, stations, characters, dec
 
   for (const c of characters) {
     if (c.floor !== undefined && c.floor !== floor) continue;
-    placed.push({
-      mesh: characterMesh(c),
-      placement: { pos: [c.x, 0, c.y], yaw: c.yaw ?? 0, scale: UNIT_SCALE, alpha: c.alpha ?? 1 },
-    });
+    // A walker's gait (walk-3d.js) rides on the placement: the joint pose
+    // swings their legs and arms, the rest is their own whole-body rhythm, and
+    // `yawSpin` is the storyteller's twirl. A character with no `walk`, or one
+    // standing still, places exactly as it always did.
+    const gait = c.walk ? walk3dPose(c.walk.key, c.walk) : null;
+    const placement = { pos: [c.x, 0, c.y], yaw: (c.yaw ?? 0) + (gait?.yawSpin ?? 0), scale: UNIT_SCALE, alpha: c.alpha ?? 1 };
+    if (gait && Object.keys(gait.jointPose).length > 0) {
+      Object.assign(placement, {
+        jointPose: gait.jointPose,
+        lift: gait.lift,
+        roll: gait.roll,
+        lean: gait.lean,
+        squash: gait.squash,
+      });
+    }
+    placed.push({ mesh: characterMesh(c), placement });
   }
 
   const camera = cameraFromPose(player, {

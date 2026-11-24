@@ -456,3 +456,42 @@ test('Return Cart books stand on this floor\'s cart top tray, in slot order, at 
   assert.equal(bare.length, 2);
   assert.equal(bare[1].mesh.vertices.length, own.vertices.length);
 });
+
+// -- Walk animation ----------------------------------------------------------
+// A character may carry `walk: {key, t, walking, dir}`; the scene turns it into
+// the placement's joint pose and body rhythm (walk-3d.js). Without it, a
+// character places exactly as it always did.
+
+const walker = (over = {}) => ({ x: 300, y: 350, floor: 1, design: DESIGN, ...over });
+/** The placement of the one character in a scene built from `characters`. */
+function characterPlacement(characters) {
+  const { placed } = buildFirstPersonScene(input({ characters }));
+  // The room and stations are placed first; the character is last.
+  return placed[placed.length - 1].placement;
+}
+
+test('a walking character is placed with a posed gait', () => {
+  const pl = characterPlacement([walker({ walk: { key: 'libShelver', t: 0.11, walking: true, dir: 1 } })]);
+  assert.ok(pl.jointPose['leg.left'].rotX !== 0, 'the legs should be swinging');
+  assert.ok(pl.jointPose['arm.left'].rotX !== 0, 'the arms should be swinging');
+  assert.ok(pl.lean !== 0, 'the shelver leans into her power-walk');
+});
+
+test('a standing character is placed exactly as one with no walk at all', () => {
+  const standing = characterPlacement([walker({ walk: { key: 'libShelver', t: 0.11, walking: false, dir: 1 } })]);
+  const plain = characterPlacement([walker()]);
+  assert.deepEqual(standing.pos, plain.pos);
+  assert.equal(standing.yaw, plain.yaw);
+  assert.deepEqual(standing.jointPose ?? {}, {});
+  assert.ok(!standing.lift && !standing.roll && !standing.lean);
+});
+
+test("the storyteller's twirl turns her placement's yaw", () => {
+  const facing = 0.4;
+  let turned = false;
+  for (let t = 0; t < 4.2; t += 0.01) {
+    const pl = characterPlacement([walker({ yaw: facing, walk: { key: 'libStoryteller', t, walking: true, dir: 1 } })]);
+    if (Math.abs(pl.yaw - facing) > 0.5) turned = true;
+  }
+  assert.ok(turned, 'her yaw should sweep a full turn every four seconds');
+});

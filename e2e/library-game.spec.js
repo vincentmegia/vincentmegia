@@ -2488,3 +2488,56 @@ test.describe('object collision (Top-Down)', () => {
 		expect(seen.pose).toEqual({ x: Math.round(seen.raw.x), y: Math.round(seen.raw.y) });
 	});
 });
+
+// Walk animation in First Person (docs/features/library-first-person-3d.md's
+// "Walk animation"): the patrol staff swing their legs and arms at their own
+// 2D gait, and anyone standing still is posed not at all.
+test.describe('First Person walk animation', () => {
+	test('a patrolling staff member swings their legs as they cross the floor', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		// The gait runs on the same wall clock the 2D sprites walk on
+		// (performance.now() + the walker's phase), so this samples real time
+		// rather than stepping a frozen simulation. Walkers also start on their
+		// own random pause and pause again at each waypoint, so only the frames
+		// where she is actually walking count.
+		const hips = [];
+		for (let i = 0; i < 70 && hips.length < 40; i++) {
+			const swing = await page.evaluate(() => window.__libraryGameTestHooks.getFpCharacterPose('libShelver')?.jointPose?.['leg.left']?.rotX ?? null);
+			if (swing !== null) hips.push(swing);
+			await page.waitForTimeout(50);
+		}
+		expect(hips.length).toBeGreaterThan(10);
+		// One of her cycles is 0.7 s at the brisk 9 her 2D renderer walks at, so
+		// a walking stretch passes through both extremes rather than holding a pose.
+		expect(Math.max(...hips)).toBeGreaterThan(0.05);
+		expect(Math.min(...hips)).toBeLessThan(-0.05);
+	});
+
+	test('a staff member who is standing still is not posed at all', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await page.locator('#library-camera-button').click();
+		const paused = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			const keys = ['libShelver', 'guard', 'libJanitor', 'volunteer', 'libStoryteller', 'libArchivist'];
+			for (let i = 0; i < 600; i++) {
+				h.step(1 / 60);
+				for (const key of keys) {
+					const pose = h.getFpCharacterPose(key);
+					if (pose && Object.keys(pose.jointPose).length === 0) {
+						return { key, lift: pose.lift, roll: pose.roll, lean: pose.lean, squash: pose.squash };
+					}
+				}
+			}
+			return null;
+		});
+		expect(paused, 'some walker should pause within 10 seconds').not.toBeNull();
+		expect(paused.lift).toBe(0);
+		expect(paused.roll).toBe(0);
+		expect(paused.lean).toBe(0);
+		expect(paused.squash).toEqual([1, 1]);
+	});
+});

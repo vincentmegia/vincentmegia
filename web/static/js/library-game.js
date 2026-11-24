@@ -206,6 +206,7 @@ import {
   PLAYER_COLLISION_RADIUS,
   PERSON_COLLISION_RADIUS,
 } from './library/collision.js';
+import { walk3dPose } from './library/three-d/walk-3d.js';
 import { READING_STORIES, storyIndexForGenre } from './library/stories.js';
 import { TITLE_POOLS, bookTitle, splitTitle, titlesForGenre, titleForGenre } from './library/book-titles.js';
 import { drawCoverTitle, drawReturnCartCover } from './library/book-cover.js';
@@ -3172,6 +3173,21 @@ export function init(canvas, elements) {
   // (a blink, his mouth while he talks or hums), so the mesh never rebuilds
   // for it; only his pose picks another (memoised) mesh.
   let fpMinjunArt = null; // {art: {body, head, props}, faceKey, headPaints, pose}
+  /**
+   * A walker's walk state for First Person's gait (library/three-d/walk-3d.js),
+   * read exactly as `drawAmbient` reads it for the 2D sprite: standing still
+   * while paused or while Eun-mi is on her way over, and clocked off the
+   * walker's own `phase` so the two cameras step in the same place.
+   */
+  function walkStateFor(a) {
+    return {
+      key: a.key,
+      t: performance.now() / 1000 + a.phase,
+      walking: a.pause <= 0 && moveTarget?.staffKey !== a.key,
+      dir: a.dir ?? 1,
+    };
+  }
+
   function fpMinjunFor(a) {
     if (!fpMinjunArt) {
       const canvas = ({ w, h }) => Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -5336,7 +5352,7 @@ export function init(canvas, elements) {
         const design = findStaffDesign(item.staffKey);
         // Min-jun wears his own 2D art, posed as Top-Down draws him.
         const own = item.staffKey === 'minjun' ? fpMinjunFor(item.ref) : {};
-        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design, ...own });
+        if (design) characters.push({ x: item.x, y: item.y, yaw: item.facing, design, walk: walkStateFor(item.ref), ...own });
       } else if (item.kind === 'return-cart-book') {
         // Coloured as drawReturnCartBooks colours its cover.
         const genre = findGenre(item.ref.genreId);
@@ -5696,6 +5712,15 @@ export function init(canvas, elements) {
       // state without hunting for the right turn amount, then still drive
       // the SAME `attemptInteract`/keyboard/on-screen-button paths a real
       // player uses for movement and interaction.
+      /** The First Person placement a named ambient walker got last frame: `{pos, yaw, jointPose, lift, roll, lean, squash}`, or null. */
+      getFpCharacterPose: (key) => {
+        const design = findStaffDesign(key);
+        if (!design) return null;
+        const item = getWorldInventory(currentFloor).find((i) => i.kind === 'ambient-staff' && i.staffKey === key);
+        if (!item) return null;
+        const gait = walk3dPose(key, walkStateFor(item.ref));
+        return { x: item.x, y: item.y, yaw: (item.facing ?? 0) + gait.yawSpin, ...gait };
+      },
       getCameraMode: () => cameraMode,
       setCameraMode: (mode) => setCameraMode(mode),
       getPlayerFacing: () => playerFacing,

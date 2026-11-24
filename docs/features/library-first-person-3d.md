@@ -45,6 +45,35 @@ standing inside. A stair climb or elevator ride is unaffected: the
 `fpTransition` early return still moves her freely. See
 `library-game.md`'s "Object collision".
 
+**Walk animation (Nov 2026).** "Just make a unique walking animation", "as the
+2D ones". Characters used to glide: `buildCharacter` returns one shared static
+mesh and the scene gave it a single rigid placement. Now a mesh may declare
+**joints** — named vertex ranges with a pivot (`core.js`'s `indexJoints`,
+`posedVertices`) — and a placement may pose them. `merge` gives each limb its
+own vertices, so a joint is a contiguous range rather than a skin weight, and
+`buildDrawList` poses in model space before `modelPoint`, so culling, clipping,
+shading and texturing all see the figure as posed. The humanoid declares four:
+`leg.left`, `leg.right` (shoe and leg together — the 2D ankle does not bend
+either), `arm.left` and `arm.right`, pivoted at the hem and the shoulder.
+
+`three-d/walk-3d.js` turns `(key, {t, walking, dir})` into that pose, and takes
+**both** of the 2D's layers from the 2D itself rather than copying them: the hip
+angle is `legPoses`' own `sin(phase + side) * swing` over `staff-kit.js`'s
+shared `walkCycle`, at the frequency and stride each character's own renderer
+passes (the shelver's brisk 9, the archivist's 2.2); and the whole-body rhythm
+calls `walk-styles.js`'s own `pose()`, so the guard's march, the volunteer's
+squashing skip, the janitor's waddle, the shelver's lean, the director's
+swagger and the archivist's stoop are the same numbers in both cameras. The
+clock is the same too — `performance.now()` plus the walker's own `phase`, as
+`drawAmbient` reads it — so the two cameras step in the same place.
+
+Two things the 3D cannot take literally. A rigid 3D leg has **no knee**, so the
+hip swing carries the step alone; a knee needs the leg split in two, which is a
+mesh change. And the storyteller's 2D twirl is a **negative x scale**, which
+would turn a 3D mesh inside out and invert its back-face culling, so she gets a
+real yaw spin (`yawSpin`) instead. A character standing still is posed not at
+all, so every queued patron and ghost places exactly as before.
+
 **Required, not yet built:** full parity with Top-Down — every person,
 prop, decor item, label and interaction Top-Down has, in FP too (ambient
 staff included). See Camera parity for the requirements and work

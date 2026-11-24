@@ -181,6 +181,16 @@ handling, in place of Kitchen Shift's cooking and serving.
 * Server-side per-player state and score anti-cheat (see Security
   Considerations).
 
+### Walk animation (First Person)
+
+The patrol staff walk in First Person, each with their own gait, instead of
+gliding: their legs and arms swing at the same rhythm and frequency their 2D
+sprites use, and the whole-body march/skip/waddle/lean/twirl/stoop comes from
+`walk-styles.js` itself, so the two cameras cannot drift apart. Anyone standing
+still is unposed. Detail and the two deliberate differences (no knee, and the
+storyteller twirls on her yaw rather than mirroring) are in
+`library-first-person-3d.md`'s "Walk animation".
+
 ### Object collision
 
 "The objects should not collide" (the user, Nov 2026). Before this, the only
