@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   identityMat4, multiplyMat4, transformPoint, cameraFromPose, projectPoint,
-  buildDrawList, drawScene, shadeColor,
+  buildDrawList, drawScene, shadeColor, indexJoints, posedVertices,
 } from './core.js';
 import { box } from './meshes/geom.js';
 
@@ -526,4 +526,113 @@ test('an `under` face without `cull` is an ordinary face: the mesh keeps plain m
   const post = (l) => l.map((s, i) => (s.startsWith(shadeColor('#00aa00', 1)) ? i : -1)).filter((i) => i >= 0);
   const top = plain.findIndex((s) => s.startsWith(shadeColor('#ff0000', 1)));
   assert.ok(top >= 0 && post(plain).some((i) => i < top), 'by mean depth the post is drawn before the top, so the guard is what keeps it so');
+});
+
+// -- Joints (walk animation) -------------------------------------------------
+// A mesh may declare joints as vertex ranges with a pivot, and a placement may
+// pose them; both are optional and absent means "exactly as before". See
+// docs/features/library-first-person-3d.md's "Walk animation".
+
+/** A two-box mesh: vertices 0..7 are a leg below y=1, 8..15 a torso above it. */
+function jointedMesh() {
+  const mesh = { vertices: [], faces: [] };
+  const merge = (part) => {
+    const n = mesh.vertices.length;
+    mesh.vertices.push(...part.vertices);
+    mesh.faces.push(...part.faces.map((f) => ({ ...f, indices: f.indices.map((i) => i + n) })));
+    return [n, mesh.vertices.length];
+  };
+  const [legFrom, legTo] = merge(box([-0.2, 0, -0.2], [0.2, 1, 0.2], '#111'));
+  merge(box([-0.4, 1, -0.3], [0.4, 2, 0.3], '#222'));
+  mesh.joints = [{ name: 'leg.left', pivot: [0, 1, 0], from: legFrom, to: legTo }];
+  return mesh;
+}
+
+const JOINT_CAM = cameraFromPose({ x: 0, y: 0, facing: 0 }, { ...OPTS, eyeHeight: 0 });
+const JOINT_LIGHT = { dir: [0.3, -1, 0.2], ambient: 0.5 };
+const JOINT_DRAW = { viewport: VP, light: JOINT_LIGHT, fog: null };
+const placeAt = (extra = {}) => ({ pos: [0, 0, -6], yaw: 0, scale: 1, ...extra });
+
+test('a mesh with no joints draws exactly as a plain mesh does', () => {
+  const plain = box([-0.2, 0, -0.2], [0.2, 1, 0.2], '#111');
+  const a = buildDrawList(JOINT_CAM, [{ mesh: plain, placement: placeAt() }], JOINT_DRAW);
+  const jointless = { vertices: plain.vertices, faces: plain.faces };
+  const b = buildDrawList(JOINT_CAM, [{ mesh: jointless, placement: placeAt({ jointPose: { 'leg.left': { rotX: 0.4 } } }) }], JOINT_DRAW);
+  assert.deepEqual(b, a);
+});
+
+test('posing a joint moves its own vertex range and leaves the rest alone', () => {
+  const mesh = indexJoints(jointedMesh());
+  const j = mesh.joints[0];
+  const posed = posedVertices(mesh, { 'leg.left': { rotX: 0.4 } });
+  for (let i = 0; i < mesh.vertices.length; i++) {
+    if (i >= j.from && i < j.to) continue;
+    assert.deepEqual(posed[i], mesh.vertices[i], `vertex ${i} is outside the joint and must not move`);
+  }
+  const swung = posed.slice(j.from, j.to).some((v, k) => Math.abs(v[2] - mesh.vertices[j.from + k][2]) > 1e-9);
+  assert.ok(swung, 'the leg should swing in z');
+  // And it reaches the draw list, not just the vertex helper.
+  const rest = buildDrawList(JOINT_CAM, [{ mesh, placement: placeAt() }], JOINT_DRAW);
+  const drawnSwung = buildDrawList(JOINT_CAM, [{ mesh, placement: placeAt({ jointPose: { 'leg.left': { rotX: 0.4 } } }) }], JOINT_DRAW);
+  assert.notDeepEqual(drawnSwung, rest);
+});
+
+test('a joint pivot is the one point its own rotation leaves fixed', () => {
+  const mesh = indexJoints(jointedMesh());
+  // The leg's top face sits exactly at the pivot height, so its corners stay
+  // at the same distance from the pivot however far the joint swings.
+  const posed = posedVertices(mesh, { 'leg.left': { rotX: 0.5 } });
+  const distance = (v) => Math.hypot(v[0] - 0, v[1] - 1, v[2] - 0);
+  for (let i = mesh.joints[0].from; i < mesh.joints[0].to; i++) {
+    near(distance(posed[i]), distance(mesh.vertices[i]), 1e-9);
+  }
+});
+
+test('the body rhythm lifts, leans and squashes about the feet', () => {
+  const mesh = indexJoints(jointedMesh());
+  const posed = posedVertices(mesh, {}, { lift: 0.1, lean: 0.2, squash: [1.1, 0.9] });
+  // A foot vertex (y = 0) stays on the floor apart from the lift.
+  const foot = mesh.vertices.findIndex((v) => v[1] === 0);
+  near(posed[foot][1], 0.1);
+  near(posed[foot][0], mesh.vertices[foot][0] * 1.1);
+  // A vertex at the top leans toward +x, since lean is applied about the feet.
+  const top = mesh.vertices.findIndex((v) => v[1] === 2);
+  assert.ok(posed[top][0] > mesh.vertices[top][0] * 1.1, 'the top should lean');
+});
+
+test('a roll tilts the figure about its feet', () => {
+  const mesh = indexJoints(jointedMesh());
+  const posed = posedVertices(mesh, {}, { roll: 0.2 });
+  const foot = mesh.vertices.findIndex((v) => v[1] === 0 && v[0] === 0.2);
+  near(Math.hypot(posed[foot][0], posed[foot][1]), 0.2, 1e-9);
+  const top = mesh.vertices.findIndex((v) => v[1] === 2);
+  assert.ok(Math.abs(posed[top][0] - mesh.vertices[top][0]) > 0.1, 'the top should swing out');
+});
+
+test('back-face culling reads the posed vertices, not the rest pose', () => {
+  // A one-face mesh whose rest normal points away from the camera and whose
+  // posed normal points at it: culled at rest, drawn when posed.
+  const quad = {
+    vertices: [[-0.5, 1, 0], [0.5, 1, 0], [0.5, 1.001, -1], [-0.5, 1.001, -1]],
+    faces: [{ indices: [0, 1, 2, 3], color: '#333', cull: true }],
+    joints: [{ name: 'leg.left', pivot: [0, 1, 0], from: 0, to: 4 }],
+  };
+  const mesh = indexJoints(quad);
+  const atRest = buildDrawList(JOINT_CAM, [{ mesh, placement: placeAt() }], JOINT_DRAW);
+  const flipped = buildDrawList(JOINT_CAM, [{ mesh, placement: placeAt({ jointPose: { 'leg.left': { rotX: Math.PI / 2 } } }) }], JOINT_DRAW);
+  assert.notEqual(atRest.length, flipped.length, 'posing should change what is culled');
+});
+
+test('indexJoints gives every vertex an entry and is idempotent', () => {
+  const mesh = indexJoints(jointedMesh());
+  assert.equal(mesh.vertexJoint.length, mesh.vertices.length);
+  assert.equal(mesh.vertexJoint[0], 0);
+  assert.equal(mesh.vertexJoint[mesh.vertices.length - 1], null);
+  const again = indexJoints(mesh);
+  assert.deepEqual(again.vertexJoint, mesh.vertexJoint);
+});
+
+test('a mesh with no joints is left without a vertexJoint table', () => {
+  const plain = indexJoints(box([0, 0, 0], [1, 1, 1], '#444'));
+  assert.equal(plain.vertexJoint, undefined);
 });

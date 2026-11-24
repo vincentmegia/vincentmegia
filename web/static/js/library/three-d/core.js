@@ -243,6 +243,99 @@ function pushTexturedFace(out, face, world, camera, viewport, fog, intensity, al
   }
 }
 
+// -- Joints (walk animation) -------------------------------------------------
+// A mesh may declare `joints`: named vertex RANGES with a pivot, in model
+// space. `merge` (geom.js) appends each part's own vertices, so a limb built
+// by its own call is always contiguous and never shares a vertex with the
+// torso — which is what lets a joint be a range rather than a skin weight.
+//
+// A placement may then pose them (`jointPose`) and add the whole-figure walk
+// rhythm (`lift`, `roll`, `lean`, `squash`) that walk-styles.js applies to the
+// 2D sprites. Everything here is optional: a mesh without `joints`, or a
+// placement without a pose, takes the same path it always did.
+//
+// Posing happens BEFORE `modelPoint`, in model space, so the world vertices
+// every later stage reads — back-face culling, near-plane clipping, shading,
+// texturing — describe the figure as posed, with no further changes needed.
+
+/**
+ * Fills in `mesh.vertexJoint`: one entry per vertex, the index of the joint it
+ * belongs to, or null. Precomputed once per mesh so posing is a lookup rather
+ * than a search over the joint list for every vertex of every character in
+ * every frame. Idempotent, and a no-op on a mesh with no joints.
+ */
+export function indexJoints(mesh) {
+  if (!mesh.joints || mesh.joints.length === 0) return mesh;
+  if (mesh.vertexJoint && mesh.vertexJoint.length === mesh.vertices.length) return mesh;
+  const table = new Array(mesh.vertices.length).fill(null);
+  mesh.joints.forEach((joint, index) => {
+    for (let i = joint.from; i < joint.to && i < table.length; i++) table[i] = index;
+  });
+  mesh.vertexJoint = table;
+  return mesh;
+}
+
+/** Rotates `p` about `pivot`: X first (a hip swinging fore and aft), then Z (a limb swinging out). */
+function rotateAbout(p, pivot, rotX, rotZ) {
+  let x = p[0] - pivot[0];
+  let y = p[1] - pivot[1];
+  let z = p[2] - pivot[2];
+  if (rotX) {
+    const c = Math.cos(rotX), sn = Math.sin(rotX);
+    [y, z] = [y * c - z * sn, y * sn + z * c];
+  }
+  if (rotZ) {
+    const c = Math.cos(rotZ), sn = Math.sin(rotZ);
+    [x, y] = [x * c - y * sn, x * sn + y * c];
+  }
+  return [x + pivot[0], y + pivot[1], z + pivot[2]];
+}
+
+/**
+ * The whole figure's walk rhythm, about its feet (model y = 0) — the 3D
+ * counterpart of walk-styles.js's `applyWalk`, in its order: squash, lean,
+ * roll, lift.
+ */
+function bodyRhythm(p, pl) {
+  const squash = pl.squash;
+  let [x, y, z] = squash ? [p[0] * squash[0], p[1] * squash[1], p[2] * squash[0]] : p;
+  // Lean: a shear that moves the head toward the direction of travel while the
+  // feet stay put (+y is up here, where the 2D's canvas y points down).
+  if (pl.lean) x += pl.lean * y;
+  if (pl.roll) {
+    const c = Math.cos(pl.roll), sn = Math.sin(pl.roll);
+    [x, y] = [x * c - y * sn, x * sn + y * c];
+  }
+  return [x, y + (pl.lift ?? 0), z];
+}
+
+/** Whether a placement asks for any posing at all — the fast path skips it entirely. */
+function isPosed(pl) {
+  return Boolean(pl.jointPose || pl.lift || pl.roll || pl.lean || pl.squash);
+}
+
+/**
+ * A mesh's vertices in model space with `jointPose` and the body rhythm
+ * applied. Exported for the mesh and gait tests; `buildDrawList` uses it on
+ * any placement that asks for posing.
+ */
+export function posedVertices(mesh, jointPose, body = {}) {
+  const pl = { ...body, jointPose };
+  if (!isPosed(pl)) return mesh.vertices;
+  const joints = mesh.joints;
+  const table = joints ? mesh.vertexJoint : null;
+  return mesh.vertices.map((v, i) => {
+    let p = v;
+    const ji = table ? table[i] : null;
+    if (ji !== null && ji !== undefined && jointPose) {
+      const joint = joints[ji];
+      const pose = jointPose[joint.name];
+      if (pose && (pose.rotX || pose.rotZ)) p = rotateAbout(p, joint.pivot, pose.rotX ?? 0, pose.rotZ ?? 0);
+    }
+    return bodyRhythm(p, pl);
+  });
+}
+
 function modelPoint(p, pl) {
   const s = Array.isArray(pl.scale) ? pl.scale : [pl.scale, pl.scale, pl.scale];
   const x = p[0] * s[0], y = p[1] * s[1], z = p[2] * s[2];
@@ -354,7 +447,10 @@ export function buildDrawList(camera, placed, opts) {
   const hinted = [];
   for (const { mesh, placement } of placed) {
     const alpha = placement.alpha ?? 1;
-    const world = mesh.vertices.map((v) => modelPoint(v, placement));
+    // Posed in model space first (joints, then the walk rhythm), so every
+    // stage below sees the figure as it actually stands this frame.
+    const local = isPosed(placement) ? posedVertices(mesh, placement.jointPose, placement) : mesh.vertices;
+    const world = local.map((v) => modelPoint(v, placement));
     const clip = world.map((w) => transformPoint(camera.viewProj, w));
     // One face's polygons, pushed onto `out` (none when culled or clipped away).
     const pushFace = (face) => {
