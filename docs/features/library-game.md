@@ -241,6 +241,17 @@ Never solid: the Sanity hallucinations (`ghost-patron`,
 and Karen are obstacles, but their own drawn positions are never resolved —
 the queue line would visibly bend.
 
+**The patrol staff get the same treatment.** `staffDrawPose` resolves each
+walker's drawn position out of furniture, decor, Eun-mi and the other walkers,
+and `drawAmbient`'s front/back layering, `staffAtPoint`'s click box and the
+`getStaff` test hook all read that one pose, so the drawing and the clicking
+cannot drift apart. `updateAmbient`'s waypoint loops and each walker's own
+`x/y` are untouched. The push is **one-way** — a walker reads everyone else's
+raw position — so a 14 px overlap opens to 28 px by moving one of the pair
+rather than to 56 px by moving both, and two walkers meeting cannot jitter.
+Security's loop ends 14 px from where Ji-ho's begins and both pause there every
+lap, so this is a case that fires constantly.
+
 **What this guarantees is footprints, not pixels.** A character's footprint is
 a 14 px circle, but they are drawn ~52 px wide and ~86 px tall above their
 feet, so two people standing as close as collision allows still *draw*

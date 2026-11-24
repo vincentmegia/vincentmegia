@@ -717,7 +717,11 @@ export function init(canvas, elements) {
       const [hw, top] = a.key === 'minjun' ? [22 * k, 78 * k]
         : a.key === 'jiho' ? [18 * k * PLAYER_ART_SCALE, 72 * k * PLAYER_ART_SCALE]
         : [17 * k, 68 * k];
-      if (Math.abs(x - a.x) <= hw && y <= a.y + 8 * k && y >= a.y - top) return a;
+      // Against the DRAWN figure, like `drawAmbient` and the `getStaff` hook:
+      // a click box over empty floor, or a figure that cannot be clicked where
+      // it is, is the same bug either way round.
+      const pose = staffDrawPose(a);
+      if (Math.abs(x - pose.x) <= hw && y <= pose.y + 8 * k && y >= pose.y - top) return a;
     }
     return null;
   }
@@ -768,19 +772,24 @@ export function init(canvas, elements) {
 
   /** `inFront` picks the staff drawn after the player (lower on screen), so people overlap back-to-front. */
   function drawAmbient(inFront) {
+    const playerPose = currentPlayerDrawPose();
     for (const a of ambient) {
-      if (a.floor !== currentFloor || (a.y > player.y) !== inFront) continue;
+      if (a.floor !== currentFloor) continue;
+      // Layer on the DRAWN positions, not the raw ones: a walker nudged across
+      // Eun-mi's y would otherwise be drawn on the wrong side of her.
+      const pose = staffDrawPose(a);
+      if ((pose.y > playerPose.y) !== inFront) continue;
       // Each walker's own walk (library/walk-styles.js), about their feet.
       const walking = a.pause <= 0 && moveTarget?.staffKey !== a.key;
       const t = performance.now() / 1000 + a.phase;
       ctx.save();
-      ctx.translate(a.x, a.y);
+      ctx.translate(pose.x, pose.y);
       applyWalk(ctx, a.key, t, a.dir, walking);
       drawLibraryPerson(ctx, 0, 0, { personalityKey: a.key, scale: a.scale ?? LIBRARY_PERSON_SCALE, walking, action: a.action, actionT: a.actionT, t });
       ctx.restore();
       const [nameChip, hintChip] = staffChips(a);
-      drawChip(ctx, nameChip, a.x, a.y + 20);
-      if (hintChip) drawChip(ctx, hintChip, a.x, a.y + 34);
+      drawChip(ctx, nameChip, pose.x, pose.y + 20);
+      if (hintChip) drawChip(ctx, hintChip, pose.x, pose.y + 34);
     }
   }
   const world = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
@@ -3592,6 +3601,24 @@ export function init(canvas, elements) {
     return { x: Math.round(at.x), y: Math.round(at.y) };
   }
 
+  /**
+   * Where a patrol walker's sprite is DRAWN this frame: their position resolved
+   * out of furniture, decor, Eun-mi and the other walkers, rounded.
+   *
+   * The push is **one-way** — this reads everyone else's *raw* position, so a
+   * 14 px overlap is opened to 28 px by moving one of the pair, not to 56 px by
+   * moving both, and two walkers meeting cannot jitter against each other.
+   * Security's loop ends 14 px from where Ji-ho's begins and both pause there
+   * every lap, so this is a case that fires constantly, not a corner.
+   *
+   * `updateAmbient`'s waypoint loops and each walker's own `x/y` are untouched.
+   */
+  function staffDrawPose(a) {
+    const obstacles = collisionObstacles('top-down', { exclude: `staff-${a.key}` });
+    const at = resolveCollisions(a.x, a.y, PERSON_COLLISION_RADIUS, obstacles);
+    return { x: Math.round(at.x), y: Math.round(at.y) };
+  }
+
   function drawPlayer() {
     lastFrameDrewPlayerSprite = true;
     const sanity = shiftState ? shiftState.sanity : SANITY_MAX;
@@ -5762,8 +5789,13 @@ export function init(canvas, elements) {
       getDaily: () => (daily ? { date: daily.date, twistId: daily.twist.id } : null),
       getStaff(key) {
         const a = ambient.find((s) => s.key === key);
-        // `scale` is in the anime-people units the click box uses (Ji-ho's renderer draws at PLAYER_ART_SCALE).
-        return a ? { x: a.x, y: a.y, floor: a.floor, scale: a.key === 'jiho' ? (a.scale ?? 1) * PLAYER_ART_SCALE : a.scale ?? LIBRARY_PERSON_SCALE } : null;
+        if (!a) return null;
+        // The DRAWN position, so a test clicks where the figure is and the click
+        // box agrees (staffAtPoint reads the same pose). `getStaffDrawPose`
+        // reports it alone; `scale` is in the anime-people units the click box
+        // uses (Ji-ho's renderer draws at PLAYER_ART_SCALE).
+        const pose = staffDrawPose(a);
+        return { x: pose.x, y: pose.y, floor: a.floor, scale: a.key === 'jiho' ? (a.scale ?? 1) * PLAYER_ART_SCALE : a.scale ?? LIBRARY_PERSON_SCALE };
       },
       getMinjun() {
         const mj = ambient.find((a) => a.key === 'minjun');
@@ -5823,6 +5855,21 @@ export function init(canvas, elements) {
       step(seconds = 1 / 60) { if (running && shiftState) stepSimulation(seconds); },
       /** Stops (true) or resumes (false) the wandering staff, so a test can click one where it read them. */
       freezeStaff(on) { testStaffFrozen = Boolean(on); },
+      /** Puts a walker exactly where a test needs them (use with `freezeStaff`), to drive the cases their patrol loops only reach occasionally. */
+      setStaffPosition(key, x, y) {
+        const a = ambient.find((s) => s.key === key);
+        if (a) { a.x = x; a.y = y; }
+      },
+      /** A walker's simulated position, which collision never moves — `getStaffDrawPose` is where they are drawn. */
+      getStaffPosition(key) {
+        const a = ambient.find((s) => s.key === key);
+        return a ? { x: a.x, y: a.y, floor: a.floor } : null;
+      },
+      /** Where a walker's sprite is actually drawn: resolved out of furniture and each other, while their own x/y stays put. */
+      getStaffDrawPose(key) {
+        const a = ambient.find((s) => s.key === key);
+        return a ? staffDrawPose(a) : null;
+      },
       /** Holds back (true) or releases (false) the shift's scheduled arrivals; the hooks' own spawn*Now still work. */
       pauseScheduledEvents(on) { testEventsPaused = Boolean(on); },
       // `freeze` holds the marker still until the next click resolves it, so

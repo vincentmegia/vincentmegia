@@ -2026,6 +2026,16 @@ test.describe('First Person Mode', () => {
 		await startShift(page);
 		await page.evaluate(() => { window.__libraryGameTestHooks.getShiftState().libraryMood = 50; });
 		await page.locator('#library-camera-button').click();
+		// Eun-mi stands 220 px west of the Janitor and looks east, and Ji-ho's
+		// patrol (470..540, y ~549) crosses that line: from his far waypoint he
+		// sits ~95 px ahead of her and ~3 degrees off her crosshair, inside the
+		// 9-degree interact cone, so whether he had drifted there by now decided
+		// the out-of-range assertion below. Under a full parallel suite he had.
+		await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freezeStaff(true);
+			h.setStaffPosition('jiho', 120, 520);
+		});
 
 		// Out of interact range he isn't a target, as with stations.
 		await aimAtStaff(page, 'libJanitor', 220);
@@ -2539,5 +2549,61 @@ test.describe('First Person walk animation', () => {
 		expect(paused.roll).toBe(0);
 		expect(paused.lean).toBe(0);
 		expect(paused.squash).toEqual([1, 1]);
+	});
+});
+
+// The walkers' half of object collision: their DRAWN positions never overlap
+// each other or the furniture, while updateAmbient's waypoint loops and their
+// own x/y are untouched. Security's loop ends at [470, 562] and Ji-ho's begins
+// at [470, 548] — 14 px apart, and both pause there every lap.
+test.describe('object collision (patrol staff)', () => {
+	test('two walkers who share a spot are never drawn on top of each other', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.freezeStaff(true);
+			h.setStaffPosition('guard', 470, 562);
+			h.setStaffPosition('jiho', 470, 548);
+			h.step(1 / 60);
+			return {
+				guard: h.getStaffDrawPose('guard'),
+				jiho: h.getStaffDrawPose('jiho'),
+				guardRaw: h.getStaffPosition('guard'),
+				jihoRaw: h.getStaffPosition('jiho'),
+			};
+		});
+		// Their simulated positions are untouched — updateAmbient still owns them.
+		expect([seen.guardRaw.x, seen.guardRaw.y]).toEqual([470, 562]);
+		expect([seen.jihoRaw.x, seen.jihoRaw.y]).toEqual([470, 548]);
+		// Their footprints (14 px each) no longer overlap where they are drawn.
+		const apart = Math.hypot(seen.guard.x - seen.jiho.x, seen.guard.y - seen.jiho.y);
+		expect(apart).toBeGreaterThanOrEqual(27);
+	});
+
+	test('a walker standing in a bookshelf is drawn clear of it', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			const shelf = h.getStations().find((s) => s.kind === 'bookshelf' && s.floor === 1);
+			h.freeze(true);
+			h.freezeStaff(true);
+			h.setStaffPosition('guard', shelf.x, shelf.y);
+			h.step(1 / 60);
+			return { shelf, pose: h.getStaffDrawPose('guard') };
+		});
+		const clear = Math.abs(seen.pose.x - seen.shelf.x) >= 76 - 1 || Math.abs(seen.pose.y - seen.shelf.y) >= 64 - 1;
+		expect(clear, `drawn at ${seen.pose.x},${seen.pose.y} inside the shelf`).toBe(true);
+	});
+
+	test('clicking a resolved walker still asks them for help', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		// askStaff clicks the coordinates getStaff reports, so this fails if the
+		// drawing and the click box ever stop agreeing.
+		await askStaff(page, 'libShelver');
+		await expect(page.locator('#library-toast')).toBeVisible();
 	});
 });
