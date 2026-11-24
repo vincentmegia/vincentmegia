@@ -595,9 +595,11 @@ test('the body rhythm lifts, leans and squashes about the feet', () => {
   const foot = mesh.vertices.findIndex((v) => v[1] === 0);
   near(posed[foot][1], 0.1);
   near(posed[foot][0], mesh.vertices[foot][0] * 1.1);
-  // A vertex at the top leans toward +x, since lean is applied about the feet.
+  // A vertex at the top leans toward +z — the character's own forward axis,
+  // which the placement's yaw points along their travel.
   const top = mesh.vertices.findIndex((v) => v[1] === 2);
-  assert.ok(posed[top][0] > mesh.vertices[top][0] * 1.1, 'the top should lean');
+  assert.ok(posed[top][2] > mesh.vertices[top][2] * 1.1, 'the top should lean forward');
+  near(posed[top][0], mesh.vertices[top][0] * 1.1);
 });
 
 test('a roll tilts the figure about its feet', () => {

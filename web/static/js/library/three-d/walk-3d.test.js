@@ -83,9 +83,10 @@ test("the body rhythm is the 2D style's own, converted to scene units", () => {
   const t = 0.33;
   const pose = walk3dPose('guard', { t, walking: true, dir: 1 });
   const flat = WALK_STYLES.guard.pose(t, 1);
-  // The 2D lifts by a negative canvas y; the scene lifts by a positive height.
+  // The 2D lifts by a negative canvas y; the scene lifts by a positive height,
+  // and the roll flips for the same reason (see the dedicated test below).
   assert.ok(pose.lift > 0 === flat.dy < 0);
-  near(pose.roll, flat.rot);
+  near(pose.roll, -flat.rot);
 });
 
 test('the volunteer skips: the body squashes as the hop lands', () => {
@@ -99,11 +100,11 @@ test('the volunteer skips: the body squashes as the hop lands', () => {
   assert.ok(landed[0] > 1, `sx should widen on landing, got ${landed[0]}`);
 });
 
-test('the shelver leans the way she is going, and flips with direction', () => {
-  const right = walk3dPose('libShelver', { t: 0.4, walking: true, dir: 1 });
-  const left = walk3dPose('libShelver', { t: 0.4, walking: true, dir: -1 });
-  assert.ok(right.lean !== 0);
-  near(right.lean, -left.lean);
+test('the shelver leans into her power-walk', () => {
+  // Which way is settled by the yaw, not the sign: see "the lean is forward".
+  const pose = walk3dPose('libShelver', { t: 0.4, walking: true, dir: 1 });
+  assert.ok(pose.lean > 0);
+  near(pose.lean, Math.abs(WALK_STYLES.libShelver.pose(0.4, 1).lean));
 });
 
 test('the storyteller twirls on her yaw, never by mirroring her mesh', () => {
@@ -134,4 +135,51 @@ test('an unknown character still swings its legs, with a flat body', () => {
   assert.equal(p.lift, 0);
   assert.equal(p.roll, 0);
   assert.deepEqual(p.squash, [1, 1]);
+});
+
+// -- Review fixes ------------------------------------------------------------
+
+test('the storyteller never collapses to nothing while twirling', () => {
+  // Her 2D sx IS the mirror-flip twirl: |cos| sweeps 1 -> 0 -> 1 twice over the
+  // twirl window, so taking its magnitude flattened her mesh onto its own axis,
+  // on top of the yaw spin she was given instead of the flip.
+  let min = Infinity;
+  for (let t = 0; t < 8; t += 0.002) {
+    const p = walk3dPose('libStoryteller', { t, walking: true, dir: 1 });
+    min = Math.min(min, p.squash[0], p.squash[1]);
+  }
+  assert.ok(min > 0.8, `her narrowest squash was ${min.toFixed(3)}`);
+});
+
+test('Ji-ho walks at his own 2D cadence', () => {
+  // jiho.js: phase = t * 6.4. He is an AMBIENT_STAFF walker with no
+  // walk-styles.js entry, so the default 5 was quietly wrong for him.
+  assert.equal(GAIT_3D.jiho.freq, 6.4);
+});
+
+test('every walker the game patrols has a gait of their own', () => {
+  // AMBIENT_STAFF's keys (library-game.js). A walker in neither table silently
+  // inherits DEFAULT_GAIT, which is what happened to Ji-ho.
+  const PATROL = ['guard', 'volunteer', 'minjun', 'libJanitor', 'libShelver', 'libStoryteller', 'libArchivist', 'jiho'];
+  for (const key of PATROL) assert.ok(GAIT_3D[key], `${key} has no gait of their own`);
+});
+
+test('the roll tilts the same way the 2D sprite does', () => {
+  // applyWalk's ctx.rotate(rot) with canvas +y DOWN sends the head to +x;
+  // core.js's bodyRhythm with +y UP sends it to -x for the same sign.
+  const t = 0.33;
+  const pose = walk3dPose('guard', { t, walking: true, dir: 1 });
+  const flat = WALK_STYLES.guard.pose(t, 1);
+  assert.ok(flat.rot !== 0, 'pick a t where the guard is rolling');
+  near(pose.roll, -flat.rot);
+});
+
+test('the lean is forward, and does not flip with the direction of travel', () => {
+  // In 3D the walker is yawed to face her travel, so forward is always +z; a
+  // dir-signed lean would cancel against the yaw and lean her backwards on one
+  // leg of the patrol.
+  const right = walk3dPose('libShelver', { t: 0.4, walking: true, dir: 1 });
+  const left = walk3dPose('libShelver', { t: 0.4, walking: true, dir: -1 });
+  assert.ok(right.lean > 0, 'she leans into her walk');
+  assert.equal(right.lean, left.lean);
 });

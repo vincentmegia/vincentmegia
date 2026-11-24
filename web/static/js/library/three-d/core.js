@@ -300,8 +300,11 @@ function bodyRhythm(p, pl) {
   const squash = pl.squash;
   let [x, y, z] = squash ? [p[0] * squash[0], p[1] * squash[1], p[2] * squash[0]] : p;
   // Lean: a shear that moves the head toward the direction of travel while the
-  // feet stay put (+y is up here, where the 2D's canvas y points down).
-  if (pl.lean) x += pl.lean * y;
+  // feet stay put. It shears Z, the character's own forward axis — a character
+  // is modelled facing +Z and the placement's yaw turns them to face their
+  // travel, so shearing X would lean them sideways instead, and would cancel
+  // against the yaw when they turned around.
+  if (pl.lean) z += pl.lean * y;
   if (pl.roll) {
     const c = Math.cos(pl.roll), sn = Math.sin(pl.roll);
     [x, y] = [x * c - y * sn, x * sn + y * c];

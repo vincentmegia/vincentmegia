@@ -211,8 +211,13 @@ and the two cameras use it differently **on purpose**:
   attached to her can drift off the sprite. The station she is **at** is
   exempt from her own resolve — standing at a counter should read as contact,
   and without it every arrival would nudge her visibly (1.1 px of clearance at
-  the Fines Counter against a 14 px footprint). Being *inside* a station's box
-  is not exempt: that is the case this change exists to stop. That is not timidity: `handleArrival`
+  the Fines Counter against a 14 px footprint). Every station she is in contact
+  with is exempt, not just the first: the Director's office approach ring lands
+  exactly on the Fines Counter room's tile edge, so exempting one of the pair
+  still left the other to pop her. Shallow penetration counts as contact too,
+  which is what lets her stand in the elevator car (`elevatorRiderPose` puts
+  her inside that tile on purpose). Being *buried* in a box — deeper than her
+  own footprint — is not exempt: that is the case this change exists to stop. That is not timidity: `handleArrival`
   fires off `player.x/y`, and `commitStationTarget`'s approach circle clears
   the furniture by as little as 1.1 px (the Fines Counter room) against a 14 px
   footprint, so pushing the real position would shove her off the very point
@@ -246,9 +251,10 @@ walker's drawn position out of furniture, decor, Eun-mi and the other walkers,
 and `drawAmbient`'s front/back layering, `staffAtPoint`'s click box and the
 `getStaff` test hook all read that one pose, so the drawing and the clicking
 cannot drift apart. `updateAmbient`'s waypoint loops and each walker's own
-`x/y` are untouched. The push is **one-way** — a walker reads everyone else's
-raw position — so a 14 px overlap opens to 28 px by moving one of the pair
-rather than to 56 px by moving both, and two walkers meeting cannot jitter.
+`x/y` are untouched. Eun-mi is added to that obstacle list by hand, because she
+is not in the world inventory — she *is* the First Person camera. The push is
+**one-way**: each resolves against everyone else's raw position, so two walkers
+meeting cannot jitter against a position that is itself moving.
 Security's loop ends 14 px from where Ji-ho's begins and both pause there every
 lap, so this is a case that fires constantly.
 

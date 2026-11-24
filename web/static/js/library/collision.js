@@ -96,10 +96,13 @@ function isClear(x, y, radius, obstacles) {
  * Pushes a circle (`radius`, centred at `x, y`) out of every `obstacles`
  * entry it overlaps, each along the shortest way out.
  *
- * Obstacles resolve one at a time in list order, so two overlapping
- * obstacles can fight over the same push. That never happens here: real
- * obstacles (stations, decor, characters) don't overlap each other — only the
- * moving entity passing near or between them.
+ * Obstacles resolve one at a time in list order, so pushing out of one can
+ * push into another: the raw boxes never overlap, but each inflated by a 14 px
+ * footprint does — the 2nd Floor ladder and the Kids shelf stand 23 px apart,
+ * less than two footprints. So the sweep repeats until the position is clear,
+ * up to `PASSES` times, and keeps the best attempt if it cannot win (a gap
+ * genuinely narrower than the footprint has no clear answer, and the caller
+ * still gets the position that overlaps least).
  *
  * A position that is already clear is returned unchanged, not recomputed, so
  * a resolved pose is bit-identical to the raw one when nothing is in the way.
@@ -111,6 +114,57 @@ function isClear(x, y, radius, obstacles) {
  * @returns {{x: number, y: number}}
  */
 export function resolveCollisions(x, y, radius, obstacles) {
+  if (isClear(x, y, radius, obstacles)) return { x, y };
+
+  let at = { x, y };
+  for (let pass = 0; pass < PASSES; pass++) {
+    at = resolveOnce(at.x, at.y, radius, obstacles);
+    if (isClear(at.x, at.y, radius, obstacles)) return at;
+  }
+
+  // The sweep can oscillate: pushed out of the 2nd Floor ladder along its
+  // shallower axis she lands in the Kids shelf, whose own shallower axis sends
+  // her back. So try every obstacle's four axis exits and keep the best — the
+  // one that overlaps least, and among equals the one nearest where she was.
+  // Here that finds the exit the sweep never tried: straight up, where the
+  // shelf is not.
+  let best = { at, score: penetration(at.x, at.y, radius, obstacles), move: Math.hypot(at.x - x, at.y - y) };
+  for (const obs of obstacles) {
+    if (!overlaps(x, y, radius, obs)) continue;
+    for (const exit of axisExits(x, y, radius, obs)) {
+      const score = penetration(exit.x, exit.y, radius, obstacles);
+      const move = Math.hypot(exit.x - x, exit.y - y);
+      if (score < best.score - 1e-9 || (score <= best.score + 1e-9 && move < best.move)) {
+        best = { at: exit, score, move };
+      }
+    }
+  }
+  return best.at;
+}
+
+/** The four (box) or one (circle) shortest exits from a single obstacle, each just clear of it. */
+function axisExits(x, y, radius, obs) {
+  if (obs.radius !== undefined) {
+    const d = Math.hypot(x - obs.x, y - obs.y);
+    const min = radius + obs.radius;
+    if (d === 0) return [{ x: obs.x + min, y: obs.y }];
+    return [{ x: obs.x + ((x - obs.x) / d) * min, y: obs.y + ((y - obs.y) / d) * min }];
+  }
+  const hw = obs.halfWidth + radius;
+  const hh = obs.halfHeight + radius;
+  return [
+    { x: obs.x - hw, y },
+    { x: obs.x + hw, y },
+    { x, y: obs.y - hh },
+    { x, y: obs.y + hh },
+  ];
+}
+
+/** How many times `resolveCollisions` sweeps the obstacle list before settling for the least-bad position. */
+const PASSES = 4;
+
+/** One sweep of the obstacle list — `resolveCollisions` repeats this while anything still overlaps. */
+function resolveOnce(x, y, radius, obstacles) {
   let rx = x;
   let ry = y;
   for (const obs of obstacles) {
@@ -156,6 +210,54 @@ export function resolveCollisions(x, y, radius, obstacles) {
 }
 
 /**
+ * How far inside the obstacles a circle at (x, y) is, summed — 0 when clear.
+ * Used only to judge an escape from an invalid position.
+ */
+function penetration(x, y, radius, obstacles) {
+  let total = 0;
+  for (const obs of obstacles) {
+    if (obs.radius !== undefined) {
+      total += Math.max(0, radius + obs.radius - Math.hypot(x - obs.x, y - obs.y));
+      continue;
+    }
+    const near = closestPointOnBox(x, y, obs);
+    total += Math.max(0, radius - Math.hypot(x - near.x, y - near.y));
+  }
+  return total;
+}
+
+/**
+ * A step taken from inside an obstacle: allowed as long as it does not bury her
+ * deeper, so she can always walk out of somewhere she should never have been,
+ * while an obstacle she is NOT inside still stops her normally.
+ */
+function escapeMove(x, y, dx, dy, radius, obstacles) {
+  // Only the obstacles she is already inside may be entered further; anything
+  // she is currently clear of still stops her, so being stuck in one place is
+  // never a licence to walk through the next thing along.
+  const stuckIn = obstacles.filter((obs) => overlaps(x, y, radius, obs));
+  const walls = obstacles.filter((obs) => !stuckIn.includes(obs));
+  const before = penetration(x, y, radius, stuckIn);
+  for (const [cx, cy] of [[dx, dy], [dx, 0], [0, dy]]) {
+    if (cx === 0 && cy === 0) continue;
+    const nx = x + cx;
+    const ny = y + cy;
+    if (!isClear(nx, ny, radius, walls)) continue;
+    if (penetration(nx, ny, radius, stuckIn) <= before + 1e-9) {
+      return { x: nx, y: ny, blocked: true };
+    }
+  }
+  // Every candidate digs in deeper or hits a wall she is not inside. Take the
+  // step along whichever axis is free of those walls rather than freeze, since
+  // staying put is the one outcome with no way out at all.
+  for (const [cx, cy] of [[dx, 0], [0, dy], [dx, dy]]) {
+    if (cx === 0 && cy === 0) continue;
+    if (isClear(x + cx, y + cy, radius, walls)) return { x: x + cx, y: y + cy, blocked: true };
+  }
+  return { x, y, blocked: true };
+}
+
+/**
  * One frame's *blocked* move: walks a circle from (x, y) by (dx, dy) as far as
  * the obstacles allow, sliding along a surface rather than sticking to it.
  *
@@ -174,6 +276,15 @@ export function resolveCollisions(x, y, radius, obstacles) {
  */
 export function slideMove(x, y, dx, dy, radius, obstacles) {
   if (dx === 0 && dy === 0) return { x, y, blocked: false };
+
+  // Already inside something? Then every candidate is inside something too, and
+  // refusing them all would freeze the walker until they changed camera — which
+  // is what happened beside the 2nd Floor plant, whose inflated footprint
+  // crosses the canvas walk margin, so `clampToCanvas` put her back inside what
+  // the resolve had just pushed her out of. A walker can also simply be stood
+  // on. Overlapping is an invalid state, not a wall: judge each candidate by
+  // whether it improves, so the only way out is outward.
+  if (!isClear(x, y, radius, obstacles)) return escapeMove(x, y, dx, dy, radius, obstacles);
 
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / MAX_SUBSTEP_PX));
   const stepX = dx / steps;
@@ -287,16 +398,19 @@ function elevatorWalls(item) {
  * @param {object[]} items - worldInventory items.
  * @param {object} opts
  * @param {'top-down'|'first-person'} opts.camera - which art to collide against.
- * @param {string} [opts.exclude] - an inventory id to leave out (the entity being resolved).
+ * @param {string|Iterable<string>} [opts.exclude] - inventory id(s) to leave
+ *   out: the entity being resolved, and any station it is standing at.
  * @param {boolean} [opts.people=true] - false for furniture and decor only.
  * @returns {({x: number, y: number, radius: number}|{x: number, y: number, halfWidth: number, halfHeight: number})[]}
  */
 export function obstaclesFor(items, { camera, exclude, people = true } = {}) {
   const firstPerson = camera === 'first-person';
   const obstacles = [];
+  const skip = exclude === undefined ? null
+    : new Set(typeof exclude === 'string' ? [exclude] : exclude);
 
   for (const item of items) {
-    if (exclude !== undefined && item.id === exclude) continue;
+    if (skip && skip.has(item.id)) continue;
     if (NEVER_SOLID_KINDS.has(item.kind)) continue;
 
     if (PERSON_KINDS.has(item.kind)) {
@@ -328,17 +442,25 @@ export function obstaclesFor(items, { camera, exclude, people = true } = {}) {
     }
 
     if (item.kind === 'decor') {
-      const size = firstPerson ? DECOR_FOOTPRINTS[item.decorKind] : null;
+      // Both cameras use the prop's own mesh footprint, because a sprite tile
+      // says nothing about floor depth: `w` is a width and `h` is a drawn
+      // HEIGHT. A square from `w` made the 2nd Floor's waiting chairs (96 x 34)
+      // a 96 px-deep block, which drew Eun-mi 32 px below the canvas.
+      //
+      // They differ in where the prop stands: Top-Down's drawers put the ground
+      // contact at `d.y + d.h / 2` (hospital/anime-furniture.js), while
+      // three-d/scene.js stands the mesh at `d.y`. Each camera gets its own
+      // truth, the same way each gets its own footprints.
+      const size = DECOR_FOOTPRINTS[item.decorKind];
+      const y = firstPerson ? item.y : item.y + (item.h ?? 0) / 2;
       if (size) {
-        obstacles.push(meshRect(item.x, item.y, size));
+        obstacles.push(meshRect(item.x, y, size));
         continue;
       }
-      // Top-Down: a square from `w` alone. `h` is the sprite's drawn height,
-      // measured from its ground contact at `d.y + d.h / 2`, so using it as a
-      // floor depth would give the ladder a 62 px-deep box centred half a
-      // sprite north of where it stands.
+      // A kind with no mesh footprint yet: a square from `w`, solid rather than
+      // silently walk-through-able.
       const half = item.w / 2;
-      obstacles.push({ x: item.x, y: item.y, halfWidth: half, halfHeight: half });
+      obstacles.push({ x: item.x, y, halfWidth: half, halfHeight: half });
       continue;
     }
   }

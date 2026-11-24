@@ -3566,20 +3566,34 @@ export function init(canvas, elements) {
    * than her 14 px footprint — 10.4 px at a bookcase, 10.6 at a square
    * station, and 1.1 px at the Fines Counter room, whose diagonal approach is
    * the most-walked in the game.
+   *
+   * It returns every such station, not the first: the Director's office
+   * approach ring lands exactly on the Fines Counter room's tile edge, so
+   * exempting one of the pair still left the other to pop her 14 px. The
+   * elevator is the same shape of problem — `elevatorRiderPose` stands her
+   * inside the car on purpose — which is why shallow penetration is exempt too.
    */
-  function stationUnderPlayer() {
-    const candidates = moveTarget?.station ? [moveTarget.station] : stationsOnFloor(stations, currentFloor);
-    for (const s of candidates) {
-      // Contact is exempt; being *inside* the box is not. Top-Down can put her
-      // there (a staff walk parks her 46 px beside a walker, a decor click
-      // walks her onto the prop), and a sprite drawn inside the furniture is
-      // the thing this change exists to stop.
-      if (stationAtPoint(player.x, player.y, [s])) continue;
+  function stationsAtPlayer() {
+    const exempt = [];
+    for (const s of stationsOnFloor(stations, currentFloor)) {
       const { hw, hh } = stationExtents(s);
+      const dx = Math.abs(player.x - s.x);
+      const dy = Math.abs(player.y - s.y);
+      // How far past the tile's edge she stands, 0 when she is outside it.
+      // Shallow is standing AT something (the elevator car, or a neighbour's
+      // tile her approach ring touches) and is exempt; buried is standing
+      // *in* it, which is the case this change exists to resolve out.
+      const depth = dx <= hw && dy <= hh ? Math.min(hw - dx, hh - dy) : 0;
+      if (depth > PLAYER_COLLISION_RADIUS) continue;
+      if (depth > 0) { exempt.push(s.id); continue; }
+      // Contact without penetration counts while she is standing still, or for
+      // the station she is on her way to; otherwise walking past a shelf would
+      // let her sprite lap over it.
       const standoff = Math.max(hw, hh) + PLAYER_STOP_MARGIN;
-      if (Math.hypot(player.x - s.x, player.y - s.y) <= standoff + 0.5) return s.id;
+      const nearEnough = Math.hypot(player.x - s.x, player.y - s.y) <= standoff + 0.5;
+      if (nearEnough && (!moveTarget || moveTarget.station?.id === s.id)) exempt.push(s.id);
     }
-    return null;
+    return exempt;
   }
 
   /**
@@ -3596,7 +3610,7 @@ export function init(canvas, elements) {
    * can never drift apart.
    */
   function currentPlayerDrawPose() {
-    const obstacles = collisionObstacles('top-down', { people: false, exclude: stationUnderPlayer() ?? undefined });
+    const obstacles = collisionObstacles('top-down', { people: false, exclude: stationsAtPlayer() });
     const at = resolveCollisions(player.x, player.y, PLAYER_COLLISION_RADIUS, obstacles);
     return { x: Math.round(at.x), y: Math.round(at.y) };
   }
@@ -3614,7 +3628,12 @@ export function init(canvas, elements) {
    * `updateAmbient`'s waypoint loops and each walker's own `x/y` are untouched.
    */
   function staffDrawPose(a) {
-    const obstacles = collisionObstacles('top-down', { exclude: `staff-${a.key}` });
+    // Eun-mi is not in the world inventory (she IS the First Person camera), so
+    // she has to be added here by hand — without her a walker is drawn straight
+    // through her sprite, which is half of what "they should never collide"
+    // asked for.
+    const obstacles = collisionObstacles('top-down', { exclude: `staff-${a.key}` })
+      .concat([{ x: player.x, y: player.y, radius: PLAYER_COLLISION_RADIUS }]);
     const at = resolveCollisions(a.x, a.y, PERSON_COLLISION_RADIUS, obstacles);
     return { x: Math.round(at.x), y: Math.round(at.y) };
   }

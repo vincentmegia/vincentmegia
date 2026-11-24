@@ -2607,3 +2607,87 @@ test.describe('object collision (patrol staff)', () => {
 		await expect(page.locator('#library-toast')).toBeVisible();
 	});
 });
+
+// Review fixes: the Top-Down draw pose must stay on the canvas, must not pop on
+// arrival at a station whose neighbour's tile overlaps the approach ring, must
+// leave her alone in the elevator car, and the walkers must resolve against her.
+test.describe('object collision (draw-pose fixes)', () => {
+	test('arriving where two station tiles meet does not pop her sprite', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			const out = [];
+			// The Director's office approach ring from the south lands at (80, 185),
+			// exactly on the Fines Counter room's top tile edge (130 x 130 at
+			// (100, 250)); the mirror case is arriving at the Fines Counter from the
+			// north at (100, 157), on the office's own tile edge. Exempting only the
+			// first matching station left the other to pop her ~14 px.
+			for (const [x, y] of [[80, 185], [100, 157]]) {
+				h.setPlayerPosition(x, y);
+				h.step(1 / 60);
+				out.push({ raw: h.getPlayerPosition(), pose: h.getPlayerDrawPose() });
+			}
+			return out;
+		});
+		for (const { raw, pose } of seen) {
+			expect(pose, `standing at ${raw.x},${raw.y}`).toEqual({ x: Math.round(raw.x), y: Math.round(raw.y) });
+		}
+	});
+
+	test('standing in the elevator car does not push her sprite into the wall', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		await walkToStation(page, 'elevator');
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			// elevatorRiderPose stands her inside the tile on purpose, and
+			// isInElevatorCar holds the doors open while she is there.
+			h.setPlayerPosition(80, 574);
+			h.step(1 / 60);
+			return { pose: h.getPlayerDrawPose(), raw: h.getPlayerPosition() };
+		});
+		expect(seen.pose).toEqual({ x: Math.round(seen.raw.x), y: Math.round(seen.raw.y) });
+	});
+
+	test('her sprite is never drawn off the canvas, even at a wall-side prop', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const poses = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			const out = [];
+			// The 1F right-hand plants sit on the clamp line; the bottom-centre
+			// strip of 2F is under the waiting chairs.
+			for (const [x, y] of [[936, 240], [936, 420], [930, 263], [474, 576], [480, 570]]) {
+				h.setPlayerPosition(x, y);
+				h.step(1 / 60);
+				out.push(h.getPlayerDrawPose());
+			}
+			return out;
+		});
+		for (const p of poses) {
+			expect(p.x, `x of ${p.x},${p.y}`).toBeGreaterThanOrEqual(24);
+			expect(p.x, `x of ${p.x},${p.y}`).toBeLessThanOrEqual(936);
+			expect(p.y, `y of ${p.x},${p.y}`).toBeGreaterThanOrEqual(24);
+			expect(p.y, `y of ${p.x},${p.y}`).toBeLessThanOrEqual(576);
+		}
+	});
+
+	test('a walker standing on Eun-mi is drawn clear of her', async ({ page }) => {
+		await page.goto('/library-game');
+		await startShift(page);
+		const seen = await page.evaluate(() => {
+			const h = window.__libraryGameTestHooks;
+			h.freeze(true);
+			h.freezeStaff(true);
+			h.setPlayerPosition(680, 214);
+			h.setStaffPosition('libShelver', 680, 214);
+			h.step(1 / 60);
+			return { staff: h.getStaffDrawPose('libShelver'), player: h.getPlayerDrawPose() };
+		});
+		const apart = Math.hypot(seen.staff.x - seen.player.x, seen.staff.y - seen.player.y);
+		expect(apart).toBeGreaterThanOrEqual(27);
+	});
+});

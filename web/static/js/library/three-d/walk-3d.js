@@ -67,6 +67,10 @@ export const GAIT_3D = {
   // stride amplitude is this module's call — his 2D draws legs straight from
   // `stride` rather than through legPoses' swing.
   minjun: { freq: 8, swing: 0.22, bend: 0.4, bob: 1.1 },
+  // Han Ji-ho is the other hand-rendered character with no walk-styles.js
+  // entry: jiho.js walks at `t * 6.4` and draws his own legs through legPoses'
+  // defaults.
+  jiho: { freq: 6.4, swing: 0.3, bend: 0.42 },
 };
 
 /** Anyone with no 2D walk style of their own — a queued patron, Karen — walks like patron.js does. */
@@ -123,10 +127,21 @@ export function walk3dPose(key, { t, walking, dir = 1 }) {
   const spinning = twirl < TWIRL_FRACTION;
   return {
     jointPose,
+    // The 2D's dy is a canvas offset with +y down, so an upward lift is
+    // negative there and positive here. `rot` flips for the same reason:
+    // `applyWalk`'s rotate sends the head to +x on a y-down canvas, where
+    // `bodyRhythm`'s does on a y-up scene.
     lift: -body.dy * CANVAS_PX_TO_UNITS,
-    roll: body.rot,
-    lean: body.lean,
-    squash: [Math.abs(body.sx), Math.abs(body.sy)],
+    roll: -body.rot,
+    // The 2D's lean is signed by travel because its sprite always faces the
+    // viewer; in 3D the walker is yawed to face her travel, so forward is
+    // already +z and a signed lean would cancel against the yaw — leaning her
+    // backwards on one leg of the patrol. Take the magnitude.
+    lean: Math.abs(body.lean),
+    // Her sx IS the 2D's mirror-flip twirl, which `yawSpin` now performs
+    // properly; keeping its magnitude would sweep her width to zero twice per
+    // twirl and flatten the mesh onto its own axis.
+    squash: [spinning ? 1 : Math.abs(body.sx), Math.abs(body.sy)],
     yawSpin: spinning ? (twirl / TWIRL_FRACTION) * Math.PI * 2 : 0,
   };
 }

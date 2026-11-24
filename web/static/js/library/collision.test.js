@@ -145,13 +145,16 @@ describe('obstaclesFor', () => {
     }
   });
 
-  test('decor is a square from w top-down and its mesh footprint in First Person', () => {
+  test("decor uses its own mesh footprint in both cameras, at each one's ground contact", () => {
     const items = [{ kind: 'decor', id: 'decor-ladder-150-300', decorKind: 'ladder', x: 150, y: 300, w: 30, h: 62 }];
     const [td] = obstaclesFor(items, { camera: 'top-down' });
-    // From w alone: h is a sprite height measured from the ground contact.
-    assert.deepEqual([td.halfWidth, td.halfHeight], [15, 15]);
     const [fp] = obstaclesFor(items, { camera: 'first-person' });
-    assert.ok(fp.halfWidth > 0 && fp.halfHeight > 0 && fp.halfHeight < fp.halfWidth);
+    // A ladder is nearly flat: 0.66 x 0.1 units, never a 30 px-deep square.
+    for (const o of [td, fp]) assert.ok(o.halfHeight < o.halfWidth, `${o.halfWidth} x ${o.halfHeight}`);
+    assert.deepEqual([td.halfWidth, td.halfHeight], [fp.halfWidth, fp.halfHeight]);
+    // Top-Down's drawers stand a prop at d.y + d.h / 2; the mesh stands at d.y.
+    assert.equal(td.y, 300 + 31);
+    assert.equal(fp.y, 300);
   });
 
   test('people are circles', () => {
@@ -220,5 +223,87 @@ describe('obstaclesFor', () => {
         assert.equal(obstacles.length, expected, `${item.stationKind} in ${camera}`);
       }
     }
+  });
+});
+
+// -- Review fixes ------------------------------------------------------------
+
+/** Whether a circle at (x, y) overlaps a rectangular obstacle. */
+const inside = (p, o, r = 14) => {
+  const cx = Math.max(o.x - o.halfWidth, Math.min(p.x, o.x + o.halfWidth));
+  const cy = Math.max(o.y - o.halfHeight, Math.min(p.y, o.y + o.halfHeight));
+  return Math.hypot(p.x - cx, p.y - cy) < r - 1e-9;
+};
+
+describe('escaping an obstacle you are already inside', () => {
+  // The canvas clamp can undo a resolve (an inflated footprint that crosses the
+  // 24 px walk margin), and a walker can be stood on. If a move from inside an
+  // obstacle were refused, First Person movement would be dead until the player
+  // switched cameras — which is exactly what happened at the 2nd Floor plant.
+  test('a step from inside a box is allowed, in any direction', () => {
+    const b = box(580, 400, 20, 7);
+    for (let a = 0; a < 16; a++) {
+      const th = (a * Math.PI) / 8;
+      const at = slideMove(580, 400, Math.cos(th) * 3.3, Math.sin(th) * 3.3, 14, [b]);
+      assert.ok(Math.hypot(at.x - 580, at.y - 400) > 1e-9, `stuck heading ${a}/16`);
+    }
+  });
+
+  test('a step from inside a person is allowed', () => {
+    const at = slideMove(470, 548, -3.3, 0, 14, [{ x: 476, y: 548, radius: 14 }]);
+    assert.ok(at.x < 470, 'she should be able to walk out from under a walker');
+  });
+
+  test('being inside one obstacle does not let her walk through a different one', () => {
+    // Inside the left box, walking right into the far side of a second box she
+    // is clear of: the second still stops her.
+    const trapped = box(100, 100, 20, 20);
+    const wall = box(200, 100, 20, 20);
+    const at = slideMove(100, 100, 120, 0, 14, [trapped, wall]);
+    assert.ok(at.x < 200 - 20 - 14 + 1e-6, `walked into the wall, ending at ${at.x}`);
+  });
+});
+
+describe('resolving out of obstacles whose footprints overlap each other', () => {
+  // collision.js assumed real obstacles never overlap. True of the raw boxes,
+  // false once each is inflated by a 14 px footprint: the 2nd Floor ladder and
+  // the Kids shelf stand 23 px apart, less than two footprints.
+  test('one call clears a position squeezed between two inflated footprints', () => {
+    const ladder = box(150, 300, 15, 15);
+    const shelf = box(250, 300, 62, 50);
+    const at = resolveCollisions(151, 300, 14, [ladder, shelf]);
+    assert.ok(!inside(at, ladder), `still in the ladder at ${at.x},${at.y}`);
+    assert.ok(!inside(at, shelf), `still in the shelf at ${at.x},${at.y}`);
+  });
+
+  test('a clear position is still returned bit-identical', () => {
+    const at = resolveCollisions(480, 380, 14, [box(580, 400, 20, 7)]);
+    assert.equal(at.x, 480);
+    assert.equal(at.y, 380);
+  });
+});
+
+describe('decor footprints', () => {
+  const chairs = { kind: 'decor', id: 'c', decorKind: 'waiting-chairs', x: 480, y: 570, w: 96, h: 34 };
+
+  test('a wide, shallow prop is not a square as deep as it is wide', () => {
+    // waiting-chairs is 1.56 x 0.44 units: a 96 x 96 box drew Eun-mi 32 px
+    // below the canvas when she stood at the bottom clamp line.
+    for (const camera of ['top-down', 'first-person']) {
+      const [o] = obstaclesFor([chairs], { camera });
+      assert.ok(o.halfWidth > o.halfHeight * 2, `${camera}: ${o.halfWidth} x ${o.halfHeight}`);
+    }
+  });
+
+  test('top-down centres a prop where its sprite stands, not half a sprite north', () => {
+    // Every decor drawer puts its ground contact at d.y + d.h / 2.
+    const [o] = obstaclesFor([chairs], { camera: 'top-down' });
+    assert.equal(o.y, 570 + 17);
+  });
+
+  test('First Person centres a prop where its mesh stands', () => {
+    // scene.js places decor at [d.x, 0, d.y].
+    const [o] = obstaclesFor([chairs], { camera: 'first-person' });
+    assert.equal(o.y, 570);
   });
 });

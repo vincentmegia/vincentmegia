@@ -337,7 +337,16 @@ test('no textured face spans two joints', () => {
 test('posing him never rewrites a face uv', () => {
   const art = { body: { width: 10, height: 10 }, head: { width: 10, height: 10 }, props: { width: 10, height: 10 } };
   const mesh = buildMinjun({ pose: 'idle', art });
-  const before = JSON.stringify(mesh.faces.map((f) => f.uv ?? null));
-  posedVertices(mesh, { 'leg.left': { rotX: 0.3 } });
-  assert.equal(JSON.stringify(mesh.faces.map((f) => f.uv ?? null)), before);
+  // geom.js stores it as `face.texture = {image, uv, div}`, not `face.uv`:
+  // reading the wrong field made this assertion compare null with null and
+  // pass however the uvs were mangled.
+  const uvs = () => JSON.stringify(mesh.faces.map((f) => f.texture?.uv ?? null));
+  const textured = mesh.faces.filter((f) => f.texture?.uv).length;
+  assert.ok(textured > 0, 'he should have textured faces to protect');
+  const before = uvs();
+  const posed = posedVertices(mesh, { 'leg.left': { rotX: 0.3 } });
+  assert.equal(uvs(), before);
+  // And the pose really did move his leg, so the check above means something.
+  const j = mesh.joints.find((joint) => joint.name === 'leg.left');
+  assert.ok(posed.slice(j.from, j.to).some((v, i) => Math.abs(v[2] - mesh.vertices[j.from + i][2]) > 1e-9));
 });
